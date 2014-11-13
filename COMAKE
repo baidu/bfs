@@ -27,12 +27,15 @@ CONFIGS('public/sofa-pbrpc@1.0.0.21331@COMAKE')
 
 nameserver_sources='src/nameserver/nameserver_main.cc src/nameserver/nameserver_impl.cc src/flags.cc'
 chunkserver_sources='src/chunkserver/chunkserver_main.cc src/chunkserver/chunkserver_impl.cc src/flags.cc'
+sdk_sources='src/sdk/bfs.cc src/flags.cc'
+sdk_headers='src/sdk/bfs.h'
+client_sources='src/client/bfs_client.cc'
 proto_sources='src/proto/nameserver.proto src/proto/file.proto src/proto/chunkserver.proto'
 
 #可执行文件
 Application('nameserver',Sources(nameserver_sources, proto_sources))
 Application('chunkserver',Sources(chunkserver_sources, proto_sources))
-#Application('bfs_client',Sources(client_sources, sdk_sources, proto_sources))
+Application('bfs_client',Sources(client_sources, sdk_sources, proto_sources))
 #静态库
 #StaticLibrary('bfs',Sources(sdk_sources, proto_sources),HeaderFiles(sdk_headers))
 #Client
