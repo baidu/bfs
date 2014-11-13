@@ -1,0 +1,35 @@
+import "file.proto";
+
+package bfs;
+
+option cc_generic_services = true;
+
+message WriteBlockRequest {
+    optional uint64 sequence_id = 1;
+    optional int64 block_id = 2;
+    optional int64 offset = 3;
+    optional bytes databuf = 4;
+}
+
+message WriteBlockResponse {
+    required uint64 sequence_id = 1;
+    optional int32 status = 2;
+}
+
+message ReadBlockRequest {
+    optional uint64 sequence_id = 1;
+    optional int64 block_id = 2;
+    optional int64 offset = 3;
+    optional int64 read_len = 4;
+}
+message ReadBlockResponse {
+    optional uint64 sequence_id = 1;
+    optional int32 status = 2;
+    optional bytes databuf = 3;
+}
+
+service ChunkServer {
+    rpc WriteBlock(WriteBlockRequest) returns(WriteBlockResponse);
+    rpc ReadBlock(ReadBlockRequest) returns(ReadBlockResponse);
+}
+
