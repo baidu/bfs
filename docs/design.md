@@ -23,20 +23,25 @@ master的数据是落地的，不一定非得全内存，通过LRU内存cache保
 好吧，我们先来开发一个单master，不支持分块，不支持小文件的fs吧。
 
 namespace存储我们选择了leveldb，可以简单的将整个目录结构平展开，并提供高效的文件创建、删除和list操作。
+
 实际目录结构
-    /home/dir1/
-              /file1
-          dir2/
-              /file2
-    /tmp/
-         file2
+
+		/home/dir1/
+		          /file1
+		      dir2/
+		          /file2
+		/tmp/
+		     file2
+
 存储格式为
-    001/
-    002/home
-    002/tmp
-    003/home/dir1
-    003/home/dir2
-    003/tmp/file2
-    004/home/dir1/file1
-    004/home/dir2/file2
+
+	001/
+	002/home
+	002/tmp
+	003/home/dir1
+	003/home/dir2
+	003/tmp/file2
+	004/home/dir1/file1
+	004/home/dir2/file2
+
 这样做的主要目的是高效支持list操作。
