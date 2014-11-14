@@ -7,75 +7,111 @@
 #ifndef  COMMON_THREAD_POOL_H_
 #define  COMMON_THREAD_POOL_H_
 
-#include <pthread.h>
-#include <algorithm>
-#include <queue>
+#include <deque>
 #include <vector>
-
+#include <boost/function.hpp>
 #include "mutex.h"
 
 namespace common {
 
-typedef void* (*ThreadFunc)(void* arg);
-
-static pthread_t StartThread(ThreadFunc proc, void* arg) {
-    pthread_t tid;
-    pthread_create(&tid, NULL, proc, arg);
-    return tid;
-}
-
+// An unscalable thread pool impliment.
 class ThreadPool {
 public:
-    ThreadPool(int num) 
-      : _taskq_cond(&_taskq_mu), _stopped(false) {
-        for (int i=0; i<num; i++) {
+    ThreadPool(int thread_num)
+      : threads_num_(thread_num),
+        pending_num_(0),
+        cond_(&mu_), stop_(false) {
+    }
+    ~ThreadPool() {
+        Stop(false);
+    }
+    // Start a thread_num threads pool.
+    bool Start() {
+        stop_ = false;
+        for (int i = 0; i < threads_num_; i++) {
             pthread_t tid;
-            if (0 == pthread_create(&tid, NULL, BGWrapper, NULL)) {
-                _tids.push_back(tid);
+            pthread_create(&tid, NULL, ThreadWrapper, this);
+            tids_.push_back(tid);
+        }
+        return true;
+    }
+
+    // Stop the thread pool.
+    // Wait for all pending task to complete if wait is true.
+    bool Stop(bool wait) {
+        if (wait) {
+            while(pending_num_ > 0) {
+                usleep(10000);
             }
         }
-    }
-    virtual ~ThreadPool() {
-        _stopped = true;
-        for (size_t i=0; i<_tids.size(); i++) {
-            pthread_join(_tids[i], NULL);
+
+        {
+            MutexLock lock(&mu_);
+            stop_ = true;
+            cond_.Broadcast();
         }
+        for (uint32_t i = 0; i < tids_.size(); i++) {
+            pthread_join(tids_[i], NULL);
+        }
+        tids_.clear();
+        return true;
     }
-    virtual void Schedule(ThreadFunc func, void* arg) {
-        MutexLock lock(&_taskq_mu);
-        _taskq.push_back(std::make_pair(func, arg));
+
+    // Task definition.
+    typedef boost::function<void ()> Task;
+
+    // Add a task to the thread pool.
+    void AddTask(const Task& task) {
+        MutexLock lock(&mu_);
+        queue_.push_back(task);
+        ++pending_num_;
+        cond_.Signal();
+    }
+    void AddPriorityTask(const Task& task) {
+        MutexLock lock(&mu_);
+        queue_.push_front(task);
+        ++pending_num_;
+        cond_.Signal();
     }
 private:
-    static void* BGWrapper(void* arg) {
-        (reinterpret_cast<ThreadPool*>(arg))->BGWork();
+    ThreadPool(const ThreadPool&);
+    void operator=(const ThreadPool&);
+    
+    static void* ThreadWrapper(void* arg) {
+        reinterpret_cast<ThreadPool*>(arg)->ThreadProc();
         return NULL;
     }
-    void BGWork() {
-        while (!_stopped) {
-            ThreadFunc func = NULL;
-            void* arg = NULL;
-            _taskq_mu.Lock();
-            if (_taskq.empty()) {
-                _taskq_cond.Wait();
-                _taskq_mu.Unlock();
-                continue;
+    void ThreadProc() {
+        while(1) {
+            Task task;
+            {
+                MutexLock lock(&mu_);
+                while (queue_.empty() && !stop_) {
+                    cond_.Wait();
+                }
+                if (stop_) {
+                    break;
+                }
+                task = queue_.front();
+                queue_.pop_front();
+                --pending_num_;
             }
-            func = _taskq.front().first;
-            arg = _taskq.front().second;
-            _taskq.pop_front();
-            _taskq_mu.Unlock();
-            func(arg);
+            task();
         }
     }
 private:
-    std::vector<pthread_t> _tids;
-    std::deque< std::pair<ThreadFunc, void*> > _taskq;
-    Mutex   _taskq_mu;
-    CondVar _taskq_cond;
-    bool _stopped;
+    int32_t threads_num_;
+    std::deque<Task> queue_;
+    volatile uint64_t pending_num_;
+    Mutex mu_;
+    CondVar cond_;
+    bool stop_;
+    std::vector<pthread_t> tids_;
 };
 
-} // namespce common
+} // namespace common
+
+using common::ThreadPool;
 
 #endif  //COMMON_THREAD_POOL_H_
 
