@@ -55,6 +55,121 @@ bool SplitPath(const std::string& path, std::vector<std::string>* element) {
     return true;
 }
 
+class ChunkServerManager {
+public:
+    ChunkServerManager() 
+        : next_chunkserver_id(1) {
+    }
+    void HanldeHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
+        MutexLock lock(&_mu);
+        int32_t id = request->chunkserver_id();
+        ChunkServerInfo* info = _chunkservers[id];
+        assert(info);
+        int32_t now_time = time(NULL);
+        _heartbeat_list.erase(info->last_heartbeat());
+        _heartbeat_list[now_time] = info;
+    }
+    bool GetChunkServerChains(int num, std::vector<std::string>* chains) {
+        MutexLock lock(&_mu);
+        if (num > static_cast<int>(_heartbeat_list.size())) {
+            printf("not enough alive chunkservers for GetChunkServerChains\n");
+            return false;
+        }
+        std::map<int32_t, ChunkServerInfo*>::const_reverse_iterator it = _heartbeat_list.rbegin();
+        for (int i=0; i<num; ++i, ++it) {
+            ChunkServerInfo* cs = it->second;
+            chains->push_back(cs->address());
+        }
+        return true;
+    }
+    int64_t AddChunkServer(const std::string& address) {
+        MutexLock lock(&_mu);
+        int64_t id = next_chunkserver_id++;
+        ChunkServerInfo* info = new ChunkServerInfo;
+        info->set_id(id);
+        info->set_address(address);
+        _chunkservers[id] = info;
+        int32_t now_time = time(NULL);
+        _heartbeat_list[now_time] = info;
+        info->set_last_heartbeat(now_time);
+        return id;
+    }
+    std::string GetChunkServer(int32_t id) {
+        MutexLock lock(&_mu);
+        ServerMap::iterator it = _chunkservers.find(id);
+        if (it == _chunkservers.end()) {
+            return "";
+        } else {
+            return it->second->address();
+        }
+    }
+private: 
+    Mutex _mu;      /// _chunkservers list mutext;
+    typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
+    ServerMap _chunkservers;
+    std::map<int32_t, ChunkServerInfo*> _heartbeat_list;
+    int32_t next_chunkserver_id;
+};
+
+class BlockManager {
+public:
+    struct NSBlock {
+        int64_t id;
+        int64_t version;
+        std::set<int32_t> replica;
+        int64_t block_size;
+        NSBlock(int64_t block_id) : id(block_id),version(0) {}
+        void AddChunkServer(int32_t chunkserver) {};
+    };
+    BlockManager():_next_block_id(1) {}
+    int64_t NewBlock() {
+        MutexLock lock(&_mu);
+        return ++_next_block_id;
+    }
+    bool ReportBlock(int32_t server_id, 
+        const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks) {
+        for (int i = 0; i < blocks.size(); i++) {
+            const ReportBlockInfo& block =  blocks.Get(i);
+            int64_t id = block.block_id();
+            
+            MutexLock lock(&_mu);
+            NSBlock* nsblock = NULL;
+            NSBlockMap::iterator it = _block_map.find(id);
+            if (it == _block_map.end()) {
+                nsblock = new NSBlock(id);
+                _block_map[id] = nsblock;
+                nsblock->block_size = block.block_size();
+            } else {
+                nsblock = it->second;
+                if (nsblock->block_size !=  block.block_size()) {
+                    printf("block size mismatch, block: %ld\n", id);
+                    continue;
+                }
+            }
+            if (_next_block_id <= id) {
+                _next_block_id = id + 1;
+            }
+            /// 增加一个副本, 无论之前已经有几个了, 多余的通过gc处理
+            nsblock->replica.insert(server_id);
+        }
+        return true;
+    }
+    bool GetBlock(int64_t block_id, NSBlock* block) {
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        if (it == _block_map.end()) {
+            return false;
+        }
+        *block = *(it->second);
+        return true;
+    }
+private:
+    Mutex _mu;
+    typedef std::map<int64_t, NSBlock*> NSBlockMap;
+    NSBlockMap _block_map;
+    int64_t _next_block_id;
+};
+
 NameServerImpl::NameServerImpl() {
     leveldb::Options options;
     options.create_if_missing = true;
@@ -65,6 +180,8 @@ NameServerImpl::NameServerImpl() {
         printf("Open leveldb fail: %s\n", s.ToString().c_str());
     }
     _namespace_version = common::timer::get_micros();
+    _chunkserver_manager = new ChunkServerManager();
+    _block_manager = new BlockManager();
 }
 NameServerImpl::~NameServerImpl() {
 }
@@ -79,9 +196,9 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
     int64_t version = request->namespace_version();
 
     if (version != _namespace_version) {
-        // new chunkserver
+        id = _chunkserver_manager->AddChunkServer(request->data_server_addr());
     } else {
-        // handle heartbeat
+        _chunkserver_manager->HanldeHeartBeat(request, response);
     }
     response->set_chunkserver_id(id);
     response->set_namespace_version(_namespace_version);
@@ -98,7 +215,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     if (version != _namespace_version) {
         response->set_status(8882);
     } else {
-        // handle block report
+        _block_manager->ReportBlock(id, request->blocks());
     }
     done->Run();
 }
@@ -169,6 +286,56 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
+                         const AddBlockRequest* request,
+                         AddBlockResponse* response,
+                         ::google::protobuf::Closure* done) {
+    response->set_sequence_id(request->sequence_id());
+    const std::string path = request->file_name();
+    std::vector<std::string> elements;
+    if (!SplitPath(path, &elements)) {
+        printf("AddBlock bad path: %s\n", path.c_str());
+        response->set_status(22445);
+        done->Run();
+    }
+    const std::string& file_key = elements[elements.size()-1];
+    MutexLock lock(&_mu);
+    std::string infobuf;
+    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &infobuf);
+    if (!s.ok()) {
+        printf("AddBlock file not found: %s\n", path.c_str());
+        response->set_status(2445);
+        done->Run();        
+    }
+    
+    FileInfo file_info;
+    if (!file_info.ParseFromString(infobuf)) {
+        assert(0);
+    }
+    /// replica num
+    int replica_num = 2;
+    /// check lease for write
+    std::vector<std::string> chains;
+    if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
+        LocatedBlock* block = response->mutable_block();
+        for (int i =0; i<replica_num; i++) {
+            ChunkServerInfo* info = block->add_chains();
+            info->set_address(chains[i]);
+            printf("Add %s to response\n", chains[i].c_str());
+        }
+        int64_t new_block_id = _block_manager->NewBlock();
+        block->set_block_id(new_block_id);
+        response->set_status(0);
+        file_info.add_blocks(new_block_id);
+        file_info.SerializeToString(&infobuf);
+        s = _db->Put(leveldb::WriteOptions(), file_key, infobuf);
+        assert(s.ok());
+    } else {
+        response->set_status(886);
+    }
+    done->Run();
+}
+
 void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          const FinishBlockRequest*,
                          FinishBlockResponse*,
@@ -182,7 +349,47 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                       FileLocationResponse* response,
                       ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    response->set_status(1);
+    const std::string& path = request->file_name();
+    std::vector<std::string> elements;
+    if (!SplitPath(path, &elements)) {
+        printf("GetFileLocation bad path: %s\n", path.c_str());
+        response->set_status(22445);
+        done->Run();
+        return;
+    }
+    const std::string& file_key = elements[elements.size()-1];
+    std::string infobuf;
+    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &infobuf);
+    if (!s.ok()) {
+        // No this file
+        response->set_status(110);
+    } else {
+        FileInfo info;
+        bool ret = info.ParseFromString(infobuf);
+        assert(ret);        
+        for (int i=0; i<info.blocks_size(); i++) {
+            int64_t block_id = info.blocks(i);
+            BlockManager::NSBlock nsblock(block_id);
+            if (!_block_manager->GetBlock(block_id, &nsblock)) {
+                // 新加的Block, 信息还没汇报上来, 忽略它
+                continue;
+            } else {
+                LocatedBlock* lcblock = response->add_blocks();
+                lcblock->set_block_id(block_id);
+                lcblock->set_block_size(nsblock.block_size);
+                for (std::set<int32_t>::iterator it = nsblock.replica.begin();
+                        it != nsblock.replica.end(); ++it) {
+                    int32_t server_id = *it;
+                    std::string addr = _chunkserver_manager->GetChunkServer(server_id);
+                    printf("return server %s\n", addr.c_str());
+                    ChunkServerInfo* info = lcblock->add_chains();
+                    info->set_address(addr);
+                }
+            }
+        }
+        // 找到文件了, 就返回成功
+        response->set_status(0);
+    }
     done->Run();
 }
 

@@ -13,8 +13,11 @@
 namespace leveldb {
 class DB;
 }
-
 namespace bfs {
+
+class ChunkServerManager;
+class BlockManager;
+
 
 class NameServerImpl : public NameServer {
 public:
@@ -23,6 +26,10 @@ public:
     void CreateFile(::google::protobuf::RpcController* controller,
                        const ::bfs::CreateFileRequest* request,
                        ::bfs::CreateFileResponse* response,
+                       ::google::protobuf::Closure* done);
+    void AddBlock(::google::protobuf::RpcController* controller,
+                       const ::bfs::AddBlockRequest* request,
+                       ::bfs::AddBlockResponse* response,
                        ::google::protobuf::Closure* done);
     void GetFileLocation(::google::protobuf::RpcController* controller,
                        const ::bfs::FileLocationRequest* request,
@@ -46,6 +53,8 @@ public:
                        ::google::protobuf::Closure* done);
 
 private:
+    ChunkServerManager* _chunkserver_manager;
+    BlockManager* _block_manager;
     Mutex        _mu;
     leveldb::DB* _db;    ///< ´æ´¢nameserverÊý¾Ý
     int64_t _namespace_version;

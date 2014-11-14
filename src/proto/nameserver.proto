@@ -47,6 +47,16 @@ message ListDirectoryResponse {
     repeated FileInfo files = 3;
 }
 
+message AddBlockRequest {
+    required uint64 sequence_id = 1;
+    required string file_name = 2;
+}
+message AddBlockResponse {
+    required uint64 sequence_id = 1;
+    optional int32 status = 2;
+    optional LocatedBlock block = 3;
+}
+
 message FinishBlockRequest {
     optional int64 block_id = 2;
 }
@@ -69,6 +79,7 @@ message HeartBeatResponse {
 message ReportBlockInfo {
     optional int64 block_id = 1;
     optional int64 version = 2;
+    optional int64 block_size = 3;
 }
 
 message BlockReportRequest {
@@ -85,6 +96,7 @@ message BlockReportResponse {
 
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
+    rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
     rpc GetFileLocation(FileLocationRequest) returns(FileLocationResponse);
     rpc ListDirectory(ListDirectoryRequest) returns(ListDirectoryResponse);
     rpc FinishBlock(FinishBlockRequest) returns(FinishBlockResponse);
@@ -92,5 +104,4 @@ service NameServer {
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
     rpc BlockReport(BlockReportRequest) returns(BlockReportResponse);
 }
-
 

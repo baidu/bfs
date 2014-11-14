@@ -11,11 +11,18 @@
 
 namespace bfs {
 
+class BlockManager;
+class RpcClient;
+class NameServer_Stub;
+class Block;
 
 class ChunkServerImpl : public ChunkServer {
 public:
     ChunkServerImpl();
     virtual ~ChunkServerImpl();
+    static void* RoutineWrapper(void* arg);
+    void Routine();
+    bool ReportFinish(Block* block);
     
     virtual void WriteBlock(::google::protobuf::RpcController* controller,
                             const WriteBlockRequest* request,
@@ -26,6 +33,12 @@ public:
                             ReadBlockResponse* response,
                             ::google::protobuf::Closure* done);
 private:
+    BlockManager*   _block_manager;
+    std::string     _data_server_addr;
+    RpcClient*      _rpc_client;
+    NameServer_Stub* _nameserver;
+    pthread_t _routine_thread;
+    bool _quit;
     int64_t _chunkserver_id;
     int64_t _namespace_version;
 };
