@@ -26,12 +26,12 @@ namespace存储我们选择了leveldb，可以简单的将整个目录结构平�
 
 实际目录结构
 
-		/home/dir1/
-		          /file1
-		      dir2/
-		          /file2
-		/tmp/
-		     file2
+	/home/dir1/
+	          /file1
+	      dir2/
+	          /file2
+	/tmp/
+	     file2
 
 存储格式为
 
