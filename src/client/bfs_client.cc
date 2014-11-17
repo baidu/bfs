@@ -5,6 +5,7 @@
 // Author: yanshiguang02@baidu.com
 
 #include <stdio.h>
+#include <fcntl.h>
 #include <string>
 
 #include "sdk/bfs.h"
@@ -39,7 +40,7 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
         return 1;
     }
     bfs::File* file;
-    if (!fs->OpenFile(argv[0], bfs::O_RDONLY, &file)) {
+    if (!fs->OpenFile(argv[0], O_RDONLY, &file)) {
         printf("Can't Open bfs file %s\n", argv[0]);
         return 1;
     }
@@ -78,7 +79,7 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
     }
     
     bfs::File* file;
-    if (!fs->OpenFile(argv[3], bfs::O_WRONLY, &file)) {
+    if (!fs->OpenFile(argv[3], O_WRONLY, &file)) {
         printf("Can't Open bfs file %s\n", argv[3]);
         return 1;
     }
@@ -152,7 +153,7 @@ int main(int argc, char* argv[])
             return 0;
         }
         bfs::File* file;
-        if (!fs->OpenFile(argv[2], bfs::O_WRONLY, &file)) {
+        if (!fs->OpenFile(argv[2], O_WRONLY, &file)) {
             printf("Open %s fail\n", argv[2]);
         }
     } else if (strcmp(argv[1], "-mkdir") == 0) {

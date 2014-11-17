@@ -64,7 +64,7 @@ public:
             if (_file_desc == -1) {
                 int fd  = open(_disk_file.c_str(), O_RDONLY);
                 if (fd < 0) {
-                    printf("Open block [%s] for read fail: %s\n",
+                    fprintf(stderr, "Open block [%s] for read fail: %s\n",
                         _disk_file.c_str(), strerror(errno));
                     return -2;
                 }
@@ -94,9 +94,9 @@ public:
         bool ret = false;
         FILE* fp = fopen(path.c_str(), "wb");
         if (fp == NULL) {
-            printf("Open %s for flush fail\n", path.c_str());
+            fprintf(stderr, "Open %s for flush fail\n", path.c_str());
         } else if (fwrite(_blockbuf, _datalen , 1, fp) != 1) {
-            printf("Write to disk fail: %s\n", path.c_str());
+            fprintf(stderr, "Write to disk fail: %s\n", path.c_str());
         } else {
             ret = true;
         }
@@ -257,7 +257,7 @@ public:
         leveldb::Status s = _metadb->Put(options, idstr,
             leveldb::Slice(reinterpret_cast<char*>(&meta),sizeof(meta)));
         if (!s.ok()) {
-            printf("Write to meta fail:%s\n", idstr);
+            fprintf(stderr, "Write to meta fail:%s\n", idstr);
             return false;
         }
         return true;

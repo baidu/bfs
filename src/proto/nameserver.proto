@@ -47,6 +47,26 @@ message ListDirectoryResponse {
     repeated FileInfo files = 3;
 }
 
+message StatRequest {
+    optional uint64 sequence_id = 1;
+    required string path = 2;
+}
+message StatResponse {
+    optional uint64 sequence_id = 1;
+    optional int32 status = 2;
+    optional FileInfo file_info = 3;
+}
+
+message RenameRequest {
+    optional uint64 sequence_id = 1;
+    required string oldpath = 2;
+    required string newpath = 3;
+}
+message RenameResponse {
+    optional uint64 sequence_id = 1;
+    optional int32 status = 2;
+}
+
 message AddBlockRequest {
     required uint64 sequence_id = 1;
     required string file_name = 2;
@@ -99,6 +119,8 @@ service NameServer {
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
     rpc GetFileLocation(FileLocationRequest) returns(FileLocationResponse);
     rpc ListDirectory(ListDirectoryRequest) returns(ListDirectoryResponse);
+    rpc Stat(StatRequest) returns(StatResponse);
+    rpc Rename(RenameRequest) returns(RenameResponse);
     rpc FinishBlock(FinishBlockRequest) returns(FinishBlockResponse);
 
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);

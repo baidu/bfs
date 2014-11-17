@@ -37,7 +37,7 @@ Application('nameserver',Sources(nameserver_sources, proto_sources))
 Application('chunkserver',Sources(chunkserver_sources, proto_sources))
 Application('bfs_client',Sources(client_sources, sdk_sources, proto_sources))
 #¾²Ì¬¿â
-#StaticLibrary('bfs',Sources(sdk_sources, proto_sources),HeaderFiles(sdk_headers))
+StaticLibrary('bfs',Sources(sdk_sources, proto_sources),HeaderFiles(sdk_headers))
 #Client
 #Application('bfs_client',Sources(client_sources, proto_sources))
 #¹²Ïí¿â

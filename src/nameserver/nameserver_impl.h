@@ -39,6 +39,14 @@ public:
                        const ::bfs::ListDirectoryRequest* request,
                        ::bfs::ListDirectoryResponse* response,
                        ::google::protobuf::Closure* done);
+    void Stat(::google::protobuf::RpcController* controller,
+                       const ::bfs::StatRequest* request,
+                       ::bfs::StatResponse* response,
+                       ::google::protobuf::Closure* done);
+    void Rename(::google::protobuf::RpcController* controller,
+                       const ::bfs::RenameRequest* request,
+                       ::bfs::RenameResponse* response,
+                       ::google::protobuf::Closure* done);
     void FinishBlock(::google::protobuf::RpcController* controller,
                        const ::bfs::FinishBlockRequest* request,
                        ::bfs::FinishBlockResponse* response,

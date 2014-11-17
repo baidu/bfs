@@ -9,6 +9,7 @@
 #include <sofa/pbrpc/pbrpc.h>
 #include <leveldb/db.h>
 #include <leveldb/cache.h>
+#include <leveldb/write_batch.h>
 
 #include "nameserver_impl.h"
 #include "common/mutex.h"
@@ -23,13 +24,13 @@ const uint32_t MAX_PATH_LENGHT = 10240;
 const uint32_t MAX_PATH_DEPTH = 99;
 
 /// 构造标准化路径
+/// /home/work/file -> 00,01/home,02/home/work,03/home/work/file
 bool SplitPath(const std::string& path, std::vector<std::string>* element) {
     if (path.empty() || path[0] != '/' || path.size() > MAX_PATH_LENGHT) {
         return false;
     }
-    
-    char keybuf[MAX_PATH_LENGHT];
     int keylen = 2;
+    char keybuf[MAX_PATH_LENGHT];
     uint32_t path_depth = 0;
     int last_pos = 0;
     bool valid = true;
@@ -52,6 +53,13 @@ bool SplitPath(const std::string& path, std::vector<std::string>* element) {
             valid = true;
         }
     }
+#if 0
+    printf("SplitPath return: ");
+    for (uint32_t i=0; i < element->size(); i++) {
+        printf("\"%s\",", (*element)[i].c_str());
+    }
+    printf("\n");
+#endif
     return true;
 }
 
@@ -143,6 +151,7 @@ public:
                 nsblock = it->second;
                 if (nsblock->block_size !=  block.block_size()) {
                     printf("block size mismatch, block: %ld\n", id);
+                    assert(0);
                     continue;
                 }
             }
@@ -190,8 +199,7 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
                          const HeartBeatRequest* request,
                          HeartBeatResponse* response,
                          ::google::protobuf::Closure* done) {
-    printf("Receive HeartBeat() from %s\n", 
-        request->data_server_addr().c_str());
+    // printf("Receive HeartBeat() from %s\n", request->data_server_addr().c_str());
     int32_t id = request->chunkserver_id();
     int64_t version = request->namespace_version();
 
@@ -232,7 +240,6 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    
     FileInfo file_info;
     std::string info_value;
     int depth = file_keys.size();
@@ -241,7 +248,6 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         s = _db->Get(leveldb::ReadOptions(), file_keys[i], &info_value);
         if (s.IsNotFound()) {
             file_info.set_type((1<<9)|0755);
-            //file_info.set_id(0);
             file_info.set_ctime(time(NULL));
             file_info.SerializeToString(&info_value);
             s = _db->Put(leveldb::WriteOptions(), file_keys[i], info_value);
@@ -350,6 +356,8 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                       ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     const std::string& path = request->file_name();
+    printf("NameServerImpl::GetFileLocation: %s\n", request->file_name().c_str());
+    // Get file_key
     std::vector<std::string> elements;
     if (!SplitPath(path, &elements)) {
         printf("GetFileLocation bad path: %s\n", path.c_str());
@@ -358,10 +366,12 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
         return;
     }
     const std::string& file_key = elements[elements.size()-1];
+    // Get FileInfo
     std::string infobuf;
     leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &infobuf);
     if (!s.ok()) {
         // No this file
+        printf("NameServerImpl::GetFileLocation: NotFound: %s\n", request->file_name().c_str());
         response->set_status(110);
     } else {
         FileInfo info;
@@ -406,7 +416,8 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     if (path[path.size()-1] == '/') {
         path += "#";
     }
-    if (path.empty() || !SplitPath(path, &keys)) {
+    if (!SplitPath(path, &keys)) {
+        fprintf(stderr, "SplitPath fail: %s\n", path.c_str());
         response->set_status(886);
         done->Run();
         return;
@@ -436,7 +447,102 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     response->set_status(0);
     done->Run();
 }
+void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
+                          const ::bfs::StatRequest* request,
+                          ::bfs::StatResponse* response,
+                          ::google::protobuf::Closure* done) {
+    response->set_sequence_id(request->sequence_id());
+    std::string path = request->path();
+    printf("Stat: %s\n", path.c_str());
 
+    std::vector<std::string> keys;
+    if (!SplitPath(path, &keys)) {
+        fprintf(stderr, "Stata SplitPath fail: %s\n", path.c_str());
+        response->set_status(886);
+        done->Run();
+        return;
+    }
+
+    const std::string& file_key = keys[keys.size()-1];
+    std::string value;
+    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &value);
+    if (s.ok()) {
+        FileInfo* file_info = response->mutable_file_info();
+        bool ret = file_info->ParseFromArray(value.data(), value.size());
+        int64_t file_size = 0;
+        for (int i = 0; i < file_info->blocks_size(); i++) {
+            int64_t block_id = file_info->blocks(i);
+            BlockManager::NSBlock nsblock(block_id);
+            if (!_block_manager->GetBlock(block_id, &nsblock)) {
+                continue;
+            }
+            file_size += nsblock.block_size;
+        }
+        assert(ret);
+        file_info->set_size(file_size);
+        response->set_status(0);
+        printf("Stat: %s return: %ld\n", path.c_str(), file_size);
+    } else {
+        printf("Stat: %s return: not found\n", path.c_str());
+        response->set_status(-1);
+    }
+    done->Run();
+}
+
+void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
+                            const ::bfs::RenameRequest* request,
+                            ::bfs::RenameResponse* response,
+                            ::google::protobuf::Closure* done) {
+    response->set_sequence_id(request->sequence_id());
+    const std::string& oldpath = request->oldpath();
+    const std::string& newpath = request->newpath();
+    printf("Rename: %s to %s\n", oldpath.c_str(), newpath.c_str());
+
+    /// Should lock something?
+    std::vector<std::string> oldkeys, newkeys;
+    if (!SplitPath(oldpath, &oldkeys) || !SplitPath(newpath, &newkeys)) {
+        fprintf(stderr, "Rename SplitPath fail: %s, %s\n", oldpath.c_str(), newpath.c_str());
+        response->set_status(886);
+        done->Run();
+        return;
+    }
+    
+    const std::string& old_key = oldkeys[oldkeys.size()-1];
+    const std::string& new_key = newkeys[newkeys.size()-1];
+    std::string value;
+    leveldb::Status s = _db->Get(leveldb::ReadOptions(), new_key, &value);
+    // New file must be not found
+    if (s.IsNotFound()) {
+        s = _db->Get(leveldb::ReadOptions(), old_key, &value);
+        if (s.ok()) {
+            FileInfo file_info;
+            bool ret = file_info.ParseFromArray(value.data(), value.size());
+            assert(ret);
+            // Directory rename is not impliment.
+            if ((file_info.type() & (1<<9)) == 0) {
+                leveldb::WriteBatch batch;
+                batch.Put(new_key, value);
+                batch.Delete(old_key);
+                s = _db->Write(leveldb::WriteOptions(), &batch);
+                if (s.ok()) {
+                    response->set_status(0);
+                    done->Run();
+                    return;
+                } else {
+                    fprintf(stderr, "Rename write leveldb fail\n");
+                }
+            } else {
+                fprintf(stderr, "Rename not support directory\n");
+            }
+        } else {
+            fprintf(stderr, "Rename not found: %s\n", oldpath.c_str());
+        }
+    } else {
+        fprintf(stderr, "Rename before delete %s\n", newpath.c_str());
+    }
+    response->set_status(886);
+    done->Run();
+}
 }
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

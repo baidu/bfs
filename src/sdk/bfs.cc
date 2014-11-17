@@ -4,6 +4,7 @@
 //
 // Author: yanshiguang02@baidu.com
 
+#include <fcntl.h>
 #include "proto/nameserver.pb.h"
 #include "proto/chunkserver.pb.h"
 #include "rpc/rpc_client.h"
@@ -67,12 +68,13 @@ public:
         : _fs(fs), _name(name), _open_flags(flags), _chains_head(NULL),
         _chunkserver(NULL), _read_offset(0), _closed(false) {}
     ~BfsFileImpl ();
-    int64_t Pread(int64_t offset, char* buf, int64_t read_size);
+    int64_t Pread(char* buf, int64_t read_size, int64_t offset);
     int64_t Seek(int64_t offset, int32_t whence);
     int64_t Read(char* buf, int64_t read_size);
     int64_t Write(const char* buf, int64_t write_size);
     bool Flush();
     bool Sync();
+    bool Close();
     friend class FSImpl;
 private:
     FSImpl* _fs;                        ///< 文件系统
@@ -149,12 +151,49 @@ public:
                 const FileInfo& info = response.files(i);
                 binfo.ctime = info.ctime();
                 binfo.mode = info.type();
+                binfo.size = info.size();
                 snprintf(binfo.name, sizeof(binfo.name), "%s", info.name().c_str());
             }
         }
         return true;
     }
-    
+    bool DeleteDirectory(const char*, bool) {
+        return false;
+    }
+    bool Access(const char* path, int32_t mode) {
+        StatRequest request;
+        StatResponse response;
+        request.set_path(path);
+        request.set_sequence_id(0);
+        bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Stat,
+            &request, &response, 5, 3);
+        if (!ret) {
+            printf("Stat fail: %s\n", path);
+            return false;
+        }
+        return (response.status() == 0);
+    }
+    bool Stat(const char* path, BfsFileInfo* fileinfo) {
+        StatRequest request;
+        StatResponse response;
+        request.set_path(path);
+        request.set_sequence_id(0);
+        bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Stat,
+            &request, &response, 5, 3);
+        if (!ret) {
+            fprintf(stderr, "Stat rpc fail: %s\n", path);
+            return false;
+        }
+        if (response.status() == 0) {
+            const FileInfo& info = response.file_info();
+            fileinfo->ctime = info.ctime();
+            fileinfo->mode = info.type();
+            fileinfo->size = info.size();
+            snprintf(fileinfo->name, sizeof(fileinfo->name), "%s", info.name().c_str());
+            return true;
+        }
+        return false;
+    }
     bool OpenFile(const char* path, int32_t flags, File** file) {
         bool ret = false;
         *file = NULL;
@@ -189,7 +228,7 @@ public:
             }
         } else {
             printf("Open flags only O_RDONLY or O_WRONLY\n");
-            return false;
+            ret = false;
         }
         return ret;
     }
@@ -235,8 +274,9 @@ public:
         printf("Write return %d, buf_size=%d\n", w, file->_write_buf->Size());
         return w;
     }
+    /// Send local buffer to chunkserver
     bool WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
-        LocatedBlock* block, bool is_last) {
+                    LocatedBlock* block, bool is_last) {
         WriteBlockRequest request;
         WriteBlockResponse response;
         int64_t offset = block->block_size();
@@ -252,25 +292,37 @@ public:
         if (!_rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock,
             &request, &response, 60, 1) || response.status() != 0) {
             printf("WriteBlock fail: %s, status=%d\n",
-                response.has_bad_chunkserver()?response.bad_chunkserver().c_str():"unknown",
-                response.status());
+                   response.has_bad_chunkserver()?response.bad_chunkserver().c_str():"unknown",
+                   response.status());
             return false;
         }
         block->set_block_size(offset + write_buf->Size());
         return true;
     }
+    bool CloseFile(File* file) {
+        return file->Close();
+    }
     bool DeleteFile(const char* path) {
         return false;
     }
-    bool CloseFile(File* file) {
-        bool ret = true;
-        BfsFileImpl* impl = dynamic_cast<BfsFileImpl*>(file);
-        if (impl->_open_flags == O_WRONLY) {
-            ret =  WriteChunk(impl->_chains_head, impl->_write_buf,
-                                    impl->_block_for_write, true);
+    bool Rename(const char* oldpath, const char* newpath) {
+        RenameRequest request;
+        RenameResponse response;
+        request.set_oldpath(oldpath);
+        request.set_newpath(newpath);
+        request.set_sequence_id(0);
+        bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Rename,
+            &request, &response, 5, 3);
+        if (!ret) {
+            fprintf(stderr, "Rename rpc fail: %s to %s\n", oldpath, newpath);
+            return false;
         }
-        impl->_closed = true;
-        return ret;
+        if (response.status() != 0) {
+            fprintf(stderr, "Rename %s to %s return: %d\n",
+                oldpath, newpath, response.status());
+            return false;
+        }
+        return true;
     }
 private:
     RpcClient* _rpc_client;
@@ -284,7 +336,7 @@ BfsFileImpl::~BfsFileImpl () {
     }
 }
 
-int64_t BfsFileImpl::Pread(int64_t offset, char* buf, int64_t read_len) {
+int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     MutexLock lock(&_mu);
      
     if (_located_blocks._blocks.empty() || _located_blocks._blocks[0].chains_size() == 0) {
@@ -314,6 +366,7 @@ int64_t BfsFileImpl::Pread(int64_t offset, char* buf, int64_t read_len) {
     memcpy(buf, response.databuf().data(), response.databuf().size());
     return response.databuf().size();
 }
+
 int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
     if (_open_flags != O_RDONLY) {
         return -2;
@@ -321,18 +374,18 @@ int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
     if (whence == SEEK_SET) {
         _read_offset = offset;
     } else if (whence == SEEK_CUR) {
-        _read_offset += offset;        
+        _read_offset += offset;
     } else {
         return -1;
     }
-    return 0;
+    return _read_offset;
 }
 
 int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
     if (_open_flags != O_RDONLY) {
         return -2;
     }
-    int ret = Pread(_read_offset, buf, read_len);
+    int ret = Pread(buf, read_len, _read_offset);
     if (ret >= 0) {
         _read_offset += ret;
     }
@@ -360,7 +413,20 @@ bool BfsFileImpl::Flush() {
     return ret;
 }
 bool BfsFileImpl::Sync() {
-    return false;
+    bool ret = true;
+    if (_open_flags == O_WRONLY) {
+        ret =  _fs->WriteChunk(_chains_head, _write_buf, _block_for_write, false);
+    }
+    return true;
+}
+
+bool BfsFileImpl::Close() {
+    bool ret = true;
+    if (_open_flags == O_WRONLY) {
+        ret =  _fs->WriteChunk(_chains_head, _write_buf, _block_for_write, true);
+    }
+    _closed = true;
+    return true;
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs) {

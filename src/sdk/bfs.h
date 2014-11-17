@@ -11,11 +11,6 @@
 
 namespace bfs {
 
-enum OpenType {
-    O_RDONLY = 1,
-    O_WRONLY = 2,
-};
-
 enum Status {
     OK = 0,
     NotFound = 1,
@@ -28,12 +23,13 @@ class File {
 public:
     File() {}
     virtual ~File() {}
-    virtual int64_t Pread(int64_t offset, char* buf, int64_t read_size) = 0;
+    virtual int64_t Pread(char* buf, int64_t read_size, int64_t offset) = 0;
     virtual int64_t Seek(int64_t offset, int32_t whence) = 0;
     virtual int64_t Read(char* buf, int64_t read_size) = 0;
     virtual int64_t Write(const char* buf, int64_t write_size) = 0;
     virtual bool Flush() = 0;
     virtual bool Sync() = 0;
+    virtual bool Close() = 0;
 private:
     // No copying allowed
     File(const File&);
@@ -41,9 +37,10 @@ private:
 };
 
 struct BfsFileInfo {
-    char name[1024];
+    int64_t size;
     uint32_t ctime;
     uint32_t mode;
+    char name[1024];
 };
 
 // Bfs fileSystem interface
@@ -57,10 +54,17 @@ public:
     virtual bool CreateDirectory(const char* path) = 0;
     /// List Directory
     virtual bool ListDirectory(const char* path, BfsFileInfo** filelist, int *num) = 0;
+    /// Delete Directory
+    virtual bool DeleteDirectory(const char* path, bool recursive) = 0;
+    /// Access
+    virtual bool Access(const char* path, int32_t mode) = 0;
+    /// Stat
+    virtual bool Stat(const char* path, BfsFileInfo* fileinfo) = 0;
     /// Open file for read or write
     virtual bool OpenFile(const char* path, int32_t flags, File** file) = 0;
     virtual bool CloseFile(File* file) = 0;
     virtual bool DeleteFile(const char* path) = 0;
+    virtual bool Rename(const char* oldpath, const char* newpath) = 0;
     virtual bool GetFileSize(const char* path, int64_t* file_size) = 0;
 private:
     // No copying allowed

@@ -8,6 +8,7 @@
 #define  BFS_RPC_CLIENT_H_
 
 #include <sofa/pbrpc/pbrpc.h>
+#include "common/mutex.h"
 
 namespace bfs {
     
@@ -15,6 +16,7 @@ class RpcClient {
 public:
     template <class T>
     bool GetStub(const std::string server, T** stub) {
+        MutexLock lock(&_host_map_lock);
         sofa::pbrpc::RpcChannel* channel = NULL;
         HostMap::iterator it = _host_map.find(server);
         if (it != _host_map.end()) {
@@ -59,6 +61,7 @@ private:
     sofa::pbrpc::RpcClient rpc_client;
     typedef std::map<std::string, sofa::pbrpc::RpcChannel*> HostMap;
     HostMap _host_map;
+    Mutex _host_map_lock;
 };
 
 } // namespace bfs
