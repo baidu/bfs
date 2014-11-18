@@ -39,13 +39,15 @@ public:
                     int32_t rpc_timeout, int retry_times) {
         // 定义 controller 用于控制本次调用，并设定超时时间（也可以不设置，缺省为10s）
         sofa::pbrpc::RpcController controller;
-        controller.SetTimeout(rpc_timeout);
+        controller.SetTimeout(rpc_timeout * 1000L);
         for (int32_t retry = 0; retry < retry_times; ++retry) {
             (stub->*func)(&controller, request, response, NULL);
             if (controller.Failed()) {
                 if (retry < retry_times - 1) {
                     printf("Send failed, retry ...\n");
                     usleep(1000000);
+                } else {
+                    printf("SendRequest fail: %s\n", controller.ErrorText().c_str());
                 }
             } else {
                 return true;

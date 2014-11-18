@@ -18,6 +18,7 @@
 #include "common/atomic.h"
 #include "common/mutex.h"
 #include "common/util.h"
+#include "common/timer.h"
 
 extern std::string FLAGS_block_store_path;
 extern std::string FLAGS_nameserver;
@@ -72,6 +73,9 @@ public:
             }
         }
         return pread(_file_desc, buf, len, offset);
+    }
+    bool Writeable() {
+        return (_type != InDisk);
     }
     int64_t Append(const char*buf, int32_t len) {
         assert (_type == InMem);
@@ -162,7 +166,7 @@ public:
         options.create_if_missing = true;
         leveldb::Status s = leveldb::DB::Open(options, _store_path+"/meta/", &_metadb);
         if (!s.ok()) {
-            printf("Load blocks fail\n");
+            fprintf(stderr, "Load blocks fail\n");
             return false;
         }
         leveldb::Iterator* it = _metadb->NewIterator(leveldb::ReadOptions());
@@ -242,7 +246,7 @@ public:
             "/%03ld", block_id % 1000);
         mkdir((_store_path + meta.file_name).c_str(), 0755);
         len += snprintf(meta.file_name + len, sizeof(meta.file_name) - len,
-            "/%10ld", block_id/1000);
+            "/%010ld", block_id/1000);
         assert (len == 15 && meta.file_name[len] == 0);
 
         // disk flush & sync
@@ -375,11 +379,17 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
     /// search
-    printf("WriteBlock %ld\n", block_id);
+    printf("WriteBlock [%ld:%ld:%lu] %lu\n", block_id, offset, databuf.size(),
+           request->sequence_id());
     Block* block = _block_manager->FindBlock(block_id, true);
     
-    if (offset != block->Size()) {
-        printf("Write offset[%ld] block_size[%ld] mismatch\n", offset, block->Size());
+    if (offset != block->Size() || !block->Writeable()) {
+        fprintf(stderr, "Write offset[%ld] block_size[%ld] mismatch or unwriteable\n",
+            offset, block->Size());
+        block->DecRef();
+        response->set_status(0);
+        done->Run();
+        return;
     } else if(!databuf.empty()) {
         block->Append(databuf.data(), databuf.size());
     }
@@ -392,7 +402,9 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         for (int i = 1; i < request->chunkservers_size(); i++) {
             next_request.add_chunkservers(request->chunkservers(i));
         }
-        printf("Send %ld to next %s\n", block_id, request->chunkservers(0).c_str());
+        int64_t seq = next_request.sequence_id();
+        printf("Writeblock send [%ld:%ld:%lu] %ld to next %s\n", 
+            block_id, offset, databuf.size(), seq, request->chunkservers(0).c_str());
         bool ret = next_chunkserver.SendRequest(&ChunkServer_Stub::WriteBlock, 
             &next_request, response, 5, 3);
         if (!ret && !response->has_bad_chunkserver()) {
@@ -402,8 +414,9 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     if (!response->has_status()) {
         response->set_status(0);
     }
-    printf("WriteBlock %ld done, [%ld:%lubytes]\n", block_id, offset, databuf.size());
+    printf("WriteBlock done [%ld:%ld:%lu]\n", block_id, offset, databuf.size());
     if (request->is_last()) {
+        printf("WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
         _block_manager->FinishBlock(block);
         ReportFinish(block);
     }
