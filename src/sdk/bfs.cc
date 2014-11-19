@@ -204,10 +204,11 @@ public:
             ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::CreateFile,
                 &request, &response, 5, 3);
             if (!ret || response.status() != 0) {
-                printf("Open file for write fail: %s, status= %d\n", path, response.status());
+                fprintf(stderr, "Open file for write fail: %s, status= %d\n",
+                    path, response.status());
                 ret = false;
             } else {
-                printf("Open file %s\n", path);
+                //printf("Open file %s\n", path);
                 *file = new BfsFileImpl(this, path, flags);
             }
         } else if (flags == O_RDONLY) {
@@ -221,9 +222,9 @@ public:
                 BfsFileImpl* f = new BfsFileImpl(this, path, flags);
                 f->_located_blocks.CopyFrom(response.blocks());
                 *file = f;
-                printf("OpenFile success: %s\n", path);
+                //printf("OpenFile success: %s\n", path);
             } else {
-                printf("GetFileLocation return %d\n", response.blocks_size());
+                //printf("GetFileLocation return %d\n", response.blocks_size());
             }
         } else {
             printf("Open flags only O_RDONLY or O_WRONLY\n");
@@ -245,8 +246,9 @@ public:
             }
             file->_block_for_write = new LocatedBlock(response.block());
             const std::string& addr = file->_block_for_write->chains(0).address();
-            printf("response addr %s\n", response.block().chains(0).address().c_str());
-            printf("_block_for_write addr %s\n", file->_block_for_write->chains(0).address().c_str());
+            //printf("response addr %s\n", response.block().chains(0).address().c_str());
+            //printf("_block_for_write addr %s\n", 
+            //        file->_block_for_write->chains(0).address().c_str());
             _rpc_client->GetStub(addr, &file->_chains_head);
             file->_write_buf = new WriteBuffer(4096);
         }
@@ -289,8 +291,8 @@ public:
         }
         request.set_databuf(write_buf->Data(), write_buf->Size());
         request.set_offset(block->block_size());
-        printf("WriteBlock %ld [%ld:%ld:%d]\n", seq, block->block_id(),
-               block->block_size(), write_buf->Size());
+        //printf("WriteBlock %ld [%ld:%ld:%d]\n", seq, block->block_id(),
+        //       block->block_size(), write_buf->Size());
         if (!_rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock,
             &request, &response, 60, 1) || response.status() != 0) {
             printf("WriteBlock fail %ld [%ld:%ld:%d]: %s, status=%d\n",
@@ -307,7 +309,23 @@ public:
         return file->Close();
     }
     bool DeleteFile(const char* path) {
-        return false;
+        UnlinkRequest request;
+        UnlinkResponse response;
+        request.set_path(path);
+        int64_t seq = common::timer::get_micros();
+        request.set_sequence_id(seq);
+        printf("Delete file: %s\n", path);
+        bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Unlink,
+            &request, &response, 5, 1);
+        if (!ret) {
+            fprintf(stderr, "Unlink rpc fail: %s to %s\n", path);
+            return false;
+        }
+        if (response.status() != 0) {
+            fprintf(stderr, "Unlink %s return: %d\n", path, response.status());
+            return false;
+        }
+        return true;
     }
     bool Rename(const char* oldpath, const char* newpath) {
         RenameRequest request;
@@ -370,8 +388,8 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
         return -4;
     }
 
-    printf("Pread[%s:%ld:%ld] return %lu bytes\n",
-           _name.c_str(), offset, read_len, response.databuf().size());
+    //printf("Pread[%s:%ld:%ld] return %lu bytes\n",
+    //       _name.c_str(), offset, read_len, response.databuf().size());
     int64_t ret_len = response.databuf().size();
     assert(read_len >= ret_len);
     memcpy(buf, response.databuf().data(), ret_len);
@@ -379,7 +397,7 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
 }
 
 int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
-    printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
+    //printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
     if (_open_flags != O_RDONLY) {
         return -2;
     }
@@ -394,7 +412,7 @@ int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
 }
 
 int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
-    printf("[%p] Read[%s:%ld] offset= %ld\n", this, _name.c_str(), read_len, _read_offset);
+    //printf("[%p] Read[%s:%ld] offset= %ld\n", this, _name.c_str(), read_len, _read_offset);
     if (_open_flags != O_RDONLY) {
         return -2;
     }
@@ -402,7 +420,7 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
     if (ret >= 0) {
         _read_offset += ret;
     }
-    printf("[%p] Read[%s:%ld] return %d offset=%ld\n", this, _name.c_str(), read_len, ret, _read_offset);
+    //printf("[%p] Read[%s:%ld] return %d offset=%ld\n", this, _name.c_str(), read_len, ret, _read_offset);
     return ret;
 }
 

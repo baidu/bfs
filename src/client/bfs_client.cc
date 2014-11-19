@@ -18,6 +18,7 @@ void print_usage() {
     printf("\t    -ls <path> : list the directory\n");
     printf("\t    -mkdir <path> : make director\n");
     printf("\t    -touchz <path> : create a new file\n");
+    printf("\t    -rm <path> : remove a file\n");
     printf("\t    -get <bfsfile> <localfile> : copy file to local\n");
     printf("\t    -put <localfile> <bfsfile> : copy file from local to bfs\n");
 }
@@ -155,6 +156,16 @@ int main(int argc, char* argv[])
         bfs::File* file;
         if (!fs->OpenFile(argv[2], O_WRONLY, &file)) {
             printf("Open %s fail\n", argv[2]);
+        }
+    } else if (strcmp(argv[1], "-rm") == 0) {
+        if (argc != 3) {
+            print_usage();
+            return 0;
+        }
+        if (fs->DeleteFile(argv[2])) {
+            printf("%s Removed\n", argv[2]);
+        } else {
+            fprintf(stderr, "Remove file fail: %s\n", argv[2]);
         }
     } else if (strcmp(argv[1], "-mkdir") == 0) {
         ret = BfsMkdir(fs, argc - 2, argv + 2);

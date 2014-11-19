@@ -543,6 +543,51 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     response->set_status(886);
     done->Run();
 }
+
+void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
+                            const ::bfs::UnlinkRequest* request,
+                            ::bfs::UnlinkResponse* response,
+                            ::google::protobuf::Closure* done) {
+    response->set_sequence_id(request->sequence_id());
+    const std::string& path = request->path();
+    printf("Unlink: %s\n", path.c_str());
+
+    int ret_status = 886;
+    std::vector<std::string> keys;
+    if (!SplitPath(path, &keys)) {
+        fprintf(stderr, "Unlink SplitPath fail: %s\n", path.c_str());
+        response->set_status(ret_status);
+        done->Run();
+        return;
+    }
+
+    const std::string& file_key = keys[keys.size()-1];
+    std::string value;
+    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &value);
+    if (s.ok()) {
+        FileInfo file_info;
+        bool ret = file_info.ParseFromArray(value.data(), value.size());
+        assert(ret);
+        // Only support file
+        if ((file_info.type() & (1<<9)) == 0) {
+            s = _db->Delete(leveldb::WriteOptions(), file_key);
+            if (s.ok()) {
+                printf("Unlink done: %s\n", path.c_str());
+                ret_status = 0;
+            } else {
+                fprintf(stderr, "Unlink write meta fail: %s\n", path.c_str());
+            }
+        } else {
+            fprintf(stderr, "Unlink not support directory: %s\n", path.c_str());
+        }
+    } else if (s.IsNotFound()) {
+        fprintf(stderr, "Unlink not found: %s\n", path.c_str());
+        ret_status = 0;
+    }
+    
+    response->set_status(ret_status);
+    done->Run();
+}
 }
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

@@ -47,6 +47,10 @@ public:
                        const ::bfs::RenameRequest* request,
                        ::bfs::RenameResponse* response,
                        ::google::protobuf::Closure* done);
+    void Unlink(::google::protobuf::RpcController* controller,
+                       const ::bfs::UnlinkRequest* request,
+                       ::bfs::UnlinkResponse* response,
+                       ::google::protobuf::Closure* done);
     void FinishBlock(::google::protobuf::RpcController* controller,
                        const ::bfs::FinishBlockRequest* request,
                        ::bfs::FinishBlockResponse* response,

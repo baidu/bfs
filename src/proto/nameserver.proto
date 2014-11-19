@@ -78,9 +78,20 @@ message AddBlockResponse {
 }
 
 message FinishBlockRequest {
+    optional uint64 sequence_id = 1;
     optional int64 block_id = 2;
 }
 message FinishBlockResponse {
+    required uint64 sequence_id = 1;
+    optional int32 status = 2;
+}
+
+message UnlinkRequest {
+    required uint64 sequence_id = 1;
+    required string path = 2;
+}
+message UnlinkResponse {
+    required uint64 sequence_id = 1;
     optional int32 status = 2;
 }
 
@@ -122,6 +133,7 @@ service NameServer {
     rpc Stat(StatRequest) returns(StatResponse);
     rpc Rename(RenameRequest) returns(RenameResponse);
     rpc FinishBlock(FinishBlockRequest) returns(FinishBlockResponse);
+    rpc Unlink(UnlinkRequest) returns(UnlinkResponse);
 
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
     rpc BlockReport(BlockReportRequest) returns(BlockReportResponse);
