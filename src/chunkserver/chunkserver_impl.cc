@@ -57,25 +57,32 @@ public:
         return _datalen;
     }
     int32_t Read(char* buf, int32_t len, int64_t offset) {
-        if (_type != InDisk) {
-            return -1;
-        }
-        {
-            MutexLock lock(&_mu);
-            if (_file_desc == -1) {
-                int fd  = open(_disk_file.c_str(), O_RDONLY);
-                if (fd < 0) {
-                    fprintf(stderr, "Open block [%s] for read fail: %s\n",
-                        _disk_file.c_str(), strerror(errno));
-                    return -2;
-                }
-                _file_desc = fd;
+        /// Raw impliment, no concurrency
+        MutexLock lock(&_mu);
+        if (_type == InMem) {
+            int64_t left = _datalen - offset;
+            if (left < 0) {
+                return 0;
             }
+            if (left > len) {
+                left = len;
+            }
+            memcpy(buf, _blockbuf + offset, left);
+            return left;
+        }        
+        if (_file_desc == -1) {
+            int fd  = open(_disk_file.c_str(), O_RDONLY);
+            if (fd < 0) {
+                fprintf(stderr, "Open block [%s] for read fail: %s\n",
+                    _disk_file.c_str(), strerror(errno));
+                return -2;
+            }
+            _file_desc = fd;
         }
         return pread(_file_desc, buf, len, offset);
     }
     bool Writeable() {
-        return (_type != InDisk);
+        return (_type == InMem);
     }
     int64_t Append(const char*buf, int32_t len) {
         assert (_type == InMem);

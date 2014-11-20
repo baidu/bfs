@@ -8,6 +8,7 @@
 #define  LIBBFS_BFS_H_
 
 #include <stdint.h>
+#include <fcntl.h>
 
 namespace bfs {
 
@@ -60,7 +61,7 @@ public:
     virtual bool Access(const char* path, int32_t mode) = 0;
     /// Stat
     virtual bool Stat(const char* path, BfsFileInfo* fileinfo) = 0;
-    /// Open file for read or write
+    /// Open file for read or write, flags: O_WRONLY or O_RDONLY
     virtual bool OpenFile(const char* path, int32_t flags, File** file) = 0;
     virtual bool CloseFile(File* file) = 0;
     virtual bool DeleteFile(const char* path) = 0;

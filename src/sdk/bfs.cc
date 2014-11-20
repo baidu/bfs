@@ -314,7 +314,7 @@ public:
         request.set_path(path);
         int64_t seq = common::timer::get_micros();
         request.set_sequence_id(seq);
-        printf("Delete file: %s\n", path);
+        // printf("Delete file: %s\n", path);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Unlink,
             &request, &response, 5, 1);
         if (!ret) {

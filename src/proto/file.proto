@@ -13,7 +13,7 @@ message FileInfo {
 }
 
 message ChunkServerInfo {
-    optional int64 id = 1;
+    optional int32 id = 1;
     optional string address = 2;
     optional int32 last_heartbeat = 3;
     optional int64 data_size = 4;

@@ -77,7 +77,8 @@ public:
         _heartbeat_list.erase(info->last_heartbeat());
         _heartbeat_list[now_time] = info;
     }
-    bool GetChunkServerChains(int num, std::vector<std::string>* chains) {
+    bool GetChunkServerChains(int num, 
+                              std::vector<std::pair<int32_t,std::string> >* chains) {
         MutexLock lock(&_mu);
         if (num > static_cast<int>(_heartbeat_list.size())) {
             printf("not enough alive chunkservers for GetChunkServerChains\n");
@@ -86,7 +87,7 @@ public:
         std::map<int32_t, ChunkServerInfo*>::const_reverse_iterator it = _heartbeat_list.rbegin();
         for (int i=0; i<num; ++i, ++it) {
             ChunkServerInfo* cs = it->second;
-            chains->push_back(cs->address());
+            chains->push_back(std::make_pair(cs->id(), cs->address()));
         }
         return true;
     }
@@ -134,33 +135,27 @@ public:
         MutexLock lock(&_mu);
         return ++_next_block_id;
     }
-    bool ReportBlock(int32_t server_id, 
-        const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks) {
-        for (int i = 0; i < blocks.size(); i++) {
-            const ReportBlockInfo& block =  blocks.Get(i);
-            int64_t id = block.block_id();
-            
-            MutexLock lock(&_mu);
-            NSBlock* nsblock = NULL;
-            NSBlockMap::iterator it = _block_map.find(id);
-            if (it == _block_map.end()) {
-                nsblock = new NSBlock(id);
-                _block_map[id] = nsblock;
-                nsblock->block_size = block.block_size();
-            } else {
-                nsblock = it->second;
-                if (nsblock->block_size !=  block.block_size()) {
-                    printf("block size mismatch, block: %ld\n", id);
-                    assert(0);
-                    continue;
-                }
+    bool AddBlock(int64_t id, int32_t server_id, int64_t block_size) {
+        MutexLock lock(&_mu);
+        NSBlock* nsblock = NULL;
+        NSBlockMap::iterator it = _block_map.find(id);
+        if (it == _block_map.end()) {
+            nsblock = new NSBlock(id);
+            _block_map[id] = nsblock;
+            nsblock->block_size = block_size;
+        } else {
+            nsblock = it->second;
+            if (nsblock->block_size && nsblock->block_size !=  block_size) {
+                printf("block size mismatch, block: %ld\n", id);
+                assert(0);
+                return false;
             }
-            if (_next_block_id <= id) {
-                _next_block_id = id + 1;
-            }
-            /// 增加一个副本, 无论之前已经有几个了, 多余的通过gc处理
-            nsblock->replica.insert(server_id);
         }
+        if (_next_block_id <= id) {
+            _next_block_id = id + 1;
+        }
+        /// 增加一个副本, 无论之前已经有几个了, 多余的通过gc处理
+        nsblock->replica.insert(server_id);
         return true;
     }
     bool GetBlock(int64_t block_id, NSBlock* block) {
@@ -223,7 +218,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     if (version != _namespace_version) {
         response->set_status(8882);
     } else {
-        _block_manager->ReportBlock(id, request->blocks());
+        const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
+        for (int i = 0; i < blocks.size(); i++) {
+            const ReportBlockInfo& block =  blocks.Get(i);
+            _block_manager->AddBlock(block.block_id(), id, block.block_size());
+        }
     }
     done->Run();
 }
@@ -321,15 +320,16 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     /// replica num
     int replica_num = 2;
     /// check lease for write
-    std::vector<std::string> chains;
+    std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
+        int64_t new_block_id = _block_manager->NewBlock();
         LocatedBlock* block = response->mutable_block();
         for (int i =0; i<replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
-            info->set_address(chains[i]);
-            printf("Add %s to response\n", chains[i].c_str());
+            info->set_address(chains[i].second);
+            printf("Add %s to response\n", chains[i].second.c_str());
+            _block_manager->AddBlock(new_block_id, chains[i].first, 0);
         }
-        int64_t new_block_id = _block_manager->NewBlock();
         block->set_block_id(new_block_id);
         response->set_status(0);
         file_info.add_blocks(new_block_id);
@@ -413,9 +413,11 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     if (path.empty() || path[0] != '/') {
         path = "/";
     }
-    if (path[path.size()-1] == '/') {
-        path += "#";
+    if (path[path.size()-1] != '/') {
+        path += '/';
     }
+    path += "#";
+
     if (!SplitPath(path, &keys)) {
         fprintf(stderr, "SplitPath fail: %s\n", path.c_str());
         response->set_status(886);
@@ -431,7 +433,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
         file_end_key += "#";
     }
 
-    printf("List Directory: %s\n", file_start_key.c_str());
+    printf("List Directory: %s, return: ", file_start_key.c_str());
     leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
     for (it->Seek(file_start_key); it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
@@ -442,7 +444,9 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
         bool ret = file_info->ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
         file_info->set_name(key.data()+2, it->key().size()-2);
+        printf("%s, ", file_info->name().c_str());
     }
+    printf("\n");
     delete it;
     response->set_status(0);
     done->Run();
