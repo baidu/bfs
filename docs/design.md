@@ -21,11 +21,13 @@ master的数据是落地的，不一定非得全内存，通过LRU内存cache保
 
 
 好吧，我们先来开发一个单master，不支持分块，不支持小文件的fs吧。
+
 # 实现
 
-namespace存储我们选择了leveldb，可以简单的将整个目录结构平展开，并提供高效的文件创建、删除和list操作。
+## Namespace
 
-实际目录结构
+存储我们选择了leveldb，可以简单的将整个目录结构平展开，并提供高效的文件创建、删除和list操作。<br />
+实际目录结构:
 
 	/home/dir1/
 	          /file1
@@ -34,15 +36,29 @@ namespace存储我们选择了leveldb，可以简单的将整个目录结构平�
 	/tmp/
 	     file2
 
-存储格式为
+存储格式为: 
 
-	001/
-	002/home
-	002/tmp
-	003/home/dir1
-	003/home/dir2
-	003/tmp/file2
-	004/home/dir1/file1
-	004/home/dir2/file2
+	00/
+	01/home
+	01/tmp
+	02/home/dir1
+	02/home/dir2
+	02/tmp/file2
+	03/home/dir1/file1
+	03/home/dir2/file2
 
 这样做的主要目的是高效支持list操作。
+
+## Open for write
+
+在namespace中写入， 创建块， 分配datanode。<br />
+如果失败，在nameserver回滚。<br />
+数据发往datanode， 中间网络故障可以重连，但一旦close后不可追加写入。<br />
+nameserver向client发放lease，lease失效后，不可以继续写入。
+
+## Open for read
+
+在从namespace中获取datanode信息，向随机datanode读取数据。<br />
+读取不被保护，如果读过程中文件被删除，后续读取失败
+
+
