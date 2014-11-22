@@ -14,7 +14,7 @@
 
 namespace common {
 
-// An unscalable thread pool impliment.
+// An unscalable thread pool implimention.
 class ThreadPool {
 public:
     ThreadPool(int thread_num)
