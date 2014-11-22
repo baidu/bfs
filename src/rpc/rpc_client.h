@@ -7,8 +7,11 @@
 #ifndef  BFS_RPC_CLIENT_H_
 #define  BFS_RPC_CLIENT_H_
 
+#include <boost/function.hpp>
+#include <boost/bind.hpp>
 #include <sofa/pbrpc/pbrpc.h>
 #include "common/mutex.h"
+#include "common/thread_pool.h"
 
 namespace bfs {
     
@@ -55,6 +58,32 @@ public:
             controller.Reset();
         }
         return false;
+    }
+    template <class Stub, class Request, class Response, class Callback>
+    void AsyncRequest(Stub* stub, void(Stub::*func)(
+                    google::protobuf::RpcController*,
+                    const Request*, Response*, Callback*),
+                    const Request* request, Response* response,
+                    boost::function<void (const Request*, Response*, bool, int)> callback,
+                    int32_t rpc_timeout, int retry_times) {
+        sofa::pbrpc::RpcController* controller = new sofa::pbrpc::RpcController();
+        controller->SetTimeout(rpc_timeout * 1000L);
+        google::protobuf::Closure* done = 
+            google::protobuf::NewCallback(&RpcClient::template RpcCallback<Request, Response, Callback>,
+                                          controller, request, response, callback);
+        (stub->*func)(controller, request, response, done);
+    }
+    template <class Request, class Response, class Callback>
+    static void RpcCallback(sofa::pbrpc::RpcController* rpc_controller,
+                            const Request* request,
+                            Response* response,
+                            boost::function<void (const Request*, Response*, bool, int)> callback) {
+
+        bool failed = rpc_controller->Failed();
+        int error = rpc_controller->ErrorCode();
+        delete rpc_controller;
+
+        callback(request, response, failed, error);
     }
 private:
     // 定义 client 对象，一个 client 程序只需要一个 client 对象

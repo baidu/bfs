@@ -32,10 +32,10 @@ public:
         if (end - start_ > timeout_ * 1000) {
             double t = (end - start_) / 1000.0;
             if (!msg2_) {
-                fprintf(stderr, "[AutoCounter] %s use %.3f ms\n",
+                fprintf(stderr, "[AutoTimer] %s use %.3f ms\n",
                     msg1_, t);
             } else {
-                fprintf(stderr, "[AutoCounter] %s %s use %.3f ms\n",
+                fprintf(stderr, "[AutoTimer] %s %s use %.3f ms\n",
                     msg1_, msg2_, t);
             }
         }

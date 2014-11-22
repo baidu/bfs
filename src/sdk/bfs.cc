@@ -278,6 +278,38 @@ public:
         return w;
     }
     /// Send local buffer to chunkserver
+    void WriteChunkAsync(ChunkServer_Stub* stub, WriteBuffer* write_buf,
+                    LocatedBlock* block, bool is_last) {
+        // Not thread-safe 
+        WriteBlockRequest* request = new WriteBlockRequest;
+        WriteBlockResponse* response = new WriteBlockResponse;
+        int64_t offset = block->block_size();
+        int64_t seq = common::timer::get_micros();
+        request->set_sequence_id(seq);
+        request->set_block_id(block->block_id());
+        request->set_offset(offset);
+        request->set_is_last(is_last);
+        for (int i = 1; i < block->chains_size(); i++) {
+            request->add_chunkservers(block->chains(i).address());
+        }
+        request->set_databuf(write_buf->Data(), write_buf->Size());
+        request->set_offset(block->block_size());
+        
+        boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
+            = boost::bind(&FSImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+                          block->block_id(), offset, write_buf->Size());
+
+        _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
+            request, response, callback, 60, 1);
+        block->set_block_size(offset + write_buf->Size());
+    }
+    void WriteChunkCallback(const WriteBlockRequest* request,
+                            WriteBlockResponse* response,
+                            bool failed, int error,
+                            int64_t block_id, int64_t offset, int data_size) {
+        
+        printf("WriteChunkCallback [%ld:%ld:%d]\n", block_id, offset, data_size);
+    }
     bool WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
                     LocatedBlock* block, bool is_last) {
         WriteBlockRequest request;

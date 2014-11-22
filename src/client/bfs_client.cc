@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <string>
 
+#include "common/timer.h"
 #include "sdk/bfs.h"
 
 extern std::string FLAGS_nameserver;
@@ -73,6 +74,7 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 0;
     }
+    common::timer::AutoTimer at(0, "BfsPut", argv[3]);
     FILE* fp = fopen(argv[2], "rb");
     if (fp == NULL) {
         printf("Can't open local file %s\n", argv[2]);

@@ -455,7 +455,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         } else {
             status = 882;
         }
-        delete buf;
+        delete[] buf;
     }
     response->set_status(status);
     done->Run();
