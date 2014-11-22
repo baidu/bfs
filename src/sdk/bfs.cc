@@ -129,6 +129,7 @@ public:
         }
     }
     bool ListDirectory(const char* path, BfsFileInfo** filelist, int *num) {
+        common::timer::AutoTimer at(1, "ListDirectory", path);
         *filelist = NULL;
         *num = 0;
         ListDirectoryRequest request;
@@ -193,6 +194,7 @@ public:
         return false;
     }
     bool OpenFile(const char* path, int32_t flags, File** file) {
+        common::timer::AutoTimer at(1, "OpenFile", path);
         bool ret = false;
         *file = NULL;
         if (flags == O_WRONLY) {
@@ -250,7 +252,7 @@ public:
             //printf("_block_for_write addr %s\n", 
             //        file->_block_for_write->chains(0).address().c_str());
             _rpc_client->GetStub(addr, &file->_chains_head);
-            file->_write_buf = new WriteBuffer(4096);
+            file->_write_buf = new WriteBuffer(256*1024);
         }
         int w = 0;
         while (w < len) {
@@ -425,6 +427,7 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
 }
 
 int64_t BfsFileImpl::Write(const char* buf, int64_t write_size) {
+    common::timer::AutoTimer at(100, "Write", _name.c_str());
     if (_open_flags != O_WRONLY) {
         return -2;
     }
@@ -432,8 +435,13 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t write_size) {
     return _fs->WriteFile(this, buf, write_size);
 }
 bool BfsFileImpl::Flush() {
+    // Not impliment
+    return Sync();
+}
+bool BfsFileImpl::Sync() {
+    common::timer::AutoTimer at(100, "Sync", _name.c_str());
     if (_open_flags != O_WRONLY) {
-        return -2;
+        return false;
     }
     MutexLock lock(&_mu);
     if (_write_buf->Size() == 0) {
@@ -443,19 +451,8 @@ bool BfsFileImpl::Flush() {
     if (ret) {
         _write_buf->Clear();
     }
+    // fprintf(stderr, "Sync %s fail\n", _name.c_str());
     return ret;
-}
-bool BfsFileImpl::Sync() {
-    bool ret = true;
-    if (_open_flags == O_WRONLY) {
-        ret =  _fs->WriteChunk(_chains_head, _write_buf, _block_for_write, false);
-        if (ret) {
-            _write_buf->Clear();
-            return true;
-        }
-    }
-    fprintf(stderr, "Sync %s fail\n", _name.c_str());
-    return false;
 }
 
 bool BfsFileImpl::Close() {
