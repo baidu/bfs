@@ -88,9 +88,11 @@ public:
         assert (_type == InMem);
         MutexLock lock(&_mu);
         if (_blockbuf == NULL) {
-            _blockbuf = new char[std::max(len*2, 1024)];
+            _buflen = std::max(len*2, 1024);
+            _blockbuf = new char[_buflen];
         } else if (_datalen + len > _buflen) {
-            char* newbuf = new char[std::max(_buflen*2, _datalen+len)];
+            _buflen = std::max(_buflen * 2, _datalen + len);
+            char* newbuf = new char[_buflen];
             memcpy(newbuf, _blockbuf, _datalen);
             delete _blockbuf;
             _blockbuf = newbuf;
