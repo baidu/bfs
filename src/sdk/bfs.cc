@@ -64,18 +64,28 @@ private:
 
 class BfsFileImpl : public File {
 public:
-    BfsFileImpl(FSImpl* fs, const std::string name, int32_t flags);
+    BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name, int32_t flags);
     ~BfsFileImpl ();
     int64_t Pread(char* buf, int64_t read_size, int64_t offset);
     int64_t Seek(int64_t offset, int32_t whence);
     int64_t Read(char* buf, int64_t read_size);
     int64_t Write(const char* buf, int64_t write_size);
+    bool WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
+                    LocatedBlock* block, bool is_last);
+    /// Send local buffer to chunkserver
+    void WriteChunkAsync(ChunkServer_Stub* stub, WriteBuffer* write_buf,
+                         LocatedBlock* block, bool is_last);
+    void WriteChunkCallback(const WriteBlockRequest* request,
+                            WriteBlockResponse* response,
+                            bool failed, int error,
+                            int64_t block_id, int64_t offset, int data_size);
     bool Flush();
     bool Sync();
     bool Close();
     friend class FSImpl;
 private:
     FSImpl* _fs;                        ///< 文件系统
+    RpcClient* _rpc_client;             ///< RpcClient
     std::string _name;                  ///< 文件路径
     int32_t _open_flags;                ///< 打开使用的flag
 
@@ -211,7 +221,7 @@ public:
                 ret = false;
             } else {
                 //printf("Open file %s\n", path);
-                *file = new BfsFileImpl(this, path, flags);
+                *file = new BfsFileImpl(this, _rpc_client, path, flags);
             }
         } else if (flags == O_RDONLY) {
             FileLocationRequest request;
@@ -221,7 +231,7 @@ public:
             ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::GetFileLocation,
                 &request, &response, 5, 3);
             if (ret && response.status() == 0) {
-                BfsFileImpl* f = new BfsFileImpl(this, path, flags);
+                BfsFileImpl* f = new BfsFileImpl(this, _rpc_client, path, flags);
                 f->_located_blocks.CopyFrom(response.blocks());
                 *file = f;
                 //printf("OpenFile success: %s\n", path);
@@ -233,111 +243,6 @@ public:
             ret = false;
         }
         return ret;
-    }
-    int64_t WriteFile(BfsFileImpl* file, const char* buf, int64_t len) {
-        if (file->_chains_head == NULL) {
-            AddBlockRequest request;
-            AddBlockResponse response;
-            request.set_sequence_id(0);
-            request.set_file_name(file->_name);
-            bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::AddBlock,
-                &request, &response, 5, 3);
-            if (!ret || !response.has_block()) {
-                printf("AddBlock fail for %s\n", file->_name.c_str());
-                return -1;
-            }
-            file->_block_for_write = new LocatedBlock(response.block());
-            const std::string& addr = file->_block_for_write->chains(0).address();
-            //printf("response addr %s\n", response.block().chains(0).address().c_str());
-            //printf("_block_for_write addr %s\n", 
-            //        file->_block_for_write->chains(0).address().c_str());
-            _rpc_client->GetStub(addr, &file->_chains_head);
-            file->_write_buf = new WriteBuffer(256*1024);
-        }
-        int w = 0;
-        while (w < len) {
-            if ( (len - w) < file->_write_buf->Available()) {
-                file->_write_buf->Append(buf+w, len-w);
-                w = len;
-                break;
-            } else {
-                int n = file->_write_buf->Available();
-                file->_write_buf->Append(buf+w, n);
-                w += n;
-            }
-            if (file->_write_buf->Available() == 0) {
-                if (!WriteChunk(file->_chains_head, file->_write_buf,
-                                file->_block_for_write, false)) {
-                    w = -1;
-                    break;
-                }
-                file->_write_buf->Clear();
-            }
-        }
-        // printf("Write return %d, buf_size=%d\n", w, file->_write_buf->Size());
-        return w;
-    }
-    /// Send local buffer to chunkserver
-    void WriteChunkAsync(ChunkServer_Stub* stub, WriteBuffer* write_buf,
-                    LocatedBlock* block, bool is_last) {
-        // Not thread-safe 
-        WriteBlockRequest* request = new WriteBlockRequest;
-        WriteBlockResponse* response = new WriteBlockResponse;
-        int64_t offset = block->block_size();
-        int64_t seq = common::timer::get_micros();
-        request->set_sequence_id(seq);
-        request->set_block_id(block->block_id());
-        request->set_offset(offset);
-        request->set_is_last(is_last);
-        for (int i = 1; i < block->chains_size(); i++) {
-            request->add_chunkservers(block->chains(i).address());
-        }
-        request->set_databuf(write_buf->Data(), write_buf->Size());
-        request->set_offset(block->block_size());
-        
-        boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-            = boost::bind(&FSImpl::WriteChunkCallback, this, _1, _2, _3, _4,
-                          block->block_id(), offset, write_buf->Size());
-
-        _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
-            request, response, callback, 60, 1);
-        block->set_block_size(offset + write_buf->Size());
-    }
-    void WriteChunkCallback(const WriteBlockRequest* request,
-                            WriteBlockResponse* response,
-                            bool failed, int error,
-                            int64_t block_id, int64_t offset, int data_size) {
-        
-        printf("WriteChunkCallback [%ld:%ld:%d]\n", block_id, offset, data_size);
-    }
-    bool WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
-                    LocatedBlock* block, bool is_last) {
-        WriteBlockRequest request;
-        WriteBlockResponse response;
-        int64_t offset = block->block_size();
-        int64_t seq = common::timer::get_micros();
-        request.set_sequence_id(seq);
-        request.set_block_id(block->block_id());
-        request.set_offset(offset);
-        request.set_is_last(is_last);
-        for (int i = 1; i < block->chains_size(); i++) {
-            request.add_chunkservers(block->chains(i).address());
-        }
-        request.set_databuf(write_buf->Data(), write_buf->Size());
-        request.set_offset(block->block_size());
-        //printf("WriteBlock %ld [%ld:%ld:%d]\n", seq, block->block_id(),
-        //       block->block_size(), write_buf->Size());
-        if (!_rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock,
-            &request, &response, 60, 1) || response.status() != 0) {
-            printf("WriteBlock fail %ld [%ld:%ld:%d]: %s, status=%d\n",
-                   seq, block->block_id(), block->block_size(), write_buf->Size(),
-                   response.has_bad_chunkserver()?response.bad_chunkserver().c_str():"unknown",
-                   response.status());
-            assert(0);
-            return false;
-        }
-        block->set_block_size(offset + write_buf->Size());
-        return true;
     }
     bool CloseFile(File* file) {
         return file->Close();
@@ -386,8 +291,10 @@ private:
     std::string _nameserver_address;
 };
 
-BfsFileImpl::BfsFileImpl(FSImpl* fs, const std::string name, int32_t flags)
-  : _fs(fs), _name(name), _open_flags(flags), _chains_head(NULL),
+BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, 
+                         const std::string name, int32_t flags)
+  : _fs(fs), _rpc_client(rpc_client), _name(name),
+    _open_flags(flags), _chains_head(NULL),
     _chunkserver(NULL), _read_offset(0), _closed(false) {
 }
 
@@ -458,17 +365,122 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
     return ret;
 }
 
-int64_t BfsFileImpl::Write(const char* buf, int64_t write_size) {
+int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
     common::timer::AutoTimer at(100, "Write", _name.c_str());
     if (_open_flags != O_WRONLY) {
         return -2;
     }
     MutexLock lock(&_mu);
-    return _fs->WriteFile(this, buf, write_size);
+    // Add block
+    if (_chains_head == NULL) {
+        AddBlockRequest request;
+        AddBlockResponse response;
+        request.set_sequence_id(0);
+        request.set_file_name(_name);
+        bool ret = _rpc_client->SendRequest(_fs->_nameserver, &NameServer_Stub::AddBlock,
+            &request, &response, 5, 3);
+        if (!ret || !response.has_block()) {
+            printf("AddBlock fail for %s\n", _name.c_str());
+            return -1;
+        }
+        _block_for_write = new LocatedBlock(response.block());
+        const std::string& addr = _block_for_write->chains(0).address();
+        //printf("response addr %s\n", response.block().chains(0).address().c_str());
+        //printf("_block_for_write addr %s\n", 
+        //        file->_block_for_write->chains(0).address().c_str());
+        _rpc_client->GetStub(addr, &_chains_head);
+        _write_buf = new WriteBuffer(256*1024);
+    }
+    int w = 0;
+    while (w < len) {
+        if ( (len - w) < _write_buf->Available()) {
+            _write_buf->Append(buf+w, len-w);
+            w = len;
+            break;
+        } else {
+            int n = _write_buf->Available();
+            _write_buf->Append(buf+w, n);
+            w += n;
+        }
+        if (_write_buf->Available() == 0) {
+            if (!WriteChunk(_chains_head, _write_buf,
+                            _block_for_write, false)) {
+                w = -1;
+                break;
+            }
+            _write_buf->Clear();
+        }
+    }
+    // printf("Write return %d, buf_size=%d\n", w, file->_write_buf->Size());
+    return w;
+}
+
+bool BfsFileImpl::WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
+                LocatedBlock* block, bool is_last) {
+    WriteBlockRequest request;
+    WriteBlockResponse response;
+    int64_t offset = block->block_size();
+    int64_t seq = common::timer::get_micros();
+    request.set_sequence_id(seq);
+    request.set_block_id(block->block_id());
+    request.set_offset(offset);
+    request.set_is_last(is_last);
+    for (int i = 1; i < block->chains_size(); i++) {
+        request.add_chunkservers(block->chains(i).address());
+    }
+    request.set_databuf(write_buf->Data(), write_buf->Size());
+    request.set_offset(block->block_size());
+    //printf("WriteBlock %ld [%ld:%ld:%d]\n", seq, block->block_id(),
+    //       block->block_size(), write_buf->Size());
+    if (!_rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock,
+        &request, &response, 60, 1) || response.status() != 0) {
+        printf("WriteBlock fail %ld [%ld:%ld:%d]: %s, status=%d\n",
+               seq, block->block_id(), block->block_size(), write_buf->Size(),
+               response.has_bad_chunkserver()?response.bad_chunkserver().c_str():"unknown",
+               response.status());
+        assert(0);
+        return false;
+    }
+    block->set_block_size(offset + write_buf->Size());
+    return true;
+}
+
+/// Send local buffer to chunkserver
+void BfsFileImpl::WriteChunkAsync(ChunkServer_Stub* stub, WriteBuffer* write_buf,
+                                  LocatedBlock* block, bool is_last) {
+    // Not thread-safe 
+    WriteBlockRequest* request = new WriteBlockRequest;
+    WriteBlockResponse* response = new WriteBlockResponse;
+    int64_t offset = block->block_size();
+    int64_t seq = common::timer::get_micros();
+    request->set_sequence_id(seq);
+    request->set_block_id(block->block_id());
+    request->set_offset(offset);
+    request->set_is_last(is_last);
+    for (int i = 1; i < block->chains_size(); i++) {
+        request->add_chunkservers(block->chains(i).address());
+    }
+    request->set_databuf(write_buf->Data(), write_buf->Size());
+    request->set_offset(block->block_size());
+    
+    boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
+        = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+                      block->block_id(), offset, write_buf->Size());
+
+    _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
+        request, response, callback, 60, 1);
+    block->set_block_size(offset + write_buf->Size());
+}
+void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
+                                     WriteBlockResponse* response,
+                                     bool failed, int error,
+                                     int64_t block_id, int64_t offset, int data_size) {
+    
+    printf("WriteChunkCallback [%ld:%ld:%d]\n", block_id, offset, data_size);
 }
 bool BfsFileImpl::Flush() {
     // Not impliment
-    return Sync();
+    return true;
 }
 bool BfsFileImpl::Sync() {
     common::timer::AutoTimer at(100, "Sync", _name.c_str());
@@ -479,7 +491,7 @@ bool BfsFileImpl::Sync() {
     if (_write_buf->Size() == 0) {
         return true;
     }
-    bool ret = _fs->WriteChunk(_chains_head, _write_buf, _block_for_write, false);
+    bool ret = WriteChunk(_chains_head, _write_buf, _block_for_write, false);
     if (ret) {
         _write_buf->Clear();
     }
@@ -490,7 +502,7 @@ bool BfsFileImpl::Sync() {
 bool BfsFileImpl::Close() {
     bool ret = true;
     if (_open_flags == O_WRONLY) {
-        ret =  _fs->WriteChunk(_chains_head, _write_buf, _block_for_write, true);
+        ret = WriteChunk(_chains_head, _write_buf, _block_for_write, true);
     }
     _closed = true;
     return true;
