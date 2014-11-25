@@ -27,6 +27,10 @@ public:
     }
     // Start a thread_num threads pool.
     bool Start() {
+        MutexLock lock(&mu_);
+        if (tids_.size()) {
+            return false;
+        }
         stop_ = false;
         for (int i = 0; i < threads_num_; i++) {
             pthread_t tid;

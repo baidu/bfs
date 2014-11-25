@@ -81,8 +81,10 @@ public:
 
         bool failed = rpc_controller->Failed();
         int error = rpc_controller->ErrorCode();
+        if (failed || error) {
+            fprintf(stderr, "RpcCallback: %s\n", rpc_controller->ErrorText().c_str());
+        }
         delete rpc_controller;
-
         callback(request, response, failed, error);
     }
 private:

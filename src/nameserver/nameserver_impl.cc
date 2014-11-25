@@ -418,6 +418,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     }
     path += "#";
 
+    common::timer::AutoTimer at(0, "ListDirectory", path.c_str());
     if (!SplitPath(path, &keys)) {
         fprintf(stderr, "SplitPath fail: %s\n", path.c_str());
         response->set_status(886);
@@ -433,7 +434,8 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
         file_end_key += "#";
     }
 
-    printf("List Directory: %s, return: ", file_start_key.c_str());
+    common::timer::AutoTimer at1(0, "ListDirectory iterate", path.c_str());
+    //printf("List Directory: %s, return: ", file_start_key.c_str());
     leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
     for (it->Seek(file_start_key); it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
@@ -444,11 +446,13 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
         bool ret = file_info->ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
         file_info->set_name(key.data()+2, it->key().size()-2);
-        printf("%s, ", file_info->name().c_str());
+        //printf("%s, ", file_info->name().c_str());
     }
-    printf("\n");
+    //printf("\n");
     delete it;
     response->set_status(0);
+    
+    common::timer::AutoTimer at2(0, "ListDirectory done run", path.c_str());
     done->Run();
 }
 void NameServerImpl::Stat(::google::protobuf::RpcController* controller,

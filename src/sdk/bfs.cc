@@ -5,6 +5,8 @@
 // Author: yanshiguang02@baidu.com
 
 #include <fcntl.h>
+#include <list>
+
 #include "proto/nameserver.pb.h"
 #include "proto/chunkserver.pb.h"
 #include "rpc/rpc_client.h"
@@ -15,6 +17,8 @@
 extern std::string FLAGS_nameserver;
 
 namespace bfs {
+
+ThreadPool g_thread_pool(10);
 
 struct LocatedBlocks {
     int64_t _file_length;
@@ -30,8 +34,9 @@ class FSImpl;
 
 class WriteBuffer {
 public:
-    WriteBuffer(int buf_size = 1024)
-        : _buf_size(buf_size), _data_size(0) {
+    WriteBuffer(int buf_size, int64_t block_id, int64_t offset)
+        : _buf_size(buf_size), _data_size(0),
+          _block_id(block_id), _offset(offset) {
         _buf = new char[buf_size];
     }
     ~WriteBuffer() {
@@ -56,10 +61,14 @@ public:
     void Clear() {
         _data_size = 0;
     }
+    int64_t offset() const { return _offset; }
+    int64_t block_id() const { return _block_id; }
 private:
-    int _buf_size;
-    int _data_size;
-    char* _buf;
+    int32_t _buf_size;
+    int32_t _data_size;
+    char*   _buf;
+    int64_t _block_id;
+    int64_t _offset;
 };
 
 class BfsFileImpl : public File {
@@ -70,15 +79,16 @@ public:
     int64_t Seek(int64_t offset, int32_t whence);
     int64_t Read(char* buf, int64_t read_size);
     int64_t Write(const char* buf, int64_t write_size);
+    /// Add buffer to  async write list
+    void StartWrite(WriteBuffer *buffer);
     bool WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
                     LocatedBlock* block, bool is_last);
     /// Send local buffer to chunkserver
-    void WriteChunkAsync(ChunkServer_Stub* stub, WriteBuffer* write_buf,
-                         LocatedBlock* block, bool is_last);
+    void BackgroundWrite(ChunkServer_Stub* stub);
     void WriteChunkCallback(const WriteBlockRequest* request,
                             WriteBlockResponse* response,
                             bool failed, int error,
-                            int64_t block_id, int64_t offset, int data_size);
+                            WriteBuffer* buffer);
     bool Flush();
     bool Sync();
     bool Close();
@@ -93,13 +103,17 @@ private:
     ChunkServer_Stub* _chains_head;     ///< 对应的第一个chunkserver
     LocatedBlock* _block_for_write;     ///< 正在写的block
     WriteBuffer* _write_buf;            ///< 本地写缓冲
+    std::list<WriteBuffer*> _write_list;///< Write buffer list
+    bool _back_writing;                 ///< Async write running backgroud
 
     /// for read
     LocatedBlocks _located_blocks;      ///< block meta for read
     ChunkServer_Stub* _chunkserver;     ///< located chunkserver
     int64_t _read_offset;               ///< 读取的偏移
+
     bool _closed;                       ///< 是否关闭
     Mutex   _mu;
+    CondVar _sync_signal;               ///< _sync_var
 };
 
 class FSImpl : public FS {
@@ -295,7 +309,9 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
                          const std::string name, int32_t flags)
   : _fs(fs), _rpc_client(rpc_client), _name(name),
     _open_flags(flags), _chains_head(NULL),
-    _chunkserver(NULL), _read_offset(0), _closed(false) {
+    _write_buf(NULL), _back_writing(false),
+    _chunkserver(NULL), _read_offset(0), _closed(false),
+    _sync_signal(&_mu) {
 }
 
 BfsFileImpl::~BfsFileImpl () {
@@ -365,6 +381,18 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
     return ret;
 }
 
+void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
+    _write_list.push_back(_write_buf);
+    _block_for_write->set_block_size(_block_for_write->block_size() + _write_buf->Size());
+    _write_buf = NULL;
+    if (!_back_writing) {
+        boost::function<void ()> task = 
+            boost::bind(&BfsFileImpl::BackgroundWrite, this, _chains_head);
+        g_thread_pool.AddTask(task);
+        _back_writing = true;
+    }
+}
+
 int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
     common::timer::AutoTimer at(100, "Write", _name.c_str());
     if (_open_flags != O_WRONLY) {
@@ -389,10 +417,15 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
         //printf("_block_for_write addr %s\n", 
         //        file->_block_for_write->chains(0).address().c_str());
         _rpc_client->GetStub(addr, &_chains_head);
-        _write_buf = new WriteBuffer(256*1024);
     }
+
     int w = 0;
     while (w < len) {
+        if (_write_buf == NULL) {
+            _write_buf = new WriteBuffer(1024*1024, 
+                                         _block_for_write->block_id(),
+                                         _block_for_write->block_size());
+        }
         if ( (len - w) < _write_buf->Available()) {
             _write_buf->Append(buf+w, len-w);
             w = len;
@@ -403,12 +436,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
             w += n;
         }
         if (_write_buf->Available() == 0) {
-            if (!WriteChunk(_chains_head, _write_buf,
-                            _block_for_write, false)) {
-                w = -1;
-                break;
-            }
-            _write_buf->Clear();
+            StartWrite(_write_buf);
         }
     }
     // printf("Write return %d, buf_size=%d\n", w, file->_write_buf->Size());
@@ -429,7 +457,6 @@ bool BfsFileImpl::WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
         request.add_chunkservers(block->chains(i).address());
     }
     request.set_databuf(write_buf->Data(), write_buf->Size());
-    request.set_offset(block->block_size());
     //printf("WriteBlock %ld [%ld:%ld:%d]\n", seq, block->block_id(),
     //       block->block_size(), write_buf->Size());
     if (!_rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock,
@@ -446,37 +473,56 @@ bool BfsFileImpl::WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
 }
 
 /// Send local buffer to chunkserver
-void BfsFileImpl::WriteChunkAsync(ChunkServer_Stub* stub, WriteBuffer* write_buf,
-                                  LocatedBlock* block, bool is_last) {
+void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
+    MutexLock lock(&_mu);
+    WriteBuffer* buffer = _write_list.front();
+    _write_list.pop_front();
+    
     // Not thread-safe 
     WriteBlockRequest* request = new WriteBlockRequest;
     WriteBlockResponse* response = new WriteBlockResponse;
-    int64_t offset = block->block_size();
+    int64_t offset = buffer->offset();
     int64_t seq = common::timer::get_micros();
     request->set_sequence_id(seq);
-    request->set_block_id(block->block_id());
+    request->set_block_id(buffer->block_id());
+    request->set_databuf(buffer->Data(), buffer->Size());
     request->set_offset(offset);
-    request->set_is_last(is_last);
-    for (int i = 1; i < block->chains_size(); i++) {
-        request->add_chunkservers(block->chains(i).address());
+    request->set_is_last(false);
+    for (int i = 1; i < _block_for_write->chains_size(); i++) {
+        request->add_chunkservers(_block_for_write->chains(i).address());
     }
-    request->set_databuf(write_buf->Data(), write_buf->Size());
-    request->set_offset(block->block_size());
     
     boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-        = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
-                      block->block_id(), offset, write_buf->Size());
+        = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4, buffer);
 
+    //fprintf(stderr, "BackgroundWrite start [%ld:%ld:%d]\n",
+    //        buffer->block_id(), buffer->offset(), buffer->Size());
     _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
         request, response, callback, 60, 1);
-    block->set_block_size(offset + write_buf->Size());
 }
 void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBlockResponse* response,
                                      bool failed, int error,
-                                     int64_t block_id, int64_t offset, int data_size) {
+                                     WriteBuffer* buffer) {
+    MutexLock lock(&_mu);
+    if (failed || error != 0) {
+        fprintf(stderr, "BackgroundWrite failed [%ld:%ld:%d]\n",
+            buffer->block_id(), buffer->offset(), buffer->Size());
+        _write_list.push_front(buffer);
+    } else {
+        //fprintf(stderr, "BackgroundWrite done [%ld:%ld:%d]\n",
+        //    buffer->block_id(), buffer->offset(), buffer->Size());
+        delete buffer;
+    }
     
-    printf("WriteChunkCallback [%ld:%ld:%d]\n", block_id, offset, data_size);
+    if (_write_list.empty()) {
+        _back_writing = false;
+        _sync_signal.Broadcast();
+        return;
+    }
+    boost::function<void ()> task =
+        boost::bind(&BfsFileImpl::BackgroundWrite, this, _chains_head);
+    g_thread_pool.AddTask(task);
 }
 bool BfsFileImpl::Flush() {
     // Not impliment
@@ -488,24 +534,32 @@ bool BfsFileImpl::Sync() {
         return false;
     }
     MutexLock lock(&_mu);
-    if (_write_buf->Size() == 0) {
-        return true;
+    if (_write_buf && _write_buf->Size()) {
+        StartWrite(_write_buf);
     }
-    bool ret = WriteChunk(_chains_head, _write_buf, _block_for_write, false);
-    if (ret) {
-        _write_buf->Clear();
+    while (_back_writing) {
+        _sync_signal.Wait();
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
-    return ret;
+    return true;
 }
 
 bool BfsFileImpl::Close() {
     bool ret = true;
+    MutexLock lock(&_mu);
     if (_open_flags == O_WRONLY) {
+        while (_back_writing) {
+            _sync_signal.Wait();
+        }
+        if (!_write_buf) {
+            _write_buf = new WriteBuffer(32, _block_for_write->block_id(),
+                                         _block_for_write->block_size());
+        }
         ret = WriteChunk(_chains_head, _write_buf, _block_for_write, true);
+        delete _block_for_write;
     }
     _closed = true;
-    return true;
+    return ret;
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
@@ -515,6 +569,7 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
         return false;
     }
     *fs = impl;
+    g_thread_pool.Start();
     return true;
 }
 
