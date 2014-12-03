@@ -9,8 +9,9 @@
 #include <boost/bind.hpp>
 #include <set>
 
-void Print(const char* buf) {
-    printf("%s\n", buf);
+void Print(int32_t id, const char* buf) {
+    printf("%d: %s\n", id, buf);
+    delete[] buf;
 }
 int main() {
     SlidingWindow<char*> sw(100, &Print);
@@ -18,15 +19,23 @@ int main() {
     std::set<int> s;
     for (int i = 0; i < 10000; i++) {
         int t = rand()%500;
-       if (s.find(t) == s.end()) {
-           char* buf = new char[16];
-           snprintf(buf, 16, "%d", t);
-
-           if (sw.Add(t, buf)) {
-               printf("Add %d\n", t);
-               s.insert(t);
-           }
-       }
+        if (s.find(t) == s.end()) {
+            char* buf = new char[16];
+            snprintf(buf, 16, "%d", t);
+ 
+            if (sw.Add(t, buf)) {
+                printf("Add %d\n", t);
+                s.insert(t);
+            } else {
+                delete[] buf;
+            }
+        }
+    }
+    std::vector<std::pair<int32_t, char*> > frags;
+    sw.GetFragments(&frags);
+    for (int32_t i = 0; i < frags.size(); i++) {
+        printf("Frag: %d\n", frags[i].first);
+        delete[] frags[i].second;
     }
 }
 

@@ -8,6 +8,8 @@
 #define  COMMON_SLIDING_WINDOW_H_
 
 #include <stdint.h>
+#include <vector>
+#include <map>
 #include <boost/function.hpp>
 
 #include "mutex.h"
@@ -15,7 +17,7 @@
 template <typename Item>
 class SlidingWindow {
 public:
-    typedef boost::function<void (const Item)> SlidingCallback;
+    typedef boost::function<void (int32_t, const Item)> SlidingCallback;
     SlidingWindow(int32_t size, SlidingCallback callback)
       : bitmap_(NULL), items_(NULL),
         callback_(callback), size_(size),
@@ -29,9 +31,17 @@ public:
         delete[] bitmap_;
         delete[] items_;
     }
+    void GetFragments(std::vector<std::pair<int32_t, Item> >* fragments) {
+        MutexLock lock(&mu_);
+        for (int i = 0; i < size_; i++) {
+            if (bitmap_[(ready_ + i) % size_]) {
+                fragments->push_back(std::make_pair(base_offset_+i, items_[(ready_ + i) % size_]));
+            }
+        }
+    }
     void Notify() {
         while (bitmap_[ready_] == 1) {
-            callback_(items_[ready_]);
+            callback_(base_offset_, items_[ready_]);
 
             bitmap_[ready_] = 0;
             ready_ ++;
