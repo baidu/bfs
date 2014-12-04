@@ -392,7 +392,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
            request->sequence_id());
     Block* block = _block_manager->FindBlock(block_id, true);
     
-    /*if (offset != block->Size() || !block->Writeable()) {
+    if (offset != block->Size() || !block->Writeable()) {
         fprintf(stderr, "Write offset[%ld] block_size[%ld] mismatch or unwriteable\n",
             offset, block->Size());
         block->DecRef();
@@ -401,7 +401,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         return;
     } else if(!databuf.empty()) {
         block->Append(databuf.data(), databuf.size());
-    }*/
+    }
 
 
     if (request->chunkservers_size()) {

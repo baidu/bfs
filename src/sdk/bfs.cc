@@ -153,7 +153,7 @@ public:
         }
     }
     bool ListDirectory(const char* path, BfsFileInfo** filelist, int *num) {
-        common::timer::AutoTimer at(1, "ListDirectory", path);
+        common::timer::AutoTimer at(10, "ListDirectory", path);
         *filelist = NULL;
         *num = 0;
         ListDirectoryRequest request;
