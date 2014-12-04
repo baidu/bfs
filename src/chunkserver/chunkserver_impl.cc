@@ -19,6 +19,7 @@
 #include "common/mutex.h"
 #include "common/util.h"
 #include "common/timer.h"
+#include "common/sliding_window.h"
 
 extern std::string FLAGS_block_store_path;
 extern std::string FLAGS_nameserver;
@@ -28,25 +29,50 @@ extern int32_t FLAGS_blockreport_interval;
 
 namespace bfs {
 
+struct Buffer {
+    const char* data_;
+    int32_t len_;
+    Buffer(const char* buff, int32_t len)
+      : data_(buff), len_(len) {}
+    Buffer()
+      : data_(NULL), len_(0) {}
+    Buffer(const Buffer& o)
+      : data_(o.data_), len_(o.len_) {}
+};
+
 class Block {
 public:
     Block(int64_t block_id, const std::string diskfile= "", int64_t block_size= 0) :
-      _block_id(block_id), _blockbuf(NULL), _buflen(0),
-      _datalen(block_size), _disk_file(diskfile), _file_desc(-1), _refs(0) {
+      _block_id(block_id), _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
+      _datalen(block_size), _disk_file(diskfile), _file_desc(-1), _refs(0),
+      _recv_window(NULL), _finished(false) {
         if (diskfile != "") {
             _type = InDisk;
         } else {
             _type = InMem;
+            _recv_window = new common::SlidingWindow<Buffer>(100,
+                           boost::bind(&Block::WriteCallback, this, _1, _2));
         }
     }
     ~Block() {
-        delete _blockbuf;
+        delete[] _blockbuf;
         _blockbuf = NULL;
         _buflen = 0;
         _datalen = 0;
         if (_file_desc >= 0) {
             close(_file_desc);
             _file_desc = -1;
+        }
+        if (_recv_window) {
+            if (_recv_window->Size()) {
+                fprintf(stderr, "recv_window fragments: %d\n",  _recv_window->Size());
+                std::vector<std::pair<int32_t,Buffer> > frags;
+                _recv_window->GetFragments(&frags);
+                for (uint32_t i = 0; i < frags.size(); i++) {
+                    delete[] frags[i].second.data_;
+                }
+            }
+            delete _recv_window;
         }
         printf("Block %ld deleted\n", _block_id);
     }
@@ -55,6 +81,20 @@ public:
     }
     int64_t Size() const {
         return _datalen;
+    }
+    void SetSliceNum(int32_t num) {
+        _slice_num = num;
+    }
+    bool IsComplete() {
+        return (_slice_num == _last_seq + 1);
+    }
+    bool Finish() {
+        MutexLock lock(&_mu);
+        if (_finished) {
+            return false;
+        }
+        _finished = true;
+        return true;
     }
     int32_t Read(char* buf, int32_t len, int64_t offset) {
         /// Raw impliment, no concurrency
@@ -84,7 +124,21 @@ public:
     bool Writeable() {
         return (_type == InMem);
     }
-    int64_t Append(const char*buf, int32_t len) {
+    bool Write(int32_t seq, const char* data,int32_t len) {
+        char* buf = new char[len];
+        memcpy(buf, data, len);
+        bool ret = _recv_window->Add(seq, Buffer(buf, len));
+        if (!ret) {
+            delete[] buf;
+        }
+        return ret;
+    }
+    void WriteCallback(int32_t seq, Buffer buffer) {
+        printf("Append done [seq:%d, %ld:%d]\n", seq, _datalen, buffer.len_);
+        Append(seq, buffer.data_, buffer.len_);
+        delete[] buffer.data_;
+    }
+    void Append(int32_t seq, const char*buf, int32_t len) {
         assert (_type == InMem);
         MutexLock lock(&_mu);
         if (_blockbuf == NULL) {
@@ -94,16 +148,16 @@ public:
             _buflen = std::max(_buflen * 2, _datalen + len);
             char* newbuf = new char[_buflen];
             memcpy(newbuf, _blockbuf, _datalen);
-            delete _blockbuf;
+            delete[] _blockbuf;
             _blockbuf = newbuf;
         }
         memcpy(_blockbuf + _datalen, buf, len);
         _datalen += len;
-        return _datalen;
+        _last_seq = seq;
     }
     bool FlushToDisk(const std::string& path) {
-        assert (_type == InMem);
         MutexLock lock(&_mu);
+        assert(_type == InMem);
         bool ret = false;
         FILE* fp = fopen(path.c_str(), "wb");
         if (fp == NULL) {
@@ -119,7 +173,7 @@ public:
         }
         _disk_file = path;
         _type = InDisk;
-        delete _blockbuf;
+        delete[] _blockbuf;
         _blockbuf = NULL;
         _buflen = 0;
         return ret;
@@ -138,6 +192,8 @@ private:
         InMem,
     };
     int64_t     _block_id;
+    int32_t     _last_seq;
+    int32_t     _slice_num;
     char*       _blockbuf;
     int64_t     _buflen;
     int64_t     _datalen;
@@ -146,6 +202,8 @@ private:
     Type        _type;      ///< disk or mem
     volatile int _refs;
     Mutex       _mu;
+    common::SlidingWindow<Buffer>* _recv_window;
+    bool        _finished;
 };
 
 class BlockManager {
@@ -217,6 +275,7 @@ public:
             
             blocks->push_back(meta);            
         }
+        delete it;
         return true;
     }
     Block* FindBlock(int64_t block_id, bool create_if_missing) {
@@ -294,6 +353,8 @@ ChunkServerImpl::ChunkServerImpl()
     if (!_rpc_client->GetStub(FLAGS_nameserver, &_nameserver)) {
         assert(0);
     }
+    _thread_pool = new ThreadPool(100);
+    _thread_pool->Start();
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
 }
@@ -301,6 +362,8 @@ ChunkServerImpl::ChunkServerImpl()
 ChunkServerImpl::~ChunkServerImpl() {
     _quit = true;
     pthread_join(_routine_thread, NULL);
+    _thread_pool->Stop(true);
+    delete _thread_pool;
     delete _block_manager;
     delete _rpc_client;
 }
@@ -383,28 +446,50 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
                         const WriteBlockRequest* request,
                         WriteBlockResponse* response,
                         ::google::protobuf::Closure* done) {
-    response->set_sequence_id(request->sequence_id());
+    if (!response->has_sequence_id()) {
+        response->set_sequence_id(request->sequence_id());
+        /*
+        response->add_desc("WriteBlock dispatch");
+        response->add_timestamp(common::timer::get_micros());*/
+        boost::function<void ()> task = 
+            boost::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
+        _thread_pool->AddTask(task);
+        return;
+    }
+    
     int64_t block_id = request->block_id();
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
-    /// search
-    printf("WriteBlock [%ld:%ld:%lu] %lu\n", block_id, offset, databuf.size(),
-           request->sequence_id());
-    Block* block = _block_manager->FindBlock(block_id, true);
+    int32_t packet_seq = request->packet_seq();
     
-    /*if (offset != block->Size() || !block->Writeable()) {
-        fprintf(stderr, "Write offset[%ld] block_size[%ld] mismatch or unwriteable\n",
-            offset, block->Size());
-        block->DecRef();
-        response->set_status(0);
+    /*response->add_desc("WriteBlock start");
+    response->add_timestamp(common::timer::get_micros());
+    char tmpbuf[10];
+    snprintf(tmpbuf, 10, "%d", packet_seq);
+    common::timer::AutoTimer at(0, "WriteBlock", tmpbuf);*/
+    printf("WriteBlock [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
+           block_id, packet_seq, offset, databuf.size(), request->sequence_id());
+
+    /// search;
+    Block* block = _block_manager->FindBlock(block_id, true);
+    if (!block) {
+        fprintf(stderr, "Block not found: %ld\n", block_id);
+        response->set_status(8404);
         done->Run();
         return;
-    } else if(!databuf.empty()) {
-        block->Append(databuf.data(), databuf.size());
-    }*/
+    }
 
+    if (!databuf.empty() && !block->Write(packet_seq, databuf.data(), databuf.size())) {
+        fprintf(stderr, "Write offset[%ld] block_size[%ld] not in sliding window\n",
+            offset, block->Size());
+        block->DecRef();
+        response->set_status(812);
+        done->Run();
+        return;
+    }
 
     if (request->chunkservers_size()) {
+        //common::timer::AutoTimer at(0, "SendToNext", tmpbuf);
         ChunkServerClient next_chunkserver(_rpc_client, request->chunkservers(0));
         WriteBlockRequest next_request(*request);
         next_request.clear_chunkservers();
@@ -425,28 +510,44 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     }
     printf("WriteBlock done [%ld:%ld:%lu]\n", block_id, offset, databuf.size());
     if (request->is_last()) {
+        block->SetSliceNum(packet_seq + 1);
+    }
+    if (block->IsComplete() && block->Finish()) {
         printf("WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
         _block_manager->FinishBlock(block);
         ReportFinish(block);
     }
     block->DecRef();
     block = NULL;
+    /*
+    response->add_desc("WriteBlock end");
+    response->add_timestamp(common::timer::get_micros());
+    */
     done->Run();
 }
 void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
                         const ReadBlockRequest* request,
                         ReadBlockResponse* response,
                         ::google::protobuf::Closure* done) {
+    if (!response->has_sequence_id()) {
+        response->set_sequence_id(request->sequence_id());
+        boost::function<void ()> task = 
+            boost::bind(&ChunkServerImpl::ReadBlock, this, controller, request, response, done);
+        _thread_pool->AddTask(task);
+        return;
+    }
+
     int64_t block_id = request->block_id();
     int64_t offset = request->offset();
     int32_t read_len = request->read_len();
-
     int status = 0;
 
     printf("ReadBlock: %ld offset: %ld len: %d\n", block_id, offset, read_len);
     Block* block = _block_manager->FindBlock(block_id, false);
     if (block == NULL) {
         status = 404;
+        fprintf(stderr, "ReadBlock not found: %ld offset: %ld len: %d\n",
+                block_id, offset, read_len);
     } else {
         char* buf = new char[read_len];
         int32_t len = block->Read(buf, read_len, offset);
@@ -454,6 +555,8 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
             response->mutable_databuf()->assign(buf, len);
         } else {
             status = 882;
+            fprintf(stderr, "ReadBlock fail: %ld offset: %ld len: %d\n",
+                block_id, offset, read_len);
         }
         delete[] buf;
     }

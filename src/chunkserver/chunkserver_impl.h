@@ -8,6 +8,7 @@
 #define  BFS_TRUNKSERVER_IMPL_H_
 
 #include "proto/chunkserver.pb.h"
+#include "common/thread_pool.h"
 
 namespace bfs {
 
@@ -36,6 +37,7 @@ private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
     RpcClient*      _rpc_client;
+    ThreadPool*     _thread_pool;
     NameServer_Stub* _nameserver;
     pthread_t _routine_thread;
     bool _quit;

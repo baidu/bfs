@@ -17,6 +17,16 @@ namespace bfs {
     
 class RpcClient {
 public:
+    RpcClient() {
+        // 定义 client 对象，一个 client 程序只需要一个 client 对象
+        // 可以通过 client_options 指定一些配置参数，譬如线程数、流控等
+        sofa::pbrpc::RpcClientOptions options;
+        options.max_pending_buffer_size = 10;
+        _rpc_client = new sofa::pbrpc::RpcClient(options);
+    }
+    ~RpcClient() {
+        delete _rpc_client;
+    }
     template <class T>
     bool GetStub(const std::string server, T** stub) {
         MutexLock lock(&_host_map_lock);
@@ -28,7 +38,7 @@ public:
             // 定义 channel，代表通讯通道，每个服务器地址对应一个 channel
             // 可以通过 channel_options 指定一些配置参数
             sofa::pbrpc::RpcChannelOptions channel_options;
-            channel = new sofa::pbrpc::RpcChannel(&rpc_client, server, channel_options);
+            channel = new sofa::pbrpc::RpcChannel(_rpc_client, server, channel_options);
             _host_map[server] = channel;
         }
         *stub = new T(channel);
@@ -88,10 +98,7 @@ public:
         callback(request, response, failed, error);
     }
 private:
-    // 定义 client 对象，一个 client 程序只需要一个 client 对象
-    // 可以通过 client_options 指定一些配置参数，譬如线程数、流控等
-    sofa::pbrpc::RpcClientOptions client_options;
-    sofa::pbrpc::RpcClient rpc_client;
+    sofa::pbrpc::RpcClient* _rpc_client;
     typedef std::map<std::string, sofa::pbrpc::RpcChannel*> HostMap;
     HostMap _host_map;
     Mutex _host_map_lock;

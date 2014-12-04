@@ -13,8 +13,9 @@ void Print(int32_t id, const char* buf) {
     printf("%d: %s\n", id, buf);
     delete[] buf;
 }
+
 int main() {
-    SlidingWindow<char*> sw(100, &Print);
+    common::SlidingWindow<char*> sw(100, &Print);
     
     std::set<int> s;
     for (int i = 0; i < 10000; i++) {

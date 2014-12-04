@@ -14,12 +14,14 @@
 
 #include "mutex.h"
 
+namespace common {
+
 template <typename Item>
 class SlidingWindow {
 public:
-    typedef boost::function<void (int32_t, const Item)> SlidingCallback;
+    typedef boost::function<void (int32_t, Item)> SlidingCallback;
     SlidingWindow(int32_t size, SlidingCallback callback)
-      : bitmap_(NULL), items_(NULL),
+      : bitmap_(NULL), items_(NULL), item_count_(0), 
         callback_(callback), size_(size),
         base_offset_(0), ready_(0) {
         bitmap_ = new char[size];
@@ -31,6 +33,9 @@ public:
         delete[] bitmap_;
         delete[] items_;
     }
+    int32_t Size() const {
+        return item_count_;
+    }
     void GetFragments(std::vector<std::pair<int32_t, Item> >* fragments) {
         MutexLock lock(&mu_);
         for (int i = 0; i < size_; i++) {
@@ -39,17 +44,22 @@ public:
             }
         }
     }
+    /// Notify 会在Add中被调用, 用户自己处理锁和死锁的问题
     void Notify() {
         while (bitmap_[ready_] == 1) {
             callback_(base_offset_, items_[ready_]);
 
             bitmap_[ready_] = 0;
-            ready_ ++;
-            base_offset_ ++;
+            ++ready_;
+            ++base_offset_;
+            --item_count_;
             if (ready_ >= size_) {
                 ready_ = 0;
             }
         }
+    }
+    int32_t UpBound() const {
+        return base_offset_ + size_ - 1;
     }
     bool Add(int32_t offset, Item item) {
         MutexLock lock(&mu_);
@@ -65,12 +75,14 @@ public:
         }
         bitmap_[pos] = 1;
         items_[pos] = item;
+        ++item_count_;
         Notify();
         return true;
     }
 private:
     char* bitmap_;
     Item* items_;
+    int32_t item_count_;
     SlidingCallback callback_;
     int32_t size_;
     int32_t base_offset_;
@@ -78,8 +90,7 @@ private:
     Mutex mu_;
 };
 
-
-
+} // namespace common
 
 #endif  // COMMON_SLIDING_WINDOW_H_
 

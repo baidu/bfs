@@ -8,6 +8,7 @@
 #define  COMMON_LOCK_MUTEX_H_
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <sys/time.h>
 
@@ -16,7 +17,8 @@ namespace common {
 // A Mutex represents an exclusive lock.
 class Mutex {
 public:
-    Mutex() {
+    Mutex()
+        : owner_(0) {
         pthread_mutex_init(&mu_, NULL);
     }
     ~Mutex() {
@@ -26,20 +28,25 @@ public:
     // Will deadlock if the mutex is already locked by this thread.
     void Lock() {
         pthread_mutex_lock(&mu_);
+        owner_ = pthread_self();
     } 
     // Unlock the mutex.
     void Unlock() {
+        owner_ = 0;
         pthread_mutex_unlock(&mu_);
     }
     // Crash if this thread does not hold this mutex.
     void AssertHeld() {
-        // Not impliment.
+         if(0 == pthread_equal(owner_, pthread_self())) {
+            abort();
+         }
     }
 private:
     friend class CondVar;
     Mutex(const Mutex&);
     void operator=(const Mutex&);
     pthread_mutex_t mu_;
+    pthread_t owner_;
 };
 
 // Mutex lock guard
@@ -67,7 +74,9 @@ public:
         pthread_cond_destroy(&cond_);
     }
     void Wait() {
+        mu_->owner_ = 0;
         pthread_cond_wait(&cond_, &mu_->mu_);
+        mu_->owner_ = pthread_self();
     }
     // Time wait in ms
     void TimeWait(int timeout) {
@@ -77,7 +86,9 @@ public:
         int64_t usec = tv.tv_usec + timeout * 1000LL;
         ts.tv_sec = tv.tv_sec + usec / 1000000;
         ts.tv_nsec = (usec % 1000000) * 1000;
+        mu_->owner_ = 0;
         pthread_cond_timedwait(&cond_, &mu_->mu_, &ts);
+        mu_->owner_ = pthread_self();
     }
     void Signal() {
         pthread_cond_signal(&cond_);
