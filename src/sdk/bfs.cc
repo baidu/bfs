@@ -93,8 +93,6 @@ public:
     int64_t Write(const char* buf, int64_t write_size);
     /// Add buffer to  async write list
     void StartWrite(WriteBuffer *buffer);
-    bool WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
-                    LocatedBlock* block, bool is_last);
     /// Send local buffer to chunkserver
     void BackgroundWrite(ChunkServer_Stub* stub);
     /// Callback for sliding window
@@ -405,35 +403,6 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
     }
     //printf("[%p] Read[%s:%ld] return %d offset=%ld\n", this, _name.c_str(), read_len, ret, _read_offset);
     return ret;
-}
-
-bool BfsFileImpl::WriteChunk(ChunkServer_Stub* stub, WriteBuffer* write_buf,
-                LocatedBlock* block, bool is_last) {
-    WriteBlockRequest request;
-    WriteBlockResponse response;
-    int64_t offset = block->block_size();
-    int64_t seq = common::timer::get_micros();
-    request.set_sequence_id(seq);
-    request.set_block_id(block->block_id());
-    request.set_offset(offset);
-    request.set_is_last(is_last);
-    for (int i = 1; i < block->chains_size(); i++) {
-        request.add_chunkservers(block->chains(i).address());
-    }
-    request.set_databuf(write_buf->Data(), write_buf->Size());
-    //printf("WriteBlock %ld [%ld:%ld:%d]\n", seq, block->block_id(),
-    //       block->block_size(), write_buf->Size());
-    if (!_rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock,
-        &request, &response, 60, 1) || response.status() != 0) {
-        printf("WriteBlock fail %ld [%ld:%ld:%d]: %s, status=%d\n",
-               seq, block->block_id(), block->block_size(), write_buf->Size(),
-               response.has_bad_chunkserver()?response.bad_chunkserver().c_str():"unknown",
-               response.status());
-        assert(0);
-        return false;
-    }
-    block->set_block_size(offset + write_buf->Size());
-    return true;
 }
 
 int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
