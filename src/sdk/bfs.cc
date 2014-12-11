@@ -14,6 +14,7 @@
 #include "common/mutex.h"
 #include "common/timer.h"
 #include "common/sliding_window.h"
+#include "common/logging.h"
 #include "bfs.h"
 
 extern std::string FLAGS_nameserver;
@@ -184,7 +185,7 @@ public:
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::ListDirectory,
             &request, &response, 5, 3);
         if (!ret) {
-            printf("List fail: %s\n", path);
+            LOG(WARNING, "List fail: %s\n", path);
             return false;
         }
         if (response.files_size() != 0) {
@@ -212,7 +213,7 @@ public:
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Stat,
             &request, &response, 5, 3);
         if (!ret) {
-            printf("Stat fail: %s\n", path);
+            LOG(WARNING, "Stat fail: %s\n", path);
             return false;
         }
         return (response.status() == 0);
@@ -274,7 +275,7 @@ public:
                 //printf("GetFileLocation return %d\n", response.blocks_size());
             }
         } else {
-            printf("Open flags only O_RDONLY or O_WRONLY\n");
+            LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY\n");
             ret = false;
         }
         return ret;
@@ -494,8 +495,8 @@ void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
         boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
             = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4, buffer);
 
-        //fprintf(stderr, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
-        //        buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
+        LOG(INFO, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
+                buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
         ++_back_writing;
         _mu.Unlock();
         _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
@@ -524,8 +525,8 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                 response->desc(i).c_str(), (response->timestamp(i) - t_start) / 1000.0 );
         }
         fprintf(stderr, "\n");*/
-        //fprintf(stderr, "BackgroundWrite done [%ld:%ld:%d]\n",
-        //    buffer->block_id(), buffer->offset(), buffer->Size());
+        LOG(INFO, "BackgroundWrite done [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
+            buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
         bool r = _write_window->Add(buffer->Sequence(), 0);
         assert(r);
         delete buffer;

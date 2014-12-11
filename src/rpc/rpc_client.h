@@ -12,6 +12,7 @@
 #include <sofa/pbrpc/pbrpc.h>
 #include "common/mutex.h"
 #include "common/thread_pool.h"
+#include "common/logging.h"
 
 namespace bfs {
     
@@ -57,10 +58,10 @@ public:
             (stub->*func)(&controller, request, response, NULL);
             if (controller.Failed()) {
                 if (retry < retry_times - 1) {
-                    printf("Send failed, retry ...\n");
+                    LOG(WARNING, "Send failed, retry ...\n");
                     usleep(1000000);
                 } else {
-                    printf("SendRequest fail: %s\n", controller.ErrorText().c_str());
+                    LOG(WARNING, "SendRequest fail: %s\n", controller.ErrorText().c_str());
                 }
             } else {
                 return true;
