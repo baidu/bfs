@@ -21,7 +21,7 @@ extern std::string FLAGS_nameserver;
 
 namespace bfs {
 
-ThreadPool g_thread_pool(20);
+ThreadPool g_thread_pool(10);
 
 struct LocatedBlocks {
     int64_t _file_length;
@@ -421,7 +421,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
         bool ret = _rpc_client->SendRequest(_fs->_nameserver, &NameServer_Stub::AddBlock,
             &request, &response, 5, 3);
         if (!ret || !response.has_block()) {
-            printf("AddBlock fail for %s\n", _name.c_str());
+            LOG(WARNING, "AddBlock fail for %s\n", _name.c_str());
             return -1;
         }
         _block_for_write = new LocatedBlock(response.block());

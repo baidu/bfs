@@ -4,17 +4,20 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#include <sys/stat.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <sys/stat.h>
+
+#include <boost/bind.hpp>
 
 #include <leveldb/db.h>
 #include <leveldb/cache.h>
 
 #include "chunkserver_impl.h"
+#include "rpc/rpc_client.h"
 #include "proto/nameserver.pb.h"
 #include "common/mutex.h"
-#include "chunkserver_client.h"
 #include "common/atomic.h"
 #include "common/mutex.h"
 #include "common/util.h"
@@ -485,7 +488,8 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 
     if (request->chunkservers_size()) {
         //common::timer::AutoTimer at(0, "SendToNext", tmpbuf);
-        ChunkServerClient next_chunkserver(_rpc_client, request->chunkservers(0));
+        ChunkServer_Stub* stub = NULL;
+        _rpc_client->GetStub(request->chunkservers(0), &stub);
         WriteBlockRequest next_request(*request);
         next_request.clear_chunkservers();
         for (int i = 1; i < request->chunkservers_size(); i++) {
@@ -494,11 +498,12 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         int64_t seq = next_request.sequence_id();
         LOG(INFO, "Writeblock send [%ld:%ld:%lu] %ld to next %s\n", 
             block_id, offset, databuf.size(), seq, request->chunkservers(0).c_str());
-        bool ret = next_chunkserver.SendRequest(&ChunkServer_Stub::WriteBlock, 
+        bool ret = _rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock, 
             &next_request, response, 5, 3);
         if (!ret && !response->has_bad_chunkserver()) {
             response->set_bad_chunkserver("self address");
         }
+        delete stub;
     }
     if (!response->has_status()) {
         response->set_status(0);
