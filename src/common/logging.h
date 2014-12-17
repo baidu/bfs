@@ -14,7 +14,6 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdarg.h>
-#include "timer.h"
 
 namespace common {
 
