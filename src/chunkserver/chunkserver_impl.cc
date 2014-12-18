@@ -113,7 +113,7 @@ public:
             }
             memcpy(buf, _blockbuf + offset, left);
             return left;
-        }        
+        }
         if (_file_desc == -1) {
             int fd  = open(_disk_file.c_str(), O_RDONLY);
             if (fd < 0) {
@@ -129,6 +129,7 @@ public:
         return (_type == InMem);
     }
     bool Write(int32_t seq, const char* data,int32_t len) {
+        LOG(INFO, "Block Write %d\n", seq);
         char* buf = new char[len];
         memcpy(buf, data, len);
         bool ret = _recv_window->Add(seq, Buffer(buf, len));
@@ -218,7 +219,7 @@ public:
         int64_t checksum;
         char    file_name[16];  // format: /XXX/XXXXXXXXXX not more than 15bytes, index 10^13block
     };
-    BlockManager(std::string store_path) 
+    BlockManager(std::string store_path)
         :_store_path(store_path), _metadb(NULL), _block_num(0) {
     }
     ~BlockManager() {
@@ -252,7 +253,7 @@ public:
             assert(it->value().size() == sizeof(meta));
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
-            
+
             Block* block = new Block(block_id, _store_path + meta.file_name, meta.block_size);
             block->AddRef();
             _block_map[block_id] = block;
@@ -276,15 +277,15 @@ public:
             assert(it->value().size() == sizeof(meta));
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
-            
-            blocks->push_back(meta);            
+
+            blocks->push_back(meta);
         }
         delete it;
         return true;
     }
     Block* FindBlock(int64_t block_id, bool create_if_missing) {
         MutexLock lock(&_mu);
-        
+
         Block* block = NULL;
         BlockMap::iterator it = _block_map.find(block_id);
         if (it != _block_map.end()) {
@@ -304,12 +305,12 @@ public:
         }
         return block;
     }
-    
+
     bool FinishBlock(Block* block) {
         MutexLock lock(&_mu);
         int64_t block_id = block->Id();
         assert( block_id < (10L<<13));
-        
+
         BlockMeta meta;
         meta.block_size = block->Size();
         meta.checksum = 0;
@@ -323,11 +324,11 @@ public:
 
         // disk flush & sync
         block->FlushToDisk(_store_path + meta.file_name);
-
+        LOG(INFO, "FlushToDisk %d -> %s", block_id, meta.file_name);
         /// write meta & sync
         char idstr[64];
         snprintf(idstr, sizeof(idstr), "%13ld", block_id);
-        
+
         leveldb::WriteOptions options;
         options.sync = true;
         leveldb::Status s = _metadb->Put(options, idstr,
@@ -357,7 +358,7 @@ ChunkServerImpl::ChunkServerImpl()
     if (!_rpc_client->GetStub(FLAGS_nameserver, &_nameserver)) {
         assert(0);
     }
-    _thread_pool = new ThreadPool(100);
+    _thread_pool = new ThreadPool(10);
     _thread_pool->Start();
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
@@ -431,7 +432,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     BlockReportRequest request;
     request.set_chunkserver_id(_chunkserver_id);
     request.set_namespace_version(_namespace_version);
-    
+
     ReportBlockInfo* info = request.add_blocks();
     info->set_block_id(block->Id());
     info->set_block_size(block->Size());
@@ -454,19 +455,78 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
-    
+
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         LOG(INFO, "WriteBlock dispatch [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
-        boost::function<void ()> task = 
+        boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
         _thread_pool->AddTask(task);
         return;
     }
-    
+
     LOG(INFO, "WriteBlock [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
+
+    if (request->chunkservers_size()) {
+        //common::timer::AutoTimer at(0, "SendToNext", tmpbuf);
+        ChunkServer_Stub* stub = NULL;
+        _rpc_client->GetStub(request->chunkservers(0), &stub);
+        // New request for next chunkserver
+        WriteBlockRequest* next_request = new WriteBlockRequest(*request);
+        next_request->clear_chunkservers();
+        for (int i = 1; i < request->chunkservers_size(); i++) {
+            next_request->add_chunkservers(request->chunkservers(i));
+        }
+        LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next %s\n",
+            block_id, packet_seq, request->chunkservers(0).c_str());
+        //bool ret = _rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock,
+        //    &next_request, response, 5, 3);
+        boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
+            boost::bind(&ChunkServerImpl::WriteNextCallback,
+                this, _1, _2, _3, _4, request, done, stub);
+        _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
+            next_request, response, callback, 5, 3);
+    } else {
+        const WriteBlockRequest* next_request = NULL;
+        ChunkServer_Stub* stub = NULL;
+        boost::function<void ()> callback =
+            boost::bind(&ChunkServerImpl::WriteNextCallback,
+                this, next_request, response, false, 0, request, done, stub);
+        _thread_pool->AddTask(callback);
+    }
+}
+
+void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
+                        WriteBlockResponse* response,
+                        bool failed, int error,
+                        const WriteBlockRequest* request,
+                        ::google::protobuf::Closure* done,
+                        ChunkServer_Stub* stub) {
+
+    int64_t block_id = request->block_id();
+    const std::string& databuf = request->databuf();
+    int64_t offset = request->offset();
+    int32_t packet_seq = request->packet_seq();
+
+    delete stub;
+    delete next_request;
+    if (failed) {
+        if (!response->has_bad_chunkserver()) {
+            response->set_bad_chunkserver("self address");
+        }
+        LOG(WARNING, "WriteNext fail: [bid:%ld, seq:%d, offset:%ld, len:%lu], error= %d\n",
+           block_id, packet_seq, offset, databuf.size(), response->status());
+        done->Run();
+        return;
+    } else {
+        LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next done", block_id, packet_seq);
+    }
+
+    if (!response->has_status()) {
+        response->set_status(0);
+    }
 
     /// search;
     Block* block = _block_manager->FindBlock(block_id, true);
@@ -485,33 +545,15 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-
-    if (request->chunkservers_size()) {
-        //common::timer::AutoTimer at(0, "SendToNext", tmpbuf);
-        ChunkServer_Stub* stub = NULL;
-        _rpc_client->GetStub(request->chunkservers(0), &stub);
-        WriteBlockRequest next_request(*request);
-        next_request.clear_chunkservers();
-        for (int i = 1; i < request->chunkservers_size(); i++) {
-            next_request.add_chunkservers(request->chunkservers(i));
-        }
-        int64_t seq = next_request.sequence_id();
-        LOG(INFO, "Writeblock send [%ld:%ld:%lu] %ld to next %s\n", 
-            block_id, offset, databuf.size(), seq, request->chunkservers(0).c_str());
-        bool ret = _rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock, 
-            &next_request, response, 5, 3);
-        if (!ret && !response->has_bad_chunkserver()) {
-            response->set_bad_chunkserver("self address");
-        }
-        delete stub;
-    }
-    if (!response->has_status()) {
-        response->set_status(0);
-    }
-    LOG(INFO, "WriteBlock done [%ld:%ld:%lu]\n", block_id, offset, databuf.size());
+    LOG(INFO, "WriteBlock done [bid:%ld, seq:%d, offset:%ld, len:%lu]\n",
+        block_id, packet_seq, offset, databuf.size());
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
     }
+    
+    LOG(INFO, "done Run %d", packet_seq);
+    done->Run();
+    
     if (block->IsComplete() && block->Finish()) {
         LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
         _block_manager->FinishBlock(block);
@@ -519,19 +561,15 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     }
     block->DecRef();
     block = NULL;
-    /*
-    response->add_desc("WriteBlock end");
-    response->add_timestamp(common::timer::get_micros());
-    */
-    done->Run();
 }
+
 void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
                         const ReadBlockRequest* request,
                         ReadBlockResponse* response,
                         ::google::protobuf::Closure* done) {
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
-        boost::function<void ()> task = 
+        boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::ReadBlock, this, controller, request, response, done);
         _thread_pool->AddTask(task);
         return;

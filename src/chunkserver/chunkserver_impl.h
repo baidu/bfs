@@ -15,6 +15,7 @@ namespace bfs {
 class BlockManager;
 class RpcClient;
 class NameServer_Stub;
+class ChunkServer_Stub;
 class Block;
 
 class ChunkServerImpl : public ChunkServer {
@@ -33,6 +34,13 @@ public:
                             const ReadBlockRequest* request,
                             ReadBlockResponse* response,
                             ::google::protobuf::Closure* done);
+private:
+    void WriteNextCallback(const WriteBlockRequest* next_request,
+                           WriteBlockResponse* response,
+                           bool ret, int error,
+                           const WriteBlockRequest* request,
+                           ::google::protobuf::Closure* done,
+                           ChunkServer_Stub* stub);
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;

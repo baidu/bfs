@@ -407,7 +407,7 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
 }
 
 int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
-    common::timer::AutoTimer at(100, "Write", _name.c_str());
+    common::timer::AutoTimer at(1, "Write", _name.c_str());
     if (_open_flags != O_WRONLY) {
         return -2;
     }
@@ -495,7 +495,7 @@ void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
         boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
             = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4, buffer);
 
-        LOG(INFO, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
+        LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
                 buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
         ++_back_writing;
         _mu.Unlock();
@@ -512,7 +512,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBuffer* buffer) {
     MutexLock lock(&_mu);
     if (failed || error != 0) {
-        fprintf(stderr, "BackgroundWrite failed [id:%ld, offset:%ld, len:%d]\n",
+        LOG(WARNING, "BackgroundWrite failed [id:%ld, offset:%ld, len:%d]\n",
             buffer->block_id(), buffer->offset(), buffer->Size());
         _write_queue.push(buffer);
     } else {
@@ -525,7 +525,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                 response->desc(i).c_str(), (response->timestamp(i) - t_start) / 1000.0 );
         }
         fprintf(stderr, "\n");*/
-        LOG(INFO, "BackgroundWrite done [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
+        LOG(DEBUG, "BackgroundWrite done [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
             buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
         bool r = _write_window->Add(buffer->Sequence(), 0);
         assert(r);
