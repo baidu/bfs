@@ -1,0 +1,129 @@
+// Copyright (c) 2014 Baidu.com, Inc. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+// Author: qinzuoyan01@baidu.com (Qin Zuoyan)
+
+import "google/protobuf/descriptor.proto";
+import "sofa/pbrpc/rpc_option.proto";
+
+package sofa.pbrpc.builtin;
+
+option cc_generic_services = true;
+
+message HealthRequest {
+}
+
+message HealthResponse {
+    optional string health = 1;
+}
+
+message ServerOptions {
+    optional int64 work_thread_num = 1;
+    optional int64 keep_alive_time = 2;
+    optional int64 max_pending_buffer_size = 3;
+    optional int64 max_throughput_in = 4;
+    optional int64 max_throughput_out = 5;
+    optional bool disable_builtin_services = 6;
+    optional bool disable_list_service = 7;
+}
+
+message ServerOptionsRequest {
+}
+
+message ServerOptionsResponse {
+    optional ServerOptions options = 1;
+}
+
+// Update server options.  Only the following options can be update:
+//   - keep_alive_time
+//   - max_pending_buffer_size
+//   - max_throughput_in
+//   - max_throughput_out
+// If not set, then use old value.
+message UpdateOptionsRequest {
+    optional ServerOptions options = 1;
+}
+
+// If succeed, returns new values.
+message UpdateOptionsResponse {
+    optional ServerOptions options = 1;
+}
+
+message ServerStatusRequest {
+}
+
+message ServerStatusResponse {
+    optional bool is_listening = 1;
+
+    // count of client connections.
+    optional int64 connection_count = 2;
+
+    // count of registered services.
+    optional int64 service_count = 3;
+
+    // total count of pending messages.
+    optional int64 pending_message_count = 4;
+
+    // total size of pending buffers occupied by pending messages.
+    optional int64 pending_buffer_size = 5;
+
+    // total size of pending data in pending messages, may by less than pending_buffer_size.
+    optional int64 pending_data_size = 6;
+}
+
+message ListServiceRequest {
+}
+
+message ListServiceResponse {
+    // full name of all registered services.
+    repeated string services = 1;
+
+    // descriptor of all dependency proto files.
+    repeated google.protobuf.FileDescriptorProto files = 2;
+}
+
+message MethodStat {
+    optional string method_name = 1;
+    optional int64 succeed_count = 2;
+    optional float succeed_avg_time_us = 3;
+    optional int64 succeed_max_time_us = 4;
+    optional int64 failed_count = 5;
+    optional float failed_avg_time_us = 6;
+    optional int64 failed_max_time_us = 7;
+}
+
+message ServiceStat {
+    optional string service_name = 1;
+    optional int64 period_seconds = 2;
+    optional int64 succeed_count = 3;
+    optional int64 failed_count = 4;
+    repeated MethodStat method_stats = 5;
+}
+
+message StatRequest {
+    optional string service_name = 1 [default = "all"];
+    optional int64 period_seconds = 2 [default = 60]; // expect period in seconds
+}
+
+message StatResponse {
+    repeated ServiceStat service_stats = 1;
+}
+
+service BuiltinService {
+    option (sofa.pbrpc.service_timeout) = 3000;
+
+    rpc Health(HealthRequest) returns (HealthResponse);
+
+    rpc ServerOptions(ServerOptionsRequest) returns (ServerOptionsResponse);
+
+    rpc UpdateOptions(UpdateOptionsRequest) returns (UpdateOptionsResponse);
+
+    rpc ServerStatus(ServerStatusRequest) returns (ServerStatusResponse);
+
+    rpc ListService(ListServiceRequest) returns (ListServiceResponse) {
+        option (sofa.pbrpc.response_compress_type) = CompressTypeGzip;
+    }
+
+    rpc Stat(StatRequest) returns (StatResponse);
+}

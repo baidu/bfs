@@ -30,6 +30,8 @@ chunkserver: $(CHUNKSERVER_SRC) $(CHUNKSERVER_HEADER)
 clean:
 	rm -rf nameserver
 	rm -rf chunkserver
+	rm -rf src/proto/*.pb.h
+	rm -rf src/proto/*.pb.cc
 
 .PHONY: test
 test:
