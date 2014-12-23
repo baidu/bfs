@@ -10,5 +10,5 @@ install:
     - ( cd snappy && sh ./autogen.sh && ./configure && make -j2 && sudo make install )
     - sudo apt-get install zlib1g-dev
     - git clone https://github.com/koalademo/sofa-pbrpc
-    - ( cd sofa-pbrpc && make -j2 && make install);
+    - ( cd sofa-pbrpc && make && make install);
 script: make && make test

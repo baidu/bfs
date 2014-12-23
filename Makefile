@@ -1,18 +1,29 @@
 all: proto nameserver chunkserver
 
-INCLUDE_PATH = -I./src -I./third_party/protobuf/include \
-			   -I./third_party/sofa-pbrpc/include \
-			   -I./third_party/leveldb/include \
-			   -I./third_party/boost/include
-LDFLAGS = -L./third_party/protobuf/lib -lprotobuf \
-		  -L./third_party/sofa-pbrpc/lib -lsofa-pbrpc \
-		  -L./third_party/leveldb -lleveldb \
-		  -L./third_party/snappy/lib -lsnappy \
-		  -lpthread -lz
-PROTOC=./third_party/protobuf/bin/protoc
+SNAPPY_PATH=./snappy/
+PROTOBUF_PATH=./third_party/protobuf/
+PROTOC_PATH=./third_party/protobuf/bin/
+PBRPC_PATH=./sofa-pbrpc/output/
+BOOST_PATH=../boost/
+
+INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
+               -I$(PBRPC_PATH)/include \
+               -I./third_party/leveldb/include \
+               -I$(SNAPPY_PATH)/include \
+               -I$(BOOST_PATH)/include
+
+LDFLAGS = -L$(PROTOBUF_PATH)/lib -lprotobuf \
+          -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
+          -L./third_party/leveldb -lleveldb \
+          -L$(SNAPPY_PATH)/lib -lsnappy \
+          -lpthread -lz
+
+PROTOC=$(PROTOC_PATH)protoc
+
+.PHONY: proto test
 
 proto: ./src/proto/file.proto ./src/proto/nameserver.proto src/proto/chunkserver.proto
-	$(PROTOC) --proto_path=./src/proto/ --cpp_out=./src/proto/ ./src/proto/*.proto
+	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ ./src/proto/*.proto
 
 NAMESERVER_SRC = src/nameserver/nameserver_impl.cc src/nameserver/nameserver_main.cc \
 				 src/proto/nameserver.pb.cc src/proto/file.pb.cc src/flags.cc
@@ -33,6 +44,5 @@ clean:
 	rm -rf src/proto/*.pb.h
 	rm -rf src/proto/*.pb.cc
 
-.PHONY: test
 test:
 	echo "Test done"
