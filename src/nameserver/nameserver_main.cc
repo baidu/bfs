@@ -4,6 +4,8 @@
 //
 // Author: yanshiguang02@baidu.com
 
+#include <stdio.h>
+
 #include <sofa/pbrpc/pbrpc.h>
 
 #include "nameserver/nameserver_impl.h"

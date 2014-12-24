@@ -80,7 +80,7 @@ public:
         sofa::pbrpc::RpcController* controller = new sofa::pbrpc::RpcController();
         controller->SetTimeout(rpc_timeout * 1000L);
         google::protobuf::Closure* done = 
-            google::protobuf::NewCallback(&RpcClient::template RpcCallback<Request, Response, Callback>,
+            sofa::pbrpc::NewClosure(&RpcClient::template RpcCallback<Request, Response, Callback>,
                                           controller, request, response, callback);
         (stub->*func)(controller, request, response, done);
     }

@@ -4,6 +4,7 @@
 //
 // Author: yanshiguang02@baidu.com
 
+#include <stdio.h>
 #include <signal.h>
 
 #include <sofa/pbrpc/pbrpc.h>
