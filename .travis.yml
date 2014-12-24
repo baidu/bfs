@@ -3,6 +3,7 @@ compiler: gcc
 env:
     - PROTOBUF_VERSION=2.6.0
 install:
+    - sudo apt-get install libboost-dev
     - wget https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-$PROTOBUF_VERSION.tar.gz
     - tar xf protobuf-$PROTOBUF_VERSION.tar.gz
     - ( cd protobuf-$PROTOBUF_VERSION && ./configure && make -j2 && sudo make install && sudo ldconfig )
@@ -10,5 +11,5 @@ install:
     - ( cd snappy && sh ./autogen.sh && ./configure && make -j2 && sudo make install )
     - sudo apt-get install zlib1g-dev
     - git clone https://github.com/koalademo/sofa-pbrpc
-    - ( cd sofa-pbrpc && make && make install);
+    - ( cd sofa-pbrpc && make proto && make -j2 && make install);
 script: make && make test
