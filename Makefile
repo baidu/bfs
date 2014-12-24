@@ -2,7 +2,7 @@ all: proto nameserver chunkserver
 
 SNAPPY_PATH=./snappy/
 PROTOBUF_PATH=./third_party/protobuf/
-PROTOC_PATH=./third_party/protobuf/bin/
+PROTOC_PATH=
 PBRPC_PATH=./sofa-pbrpc/output/
 BOOST_PATH=../boost/
 
