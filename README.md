@@ -1,7 +1,7 @@
 ToyDFS
 ======
 
-[![Build Status](https://travis-ci.org/koalademo/ToyDFS.svg?branch=master)](https://travis-ci.org/koalademo/ToyDFS)
+[![Build Status](https://travis-ci.org/bluebore/ToyDFS.svg)](https://travis-ci.org/bluebore/ToyDFS)
 
 突然想写个分布式文件系统~
 
