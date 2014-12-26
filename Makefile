@@ -1,4 +1,4 @@
-all: proto nameserver chunkserver
+all: nameserver chunkserver
 
 SNAPPY_PATH=./snappy/
 PROTOBUF_PATH=./third_party/protobuf/
