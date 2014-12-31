@@ -12,4 +12,4 @@ install:
     - sudo apt-get install zlib1g-dev
     - git clone https://github.com/koalademo/sofa-pbrpc
     - ( cd sofa-pbrpc && make proto && make -j2 && make install);
-script: make && make test
+script: make proto && make -j4 && make test

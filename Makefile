@@ -1,9 +1,9 @@
 all: nameserver chunkserver
 
-SNAPPY_PATH=./snappy/
+SNAPPY_PATH=./third_party/snappy/
 PROTOBUF_PATH=./third_party/protobuf/
 PROTOC_PATH=
-PBRPC_PATH=./sofa-pbrpc/output/
+PBRPC_PATH=./third_party/sofa-pbrpc/output/
 BOOST_PATH=../boost/
 
 INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
