@@ -1,0 +1,50 @@
+#edit-mode: -*- python -*-
+#coding:gbk
+
+#工作路径.
+WORKROOT('../../../')
+
+#使用硬链接copy.
+CopyUsingHardLink(True)
+
+#C预处理器参数.
+CPPFLAGS('-D_GNU_SOURCE -D__STDC_LIMIT_MACROS -DVERSION=\\\"1.0.0.0\\\"')
+
+#C++编译参数.
+CXXFLAGS('-g -pipe -W -Wall -Wno-unused-parameter -fPIC')
+
+#头文件路径.
+INCPATHS('./src ./third_party/leveldb/include') # ./third_party/pbrpc/include')
+
+#使用库
+LIBS('./third_party/leveldb/libleveldb.a') # ./third_party/pbrpc/libsofa_pbrpc.a')
+
+#链接参数.
+LDFLAGS('-lpthread -lz')
+
+#依赖模块
+CONFIGS('public/sofa-pbrpc@1.0.0.21331@COMAKE')
+#CONFIGS('third-64/protobuf@2.4.1.500')
+#CONFIGS('third-64/snappy@1.0.5.100')
+
+nameserver_sources='src/nameserver/nameserver_main.cc src/nameserver/nameserver_impl.cc src/flags.cc'
+chunkserver_sources='src/chunkserver/chunkserver_main.cc src/chunkserver/chunkserver_impl.cc src/flags.cc'
+sdk_sources='src/sdk/bfs.cc src/flags.cc'
+sdk_headers='src/sdk/bfs.h'
+client_sources='src/client/bfs_client.cc'
+proto_sources='src/proto/nameserver.proto src/proto/file.proto src/proto/chunkserver.proto'
+
+#可执行文件
+Application('nameserver',Sources(nameserver_sources, proto_sources))
+Application('chunkserver',Sources(chunkserver_sources, proto_sources))
+Application('bfs_client',Sources(client_sources, sdk_sources, proto_sources))
+#静态库
+StaticLibrary('bfs',Sources(sdk_sources, proto_sources),HeaderFiles(sdk_headers))
+#Client
+#Application('bfs_client',Sources(client_sources, proto_sources))
+#共享库
+#SharedLibrary('bfs',Sources(user_sources),HeaderFiles(user_headers))
+#子目录
+#Directory('demo')
+
+
