@@ -7,3 +7,5 @@ TODO
 * 滑动窗口(done)
 * Docker image
 * 定时器
+* 负载均衡
+* 机架&数据中心感知
