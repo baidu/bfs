@@ -11,6 +11,7 @@
 #include <vector>
 #include <boost/function.hpp>
 #include "mutex.h"
+#include "timer.h"
 
 namespace common {
 
@@ -77,6 +78,10 @@ public:
         ++pending_num_;
         cond_.Signal();
     }
+    int64_t DelayTask(const Task& task, int64_t delay) {
+        MutexLock lock(&mu_);
+        
+    }
 private:
     ThreadPool(const ThreadPool&);
     void operator=(const ThreadPool&);
@@ -104,6 +109,8 @@ private:
         }
     }
 private:
+    typedef std::priority_queue<BGItem> BGQueue;
+    typedef std::map<int64_t, BGITtem> BGMap;
     int32_t threads_num_;
     std::deque<Task> queue_;
     volatile uint64_t pending_num_;
@@ -111,6 +118,9 @@ private:
     CondVar cond_;
     bool stop_;
     std::vector<pthread_t> tids_;
+
+    BGQueue time_queue_;
+    BGMap latest_;
 };
 
 } // namespace common
