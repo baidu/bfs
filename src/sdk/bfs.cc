@@ -102,6 +102,8 @@ public:
                             WriteBlockResponse* response,
                             bool failed, int error,
                             WriteBuffer* buffer);
+    /// When rpc buffer full deley send write reqeust
+    void DelayWriteChunk(WriteBuffer* buffer);
     bool Flush();
     bool Sync();
     bool Close();
@@ -334,7 +336,7 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
     _write_buf(NULL), _last_seq(-1), _back_writing(0),
     _chunkserver(NULL), _read_offset(0), _closed(false),
     _sync_signal(&_mu) {
-    _write_window = new common::SlidingWindow<int>(30,
+    _write_window = new common::SlidingWindow<int>(100,
                         boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
 }
 
@@ -485,8 +487,8 @@ void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
         request->set_offset(offset);
         request->set_is_last(buffer->IsLast());
         request->set_packet_seq(buffer->Sequence());
-        request->add_desc("start");
-        request->add_timestamp(common::timer::get_micros());
+        //request->add_desc("start");
+        //request->add_timestamp(common::timer::get_micros());
         
         for (int i = 1; i < _block_for_write->chains_size(); i++) {
             request->add_chunkservers(_block_for_write->chains(i).address());
@@ -503,7 +505,15 @@ void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
             request, response, callback, 60, 1);
         _mu.Lock();
     }
-    --_back_writing;    // for AddTask
+    --_back_writing;    // for AddTask or DelayTask
+}
+
+void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer) {
+    {
+        MutexLock lock(&_mu);
+        _write_queue.push(buffer);
+    }
+    BackgroundWrite(_chains_head);
 }
 
 void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
@@ -512,19 +522,15 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBuffer* buffer) {
     MutexLock lock(&_mu);
     if (failed || error != 0) {
-        LOG(WARNING, "BackgroundWrite failed [id:%ld, offset:%ld, len:%d]\n",
-            buffer->block_id(), buffer->offset(), buffer->Size());
-        _write_queue.push(buffer);
-    } else {
-        /*
-        int64_t t_start = request->timestamp(0);
-        fprintf(stderr, "WriteChunk %d use %.3f ms: ", request->packet_seq(),
-            (common::timer::get_micros() - t_start) / 1000.0);
-        for (int i = 0; i < response->desc_size(); i++) {
-            fprintf(stderr, "[%s: %.3f] ",
-                response->desc(i).c_str(), (response->timestamp(i) - t_start) / 1000.0 );
+        if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL == error) {
+            ++_back_writing;
+            g_thread_pool.DelayTask(boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer), 1);
+        } else {
+            LOG(WARNING, "BackgroundWrite failed [id:%ld, offset:%ld, len:%d]\n",
+                buffer->block_id(), buffer->offset(), buffer->Size());
+            _write_queue.push(buffer);
         }
-        fprintf(stderr, "\n");*/
+    } else {
         LOG(DEBUG, "BackgroundWrite done [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
             buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
         bool r = _write_window->Add(buffer->Sequence(), 0);

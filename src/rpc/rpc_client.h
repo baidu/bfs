@@ -93,7 +93,9 @@ public:
         bool failed = rpc_controller->Failed();
         int error = rpc_controller->ErrorCode();
         if (failed || error) {
-            LOG(WARNING, "RpcCallback: %s\n", rpc_controller->ErrorText().c_str());
+            if (error != sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL) {
+                LOG(WARNING, "RpcCallback: %s\n", rpc_controller->ErrorText().c_str());
+            }
         }
         delete rpc_controller;
         callback(request, response, failed, error);
