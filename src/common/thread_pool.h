@@ -8,6 +8,7 @@
 #define  COMMON_THREAD_POOL_H_
 
 #include <deque>
+#include <map>
 #include <queue>
 #include <vector>
 #include <boost/function.hpp>
@@ -84,11 +85,20 @@ public:
         MutexLock lock(&mutex_);
         int64_t now_time = timer::get_micros() / 1000;
         int64_t exe_time = now_time + delay;
-        BGItem bg_item = {++last_item_id_, exe_time, task};
+        BGItem bg_item = {++last_item_id_, exe_time, task, false};
         time_queue_.push(bg_item);
         latest_[bg_item.id] = bg_item;
         work_cv_.Signal();
         return bg_item.id;
+    }
+    bool CancelTask(int64_t task_id) {
+        MutexLock lock(&mutex_);
+        BGMap::iterator it = latest_.find(task_id);
+        if (it == latest_.end()) {
+            return false;
+        }
+        latest_.erase(it);
+        return true;
     }
 private:
     ThreadPool(const ThreadPool&);
@@ -101,61 +111,47 @@ private:
     void ThreadProc() {
         while (true) {
             Task task;
-            {
-                MutexLock lock(&mutex_);
-                while (time_queue_.empty() && queue_.empty() && !stop_) {
-                    work_cv_.Wait();
-                }
-                if (stop_) {
-                    break;
-                }
-                // Timer task
-                if (!time_queue_.empty()) {
-                    int64_t now_time = timer::get_micros() / 1000;
-                    BGItem bg_item = time_queue_.top();
+            MutexLock lock(&mutex_);
+            while (time_queue_.empty() && queue_.empty() && !stop_) {
+                work_cv_.Wait();
+            }
+            if (stop_) {
+                break;
+            }
+            // Timer task
+            if (!time_queue_.empty()) {
+                int64_t now_time = timer::get_micros() / 1000;
+                BGItem bg_item = time_queue_.top();
+                if (now_time > bg_item.exe_time) {
                     time_queue_.pop();
-                    if (now_time > bg_item.exe_time) {
-                        BGMap::iterator it = latest_.find(bg_item.id);
-                        if (it->second.exe_time == bg_item.exe_time) {
-                            task = bg_item.callback;
-                            latest_.erase(it);
-                            mutex_.Unlock();
-                            task();
-                            mutex_.Lock();
-                            continue;
-                        }
+                    BGMap::iterator it = latest_.find(bg_item.id);
+                    if (it!= latest_.end() && it->second.exe_time == bg_item.exe_time) {
+                        task = bg_item.callback;
+                        latest_.erase(it);
+                        mutex_.Unlock();
+                        task();
+                        mutex_.Lock();
                     }
+                    continue;
                 }
-                // Normal task;
+            }
+            // Normal task;
+            if (!queue_.empty()) {
                 task = queue_.front();
                 queue_.pop_front();
                 --pending_num_;
-            }
-            task();
-        }
-    }
-    /*
-    static void* TimerWrapper(void* arg) {
-        reinterpret_cast<ThreadPool*>(arg)->TimerProc();
-        return NULL;
-    }
-    void TimerProc() {
-        while (true) {
-            BGItem bg_item;
-            MutexLock lock(&mutex_);
-            // wait until the next job is due
-            while (!stop_) {
-                if (time_queu_.empty()) {
-                    timer_cv_.Wait();
-                }
+                mutex_.Unlock();
+                task();
+                mutex_.Lock();
             }
         }
-    }*/
+    }
 private:
     struct BGItem {
         int64_t id;
         int64_t exe_time;
         Task callback;
+        bool canceled;
         bool operator<(const BGItem& item) const {
             if (exe_time != item.exe_time) {
                 return exe_time > item.exe_time;
