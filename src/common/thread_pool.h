@@ -70,7 +70,7 @@ public:
 
     // Add a task to the thread pool.
     void AddTask(const Task& task) {
-        MutexLock lock(&mutex_);
+        MutexLock lock(&mutex_, "AddTask");
         queue_.push_back(task);
         ++pending_num_;
         work_cv_.Signal();
@@ -111,9 +111,9 @@ private:
     void ThreadProc() {
         while (true) {
             Task task;
-            MutexLock lock(&mutex_);
+            MutexLock lock(&mutex_, "ThreadProc");
             while (time_queue_.empty() && queue_.empty() && !stop_) {
-                work_cv_.Wait();
+                work_cv_.Wait("ThreadProcWait");
             }
             if (stop_) {
                 break;
@@ -122,7 +122,7 @@ private:
             if (!time_queue_.empty()) {
                 int64_t now_time = timer::get_micros() / 1000;
                 BGItem bg_item = time_queue_.top();
-                if (now_time > bg_item.exe_time) {
+                if (now_time >= bg_item.exe_time) {
                     time_queue_.pop();
                     BGMap::iterator it = latest_.find(bg_item.id);
                     if (it!= latest_.end() && it->second.exe_time == bg_item.exe_time) {
@@ -130,8 +130,11 @@ private:
                         latest_.erase(it);
                         mutex_.Unlock();
                         task();
-                        mutex_.Lock();
+                        mutex_.Lock("ThreadProcRelock");
                     }
+                    continue;
+                } else if (queue_.empty() && !stop_) {
+                    work_cv_.TimeWait(bg_item.exe_time - now_time, "ThreadProcTimeWait");
                     continue;
                 }
             }
@@ -142,7 +145,7 @@ private:
                 --pending_num_;
                 mutex_.Unlock();
                 task();
-                mutex_.Lock();
+                mutex_.Lock("ThreadProcRelock2");
             }
         }
     }
