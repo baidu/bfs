@@ -100,6 +100,9 @@ public:
         latest_.erase(it);
         return true;
     }
+    int64_t PendingNum() const {
+        return pending_num_;
+    }
 private:
     ThreadPool(const ThreadPool&);
     void operator=(const ThreadPool&);
@@ -168,7 +171,7 @@ private:
 
     int32_t threads_num_;
     std::deque<Task> queue_;
-    volatile uint64_t pending_num_;
+    volatile int pending_num_;
     Mutex mutex_;
     CondVar work_cv_;
     bool stop_;
