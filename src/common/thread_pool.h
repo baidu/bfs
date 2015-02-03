@@ -20,11 +20,13 @@ namespace common {
 // An unscalable thread pool implimention.
 class ThreadPool {
 public:
-    ThreadPool(int thread_num)
+    ThreadPool(int thread_num = 10)
       : threads_num_(thread_num),
         pending_num_(0),
         work_cv_(&mutex_), stop_(false),
-        last_item_id_(-1) {
+        last_task_id_(0),
+        running_task_id_(0) {
+        Start();
     }
     ~ThreadPool() {
         Stop(false);
@@ -38,7 +40,10 @@ public:
         stop_ = false;
         for (int i = 0; i < threads_num_; i++) {
             pthread_t tid;
-            pthread_create(&tid, NULL, ThreadWrapper, this);
+            int ret = pthread_create(&tid, NULL, ThreadWrapper, this);
+            if (ret) {
+                abort();
+            }
             tids_.push_back(tid);
         }
         return true;
@@ -81,24 +86,36 @@ public:
         ++pending_num_;
         work_cv_.Signal();
     }
-    int64_t DelayTask(const Task& task, int64_t delay) {
+    int64_t DelayTask(int64_t delay, const Task& task) {
         MutexLock lock(&mutex_);
         int64_t now_time = timer::get_micros() / 1000;
         int64_t exe_time = now_time + delay;
-        BGItem bg_item = {++last_item_id_, exe_time, task, false};
+        BGItem bg_item = {++last_task_id_, exe_time, task, false};
         time_queue_.push(bg_item);
         latest_[bg_item.id] = bg_item;
         work_cv_.Signal();
         return bg_item.id;
     }
+    /// Cancel a delayed task ,if running, wait
     bool CancelTask(int64_t task_id) {
-        MutexLock lock(&mutex_);
-        BGMap::iterator it = latest_.find(task_id);
-        if (it == latest_.end()) {
+        if (task_id == 0) {
             return false;
         }
-        latest_.erase(it);
-        return true;
+        while (1) {
+            {
+                MutexLock lock(&mutex_);
+                if (running_task_id_ != task_id) {
+                    BGMap::iterator it = latest_.find(task_id);
+                    if (it == latest_.end()) {
+                        return false;
+                    }
+                    latest_.erase(it);
+                    return true;
+                }
+            }
+            timespec ts = {0, 100000};
+            nanosleep(&ts, &ts);
+        }
     }
     int64_t PendingNum() const {
         return pending_num_;
@@ -131,9 +148,11 @@ private:
                     if (it!= latest_.end() && it->second.exe_time == bg_item.exe_time) {
                         task = bg_item.callback;
                         latest_.erase(it);
+                        running_task_id_ = bg_item.id;
                         mutex_.Unlock();
                         task();
                         mutex_.Lock("ThreadProcRelock");
+                        running_task_id_ = 0;
                     }
                     continue;
                 } else if (queue_.empty() && !stop_) {
@@ -179,7 +198,8 @@ private:
 
     BGQueue time_queue_;
     BGMap latest_;
-    int64_t last_item_id_;
+    int64_t last_task_id_;
+    int64_t running_task_id_;
 };
 
 } // namespace common

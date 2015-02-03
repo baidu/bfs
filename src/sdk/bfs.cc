@@ -539,7 +539,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         }
         common::atomic_inc(&_back_writing);
         g_thread_pool.DelayTask(
-            boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer, request), 5);
+            5, boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer, request));
     } else {
         LOG(DEBUG, "BackgroundWrite done [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
             buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
