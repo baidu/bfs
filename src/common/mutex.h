@@ -16,6 +16,7 @@
 namespace common {
 
 // #define MUTEX_DEBUG
+
 // A Mutex represents an exclusive lock.
 class Mutex {
 public:
@@ -28,7 +29,7 @@ public:
     }
     // Lock the mutex.
     // Will deadlock if the mutex is already locked by this thread.
-    void Lock(const char* msg = NULL, int64_t msg_threshold = 300) {
+    void Lock(const char* msg = NULL, int64_t msg_threshold = 100) {
         #ifdef MUTEX_DEBUG
         int64_t s = 0;
         if (msg) {
@@ -37,7 +38,7 @@ public:
         #endif
         pthread_mutex_lock(&mu_);
         AfterLock(msg, msg_threshold);
-        #ifdef MUTEX_DEBUG
+        #ifdef MUTEX_DEBUG_
         if (msg && lock_time_ - s > msg_threshold) {
             printf("%s wait lock %.3f ms\n", msg, (lock_time_ -s) / 1000.0);
         }
@@ -115,8 +116,8 @@ public:
         pthread_cond_wait(&cond_, &mu_->mu_);
         mu_->AfterLock(msg, msg_threshold);
     }
-    // Time wait in ms
-    void TimeWait(int timeout, const char* msg = NULL) {
+    // Time wait in m
+    bool TimeWait(int timeout, const char* msg = NULL) {
         timespec ts;
         struct timeval tv;
         gettimeofday(&tv, NULL);
@@ -125,8 +126,9 @@ public:
         ts.tv_nsec = (usec % 1000000) * 1000;
         int64_t msg_threshold = mu_->msg_threshold_;
         mu_->BeforeUnlock();
-        pthread_cond_timedwait(&cond_, &mu_->mu_, &ts);
+        int ret = pthread_cond_timedwait(&cond_, &mu_->mu_, &ts);
         mu_->AfterLock(msg, msg_threshold);
+        return (ret == 0);
     }
     void Signal() {
         pthread_cond_signal(&cond_);
