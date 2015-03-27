@@ -21,12 +21,10 @@ void Print(int t) {
 
 int main() {
     ThreadPool tp(10);
-    bool r = tp.Start();
-    assert(r);
 
     std::vector<std::pair<int64_t, int> > scheduled_tasks;
     for (int i=0; i < 15; i++) {
-        int tid = tp.DelayTask(boost::bind(Print, i), (15 - i) * 100);
+        int tid = tp.DelayTask((15 - i) * 100, boost::bind(Print, i));
         scheduled_tasks.push_back(std::make_pair(tid, i));
         int cancel_tid = rand()%scheduled_tasks.size();
         bool ret = tp.CancelTask(scheduled_tasks[cancel_tid].first);
