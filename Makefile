@@ -1,4 +1,9 @@
-all: nameserver chunkserver
+
+# OPT ?= -O2 -DNDEBUG       # (A) Production use (optimized mode)
+OPT ?= -g2 -Wall            # (B) Debug mode, w/ full line-level debugging symbols
+# OPT ?= -O2 -g2 -DNDEBUG   # (C) Profiling mode: opt, but w/debugging symbols
+
+CXXFLAGS += $(OPT)
 
 SNAPPY_PATH=./third_party/snappy/
 PROTOBUF_PATH=./third_party/protobuf/
@@ -19,6 +24,8 @@ LDFLAGS = -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -lpthread -lz
 
 PROTOC=$(PROTOC_PATH)protoc
+
+all: nameserver chunkserver
 
 .PHONY: proto test
 
@@ -46,3 +53,4 @@ clean:
 
 test:
 	echo "Test done"
+
