@@ -4,22 +4,22 @@ OPT ?= -g2 -Wall          # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 
 # Thirdparty
-SNAPPY_PATH=./third_party/snappy/
-PROTOBUF_PATH=./third_party/protobuf/
+SNAPPY_PATH=./thirdparty/snappy/
+PROTOBUF_PATH=./thirdparty/protobuf/
 PROTOC_PATH=
 PROTOC=$(PROTOC_PATH)protoc
-PBRPC_PATH=./third_party/sofa-pbrpc/output/
+PBRPC_PATH=./thirdparty/sofa-pbrpc/output/
 BOOST_PATH=../boost/
 
 INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
-               -I./third_party/leveldb/include \
+               -I./thirdparty/leveldb/include \
                -I$(SNAPPY_PATH)/include \
                -I$(BOOST_PATH)/include
 
 LDFLAGS = -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
-          -L./third_party/leveldb -lleveldb \
+          -L./thirdparty/leveldb -lleveldb \
           -L$(SNAPPY_PATH)/lib -lsnappy \
           -lpthread -lz
 
@@ -44,6 +44,8 @@ SDK_HEADER = $(wildcard src/sdk/*.h)
 
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
+LEVELDB = ./thirdparty/leveldb/libleveldb.a
+
 FLAGS_OBJ = $(patsubst %.cc, %.o, $(wildcard src/*.cc))
 COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
 OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
@@ -60,10 +62,10 @@ $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
 $(SDK_OBJ): $(SDK_HEADER)
 
 # Targets
-nameserver: $(NAMESERVER_OBJ) $(OBJS)
+nameserver: $(NAMESERVER_OBJ) $(OBJS) $(LEVELDB)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
-chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
+chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) $(LEVELDB)
 	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
@@ -71,6 +73,9 @@ libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 
 bfs_client: $(CLIENT_OBJ) $(LIBS)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
+
+$(LEVELDB):
+	cd thirdparty/leveldb; make -j4
 
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@

@@ -1,2 +1,0 @@
-#改了哪些
-为了master的速度，我好像把leveldb的level0的触发compact的文件数改成1了。
