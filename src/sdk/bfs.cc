@@ -116,15 +116,15 @@ public:
     };
     friend class FSImpl;
 private:
-    FSImpl* _fs;                        ///< ÎÄ¼þÏµÍ³
+    FSImpl* _fs;                        ///< æ–‡ä»¶ç³»ç»Ÿ
     RpcClient* _rpc_client;             ///< RpcClient
-    std::string _name;                  ///< ÎÄ¼þÂ·¾¶
-    int32_t _open_flags;                ///< ´ò¿ªÊ¹ÓÃµÄflag
+    std::string _name;                  ///< æ–‡ä»¶è·¯å¾„
+    int32_t _open_flags;                ///< æ‰“å¼€ä½¿ç”¨çš„flag
 
     /// for write
-    ChunkServer_Stub* _chains_head;     ///< ¶ÔÓ¦µÄµÚÒ»¸öchunkserver
-    LocatedBlock* _block_for_write;     ///< ÕýÔÚÐ´µÄblock
-    WriteBuffer* _write_buf;            ///< ±¾µØÐ´»º³å
+    ChunkServer_Stub* _chains_head;     ///< å¯¹åº”çš„ç¬¬ä¸€ä¸ªchunkserver
+    LocatedBlock* _block_for_write;     ///< æ­£åœ¨å†™çš„block
+    WriteBuffer* _write_buf;            ///< æœ¬åœ°å†™ç¼“å†²
     int32_t _last_seq;                  ///< last sequence number
     common::SlidingWindow<int>* _write_window; ///< Send sliding window
     std::priority_queue<WriteBuffer*, std::vector<WriteBuffer*>, WriteBufferCmp>
@@ -134,9 +134,9 @@ private:
     /// for read
     LocatedBlocks _located_blocks;      ///< block meta for read
     ChunkServer_Stub* _chunkserver;     ///< located chunkserver
-    int64_t _read_offset;               ///< ¶ÁÈ¡µÄÆ«ÒÆ
+    int64_t _read_offset;               ///< è¯»å–çš„åç§»
 
-    bool _closed;                       ///< ÊÇ·ñ¹Ø±Õ
+    bool _closed;                       ///< æ˜¯å¦å…³é—­
     Mutex   _mu;
     CondVar _sync_signal;               ///< _sync_var
 };

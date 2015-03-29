@@ -24,7 +24,7 @@ namespace bfs {
 const uint32_t MAX_PATH_LENGHT = 10240;
 const uint32_t MAX_PATH_DEPTH = 99;
 
-/// ¹¹Ôì±ê×¼»¯Â·¾¶
+/// æž„é€ æ ‡å‡†åŒ–è·¯å¾„
 /// /home/work/file -> 00,01/home,02/home/work,03/home/work/file
 bool SplitPath(const std::string& path, std::vector<std::string>* element) {
     if (path.empty() || path[0] != '/' || path.size() > MAX_PATH_LENGHT) {
@@ -155,7 +155,7 @@ public:
         if (_next_block_id <= id) {
             _next_block_id = id + 1;
         }
-        /// Ôö¼ÓÒ»¸ö¸±±¾, ÎÞÂÛÖ®Ç°ÒÑ¾­ÓÐ¼¸¸öÁË, ¶àÓàµÄÍ¨¹ýgc´¦Àí
+        /// å¢žåŠ ä¸€ä¸ªå‰¯æœ¬, æ— è®ºä¹‹å‰å·²ç»æœ‰å‡ ä¸ªäº†, å¤šä½™çš„é€šè¿‡gcå¤„ç†
         nsblock->replica.insert(server_id);
         return true;
     }
@@ -382,7 +382,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             BlockManager::NSBlock nsblock(block_id);
             if (!_block_manager->GetBlock(block_id, &nsblock)) {
-                // ÐÂ¼ÓµÄBlock, ÐÅÏ¢»¹Ã»»ã±¨ÉÏÀ´, ºöÂÔËü
+                // æ–°åŠ çš„Block, ä¿¡æ¯è¿˜æ²¡æ±‡æŠ¥ä¸Šæ¥, å¿½ç•¥å®ƒ
                 continue;
             } else {
                 LocatedBlock* lcblock = response->add_blocks();
@@ -398,7 +398,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                 }
             }
         }
-        // ÕÒµ½ÎÄ¼þÁË, ¾Í·µ»Ø³É¹¦
+        // æ‰¾åˆ°æ–‡ä»¶äº†, å°±è¿”å›žæˆåŠŸ
         response->set_status(0);
     }
     done->Run();

@@ -68,7 +68,7 @@ private:
     ChunkServerManager* _chunkserver_manager;
     BlockManager* _block_manager;
     Mutex        _mu;
-    leveldb::DB* _db;    ///< ´æ´¢nameserverÊı¾İ
+    leveldb::DB* _db;    ///< å­˜å‚¨nameserveræ•°æ®
     int64_t _namespace_version;
 };
 
