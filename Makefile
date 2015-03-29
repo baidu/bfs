@@ -1,13 +1,13 @@
 
-# OPT ?= -O2 -DNDEBUG       # (A) Production use (optimized mode)
-OPT ?= -g2 -Wall            # (B) Debug mode, w/ full line-level debugging symbols
-# OPT ?= -O2 -g2 -DNDEBUG   # (C) Profiling mode: opt, but w/debugging symbols
+# OPT ?= -O2 -DNDEBUG     # (A) Production use (optimized mode)
+OPT ?= -g2 -Wall          # (B) Debug mode, w/ full line-level debugging symbols
+# OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 
-CXXFLAGS += $(OPT)
-
+# Thirdparty
 SNAPPY_PATH=./third_party/snappy/
 PROTOBUF_PATH=./third_party/protobuf/
 PROTOC_PATH=
+PROTOC=$(PROTOC_PATH)protoc
 PBRPC_PATH=./third_party/sofa-pbrpc/output/
 BOOST_PATH=../boost/
 
@@ -23,34 +23,67 @@ LDFLAGS = -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -L$(SNAPPY_PATH)/lib -lsnappy \
           -lpthread -lz
 
-PROTOC=$(PROTOC_PATH)protoc
+CXXFLAGS += $(OPT)
 
-all: nameserver chunkserver
+PROTO_FILE = $(wildcard src/proto/*.proto)
+PROTO_SRC = $(patsubst %.proto,%.pb.cc,$(PROTO_FILE))
+PROTO_HEADER = $(patsubst %.proto,%.pb.h,$(PROTO_FILE))
+PROTO_OBJ = $(patsubst %.proto,%.pb.o,$(PROTO_FILE))
 
-.PHONY: proto test
+NAMESERVER_SRC = $(wildcard src/nameserver/*.cc)
+NAMESERVER_OBJ = $(patsubst %.cc, %.o, $(NAMESERVER_SRC))
+NAMESERVER_HEADER = $(wildcard src/nameserver/*.h)
 
-proto: ./src/proto/file.proto ./src/proto/nameserver.proto src/proto/chunkserver.proto
-	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ ./src/proto/*.proto
+CHUNKSERVER_SRC = $(wildcard src/chunkserver/*.cc)
+CHUNKSERVER_OBJ = $(patsubst %.cc, %.o, $(CHUNKSERVER_SRC))
+CHUNKSERVER_HEADER = $(wildcard src/chunkserver/*.h)
 
-NAMESERVER_SRC = src/nameserver/nameserver_impl.cc src/nameserver/nameserver_main.cc \
-				 src/proto/nameserver.pb.cc src/proto/file.pb.cc src/flags.cc
-NAMESERVER_HEADER = src/nameserver/nameserver_impl.h src/proto/nameserver.pb.h src/proto/file.pb.h
+SDK_SRC = $(wildcard src/sdk/*.cc)
+SDK_OBJ = $(patsubst %.cc, %.o, $(SDK_SRC))
+SDK_HEADER = $(wildcard src/sdk/*.h)
 
-nameserver: $(NAMESEVER_SRC) $(NAMESERVER_HEADER)
-	$(CXX) $(NAMESERVER_SRC) $(INCLUDE_PATH) $(LDFLAGS) -o $@
+CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
-CHUNKSERVER_SRC = src/chunkserver/chunkserver_impl.cc src/chunkserver/chunkserver_main.cc \
-				  src/proto/chunkserver.pb.cc src/proto/nameserver.pb.cc src/proto/file.pb.cc src/flags.cc
-CHUNKSERVER_HEADER = src/chunkserver/chunkserver_impl.h src/proto/chunkserver.pb.h src/proto/file.pb.h
+FLAGS_OBJ = $(patsubst %.cc, %.o, $(wildcard src/*.cc))
+COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
+OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
 
-chunkserver: $(CHUNKSERVER_SRC) $(CHUNKSERVER_HEADER)
-	$(CXX) $(CHUNKSERVER_SRC) $(INCLUDE_PATH) $(LDFLAGS) -o $@
+LIBS = libbfs.a
+BIN = nameserver chunkserver bfs_client
+
+all: $(BIN)
+
+# Depends
+$(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)
+$(NAMESERVER_OBJ): $(NAMESERVER_HEADER)
+$(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
+$(SDK_OBJ): $(SDK_HEADER)
+
+# Targets
+nameserver: $(NAMESERVER_OBJ) $(OBJS)
+	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
+
+chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
+	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
+
+libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
+	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)
+
+bfs_client: $(CLIENT_OBJ) $(LIBS)
+	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
+
+%.o: %.cc
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+
+%.pb.h %.pb.cc: %.proto
+	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
+
 clean:
-	rm -rf nameserver
-	rm -rf chunkserver
-	rm -rf src/proto/*.pb.h
-	rm -rf src/proto/*.pb.cc
+	rm -rf $(BIN)
+	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS)
+	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 
+.PHONY: test
 test:
 	echo "Test done"
 

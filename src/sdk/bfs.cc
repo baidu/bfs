@@ -296,7 +296,7 @@ public:
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Unlink,
             &request, &response, 5, 1);
         if (!ret) {
-            fprintf(stderr, "Unlink rpc fail: %s to %s\n", path);
+            fprintf(stderr, "Unlink rpc fail: %s\n", path);
             return false;
         }
         if (response.status() != 0) {

@@ -72,7 +72,7 @@ private:
     int64_t _namespace_version;
 };
 
-}
+} // namespace bfs
 
 #endif  //BFS_NAMESERVER_IMPL_H_
 

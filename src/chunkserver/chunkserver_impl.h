@@ -54,6 +54,7 @@ private:
 };
 
 } // namespace bfs
+
 #endif  //__TRUNKSERVER_IMPL_H_
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

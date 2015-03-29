@@ -4,8 +4,10 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#include <stdio.h>
 #include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+
 #include <string>
 
 #include "common/timer.h"

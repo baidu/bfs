@@ -20,4 +20,3 @@ message ChunkServerInfo {
     optional int64 disk_size = 5;
 }
 
-
