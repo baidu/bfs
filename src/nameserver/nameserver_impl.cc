@@ -113,6 +113,20 @@ public:
             return it->second->address();
         }
     }
+    bool SetChunkServerLoad(int32_t id, int64_t size) {
+        MutexLock lock(&_mu);
+        ServerMap::iterator it = _chunkservers.find(id);
+        if(it == _chunkservers.end()) {
+            LOG(WARNING, "ChunkServer does not exist!, chunkserver id: %ld\n", id); 
+            assert(0);
+            return false;
+        } else {
+            it->second->set_data_size(size);
+            LOG(INFO, "Get Report of ChunkServerLoad, server id: %ld, load: %ld\n", id, size);
+            return true;
+        }
+    }
+
 private: 
     Mutex _mu;      /// _chunkservers list mutext;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
@@ -220,10 +234,13 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         response->set_status(8882);
     } else {
         const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
+        int64_t size = 0;
         for (int i = 0; i < blocks.size(); i++) {
             const ReportBlockInfo& block =  blocks.Get(i);
             _block_manager->AddBlock(block.block_id(), id, block.block_size());
+            size += block.block_size();
         }
+        _chunkserver_manager->SetChunkServerLoad(id, size);
     }
     done->Run();
 }
