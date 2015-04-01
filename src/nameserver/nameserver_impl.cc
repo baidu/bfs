@@ -92,15 +92,12 @@ public:
 
         //insert sort according chunkserver load
         while(it != _heartbeat_list.rend()) {
-            if (chunkserver_load.empty()) {
-                chunkserver_load.push_back(std::make_pair(it->first, it->second->data_size()));
-            } else {
-                for (load_it = chunkserver_load.begin(); load_it != chunkserver_load.end(); load_it++) {
-                    if (it->second->data_size() < load_it->second)
-                        break;
-                }
-                chunkserver_load.insert(load_it, std::make_pair(it->first, it->second->data_size()));
+            for (load_it = chunkserver_load.begin(); load_it != chunkserver_load.end(); load_it++) {
+                if (it->second->data_size() < load_it->second)
+                    break;
             }
+            chunkserver_load.insert(load_it, std::make_pair(it->first, it->second->data_size()));
+
             it++;
         }
 
