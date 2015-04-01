@@ -71,7 +71,7 @@ chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) $(LEVELDB)
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)
 
-bfs_client: $(CLIENT_OBJ) $(LIBS)
+bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
 $(LEVELDB):
