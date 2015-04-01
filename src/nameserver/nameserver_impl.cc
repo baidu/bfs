@@ -87,23 +87,18 @@ public:
             return false;
         }
         std::map<int32_t, ChunkServerInfo*>::const_reverse_iterator it = _heartbeat_list.rbegin();
-        std::vector<std::pair<int32_t, int64_t> > chunkserver_load;
-        std::vector<std::pair<int32_t, int64_t> >::iterator load_it;
+        std::vector<std::pair<int64_t, int32_t> > chunkserver_load;
+        std::vector<std::pair<int64_t, int32_t> >::iterator load_it;
 
-        //insert sort according chunkserver load
         while(it != _heartbeat_list.rend()) {
-            for (load_it = chunkserver_load.begin(); load_it != chunkserver_load.end(); load_it++) {
-                if (it->second->data_size() < load_it->second)
-                    break;
-            }
-            chunkserver_load.insert(load_it, std::make_pair(it->first, it->second->data_size()));
-
-            it++;
+            chunkserver_load.push_back(std::make_pair(it->second->data_size(), it->first));
+            ++it;
         }
+        std::sort(chunkserver_load.begin(), chunkserver_load.end());
 
         load_it = chunkserver_load.begin();
         for (int i = 0; i < num; ++i, ++load_it) {
-            ChunkServerInfo* cs = _heartbeat_list[load_it->first];
+            ChunkServerInfo* cs = _heartbeat_list[load_it->second];
             chains->push_back(std::make_pair(cs->id(), cs->address()));
         }
 

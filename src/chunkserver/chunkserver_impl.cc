@@ -383,7 +383,7 @@ void ChunkServerImpl::Routine() {
     int64_t next_report = -1;
     while (!_quit) {
         // heartbeat
-        if (ticks%FLAGS_heartbeat_interval == 0) {
+        if (ticks % FLAGS_heartbeat_interval == 0) {
             HeartBeatRequest request;
             request.set_chunkserver_id(_chunkserver_id);
             request.set_data_server_addr(_data_server_addr);
