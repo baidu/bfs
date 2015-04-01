@@ -77,6 +77,7 @@ public:
         int32_t now_time = time(NULL);
         _heartbeat_list.erase(info->last_heartbeat());
         _heartbeat_list[now_time] = info;
+        info->set_last_heartbeat(now_time);
     }
     bool GetChunkServerChains(int num, 
                               std::vector<std::pair<int32_t,std::string> >* chains) {
@@ -86,10 +87,29 @@ public:
             return false;
         }
         std::map<int32_t, ChunkServerInfo*>::const_reverse_iterator it = _heartbeat_list.rbegin();
-        for (int i=0; i<num; ++i, ++it) {
-            ChunkServerInfo* cs = it->second;
+        std::vector<std::pair<int32_t, int64_t> > chunkserver_load;
+        std::vector<std::pair<int32_t, int64_t> >::iterator load_it;
+
+        //insert sort according chunkserver load
+        while(it != _heartbeat_list.rend()) {
+            if (chunkserver_load.empty()) {
+                chunkserver_load.push_back(std::make_pair(it->first, it->second->data_size()));
+            } else {
+                for (load_it = chunkserver_load.begin(); load_it != chunkserver_load.end(); load_it++) {
+                    if (it->second->data_size() < load_it->second)
+                        break;
+                }
+                chunkserver_load.insert(load_it, std::make_pair(it->first, it->second->data_size()));
+            }
+            it++;
+        }
+
+        load_it = chunkserver_load.begin();
+        for (int i = 0; i < num; ++i, ++load_it) {
+            ChunkServerInfo* cs = _heartbeat_list[load_it->first];
             chains->push_back(std::make_pair(cs->id(), cs->address()));
         }
+
         return true;
     }
     int64_t AddChunkServer(const std::string& address) {
