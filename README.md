@@ -17,6 +17,12 @@ ToyDFS
 
 想加入的人在这留个名吧：
 
-yanshiguang~<br />
-yuanyi~<br />
-yuyangquan~<br />
+yanshiguang~  
+yuanyi~  
+yuyangquan~  
+
+## 构建
+参考.travis.yml，至少在ubuntu上是这么构建的。
+
+## Sandbox
+Sandbox目录下包含了运行单机测试的环境和脚本。
