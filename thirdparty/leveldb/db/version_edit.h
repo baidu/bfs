@@ -83,6 +83,7 @@ class VersionEdit {
 
  private:
   friend class VersionSet;
+  friend class VersionSetBuilder;
 
   typedef std::set< std::pair<int, uint64_t> > DeletedFileSet;
 

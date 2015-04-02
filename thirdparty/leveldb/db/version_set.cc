@@ -591,7 +591,7 @@ std::string Version::DebugString() const {
 // A helper class so we can efficiently apply a whole sequence
 // of edits to a particular state without creating intermediate
 // Versions that contain full copies of the intermediate state.
-class VersionSet::Builder {
+class VersionSetBuilder {
  private:
   // Helper to sort by v->files_[file_number].smallest
   struct BySmallestKey {
@@ -620,7 +620,7 @@ class VersionSet::Builder {
 
  public:
   // Initialize a builder with the files from *base and other info from *vset
-  Builder(VersionSet* vset, Version* base)
+  VersionSetBuilder(VersionSet* vset, Version* base)
       : vset_(vset),
         base_(base) {
     base_->Ref();
@@ -631,7 +631,7 @@ class VersionSet::Builder {
     }
   }
 
-  ~Builder() {
+  ~VersionSetBuilder() {
     for (int level = 0; level < config::kNumLevels; level++) {
       const FileSet* added = levels_[level].added_files;
       std::vector<FileMetaData*> to_unref;
@@ -825,7 +825,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
 
   Version* v = new Version(this);
   {
-    Builder builder(this, current_);
+    VersionSetBuilder builder(this, current_);
     builder.Apply(edit);
     builder.SaveTo(v);
   }
@@ -927,7 +927,7 @@ Status VersionSet::Recover() {
   uint64_t last_sequence = 0;
   uint64_t log_number = 0;
   uint64_t prev_log_number = 0;
-  Builder builder(this, current_);
+  VersionSetBuilder builder(this, current_);
 
   {
     LogReporter reporter;

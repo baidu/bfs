@@ -116,6 +116,7 @@ class Version {
  private:
   friend class Compaction;
   friend class VersionSet;
+  friend class VersionSetBuilder;
 
   class LevelFileNumIterator;
   Iterator* NewConcatenatingIterator(const ReadOptions&, int level) const;
@@ -269,8 +270,7 @@ class VersionSet {
   const char* LevelSummary(LevelSummaryStorage* scratch) const;
 
  private:
-  class Builder;
-
+  friend class VersionSetBuilder;
   friend class Compaction;
   friend class Version;
 
