@@ -19,6 +19,7 @@ void print_usage() {
     printf("Use:\nbfs_client <commond> path\n");
     printf("\t commond:\n");
     printf("\t    -ls <path> : list the directory\n");
+    printf("\t    -cat <path> : cat the file\n");
     printf("\t    -mkdir <path> : make director\n");
     printf("\t    -touchz <path> : create a new file\n");
     printf("\t    -rm <path> : remove a file\n");
@@ -38,6 +39,33 @@ int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
     }
     return 0;
 }
+
+
+int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
+    if (argc < 1) {
+        print_usage();
+        return 1;
+    }
+    bfs::File* file;
+    if (!fs->OpenFile(argv[0], O_RDONLY, &file)) {
+        printf("Can't Open bfs file %s\n", argv[0]);
+        return 1;
+    }
+    char buf[1024];
+    int64_t bytes = 0;
+    int64_t len = 0;
+    while (1) {
+        len = file->Read(buf, sizeof(buf));
+        if (len <= 0) {
+            break;
+        }
+        bytes += len;
+        write(1, buf, len);
+    }
+    delete file;
+    return 0;
+}
+
 int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
     if (argc < 2) {
         print_usage();
@@ -183,6 +211,8 @@ int main(int argc, char* argv[])
             return 0;
         }
         fs->CreateDirectory(argv[2]);
+    } else if (strcmp(argv[1], "-cat") == 0) {
+        ret = BfsCat(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "-ls") == 0) {
         ret = BfsList(fs, argc, argv);
     } else {
