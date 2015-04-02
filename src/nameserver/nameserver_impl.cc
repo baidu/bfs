@@ -86,11 +86,11 @@ public:
             LOG(WARNING, "not enough alive chunkservers for GetChunkServerChains\n");
             return false;
         }
-        std::map<int32_t, ChunkServerInfo*>::const_reverse_iterator it = _heartbeat_list.rbegin();
+        std::map<int32_t, ChunkServerInfo*>::iterator it = _heartbeat_list.begin();
         std::vector<std::pair<int64_t, int32_t> > chunkserver_load;
         std::vector<std::pair<int64_t, int32_t> >::iterator load_it;
 
-        while(it != _heartbeat_list.rend()) {
+        while (it != _heartbeat_list.end()) {
             chunkserver_load.push_back(std::make_pair(it->second->data_size(), it->first));
             ++it;
         }
