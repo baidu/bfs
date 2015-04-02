@@ -46,23 +46,25 @@ int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    bfs::File* file;
-    if (!fs->OpenFile(argv[0], O_RDONLY, &file)) {
-        printf("Can't Open bfs file %s\n", argv[0]);
-        return 1;
-    }
-    char buf[1024];
-    int64_t bytes = 0;
-    int64_t len = 0;
-    while (1) {
-        len = file->Read(buf, sizeof(buf));
-        if (len <= 0) {
-            break;
+    for (int i = 0; i < argc; i++) {
+        bfs::File* file;
+        if (!fs->OpenFile(argv[i], O_RDONLY, &file)) {
+            printf("Can't Open bfs file %s\n", argv[0]);
+            return 1;
         }
-        bytes += len;
-        write(1, buf, len);
+        char buf[1024];
+        int64_t bytes = 0;
+        int64_t len = 0;
+        while (1) {
+            len = file->Read(buf, sizeof(buf));
+            if (len <= 0) {
+                break;
+            }
+            bytes += len;
+            write(1, buf, len);
+        }
+        delete file;
     }
-    delete file;
     return 0;
 }
 
