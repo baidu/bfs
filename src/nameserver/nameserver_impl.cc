@@ -74,7 +74,7 @@ public:
         int32_t id = request->chunkserver_id();
         ChunkServerInfo* info = _chunkservers[id];
         assert(info);
-        int32_t now_time = time(NULL);
+        int64_t now_time = common::timer::get_micros();
         _heartbeat_list.erase(info->last_heartbeat());
         _heartbeat_list[now_time] = info;
         info->set_last_heartbeat(now_time);
@@ -83,12 +83,13 @@ public:
                               std::vector<std::pair<int32_t,std::string> >* chains) {
         MutexLock lock(&_mu);
         if (num > static_cast<int>(_heartbeat_list.size())) {
-            LOG(WARNING, "not enough alive chunkservers for GetChunkServerChains\n");
+            LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
+                _heartbeat_list.size(), num);
             return false;
         }
-        std::map<int32_t, ChunkServerInfo*>::iterator it = _heartbeat_list.begin();
-        std::vector<std::pair<int64_t, int32_t> > chunkserver_load;
-        std::vector<std::pair<int64_t, int32_t> >::iterator load_it;
+        std::map<int64_t, ChunkServerInfo*>::iterator it = _heartbeat_list.begin();
+        std::vector<std::pair<int64_t, int64_t> > chunkserver_load;
+        std::vector<std::pair<int64_t, int64_t> >::iterator load_it;
 
         while (it != _heartbeat_list.end()) {
             chunkserver_load.push_back(std::make_pair(it->second->data_size(), it->first));
@@ -111,7 +112,7 @@ public:
         info->set_id(id);
         info->set_address(address);
         _chunkservers[id] = info;
-        int32_t now_time = time(NULL);
+        int64_t now_time = common::timer::get_micros();
         _heartbeat_list[now_time] = info;
         info->set_last_heartbeat(now_time);
         return id;
@@ -143,7 +144,7 @@ private:
     Mutex _mu;      /// _chunkservers list mutext;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
     ServerMap _chunkservers;
-    std::map<int32_t, ChunkServerInfo*> _heartbeat_list;
+    std::map<int64_t, ChunkServerInfo*> _heartbeat_list;
     int32_t next_chunkserver_id;
 };
 
@@ -448,7 +449,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     }
     path += "#";
 
-    common::timer::AutoTimer at(0, "ListDirectory", path.c_str());
+    common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
     if (!SplitPath(path, &keys)) {
         LOG(WARNING, "SplitPath fail: %s\n", path.c_str());
         response->set_status(886);
@@ -464,7 +465,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
         file_end_key += "#";
     }
 
-    common::timer::AutoTimer at1(0, "ListDirectory iterate", path.c_str());
+    common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
     //printf("List Directory: %s, return: ", file_start_key.c_str());
     leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
     for (it->Seek(file_start_key); it->Valid(); it->Next()) {
@@ -482,7 +483,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     delete it;
     response->set_status(0);
     
-    common::timer::AutoTimer at2(0, "ListDirectory done run", path.c_str());
+    common::timer::AutoTimer at2(100, "ListDirectory done run", path.c_str());
     done->Run();
 }
 void NameServerImpl::Stat(::google::protobuf::RpcController* controller,

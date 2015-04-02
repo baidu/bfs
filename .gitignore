@@ -28,5 +28,5 @@
 *.app
 
 # Proto .h .cc
-.pb.cc
-.pb.h
+*.pb.cc
+*.pb.h

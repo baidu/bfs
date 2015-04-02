@@ -14,10 +14,10 @@ CPPFLAGS('-D_GNU_SOURCE -D__STDC_LIMIT_MACROS -DVERSION=\\\"1.0.0.0\\\"')
 CXXFLAGS('-g -pipe -W -Wall -Wno-unused-parameter -fPIC')
 
 #头文件路径.
-INCPATHS('./src ./third_party/leveldb/include') # ./third_party/pbrpc/include')
+INCPATHS('./src ./thirdparty/leveldb/include') # ./third_party/pbrpc/include')
 
 #使用库
-LIBS('./third_party/leveldb/libleveldb.a') # ./third_party/pbrpc/libsofa_pbrpc.a')
+LIBS('./thirdparty/leveldb/libleveldb.a') # ./third_party/pbrpc/libsofa_pbrpc.a')
 
 #链接参数.
 LDFLAGS('-lpthread -lz')

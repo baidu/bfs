@@ -178,7 +178,7 @@ public:
         }
     }
     bool ListDirectory(const char* path, BfsFileInfo** filelist, int *num) {
-        common::timer::AutoTimer at(10, "ListDirectory", path);
+        common::timer::AutoTimer at(1000, "ListDirectory", path);
         *filelist = NULL;
         *num = 0;
         ListDirectoryRequest request;
@@ -243,7 +243,7 @@ public:
         return false;
     }
     bool OpenFile(const char* path, int32_t flags, File** file) {
-        common::timer::AutoTimer at(1, "OpenFile", path);
+        common::timer::AutoTimer at(100, "OpenFile", path);
         bool ret = false;
         *file = NULL;
         if (flags == O_WRONLY) {
@@ -410,7 +410,7 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
 }
 
 int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
-    common::timer::AutoTimer at(1, "Write", _name.c_str());
+    common::timer::AutoTimer at(100, "Write", _name.c_str());
     if (_open_flags != O_WRONLY) {
         return -2;
     }
