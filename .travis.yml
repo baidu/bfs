@@ -12,4 +12,6 @@ install:
     - sudo apt-get install zlib1g-dev
     - git clone https://github.com/bluebore/sofa-pbrpc ./thirdparty/sofa-pbrpc
     - ( cd thirdparty/sofa-pbrpc && make -j4 && make install);
+    - git clone https://github.com/schuhschuh/gflags
+    - ( cd gflags && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
 script: make -j4 && make test
