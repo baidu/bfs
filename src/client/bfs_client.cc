@@ -4,16 +4,19 @@
 //
 // Author: yanshiguang02@baidu.com
 
+#include <gflags/gflags.h>
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
-
 #include <string>
 
 #include "common/timer.h"
 #include "sdk/bfs.h"
 
-extern std::string FLAGS_nameserver;
+DECLARE_string(flagfile);
+DECLARE_string(nameserver);
+DECLARE_string(nameserver_port);
 
 void print_usage() {
     printf("Use:\nbfs_client <commond> path\n");
@@ -168,21 +171,24 @@ int BfsList(bfs::FS* fs, int argc, char* argv[]) {
 }
 
 /// bfs client main
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
+    FLAGS_flagfile = "./bfs.flag";
+    ::google::ParseCommandLineFlags(&argc, &argv, false);
+
     if (argc < 2) {
         print_usage();
         return 0;
     }
     
     bfs::FS* fs;
-    if (!bfs::FS::OpenFileSystem(FLAGS_nameserver.c_str(), &fs)) {
-        printf("Open filesytem %s fail\n", FLAGS_nameserver.c_str());
+    std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
+    if (!bfs::FS::OpenFileSystem(ns_address.c_str(), &fs)) {
+        printf("Open filesytem %s fail\n", ns_address.c_str());
         return 1;
     }
 
     int ret = 0;
-    if (strcmp(argv[1], "-touchz") == 0) {
+    if (strcmp(argv[1], "touchz") == 0) {
         if (argc != 3) {
             print_usage();
             return 0;
@@ -191,7 +197,7 @@ int main(int argc, char* argv[])
         if (!fs->OpenFile(argv[2], O_WRONLY, &file)) {
             printf("Open %s fail\n", argv[2]);
         }
-    } else if (strcmp(argv[1], "-rm") == 0) {
+    } else if (strcmp(argv[1], "rm") == 0) {
         if (argc != 3) {
             print_usage();
             return 0;
@@ -201,21 +207,15 @@ int main(int argc, char* argv[])
         } else {
             fprintf(stderr, "Remove file fail: %s\n", argv[2]);
         }
-    } else if (strcmp(argv[1], "-mkdir") == 0) {
+    } else if (strcmp(argv[1], "mkdir") == 0) {
         ret = BfsMkdir(fs, argc - 2, argv + 2);
-    } else if (strcmp(argv[1], "-put") == 0) {
+    } else if (strcmp(argv[1], "put") == 0) {
         ret = BfsPut(fs, argc, argv);
-    } else if (strcmp(argv[1], "-get") == 0 ) {
+    } else if (strcmp(argv[1], "get") == 0 ) {
         ret = BfsGet(fs, argc-2, argv+2);
-    } else if (strcmp(argv[1], "-mkdir") == 0) {
-        if (argc != 3) {
-            print_usage();
-            return 0;
-        }
-        fs->CreateDirectory(argv[2]);
-    } else if (strcmp(argv[1], "-cat") == 0) {
+    } else if (strcmp(argv[1], "cat") == 0) {
         ret = BfsCat(fs, argc - 2, argv + 2);
-    } else if (strcmp(argv[1], "-ls") == 0) {
+    } else if (strcmp(argv[1], "ls") == 0) {
         ret = BfsList(fs, argc, argv);
     } else {
         printf("Unknow common: %s\n", argv[1]);

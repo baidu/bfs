@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 
 #include <boost/bind.hpp>
+#include <gflags/gflags.h>
 
 #include <leveldb/db.h>
 #include <leveldb/cache.h>
@@ -25,11 +26,12 @@
 #include "common/sliding_window.h"
 #include "common/logging.h"
 
-extern std::string FLAGS_block_store_path;
-extern std::string FLAGS_nameserver;
-extern std::string FLAGS_chunkserver_port;
-extern int32_t FLAGS_heartbeat_interval;
-extern int32_t FLAGS_blockreport_interval;
+DECLARE_string(block_store_path);
+DECLARE_string(nameserver);
+DECLARE_string(nameserver_port);
+DECLARE_string(chunkserver_port);
+DECLARE_int32(heartbeat_interval);
+DECLARE_int32(blockreport_interval);
 
 namespace bfs {
 
@@ -355,7 +357,8 @@ ChunkServerImpl::ChunkServerImpl()
     bool s_ret = _block_manager->LoadStorage();
     assert(s_ret == true);
     _rpc_client = new RpcClient();
-    if (!_rpc_client->GetStub(FLAGS_nameserver, &_nameserver)) {
+    std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
+    if (!_rpc_client->GetStub(ns_address, &_nameserver)) {
         assert(0);
     }
     _thread_pool = new ThreadPool(10);

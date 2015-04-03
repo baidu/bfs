@@ -7,10 +7,11 @@
 #include <stdio.h>
 
 #include <sofa/pbrpc/pbrpc.h>
+#include <gflags/gflags.h>
 
 #include "nameserver/nameserver_impl.h"
 
-extern std::string FLAGS_nameserver_port;
+DECLARE_string(nameserver_port);
 
 int main(int argc, char* argv[])
 {

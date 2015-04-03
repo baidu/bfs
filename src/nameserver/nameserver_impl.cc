@@ -6,18 +6,19 @@
 
 #include <set>
 
-#include <sofa/pbrpc/pbrpc.h>
+#include <gflags/gflags.h>
 #include <leveldb/db.h>
 #include <leveldb/cache.h>
 #include <leveldb/write_batch.h>
+#include <sofa/pbrpc/pbrpc.h>
 
 #include "nameserver_impl.h"
 #include "common/mutex.h"
 #include "common/timer.h"
 #include "common/logging.h"
 
-extern std::string FLAGS_namedb_path;
-extern int64_t FLAGS_namedb_cache_size;
+DECLARE_string(namedb_path);
+DECLARE_int64(namedb_cache_size);
 
 namespace bfs {
 

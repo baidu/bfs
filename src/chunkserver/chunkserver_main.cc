@@ -8,11 +8,12 @@
 #include <signal.h>
 
 #include <sofa/pbrpc/pbrpc.h>
+#include <gflags/gflags.h>
 
 #include "chunkserver/chunkserver_impl.h"
 
-extern std::string FLAGS_chunkserver_port;
-extern std::string FLAGS_block_store_path;
+DECLARE_string(chunkserver_port);
+DECLARE_string(block_store_path);
 
 static volatile bool s_quit = false;
 static void SignalIntHandler(int /*sig*/)

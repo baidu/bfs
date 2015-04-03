@@ -4,20 +4,19 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#include <stdint.h>
-#include <string>
+#include <gflags/gflags.h>
 
 // nameserver
-std::string FLAGS_namedb_path = "./db";
-int64_t FLAGS_namedb_cache_size = 1024L;
-std::string FLAGS_nameserver = "127.0.0.1:8028";
-std::string FLAGS_nameserver_port = "8028";
+DEFINE_string(namedb_path, "./db", "Namespace database");
+DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
+DEFINE_string(nameserver, "127.0.0.1", "Nameserver host");
+DEFINE_string(nameserver_port, "8828", "Nameserver port");
 
 // chunkserver
-std::string FLAGS_block_store_path = "./data";
-std::string FLAGS_chunkserver_port = "8825";
-int32_t FLAGS_heartbeat_interval = 5;
-int32_t FLAGS_blockreport_interval = 600;
+DEFINE_string(block_store_path, "./data", "Data path");
+DEFINE_string(chunkserver_port, "8825", "Chunkserver port");
+DEFINE_int32(heartbeat_interval, 5, "Heartbeat interval");
+DEFINE_int32(blockreport_interval, 600, "blockreport_interval");
 
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

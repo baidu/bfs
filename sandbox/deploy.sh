@@ -10,3 +10,6 @@ cp -f ../nameserver nameserver/bin/
 cp -f ../chunkserver chunkserver1/bin/
 cp -f ../chunkserver chunkserver2/bin/
 cp -f ../bfs_client ./
+
+echo '--nameserver=127.0.0.1' > bfs.flag
+echo '--nameserver_port=8828' >> bfs.flag

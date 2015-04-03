@@ -4,6 +4,8 @@
 //
 // Author: yanshiguang02@baidu.com
 
+#include <gflags/gflags.h>
+
 #include <fcntl.h>
 #include <list>
 #include <queue>
@@ -18,7 +20,8 @@
 #include "common/logging.h"
 #include "bfs.h"
 
-extern std::string FLAGS_nameserver;
+DECLARE_string(nameserver);
+DECLARE_string(nameserver_port);
 
 namespace bfs {
 
@@ -154,7 +157,7 @@ public:
         if (nameserver != NULL) {
             _nameserver_address = nameserver;
         } else {
-            _nameserver_address = FLAGS_nameserver;
+            _nameserver_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
         }
         _rpc_client = new RpcClient();
         bool ret = _rpc_client->GetStub(_nameserver_address, &_nameserver);
