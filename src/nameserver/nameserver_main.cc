@@ -11,19 +11,14 @@
 
 #include "nameserver/nameserver_impl.h"
 
+DECLARE_string(flagfile);
 DECLARE_string(nameserver_port);
 
 int main(int argc, char* argv[])
 {
-    for (int i = 1; i < argc; i++) {
-        char s[16];
-        if (sscanf(argv[i], "--port=%s", s) == 1) {
-            FLAGS_nameserver_port = s;
-        } else {
-            fprintf(stderr, "Invalid flag '%s'\n", argv[i]);
-            exit(1);
-        }
-    }
+    FLAGS_flagfile = "./bfs.flag";
+    ::google::ParseCommandLineFlags(&argc, &argv, false);
+    
     // rpc_server
     sofa::pbrpc::RpcServerOptions options;
     sofa::pbrpc::RpcServer rpc_server(options);

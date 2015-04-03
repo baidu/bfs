@@ -12,6 +12,7 @@
 
 #include "chunkserver/chunkserver_impl.h"
 
+DECLARE_string(flagfile);
 DECLARE_string(chunkserver_port);
 DECLARE_string(block_store_path);
 
@@ -23,17 +24,8 @@ static void SignalIntHandler(int /*sig*/)
 
 int main(int argc, char* argv[])
 {
-    for (int i = 1; i < argc; i++) {
-        char s[1024];
-        if (sscanf(argv[i], "--port=%s", s) == 1) {
-            FLAGS_chunkserver_port = s;
-        } else if (sscanf(argv[i], "--store=%s", s) == 1){
-            FLAGS_block_store_path = s;
-        } else {
-            fprintf(stderr, "Invalid flag '%s'\n", argv[i]);
-            exit(1);
-        }
-    }
+    FLAGS_flagfile = "./bfs.flag";
+    ::google::ParseCommandLineFlags(&argc, &argv, false);
 
     sofa::pbrpc::RpcServerOptions options;
     sofa::pbrpc::RpcServer rpc_server(options);
