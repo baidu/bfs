@@ -1,15 +1,12 @@
 
-ROOT_DIR=../../../../
-PROTOBUF_DIR=$(ROOT_DIR)/third-64/protobuf/lib
-SOFARPC_DIR=$(ROOT_DIR)/public/sofa-pbrpc/lib
-SNAPPY_DIR=$(ROOT_DIR)/third-64/snappy/lib
+
+PBRPC_PATH=../thirdparty/sofa-pbrpc/output/
+
 all: sync_test
-
 sync_test: sync_test.cc
-	g++ -o sync_test sync_test.cc -I../output/include/ -L../output/lib -lbfs -lz -lpthread\
-		-L$(PROTOBUF_DIR) -lprotobuf \
-		-L$(SOFARPC_DIR) -lsofa_pbrpc \
-		-L$(SNAPPY_DIR) -lsnappy
-
+	g++ -o sync_test sync_test.cc -I../output/include \
+		-L../output/lib -lbfs \
+		-L$(PBRPC_PATH)/lib -lsofa-pbrpc \
+		-lprotobuf -lsnappy -lz -lgflags
 clean:
 		rm -rf sync_test
