@@ -276,6 +276,8 @@ public:
                 //printf("OpenFile success: %s\n", path);
             } else {
                 //printf("GetFileLocation return %d\n", response.blocks_size());
+                fprintf(stderr, "OpenFile return %d\n", response.status());
+                ret = false;
             }
         } else {
             LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY\n");
