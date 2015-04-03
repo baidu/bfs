@@ -21,7 +21,7 @@ LDFLAGS = -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L./thirdparty/leveldb -lleveldb \
           -L$(SNAPPY_PATH)/lib -lsnappy \
-          -gflag -lpthread -lz
+          -lgflags -lpthread -lz
 
 CXXFLAGS += $(OPT)
 
