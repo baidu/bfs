@@ -11,16 +11,16 @@ sh start_bfs.sh
 
 ## 测试
 创建文件夹：  
-./bfs_client -mkdir /user
+./bfs_client mkdir /user
 
 将chunkserver的二进制作为一个普通文件上传到集群上：  
-./bfs_client -put chunkserver /chunkserver
+./bfs_client put chunkserver /chunkserver
 
 查看文件：  
-./bfs_client -ls /
+./bfs_client ls /
 
 将文件下载到本地  
-./bfs_client -get /chunkserver ./file_from_bfs
+./bfs_client get /chunkserver ./file_from_bfs
 
 ## 清理
 sh clear.sh
