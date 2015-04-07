@@ -370,29 +370,24 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     request.set_read_len(read_len);
     bool ret = false;
     int retry_times = 0;
-    int next_server = 0, first_server;
+    int next_server = 0;
     if (_chunkserver == NULL) {
         srand(time(NULL));
-        first_server = rand() % lcblock.chains_size();
+        int first_server = rand() % lcblock.chains_size();
         _fs->_rpc_client->GetStub(lcblock.chains(first_server).address(), &_chunkserver);
     }
 
     while (!ret || response.status() != 0) {
-        if (++retry_times > lcblock.chains_size()) {
+        if (retry_times++ > lcblock.chains_size()) {
             break;
         }
         if (retry_times == 1) {
             ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
                     &request, &response, 5, 3);
         } else {
-            for (; next_server < lcblock.chains_size(); next_server++) {
-                if(next_server == first_server) {
-                    continue;
-                }
-                _fs->_rpc_client->GetStub(lcblock.chains(next_server).address(), &_chunkserver);
-                ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
-                        &request, &response, 5, 3);
-            }
+            _fs->_rpc_client->GetStub(lcblock.chains(next_server++).address(), &_chunkserver);
+            ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
+                    &request, &response, 5, 3);
         }
     }
 
