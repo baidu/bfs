@@ -362,17 +362,35 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     }
     LocatedBlock& lcblock = _located_blocks._blocks[0];
     int64_t block_id = lcblock.block_id();
-    if (_chunkserver == NULL) {
-        _fs->_rpc_client->GetStub(lcblock.chains(0).address(), &_chunkserver);
-    }
     ReadBlockRequest request;
     ReadBlockResponse response;
     request.set_sequence_id(0);
     request.set_block_id(block_id);
     request.set_offset(offset);
     request.set_read_len(read_len);
-    bool ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
-    &request, &response, 5, 3);
+    bool ret = false;
+    int retry_times = 0;
+    int next_server = 0;
+    if (_chunkserver == NULL) {
+        srand(time(NULL));
+        int first_server = rand() % lcblock.chains_size();
+        _fs->_rpc_client->GetStub(lcblock.chains(first_server).address(), &_chunkserver);
+    }
+
+    while (!ret || response.status() != 0) {
+        if (retry_times++ > lcblock.chains_size()) {
+            break;
+        }
+        if (retry_times == 1) {
+            ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
+                    &request, &response, 5, 3);
+        } else {
+            _fs->_rpc_client->GetStub(lcblock.chains(next_server++).address(), &_chunkserver);
+            ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
+                    &request, &response, 5, 3);
+        }
+    }
+
     if (!ret || response.status() != 0) {
         printf("Read block %ld fail, status= %d\n", block_id, response.status());
         return -4;

@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <string>
+#include <unistd.h>
 
 #include "common/timer.h"
 #include "sdk/bfs.h"
