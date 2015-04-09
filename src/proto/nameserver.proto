@@ -123,6 +123,7 @@ message BlockReportRequest {
 message BlockReportResponse {
     optional uint64 sequence_id = 1;
     optional int32 status = 2;
+    repeated int64 obsolete_blocks = 3;
 }
 
 service NameServer {

@@ -41,6 +41,7 @@ private:
                            const WriteBlockRequest* request,
                            ::google::protobuf::Closure* done,
                            ChunkServer_Stub* stub);
+    void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
