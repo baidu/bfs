@@ -50,7 +50,7 @@ private:
     NameServer_Stub* _nameserver;
     pthread_t _routine_thread;
     bool _quit;
-    int64_t _chunkserver_id;
+    int32_t _chunkserver_id;
     int64_t _namespace_version;
 };
 
