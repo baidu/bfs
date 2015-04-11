@@ -131,12 +131,12 @@ public:
         MutexLock lock(&_mu);
         ServerMap::iterator it = _chunkservers.find(id);
         if(it == _chunkservers.end()) {
-            LOG(WARNING, "ChunkServer does not exist!, chunkserver id: %ld\n", id); 
+            LOG(WARNING, "ChunkServer does not exist!, chunkserver id: %d\n", id);
             assert(0);
             return false;
         } else {
             it->second->set_data_size(size);
-            LOG(INFO, "Get Report of ChunkServerLoad, server id: %ld, load: %ld\n", id, size);
+            LOG(INFO, "Get Report of ChunkServerLoad, server id: %d, load: %ld\n", id, size);
             return true;
         }
     }
@@ -196,11 +196,35 @@ public:
         *block = *(it->second);
         return true;
     }
+    bool CheckObsoleteBlock(int64_t block_id) {
+        MutexLock lock(&_mu);
+        return _obsolete_blocks.find(block_id) != _obsolete_blocks.end();
+    }
+    void MarkObsoleteBlock(int64_t block_id, int32_t replicas) {
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        if (it != _block_map.end()) {
+            _block_map.erase(it);
+        }
+        _obsolete_blocks.insert(std::make_pair(block_id, replicas));
+    }
+    void UnmarkObsoleteBlock(int64_t block_id) {
+        MutexLock lock(&_mu);
+        std::map<int64_t, int32_t>::iterator it = _obsolete_blocks.find(block_id);
+        if (it != _obsolete_blocks.end()) {
+            if (--(it->second) == 0) {
+                _obsolete_blocks.erase(it);
+            }
+        } else {
+            LOG(WARNING, "Try to unmark obsolete block that is not marked: %ld\n", block_id);
+        }
+    }
 private:
     Mutex _mu;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap _block_map;
     int64_t _next_block_id;
+    std::map<int64_t, int32_t> _obsolete_blocks;
 };
 
 NameServerImpl::NameServerImpl() {
@@ -243,7 +267,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    ::google::protobuf::Closure* done) {
     int32_t id = request->chunkserver_id();
     int64_t version = request->namespace_version();
-    LOG(INFO, "Report from %d, %d blocks\n", id, request->blocks_size());
     if (version != _namespace_version) {
         response->set_status(8882);
     } else {
@@ -251,8 +274,16 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         int64_t size = 0;
         for (int i = 0; i < blocks.size(); i++) {
             const ReportBlockInfo& block =  blocks.Get(i);
-            _block_manager->AddBlock(block.block_id(), id, block.block_size());
-            size += block.block_size();
+            int64_t cur_block_id = block.block_id(), cur_block_size = block.block_size();
+
+            if (_block_manager->CheckObsoleteBlock(cur_block_id)) {
+                //add to response
+                response->add_obsolete_blocks(cur_block_id);
+                _block_manager->UnmarkObsoleteBlock(cur_block_id);
+            } else {
+                _block_manager->AddBlock(cur_block_id, id, cur_block_size);
+                size += cur_block_size;
+            }
         }
         _chunkserver_manager->SetChunkServerLoad(id, size);
     }
@@ -610,6 +641,9 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
         assert(ret);
         // Only support file
         if ((file_info.type() & (1<<9)) == 0) {
+            for (int i = 0; i < file_info.blocks_size(); i++) {
+                _block_manager->MarkObsoleteBlock(file_info.blocks(i), file_info.replicas());
+            }
             s = _db->Delete(leveldb::WriteOptions(), file_key);
             if (s.ok()) {
                 LOG(INFO, "Unlink done: %s\n", path.c_str());
