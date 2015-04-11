@@ -88,6 +88,15 @@ clean:
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 
+install:
+	mkdir -p output/include
+	mkdir -p output/lib
+	mkdir -p output/bin
+	cp -f src/sdk/bfs.h output/include/
+	cp -f libbfs.a output/lib/
+	cp -f bfs_client output/bin/
+	touch output/bfs.flag
+
 .PHONY: test
 test:
 	echo "Test done"

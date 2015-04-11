@@ -9,11 +9,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <gflags/gflags.h>
+
 #include <bfs.h>
+
+DECLARE_string(nameserver);
+DECLARE_string(nameserver_port);
 
 int main() {
     bfs::FS *fs = NULL;
-    if (!bfs::FS::OpenFileSystem("127.0.0.1:8028", &fs)) {
+    std::string ns_addr = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
+    if (!bfs::FS::OpenFileSystem(ns_addr.c_str(), &fs)) {
         printf("Open fs fail\n");
         return 1;
     }
