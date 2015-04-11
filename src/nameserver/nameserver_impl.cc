@@ -267,6 +267,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    ::google::protobuf::Closure* done) {
     int32_t id = request->chunkserver_id();
     int64_t version = request->namespace_version();
+    LOG(INFO, "Report from %d, %d blocks\n", id, request->blocks_size());
     if (version != _namespace_version) {
         response->set_status(8882);
     } else {
@@ -274,7 +275,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         int64_t size = 0;
         for (int i = 0; i < blocks.size(); i++) {
             const ReportBlockInfo& block =  blocks.Get(i);
-            int64_t cur_block_id = block.block_id(), cur_block_size = block.block_size();
+            int64_t cur_block_id = block.block_id();
+            int64_t cur_block_size = block.block_size();
 
             if (_block_manager->CheckObsoleteBlock(cur_block_id)) {
                 //add to response
