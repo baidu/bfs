@@ -193,6 +193,9 @@ public:
             delete this;
         }
     }
+    std::string GetFilePath() const {
+        return _disk_file;
+    }
 private:
     enum Type {
         InDisk,
@@ -341,6 +344,41 @@ public:
         }
         return true;
     }
+    bool RemoveBlock(int64_t block_id) {
+        MutexLock lock(&_mu);
+        BlockMap::iterator it = _block_map.find(block_id);
+        if (it == _block_map.end()) {
+            LOG(WARNING, "Try to remove block that does not exist: %ld\n", block_id);
+            return false;
+        } else {
+            Block* block = it->second;
+            std::string file_path = block->GetFilePath();
+
+            int ret = remove(file_path.c_str());
+            if (ret != 0) {
+                LOG(WARNING, "Remove disk file fails: %s\n", file_path.c_str());
+                return false;
+            } else {
+                LOG(INFO, "Remove disk file done: %s\n", file_path.c_str());
+            }
+
+            char dir_name[5];
+            snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
+            rmdir((_store_path + dir_name).c_str());
+            char idstr[14];
+            snprintf(idstr, sizeof(idstr), "%13ld", block_id);
+
+            leveldb::Status s = _metadb->Delete(leveldb::WriteOptions(), idstr);
+            if (s.ok()) {
+                LOG(INFO, "Remove meta info done: %s\n", idstr);
+                _block_map.erase(it);
+                return true;
+            } else {
+                LOG(WARNING, "Remove meta info fails: %ld\n", idstr);
+                return false;
+            }
+        }
+    }
 private:
     std::string _store_path;
     typedef std::map<int64_t, Block*> BlockMap;
@@ -424,6 +462,14 @@ void ChunkServerImpl::Routine() {
                 next_report += 60;  // retry
             } else {
                 next_report += FLAGS_blockreport_interval;
+                //deal with obsolete blocks
+                std::vector<int64_t> obsolete_blocks;
+                for (int i = 0; i < response.obsolete_blocks_size(); i++) {
+                    obsolete_blocks.push_back(response.obsolete_blocks(i));
+                }
+                boost::function<void ()> task =
+                    boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks, this, obsolete_blocks);
+                _thread_pool->AddTask(task);
             }
         }
         ++ ticks;
@@ -603,6 +649,13 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     }
     response->set_status(status);
     done->Run();
+}
+void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
+    for (size_t i = 0; i < blocks.size(); i++) {
+        if (!_block_manager->RemoveBlock(blocks[i])) {
+            LOG(WARNING, "Remove block fail: %ld\n", blocks[i]);
+        }
+    }
 }
 
 } // namespace bfs
