@@ -243,7 +243,7 @@ public:
         options.create_if_missing = true;
         leveldb::Status s = leveldb::DB::Open(options, _store_path+"/meta/", &_metadb);
         if (!s.ok()) {
-            fprintf(stderr, "Load blocks fail\n");
+            LOG(WARNING, "Load blocks fail");
             return false;
         }
         leveldb::Iterator* it = _metadb->NewIterator(leveldb::ReadOptions());
@@ -322,6 +322,7 @@ public:
         meta.block_id = block_id;
         int len = snprintf(meta.file_name, sizeof(meta.file_name),
             "/%03ld", block_id % 1000);
+        // mkdir dir for data block, ignore error, may already exist.
         mkdir((_store_path + meta.file_name).c_str(), 0755);
         len += snprintf(meta.file_name + len, sizeof(meta.file_name) - len,
             "/%010ld", block_id/1000);
@@ -364,6 +365,7 @@ public:
 
             char dir_name[5];
             snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
+            // Rmdir, ignore error when not empty.
             rmdir((_store_path + dir_name).c_str());
             char idstr[14];
             snprintf(idstr, sizeof(idstr), "%13ld", block_id);
