@@ -89,8 +89,8 @@ public:
             return false;
         }
         std::map<int64_t, ChunkServerInfo*>::iterator it = _heartbeat_list.begin();
-        std::vector<std::pair<int64_t, int32_t> > chunkserver_load;
-        std::vector<std::pair<int64_t, int32_t> >::iterator load_it;
+        std::vector<std::pair<int64_t, int64_t> > chunkserver_load;
+        std::vector<std::pair<int64_t, int64_t> >::iterator load_it;
 
         while (it != _heartbeat_list.end()) {
             chunkserver_load.push_back(std::make_pair(it->second->data_size(), it->first));

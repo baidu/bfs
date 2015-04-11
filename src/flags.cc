@@ -16,7 +16,7 @@ DEFINE_string(nameserver_port, "8828", "Nameserver port");
 DEFINE_string(block_store_path, "./data", "Data path");
 DEFINE_string(chunkserver_port, "8825", "Chunkserver port");
 DEFINE_int32(heartbeat_interval, 5, "Heartbeat interval");
-DEFINE_int32(blockreport_interval, 600, "blockreport_interval");
+DEFINE_int32(blockreport_interval, 60, "blockreport_interval");
 
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
