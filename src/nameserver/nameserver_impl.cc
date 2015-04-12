@@ -16,14 +16,12 @@
 #include "common/mutex.h"
 #include "common/timer.h"
 #include "common/logging.h"
+#include "common/util.h"
 
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 
 namespace bfs {
-
-const uint32_t MAX_PATH_LENGHT = 10240;
-const uint32_t MAX_PATH_DEPTH = 99;
 
 /// 构造标准化路径
 /// /home/work/file -> 00,01/home,02/home/work,03/home/work/file
@@ -304,6 +302,8 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+
+    /// Find parent directory, create if not exist.
     FileInfo file_info;
     std::string info_value;
     int depth = file_keys.size();

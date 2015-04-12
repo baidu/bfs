@@ -163,9 +163,6 @@ public:
         bool ret = _rpc_client->GetStub(_nameserver_address, &_nameserver);
         return ret;
     }
-    bool GetFileSize(const char* path, int64_t* file_size) {
-        return false;
-    }
     bool CreateDirectory(const char* path) {
         CreateFileRequest request;
         CreateFileResponse response;
