@@ -146,7 +146,7 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
         }
         len += bytes;
     }
-    if (!file->Close(file)) {
+    if (!file->Close()) {
         fprintf(stderr, "close fail: %s\n", argv[3]);
         return 1;
     }

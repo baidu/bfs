@@ -25,9 +25,7 @@ std::string GetLocalHostName() {
     return hostname;
 }
 
-
 static const uint32_t MAX_PATH_LENGHT = 10240;
-static const uint32_t MAX_PATH_DEPTH = 99;
 bool SplitPath(const std::string& path, std::vector<std::string>* element,
                bool* isdir) {
     if (path.empty() || path[0] != '/' || path.size() > MAX_PATH_LENGHT) {
@@ -46,8 +44,8 @@ bool SplitPath(const std::string& path, std::vector<std::string>* element,
     return true;
 }
 
-}
-}
+} // namespace util
+} // namespace common
 
 #endif  //COMMON_UTIL_H_
 

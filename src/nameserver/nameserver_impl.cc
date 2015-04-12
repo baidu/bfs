@@ -23,6 +23,9 @@ DECLARE_int64(namedb_cache_size);
 
 namespace bfs {
 
+const uint32_t MAX_PATH_LENGHT = 10240;
+const uint32_t MAX_PATH_DEPTH = 99;
+
 /// 构造标准化路径
 /// /home/work/file -> 00,01/home,02/home/work,03/home/work/file
 bool SplitPath(const std::string& path, std::vector<std::string>* element) {
