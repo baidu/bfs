@@ -29,25 +29,38 @@ master的数据是落地的，不一定非得全内存，通过LRU内存cache保
 存储我们选择了leveldb，可以简单的将整个目录结构平展开，并提供高效的文件创建、删除和list操作。<br />
 实际目录结构:
 
-	/home/dir1/
-	          /file1
-	      dir2/
-	          /file2
+	/home/dirx/
+	          /filex
+	      diry/
+	          /filey
 	/tmp/
-	     file2
+	     filez
 
-存储格式为: 
+过去的存储格式为:
 
 	00/
 	01/home
 	01/tmp
-	02/home/dir1
-	02/home/dir2
-	02/tmp/file2
-	03/home/dir1/file1
-	03/home/dir2/file2
+	02/home/dirx
+	02/home/diry
+	02/tmp/filez
+	03/home/dirx/filex
+	03/home/diry/filey
 
 这样做的主要目的是高效支持list操作。
+
+现在的存储格式为:
+
+	1home -> 2
+	1tmp -> 3
+	2dirx -> 4
+	2diry -> 5
+	3filez -> 6
+	4filex -> 7
+	5filey -> 8
+
+其中所有数字都是64位整数，目的是支持高效list操作的同时，支持高效的rename操作。  
+rename操作中，文件夹名字改变，但编号不变。
 
 ## Open for write
 
