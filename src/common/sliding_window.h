@@ -79,6 +79,11 @@ public:
         Notify();
         return true;
     }
+    void Reset() {
+        base_offset_ = 0;
+        ready_ = 0;
+        memset(bitmap_, 0, size_);
+    }
 private:
     char* bitmap_;
     Item* items_;
