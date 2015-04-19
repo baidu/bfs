@@ -150,7 +150,9 @@ public:
     }
     /// Append to block buffer
     void Append(int32_t seq, const char*buf, int32_t len) {
-        assert (_type == InMem);
+        if (_write_mode == O_WRONLY) {
+            assert (_type == InMem);
+        }
         MutexLock lock(&_mu);
         if (_blockbuf == NULL) {
             _buflen = std::max(len*2, 100*1024*1024);
@@ -168,9 +170,16 @@ public:
     }
     bool FlushToDisk(const std::string& path) {
         MutexLock lock(&_mu);
-        assert(_type == InMem);
+        if (_write_mode != O_APPEND) {
+            assert(_type == InMem);
+        }
         bool ret = false;
-        FILE* fp = fopen(path.c_str(), "wb");
+        FILE* fp;
+        if (_write_mode == O_WRONLY) {
+            fp = fopen(path.c_str(), "wb");
+        } else {
+            fp = fopen(path.c_str(), "ab");
+        }
         if (fp == NULL) {
             fprintf(stderr, "Open %s for flush fail\n", path.c_str());
         } else if (fwrite(_blockbuf, _datalen , 1, fp) != 1) {
@@ -187,6 +196,7 @@ public:
         delete[] _blockbuf;
         _blockbuf = NULL;
         _buflen = 0;
+        _recv_window->Reset();
         return ret;
     }
     void AddRef() {
@@ -199,6 +209,9 @@ public:
     }
     std::string GetFilePath() const {
         return _disk_file;
+    }
+    void SetWriteMode(int mode) {
+        _write_mode = mode;
     }
 private:
     enum Type {
@@ -218,6 +231,7 @@ private:
     Mutex       _mu;
     common::SlidingWindow<Buffer>* _recv_window;
     bool        _finished;
+    int         _write_mode;
 };
 
 class BlockManager {
@@ -590,6 +604,12 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         return;
     }
 
+    if (request->is_append()) {
+        block->SetWriteMode(O_APPEND);
+    } else {
+        block->SetWriteMode(O_WRONLY);
+    }
+
     if (!databuf.empty() && !block->Write(packet_seq, databuf.data(), databuf.size())) {
         LOG(WARNING, "Write offset[%ld] block_size[%ld] not in sliding window\n",
             offset, block->Size());
@@ -607,7 +627,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     LOG(INFO, "done Run %d", packet_seq);
     done->Run();
     
-    if (block->IsComplete() && block->Finish()) {
+    if (block->IsComplete() && (block->Finish() || request->is_append())) {
         LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
         _block_manager->FinishBlock(block);
         ReportFinish(block);
