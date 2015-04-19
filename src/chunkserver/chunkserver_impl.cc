@@ -88,9 +88,11 @@ public:
     int64_t Size() const {
         return _datalen;
     }
+    /// Set expected slice num, for IsComplete.
     void SetSliceNum(int32_t num) {
         _slice_num = num;
     }
+    /// Is all slice is arrival(Notify by the sliding window) 
     bool IsComplete() {
         return (_slice_num == _last_seq + 1);
     }
@@ -130,7 +132,7 @@ public:
     bool Writeable() {
         return (_type == InMem);
     }
-    bool Write(int32_t seq, const char* data,int32_t len) {
+    bool Write(int32_t seq, const char* data, int32_t len) {
         LOG(INFO, "Block Write %d\n", seq);
         char* buf = new char[len];
         memcpy(buf, data, len);
@@ -140,11 +142,13 @@ public:
         }
         return ret;
     }
+    /// Invoke by slidingwindow, when next buffer arrive.
     void WriteCallback(int32_t seq, Buffer buffer) {
         LOG(INFO, "Append done [seq:%d, %ld:%d]\n", seq, _datalen, buffer.len_);
         Append(seq, buffer.data_, buffer.len_);
         delete[] buffer.data_;
     }
+    /// Append to block buffer
     void Append(int32_t seq, const char*buf, int32_t len) {
         assert (_type == InMem);
         MutexLock lock(&_mu);
@@ -322,16 +326,16 @@ public:
         meta.block_id = block_id;
         int len = snprintf(meta.file_name, sizeof(meta.file_name),
             "/%03ld", block_id % 1000);
-        // mkdir dir for data block, ignore error, may already exist.
+        // Mkdir dir for data block, ignore error, may already exist.
         mkdir((_store_path + meta.file_name).c_str(), 0755);
         len += snprintf(meta.file_name + len, sizeof(meta.file_name) - len,
             "/%010ld", block_id/1000);
         assert (len == 15 && meta.file_name[len] == 0);
 
-        // disk flush & sync
+        // Disk flush & sync
         block->FlushToDisk(_store_path + meta.file_name);
         LOG(INFO, "FlushToDisk %d -> %s", block_id, meta.file_name);
-        /// write meta & sync
+        // Write meta & sync
         char idstr[64];
         snprintf(idstr, sizeof(idstr), "%13ld", block_id);
 
@@ -532,8 +536,6 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         }
         LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next %s\n",
             block_id, packet_seq, request->chunkservers(0).c_str());
-        //bool ret = _rpc_client->SendRequest(stub, &ChunkServer_Stub::WriteBlock,
-        //    &next_request, response, 5, 3);
         boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
             boost::bind(&ChunkServerImpl::WriteNextCallback,
                 this, _1, _2, _3, _4, request, done, stub);
