@@ -31,6 +31,7 @@ void print_usage() {
     printf("\t    -get <bfsfile> <localfile> : copy file to local\n");
     printf("\t    -put <localfile> <bfsfile> : copy file from local to bfs\n");
     printf("\t    -append <localfile> <bfsfile> : append localfile to bfsfile\n");
+    printf("\t    -rmdir <path> : remove directory\n");
 }
 
 int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
@@ -222,6 +223,19 @@ int BfsAppend(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
+int BfsRmdir(bfs::FS* fs, int argc, char* argv[]) {
+    if (argc < 1) {
+        print_usage();
+        return 1;
+    }
+    bool ret = fs->DeleteDirectory(argv[0], true);
+    if (!ret) {
+        fprintf(stderr, "Remove dir %s fail\n", argv[0]);
+        return 1;
+    }
+    return 0;
+}
+
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
@@ -273,6 +287,8 @@ int main(int argc, char* argv[]) {
         ret = BfsList(fs, argc, argv);
     } else if (strcmp(argv[1], "append") == 0) {
         ret = BfsAppend(fs, argc, argv);
+    } else if (strcmp(argv[1], "rmdir") == 0) {
+        ret = BfsRmdir(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }
