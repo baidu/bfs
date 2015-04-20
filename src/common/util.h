@@ -7,6 +7,11 @@
 #ifndef  COMMON_UTIL_H_
 #define  COMMON_UTIL_H_
 
+#include <unistd.h>
+
+#include <string>
+#include <vector>
+
 namespace common {
 namespace util {
 
@@ -20,8 +25,27 @@ std::string GetLocalHostName() {
     return hostname;
 }
 
+static const uint32_t MAX_PATH_LENGHT = 10240;
+bool SplitPath(const std::string& path, std::vector<std::string>* element,
+               bool* isdir) {
+    if (path.empty() || path[0] != '/' || path.size() > MAX_PATH_LENGHT) {
+        return false;
+    }
+    size_t last_pos = 0;
+    for (size_t i = 1; i <= path.size(); i++) {
+        if (path[i] == '/' || i == path.size()) {
+            if (last_pos + 1 < i) {
+                element->push_back(path.substr(last_pos + 1, i - last_pos - 1));
+            }
+            last_pos = i;
+        }
+    }
+    *isdir = (path[path.size() - 1] == '/');
+    return true;
 }
-}
+
+} // namespace util
+} // namespace common
 
 #endif  //COMMON_UTIL_H_
 

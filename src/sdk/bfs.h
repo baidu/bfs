@@ -66,7 +66,6 @@ public:
     virtual bool CloseFile(File* file) = 0;
     virtual bool DeleteFile(const char* path) = 0;
     virtual bool Rename(const char* oldpath, const char* newpath) = 0;
-    virtual bool GetFileSize(const char* path, int64_t* file_size) = 0;
 private:
     // No copying allowed
     FS(const FS&);

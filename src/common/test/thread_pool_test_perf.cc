@@ -17,7 +17,7 @@
 
 volatile int finished_num = 0;
 volatile int delay_num = 0;
-ThreadPool thread_pool(12);
+ThreadPool thread_pool(50);
 
 int64_t start_time = 0;
 void Print(bool is_delay) {
@@ -45,15 +45,13 @@ void ThrowTasks(ThreadPool* thread_pool, int num) {
 }
 void ThrowDelayTasks(ThreadPool* thread_pool, int num) {
     if (delay_num < num) {
-        thread_pool->DelayTask(boost::bind(Print, true), 10);
+        thread_pool->DelayTask(10, boost::bind(Print, true));
         thread_pool->AddPriorityTask(boost::bind(ThrowDelayTasks, thread_pool, 1000000));
     }
 }
 int main() {
     ThreadPool workers(8);
     workers.Start();
-    bool r = thread_pool.Start();
-    assert(r);
 
     start_time = common::timer::get_micros();
     for (int i=0; i < 6; i++) {

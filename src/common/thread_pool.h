@@ -21,11 +21,12 @@ namespace common {
 class ThreadPool {
 public:
     ThreadPool(int thread_num = 10)
-      : threads_num_(thread_num),
-        pending_num_(0),
-        work_cv_(&mutex_), stop_(false),
-        last_task_id_(0),
-        running_task_id_(0) {
+        : threads_num_(thread_num),
+          pending_num_(0),
+          work_cv_(&mutex_),
+          stop_(false),
+          last_task_id_(0),
+          running_task_id_(0) {
         Start();
     }
     ~ThreadPool() {
@@ -53,7 +54,7 @@ public:
     // Wait for all pending task to complete if wait is true.
     bool Stop(bool wait) {
         if (wait) {
-            while(pending_num_ > 0) {
+            while (pending_num_ > 0) {
                 usleep(10000);
             }
         }
@@ -120,10 +121,11 @@ public:
     int64_t PendingNum() const {
         return pending_num_;
     }
+
 private:
     ThreadPool(const ThreadPool&);
     void operator=(const ThreadPool&);
-    
+
     static void* ThreadWrapper(void* arg) {
         reinterpret_cast<ThreadPool*>(arg)->ThreadProc();
         return NULL;
@@ -145,7 +147,7 @@ private:
                 if (now_time >= bg_item.exe_time) {
                     time_queue_.pop();
                     BGMap::iterator it = latest_.find(bg_item.id);
-                    if (it!= latest_.end() && it->second.exe_time == bg_item.exe_time) {
+                    if (it != latest_.end() && it->second.exe_time == bg_item.exe_time) {
                         task = bg_item.callback;
                         latest_.erase(it);
                         running_task_id_ = bg_item.id;
@@ -171,6 +173,7 @@ private:
             }
         }
     }
+
 private:
     struct BGItem {
         int64_t id;

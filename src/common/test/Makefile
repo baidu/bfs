@@ -1,13 +1,15 @@
 INCLUDE_PATH = ../
 
-all: sliding_window_test thread_pool_test
+CXXFLAGS= -I$(INCLUDE_PATH)
+LDFLAGS= -lpthread
 
-sliding_window_test: ../sliding_window.h sliding_window_test.cc
-	g++ -g -o sliding_window_test sliding_window_test.cc -I$(INCLUDE_PATH)
+TEST_SRC= $(wildcard *_test.cc)
+TEST_HEADER= $(patsubst %_test.cc,%.h,$(TEST_SRC))
+TEST_TARGE= $(patsubst %.cc,%,$(TEST_SRC))
+TEST_TARGE+= thread_pool_test_perf
 
-thread_pool_test: thread_pool_test.cc ../thread_pool.h
-	g++ -g -o thread_pool_test thread_pool_test.cc -I$(INCLUDE_PATH) -lpthread
+all: $(TEST_TARGE)
 
 clean:
-	rm -rf sliding_window_test
-	rm -rf thread_pool_test
+	rm -rf $(TEST_TARGE)
+
