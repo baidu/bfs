@@ -719,6 +719,7 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
     leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
     it->Seek(file_start_key);
     if (it->Valid() && recursive == false) {
+        LOG(WARNING, "Try to delete an unempty directory unrecursively: %s\n", dentry_key.c_str());
         delete it;
         ret_status = 886;
         return ret_status;
