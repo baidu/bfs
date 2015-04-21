@@ -205,8 +205,19 @@ public:
         }
         return true;
     }
-    bool DeleteDirectory(const char*, bool) {
-        return false;
+    bool DeleteDirectory(const char* path, bool recursive) {
+        DeleteDirectoryRequest request;
+        DeleteDirectoryResponse response;
+        request.set_sequence_id(0);
+        request.set_path(path);
+        request.set_recursive(recursive);
+        bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::DeleteDirectory,
+                &request, &response, 5, 3);
+        if (!ret) {
+            LOG(WARNING, "DeleteDirectory fail: %s\n", path);
+            return false;
+        }
+        return response.status() == 0;
     }
     bool Access(const char* path, int32_t mode) {
         StatRequest request;

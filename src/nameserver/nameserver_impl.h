@@ -51,6 +51,10 @@ public:
                        const ::bfs::UnlinkRequest* request,
                        ::bfs::UnlinkResponse* response,
                        ::google::protobuf::Closure* done);
+    void DeleteDirectory(::google::protobuf::RpcController* controller,
+                         const ::bfs::DeleteDirectoryRequest* request,
+                         ::bfs::DeleteDirectoryResponse* response,
+                         ::google::protobuf::Closure* done);
     void FinishBlock(::google::protobuf::RpcController* controller,
                        const ::bfs::FinishBlockRequest* request,
                        ::bfs::FinishBlockResponse* response,
@@ -63,6 +67,8 @@ public:
                        const ::bfs::BlockReportRequest* request,
                        ::bfs::BlockReportResponse* response,
                        ::google::protobuf::Closure* done);
+private:
+    int DeleteDirectoryRecursive(std::string& path, bool recursive);
 
 private:
     ChunkServerManager* _chunkserver_manager;
