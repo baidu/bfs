@@ -235,7 +235,7 @@ int BfsRmdir(bfs::FS* fs, int argc, char* argv[]) {
     char* path = recursive ? argv[1] : argv[0];
     bool ret = fs->DeleteDirectory(path, recursive);
     if (!ret) {
-        fprintf(stderr, "Remove dir %s fail\n", argv[0]);
+        fprintf(stderr, "Remove dir %s fail\n", path);
         return 1;
     }
     return 0;
