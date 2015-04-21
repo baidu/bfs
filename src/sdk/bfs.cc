@@ -211,6 +211,7 @@ public:
         DeleteDirectoryResponse response;
         request.set_sequence_id(0);
         request.set_path(path);
+        request.set_recursive(recursive);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::DeleteDirectory,
                 &request, &response, 5, 3);
         if (!ret) {

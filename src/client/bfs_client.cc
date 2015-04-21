@@ -31,7 +31,7 @@ void print_usage() {
     printf("\t    -get <bfsfile> <localfile> : copy file to local\n");
     printf("\t    -put <localfile> <bfsfile> : copy file from local to bfs\n");
     printf("\t    -append <localfile> <bfsfile> : append localfile to bfsfile\n");
-    printf("\t    -rmdir <path> : remove directory\n");
+    printf("\t    -rmdir [recursive] <path> : remove directory\n");
 }
 
 int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
@@ -228,7 +228,12 @@ int BfsRmdir(bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    bool ret = fs->DeleteDirectory(argv[0], true);
+    bool recursive = false;;
+    if (argc == 2 && strcmp(argv[0], "recursive") == 0) {
+        recursive = true;
+    }
+    char* path = recursive ? argv[1] : argv[0];
+    bool ret = fs->DeleteDirectory(path, recursive);
     if (!ret) {
         fprintf(stderr, "Remove dir %s fail\n", argv[0]);
         return 1;

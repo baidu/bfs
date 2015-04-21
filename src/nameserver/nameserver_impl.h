@@ -68,7 +68,7 @@ public:
                        ::bfs::BlockReportResponse* response,
                        ::google::protobuf::Closure* done);
 private:
-    int DeleteDirectoryRecursive(std::string& path);
+    int DeleteDirectoryRecursive(std::string& path, bool recursive);
 
 private:
     ChunkServerManager* _chunkserver_manager;

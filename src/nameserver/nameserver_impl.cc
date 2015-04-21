@@ -674,20 +674,20 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
                                      ::google::protobuf::Closure* done)  {
     response->set_sequence_id(request->sequence_id());
     std::string path = request->path();
+    bool recursive = request->recursive();
     if (path.empty() || path[0] != '/') {
         response->set_status(886);
         done->Run();
     }
 
-    int ret_status = DeleteDirectoryRecursive(path);
+    int ret_status = DeleteDirectoryRecursive(path, recursive);
 
     response->set_status(ret_status);
     done->Run();
 }
 
-int NameServerImpl::DeleteDirectoryRecursive(std::string& path) {
+int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) {
     int ret_status = 0;
-    leveldb::Status s;
     std::vector<std::string> keys;
 
     if (!SplitPath(path, &keys)) {
@@ -695,14 +695,7 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path) {
         ret_status = 886;
         return ret_status;
     }
-    s = _db->Delete(leveldb::WriteOptions(), keys[keys.size() - 1]);
-    if (s.ok()) {
-        LOG(INFO, "Unlink dentry done: %s\n", keys[keys.size() - 1].c_str());
-    } else {
-        LOG(INFO, "Unlink dentry fail: %s\n", keys[keys.size() - 1].c_str());
-        ret_status = 886;
-        return ret_status;
-    }
+    std::string dentry_key = keys[keys.size() - 1];
     keys.clear();
 
     if (path[path.size() - 1] != '/') {
@@ -724,7 +717,14 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path) {
     }
 
     leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
-    for (it->Seek(file_start_key); it->Valid(); it->Next()) {
+    it->Seek(file_start_key);
+    if (it->Valid() && recursive == false) {
+        delete it;
+        ret_status = 886;
+        return ret_status;
+    }
+
+    for (; it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
         if (key.compare(file_end_key) >= 0) {
             break;
@@ -735,7 +735,7 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path) {
         if ((file_info.type() & (1 << 9)) != 0) {
             std::string dir_path(std::string(key.data() + 2, key.size() - 2));
             LOG(INFO, "Recursive to path: %s\n", dir_path.c_str());
-            ret_status = DeleteDirectoryRecursive(dir_path);
+            ret_status = DeleteDirectoryRecursive(dir_path, recursive);
             if (ret_status != 0) {
                 break;
             }
@@ -743,7 +743,7 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path) {
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 _block_manager->MarkObsoleteBlock(file_info.blocks(i), file_info.replicas());
             }
-            s = _db->Delete(leveldb::WriteOptions(), std::string(key.data(), key.size()));
+            leveldb::Status s = _db->Delete(leveldb::WriteOptions(), std::string(key.data(), key.size()));
             if (s.ok()) {
                 LOG(INFO, "Unlink file done: %s\n", std::string(key.data() + 2, key.size() - 2).c_str());
             } else {
@@ -751,6 +751,16 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path) {
                 ret_status = 886;
                 break;
             }
+        }
+    }
+
+    if (ret_status == 0) {
+        leveldb::Status s = _db->Delete(leveldb::WriteOptions(), dentry_key);
+        if (s.ok()) {
+            LOG(INFO, "Unlink dentry done: %s\n", dentry_key.c_str() + 2);
+        } else {
+            LOG(INFO, "Unlink dentry fail: %s\n", dentry_key.c_str() + 2);
+            ret_status = 886;
         }
     }
     delete it;

@@ -98,6 +98,7 @@ message UnlinkResponse {
 message DeleteDirectoryRequest {
     required uint64 sequence_id = 1;
     required string path = 2;
+    required bool recursive = 3;
 }
 message DeleteDirectoryResponse {
     required uint64 sequence_id = 1;
