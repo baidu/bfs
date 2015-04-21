@@ -206,7 +206,6 @@ public:
         return true;
     }
     bool DeleteDirectory(const char* path, bool recursive) {
-        //what does recursive means here?
         DeleteDirectoryRequest request;
         DeleteDirectoryResponse response;
         request.set_sequence_id(0);

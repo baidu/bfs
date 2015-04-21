@@ -31,7 +31,8 @@ void print_usage() {
     printf("\t    -get <bfsfile> <localfile> : copy file to local\n");
     printf("\t    -put <localfile> <bfsfile> : copy file from local to bfs\n");
     printf("\t    -append <localfile> <bfsfile> : append localfile to bfsfile\n");
-    printf("\t    -rmdir [recursive] <path> : remove directory\n");
+    printf("\t    -rmdir <path> : remove empty directory\n");
+    printf("\t    -rmr <path> : remove directory recursively\n");
 }
 
 int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
@@ -223,19 +224,14 @@ int BfsAppend(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsRmdir(bfs::FS* fs, int argc, char* argv[]) {
+int BfsRmdir(bfs::FS* fs, int argc, char* argv[], bool recursive) {
     if (argc < 1) {
         print_usage();
         return 1;
     }
-    bool recursive = false;;
-    if (argc == 2 && strcmp(argv[0], "recursive") == 0) {
-        recursive = true;
-    }
-    char* path = recursive ? argv[1] : argv[0];
-    bool ret = fs->DeleteDirectory(path, recursive);
+    bool ret = fs->DeleteDirectory(argv[0], recursive);
     if (!ret) {
-        fprintf(stderr, "Remove dir %s fail\n", path);
+        fprintf(stderr, "Remove dir %s fail\n", argv[0]);
         return 1;
     }
     return 0;
@@ -293,7 +289,9 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[1], "append") == 0) {
         ret = BfsAppend(fs, argc, argv);
     } else if (strcmp(argv[1], "rmdir") == 0) {
-        ret = BfsRmdir(fs, argc - 2, argv + 2);
+        ret = BfsRmdir(fs, argc - 2, argv + 2, false);
+    } else if (strcmp(argv[1], "rmr") == 0) {
+        ret = BfsRmdir(fs, argc - 2, argv + 2, true);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }
