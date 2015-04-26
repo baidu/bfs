@@ -71,7 +71,7 @@ public:
     ChunkServerManager() 
         : next_chunkserver_id(1) {
     }
-    void HanldeHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
+    void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
         MutexLock lock(&_mu);
         int32_t id = request->chunkserver_id();
         ChunkServerInfo* info = _chunkservers[id];
@@ -255,7 +255,7 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
     if (version != _namespace_version) {
         id = _chunkserver_manager->AddChunkServer(request->data_server_addr());
     } else {
-        _chunkserver_manager->HanldeHeartBeat(request, response);
+        _chunkserver_manager->HandleHeartBeat(request, response);
     }
     response->set_chunkserver_id(id);
     response->set_namespace_version(_namespace_version);
