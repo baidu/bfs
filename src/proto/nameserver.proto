@@ -122,7 +122,10 @@ message ReportBlockInfo {
     optional int64 version = 2;
     optional int64 block_size = 3;
 }
-
+message ReplicaInfo {
+    required int64 block_id = 1;
+    repeated string chunkserver_address = 2;
+}
 message BlockReportRequest {
     optional uint64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
@@ -134,6 +137,7 @@ message BlockReportResponse {
     optional uint64 sequence_id = 1;
     optional int32 status = 2;
     repeated int64 obsolete_blocks = 3;
+    repeated ReplicaInfo new_replicas = 4;
 }
 
 service NameServer {

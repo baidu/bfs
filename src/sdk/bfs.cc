@@ -300,7 +300,30 @@ public:
         return ret;
     }
     bool CloseFile(File* file) {
-        return file->Close();
+        int64_t block_id = -1;
+        int open_flags;
+        if (BfsFileImpl* bfs_file = dynamic_cast<BfsFileImpl*>(file)) {
+            open_flags = bfs_file->_open_flags;
+            if (open_flags == O_WRONLY || open_flags == O_APPEND) {
+                block_id = bfs_file->_block_for_write->block_id();
+            }
+        }
+        if (!file->Close()) {
+            LOG(WARNING, "Close file fail\n");
+            return false;
+        }
+        if (open_flags == O_WRONLY || open_flags == O_APPEND) {
+            FinishBlockRequest request;
+            FinishBlockResponse response;
+            request.set_sequence_id(0);
+            request.set_block_id(block_id);
+            bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::FinishBlock,
+                    &request, &response, 5, 3);
+
+            return ret && response.status() == 0;
+        } else {
+            return true;
+        }
     }
     bool DeleteFile(const char* path) {
         UnlinkRequest request;
