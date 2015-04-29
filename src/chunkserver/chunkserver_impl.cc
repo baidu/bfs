@@ -134,8 +134,11 @@ public:
     }
     bool Write(int32_t seq, const char* data, int32_t len) {
         LOG(INFO, "Block Write %d\n", seq);
-        char* buf = new char[len];
-        memcpy(buf, data, len);
+        char* buf = NULL;
+        if (len) {
+            buf = new char[len];
+            memcpy(buf, data, len);
+        }
         bool ret = _recv_window->Add(seq, Buffer(buf, len));
         if (!ret) {
             delete[] buf;
@@ -164,7 +167,9 @@ public:
             delete[] _blockbuf;
             _blockbuf = newbuf;
         }
-        memcpy(_blockbuf + _datalen, buf, len);
+        if (len) {
+            memcpy(_blockbuf + _datalen, buf, len);
+        }
         _datalen += len;
         _last_seq = seq;
     }
@@ -610,7 +615,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         block->SetWriteMode(O_WRONLY);
     }
 
-    if (!databuf.empty() && !block->Write(packet_seq, databuf.data(), databuf.size())) {
+    if (!block->Write(packet_seq, databuf.data(), databuf.size())) {
         LOG(WARNING, "Write offset[%ld] block_size[%ld] not in sliding window\n",
             offset, block->Size());
         block->DecRef();
