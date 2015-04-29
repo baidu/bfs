@@ -84,6 +84,9 @@ public:
     bool GetChunkServerChains(int num, 
                               std::vector<std::pair<int32_t,std::string> >* chains) {
         MutexLock lock(&_mu);
+        if (num == 0) {
+            num = _heartbeat_list.size();
+        }
         if (num > static_cast<int>(_heartbeat_list.size())) {
             LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
                 _heartbeat_list.size(), num);
@@ -157,7 +160,9 @@ public:
         int64_t version;
         std::set<int32_t> replica;
         int64_t block_size;
-        NSBlock(int64_t block_id) : id(block_id),version(0) {}
+        int32_t expect_replica_num;
+        bool pending_change;
+        NSBlock(int64_t block_id) : id(block_id), version(0), expect_replica_num(3), pending_change(true) {}
         void AddChunkServer(int32_t chunkserver) {};
     };
     BlockManager():_next_block_id(1) {}
@@ -165,7 +170,7 @@ public:
         MutexLock lock(&_mu);
         return ++_next_block_id;
     }
-    bool AddBlock(int64_t id, int32_t server_id, int64_t block_size) {
+    bool AddBlock(int64_t id, int32_t server_id, int64_t block_size, int32_t* more_replica_num = NULL) {
         MutexLock lock(&_mu);
         NSBlock* nsblock = NULL;
         NSBlockMap::iterator it = _block_map.find(id);
@@ -186,6 +191,27 @@ public:
         }
         /// 增加一个副本, 无论之前已经有几个了, 多余的通过gc处理
         nsblock->replica.insert(server_id);
+        int32_t cur_replica_num = nsblock->replica.size();
+        int32_t expect_replica_num = nsblock->expect_replica_num;
+        if (cur_replica_num != expect_replica_num) {
+            if (!nsblock->pending_change) {
+                nsblock->pending_change = true;
+                if (cur_replica_num > expect_replica_num) {
+                    //not implement here
+                    /*
+                    int32_t reduant_num = cur_replica_num - expect_replica_num;
+                    _obsolete_blocks.insert(std::make_pair(id, reduant_num));
+                    LOG(INFO, "Remove block: %ld reduant replicas: %d\n", id, reduant_num);
+                    */
+                } else {
+                    // add new replica
+                    if (more_replica_num) {
+                        *more_replica_num = expect_replica_num - cur_replica_num;
+                        LOG(INFO, "Need to add %d new replica for block: %ld\n", *more_replica_num, id);
+                    }
+                }
+            }
+        }
         return true;
     }
     bool GetBlock(int64_t block_id, NSBlock* block) {
@@ -219,6 +245,38 @@ public:
         } else {
             LOG(WARNING, "Try to unmark obsolete block that is not marked: %ld\n", block_id);
         }
+    }
+    bool MarkFinishBlock(int64_t block_id) {
+        MutexLock lock(&_mu);
+        NSBlock* nsblock = NULL;
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        if (it != _block_map.end()) {
+            nsblock = it->second;
+            assert(nsblock->pending_change == true);
+            nsblock->pending_change = false;
+            return true;
+        } else {
+            LOG(WARNING, "Can't find block: %ld\n", block_id);
+            return false;
+        }
+    }
+    bool GetReplicaLocation(int64_t id, std::set<int32_t>* chunkserver_id) {
+        MutexLock lock(&_mu);
+        NSBlock* nsblock = NULL;
+        NSBlockMap::iterator it = _block_map.find(id);
+        bool ret = false;
+        if (it != _block_map.end()) {
+            nsblock = it->second;
+            std::set<int32_t>::iterator replica_it = nsblock->replica.begin();
+            for (; replica_it != nsblock->replica.end(); ++replica_it) {
+                chunkserver_id->insert(*replica_it);
+            }
+            ret = true;
+        } else {
+            LOG(WARNING, "Can't find block: %ld\n", id);
+        }
+
+        return ret;
     }
 private:
     Mutex _mu;
@@ -284,8 +342,37 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 response->add_obsolete_blocks(cur_block_id);
                 _block_manager->UnmarkObsoleteBlock(cur_block_id);
             } else {
-                _block_manager->AddBlock(cur_block_id, id, cur_block_size);
                 size += cur_block_size;
+
+                int32_t more_replica_num = 0;
+                _block_manager->AddBlock(cur_block_id, id, cur_block_size, &more_replica_num);
+                if (more_replica_num != 0) {
+                    std::vector<std::pair<int32_t, std::string> > chains;
+                    if (_chunkserver_manager->GetChunkServerChains(0, &chains)) {
+                        std::set<int32_t> cur_replica_location;
+                        _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
+
+                        std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
+                        ReplicaInfo* info = NULL;
+                        int num;
+                        for (num = 0; num < more_replica_num &&
+                                chains_it != chains.end(); ++chains_it) {
+                            if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
+                                if (num == 0) {
+                                    info = response->add_new_replicas();
+                                    info->set_block_id(cur_block_id);
+                                }
+                                LOG(INFO, "Add new replica to chunkserver %ld\n", chains_it->first);
+                                info->add_chunkserver_address(chains_it->second);
+                                num++;
+                            }
+                        }
+                        //no suitable chunkserver
+                        if (num == 0) {
+                            _block_manager->MarkFinishBlock(cur_block_id);
+                        }
+                    }
+                }
             }
         }
         _chunkserver_manager->SetChunkServerLoad(id, size);
@@ -411,10 +498,16 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
 }
 
 void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
-                         const FinishBlockRequest*,
-                         FinishBlockResponse*,
+                         const FinishBlockRequest* request,
+                         FinishBlockResponse* response,
                          ::google::protobuf::Closure* done) {
-    controller->SetFailed("Method FinishBlock() not implemented.");
+    int64_t block_id = request->block_id();
+    response->set_sequence_id(request->sequence_id());
+    if (_block_manager->MarkFinishBlock(block_id)) {
+        response->set_status(0);
+    } else {
+        response->set_status(886);
+    }
     done->Run();
 }
 

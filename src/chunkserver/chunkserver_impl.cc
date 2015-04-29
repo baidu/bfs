@@ -495,6 +495,15 @@ void ChunkServerImpl::Routine() {
                 boost::function<void ()> task =
                     boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks, this, obsolete_blocks);
                 _thread_pool->AddTask(task);
+
+                std::vector<ReplicaInfo> new_replica_info;
+                for (int i = 0; i < response.new_replicas_size(); i++) {
+                    new_replica_info.push_back(response.new_replicas(i));
+                }
+                boost::function<void ()> new_replica_task =
+                    boost::bind(&ChunkServerImpl::AddNewReplica, this, new_replica_info);
+                _thread_pool->AddTask(new_replica_task);
+
             }
         }
         ++ ticks;
@@ -517,6 +526,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
         LOG(WARNING, "Reprot finish fail: %ld\n", block->Id());
         return false;
     }
+
     LOG(INFO, "Reprot finish %ld\n", block->Id());
     return true;
 }
@@ -683,6 +693,73 @@ void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
     for (size_t i = 0; i < blocks.size(); i++) {
         if (!_block_manager->RemoveBlock(blocks[i])) {
             LOG(WARNING, "Remove block fail: %ld\n", blocks[i]);
+        }
+    }
+}
+void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
+    for (size_t i = 0; i < new_replica_info.size(); i++) {
+        int64_t block_id = new_replica_info[i].block_id();
+        Block* block = _block_manager->FindBlock(block_id, false);
+        if (block == NULL) {
+            LOG(WARNING, "ReadBlock not found: %ld\n", block_id);
+        } else {
+            char* buf = new char[256 * 1024];
+            ChunkServer_Stub* cur_chunkserver = NULL;
+            if (!_rpc_client->GetStub(new_replica_info[i].chunkserver_address(0), &cur_chunkserver)) {
+                LOG(WARNING, "Can't connect to chunkserver:%s\n",
+                        new_replica_info[i].chunkserver_address(0).c_str());
+                continue;
+            }
+            int32_t len;
+            int64_t offset = 0;
+            int64_t packet_seq = 0;
+            while((len = block->Read(buf, 256 * 1024, offset)) != -1) {
+                if (len >= 0) {
+                    WriteBlockRequest request;
+                    WriteBlockResponse response;
+                    int64_t seq = common::timer::get_micros();
+                    request.set_sequence_id(seq);
+                    request.set_block_id(block_id);
+                    request.set_databuf(buf, len);
+                    request.set_offset(offset);
+                    request.set_is_last(len == 0);
+                    request.set_packet_seq(packet_seq);
+                    request.set_is_append(false);
+                    for (int j = 1; j < new_replica_info[i].chunkserver_address_size(); j++) {
+                        request.add_chunkservers(new_replica_info[i].chunkserver_address(j));
+                    }
+                    if (!_rpc_client->SendRequest(cur_chunkserver,
+                                &ChunkServer_Stub::WriteBlock, &request, &response, 5, 3)) {
+                        LOG(WARNING, "AddNewReplica %ld rpc call fail\n", block_id);
+                        break;
+                    }
+                    if (response.status() != 0) {
+                        LOG(WARNING, "AddNewReplica %ld fail\n", block_id);
+                        break;
+                    }
+                }
+                if (len == 0) {
+                    break;
+                }
+                offset += len;
+                packet_seq++;
+            }
+            delete[] buf;
+        }
+        // send to nameserver finish
+        FinishBlockRequest request;
+        FinishBlockResponse response;
+        request.set_sequence_id(0);
+        request.set_block_id(block_id);
+        if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::FinishBlock,
+                    &request, &response, 5, 3)) {
+            LOG(WARNING, "Fail to report finish to nameserver: %ld\n", block_id);
+        } else {
+            if (response.status() == 0) {
+                LOG(INFO, "Report add new replica finish to nameserver: %ld\n", block_id);
+            } else {
+                LOG(WARNING, "Report add new replica finish to nameserver fail: %ld\n", block_id);
+            }
         }
     }
 }
