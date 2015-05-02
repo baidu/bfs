@@ -19,6 +19,10 @@ static inline long get_micros() {
     return static_cast<long>(tv.tv_sec) * 1000000 + tv.tv_usec;
 }
 
+static inline int32_t now_time() {
+    return static_cast<int32_t>(get_micros() / 1000000);
+}
+
 class AutoTimer {
 public:
     AutoTimer(long timeout_ms, const char* msg1, const char* msg2 = NULL)

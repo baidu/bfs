@@ -69,42 +69,45 @@ bool SplitPath(const std::string& path, std::vector<std::string>* element) {
 class ChunkServerManager {
 public:
     ChunkServerManager() 
-        : next_chunkserver_id(1) {
+        : _chunkserver_num(0),
+          _next_chunkserver_id(1) {
     }
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
         MutexLock lock(&_mu);
         int32_t id = request->chunkserver_id();
         ChunkServerInfo* info = _chunkservers[id];
         assert(info);
-        int64_t now_time = common::timer::get_micros();
-        _heartbeat_list.erase(info->last_heartbeat());
-        _heartbeat_list[now_time] = info;
+        int64_t now_time = common::timer::now_time();
+        _heartbeat_list[info->last_heartbeat()].erase(info);
+        _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
     }
     bool GetChunkServerChains(int num, 
                               std::vector<std::pair<int32_t,std::string> >* chains) {
         MutexLock lock(&_mu);
-        if (num == 0) {
-            num = _heartbeat_list.size();
-        }
-        if (num > static_cast<int>(_heartbeat_list.size())) {
+        if (num > _chunkserver_num) {
             LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
-                _heartbeat_list.size(), num);
+                _chunkserver_num, num);
             return false;
         }
-        std::map<int64_t, ChunkServerInfo*>::iterator it = _heartbeat_list.begin();
-        std::vector<std::pair<int64_t, int64_t> > chunkserver_load;
-        std::vector<std::pair<int64_t, int64_t> >::iterator load_it;
+        std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
+        std::vector<std::pair<int64_t, ChunkServerInfo*> > chunkserver_load;
 
-        while (it != _heartbeat_list.end()) {
-            chunkserver_load.push_back(std::make_pair(it->second->data_size(), it->first));
-            ++it;
+        for (; it != _heartbeat_list.end(); ++it) {
+            std::set<ChunkServerInfo*>& set = it->second;
+            for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
+                 sit != set.end(); ++sit) {
+                ChunkServerInfo* cs = *sit;
+                chunkserver_load.push_back(
+                    std::make_pair(cs->data_size(), cs));
+            }
         }
         std::sort(chunkserver_load.begin(), chunkserver_load.end());
-
+        
+        std::vector<std::pair<int64_t, ChunkServerInfo*> >::iterator load_it;
         load_it = chunkserver_load.begin();
         for (int i = 0; i < num; ++i, ++load_it) {
-            ChunkServerInfo* cs = _heartbeat_list[load_it->second];
+            ChunkServerInfo* cs = load_it->second;
             chains->push_back(std::make_pair(cs->id(), cs->address()));
         }
 
@@ -112,14 +115,15 @@ public:
     }
     int64_t AddChunkServer(const std::string& address) {
         MutexLock lock(&_mu);
-        int32_t id = next_chunkserver_id++;
+        int32_t id = _next_chunkserver_id++;
         ChunkServerInfo* info = new ChunkServerInfo;
         info->set_id(id);
         info->set_address(address);
         _chunkservers[id] = info;
         int64_t now_time = common::timer::get_micros();
-        _heartbeat_list[now_time] = info;
+        _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
+        ++_chunkserver_num;
         return id;
     }
     std::string GetChunkServer(int32_t id) {
@@ -149,8 +153,9 @@ private:
     Mutex _mu;      /// _chunkservers list mutext;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
     ServerMap _chunkservers;
-    std::map<int64_t, ChunkServerInfo*> _heartbeat_list;
-    int32_t next_chunkserver_id;
+    std::map<int32_t, std::set<ChunkServerInfo*> > _heartbeat_list;
+    int32_t _chunkserver_num;
+    int32_t _next_chunkserver_id;
 };
 
 class BlockManager {
@@ -348,7 +353,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 _block_manager->AddBlock(cur_block_id, id, cur_block_size, &more_replica_num);
                 if (more_replica_num != 0) {
                     std::vector<std::pair<int32_t, std::string> > chains;
-                    if (_chunkserver_manager->GetChunkServerChains(0, &chains)) {
+                    ///TODO: Not get all chunkservers, but get more.
+                    if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {
                         std::set<int32_t> cur_replica_location;
                         _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
 
