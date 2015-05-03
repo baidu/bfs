@@ -11,7 +11,7 @@ CopyUsingHardLink(True)
 CPPFLAGS('-D_GNU_SOURCE -D__STDC_LIMIT_MACROS -DVERSION=\\\"1.0.0.0\\\"')
 
 #C++编译参数.
-CXXFLAGS('-g -pipe -W -Wall -Wno-unused-parameter -fPIC')
+CXXFLAGS('-g -pipe -W -Wall -Werror -Wno-unused-parameter -fPIC')
 
 #头文件路径.
 INCPATHS('./src ./thirdparty/leveldb/include') # ./third_party/pbrpc/include')

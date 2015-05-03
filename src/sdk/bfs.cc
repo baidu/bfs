@@ -187,7 +187,7 @@ public:
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::ListDirectory,
             &request, &response, 5, 3);
-        if (!ret) {
+        if (!ret || response.status != 0) {
             LOG(WARNING, "List fail: %s\n", path);
             return false;
         }
@@ -216,6 +216,9 @@ public:
         if (!ret) {
             LOG(WARNING, "DeleteDirectory fail: %s\n", path);
             return false;
+        }
+        if (response.status() == 404) {
+            LOG(WARNING, "%s is not found.", path);
         }
         return response.status() == 0;
     }

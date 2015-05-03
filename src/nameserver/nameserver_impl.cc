@@ -627,8 +627,9 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     if (path[path.size()-1] != '/') {
         path += '/';
     }
-    path += "#";
+    ///TODO: Check path existent
 
+    path += "#";
     common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
     if (!SplitPath(path, &keys)) {
         LOG(WARNING, "SplitPath fail: %s\n", path.c_str());
@@ -839,8 +840,16 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
         return ret_status;
     }
     std::string dentry_key = keys[keys.size() - 1];
+    {
+        std::string value;
+        leveldb::Status s = _db->Get(leveldb::ReadOptions(), dentry_key, &value);
+        if (!s.ok()) {
+            LOG(INFO, "Delete Directory, %s is not found.", dentry_key.data() + 2);
+            return 404;
+        }
+    }
+    
     keys.clear();
-
     if (path[path.size() - 1] != '/') {
         path += '/';
     }
