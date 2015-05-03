@@ -99,5 +99,5 @@ install:
 
 .PHONY: test
 test:
-	echo "Test done"
+	cd sandbox; sh small_test.sh
 

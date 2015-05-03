@@ -187,7 +187,7 @@ public:
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::ListDirectory,
             &request, &response, 5, 3);
-        if (!ret || response.status != 0) {
+        if (!ret || response.status() != 0) {
             LOG(WARNING, "List fail: %s\n", path);
             return false;
         }
