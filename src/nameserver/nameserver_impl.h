@@ -7,7 +7,8 @@
 #ifndef  BFS_NAMESERVER_IMPL_H_
 #define  BFS_NAMESERVER_IMPL_H_
 
-#include <common/mutex.h>
+#include "common/mutex.h"
+#include "common/thread_pool.h"
 #include "proto/nameserver.pb.h"
 
 namespace leveldb {
@@ -71,9 +72,15 @@ private:
     int DeleteDirectoryRecursive(std::string& path, bool recursive);
 
 private:
-    ChunkServerManager* _chunkserver_manager;
-    BlockManager* _block_manager;
+    /// Global thread pool
+    ThreadPool _thread_pool;
+    /// Global lock
     Mutex        _mu;
+    /// Chunkserver map
+    ChunkServerManager* _chunkserver_manager;
+    /// Block map
+    BlockManager* _block_manager;
+    /// Namespace database
     leveldb::DB* _db;    ///< 存储nameserver数据
     int64_t _namespace_version;
 };

@@ -4,22 +4,28 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#include <set>
+#include "nameserver_impl.h"
 
+#include <set>
+#include <map>
+
+#include <boost/bind.hpp>
 #include <gflags/gflags.h>
 #include <leveldb/db.h>
 #include <leveldb/cache.h>
 #include <leveldb/write_batch.h>
 #include <sofa/pbrpc/pbrpc.h>
 
-#include "nameserver_impl.h"
+#include "common/logging.h"
 #include "common/mutex.h"
 #include "common/timer.h"
-#include "common/logging.h"
+#include "common/thread_pool.h"
 #include "common/util.h"
 
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
+DECLARE_int32(keepalive_timeout);
+DECLARE_int32(default_replica_num);
 
 namespace bfs {
 
@@ -68,16 +74,49 @@ bool SplitPath(const std::string& path, std::vector<std::string>* element) {
 
 class ChunkServerManager {
 public:
-    ChunkServerManager() 
-        : _chunkserver_num(0),
+    ChunkServerManager(ThreadPool* thread_pool)
+        : _thread_pool(thread_pool),
+          _chunkserver_num(0),
           _next_chunkserver_id(1) {
+        _thread_pool->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
     }
+    void DeadCheck() {
+        int32_t now_time = common::timer::now_time();
+
+        MutexLock lock(&_mu);
+        std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
+
+        while (it != _heartbeat_list.end()
+               && it->first + FLAGS_keepalive_timeout <= now_time) {
+            std::set<ChunkServerInfo*>::iterator node = it->second.begin();
+            while (node != it->second.end()) {
+                ChunkServerInfo* cs = *node;
+                LOG(INFO, "[DeadCheck] Chunkserver %s dead", cs->address().c_str());
+                ///TODO: handle chunkserver fail
+                it->second.erase(node);
+                node = it->second.begin();
+            }
+            _heartbeat_list.erase(it);
+            it = _heartbeat_list.begin();
+        }
+        int idle_time = 5;
+        if (it != _heartbeat_list.end()) {
+            idle_time = it->first + FLAGS_keepalive_timeout - now_time;
+            // LOG(INFO, "it->first= %d, now_time= %d\n", it->first, now_time);
+            if (idle_time > 5) {
+                idle_time = 5;
+            }
+        }
+        _thread_pool->DelayTask(idle_time * 1000,
+                               boost::bind(&ChunkServerManager::DeadCheck, this));
+    }
+
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
         MutexLock lock(&_mu);
         int32_t id = request->chunkserver_id();
         ChunkServerInfo* info = _chunkservers[id];
         assert(info);
-        int64_t now_time = common::timer::now_time();
+        int32_t now_time = common::timer::now_time();
         _heartbeat_list[info->last_heartbeat()].erase(info);
         _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
@@ -150,6 +189,7 @@ public:
     }
 
 private: 
+    ThreadPool* _thread_pool;
     Mutex _mu;      /// _chunkservers list mutext;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
     ServerMap _chunkservers;
@@ -167,15 +207,18 @@ public:
         int64_t block_size;
         int32_t expect_replica_num;
         bool pending_change;
-        NSBlock(int64_t block_id) : id(block_id), version(0), expect_replica_num(3), pending_change(true) {}
-        void AddChunkServer(int32_t chunkserver) {};
+        NSBlock(int64_t block_id)
+         : id(block_id), version(0), expect_replica_num(FLAGS_default_replica_num),
+           pending_change(true) {
+        }
     };
     BlockManager():_next_block_id(1) {}
     int64_t NewBlock() {
         MutexLock lock(&_mu);
         return ++_next_block_id;
     }
-    bool AddBlock(int64_t id, int32_t server_id, int64_t block_size, int32_t* more_replica_num = NULL) {
+    bool AddBlock(int64_t id, int32_t server_id, int64_t block_size,
+                  int32_t* more_replica_num = NULL) {
         MutexLock lock(&_mu);
         NSBlock* nsblock = NULL;
         NSBlockMap::iterator it = _block_map.find(id);
@@ -301,7 +344,7 @@ NameServerImpl::NameServerImpl() {
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
     }
     _namespace_version = common::timer::get_micros();
-    _chunkserver_manager = new ChunkServerManager();
+    _chunkserver_manager = new ChunkServerManager(&_thread_pool);
     _block_manager = new BlockManager();
 }
 NameServerImpl::~NameServerImpl() {
@@ -479,7 +522,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         assert(0);
     }
     /// replica num
-    int replica_num = 2;
+    int replica_num = FLAGS_default_replica_num;
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
