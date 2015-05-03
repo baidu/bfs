@@ -4,6 +4,10 @@ set -x
 
 sh ./clear.sh
 sh ./deploy.sh
+
+ldd bfs_client
+ll /usr/local/lib/libsnappy.so.1
+
 sh ./start_bfs.sh
 
 sleep 3
