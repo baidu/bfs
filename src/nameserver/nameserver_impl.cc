@@ -118,6 +118,9 @@ public:
         assert(info);
         int32_t now_time = common::timer::now_time();
         _heartbeat_list[info->last_heartbeat()].erase(info);
+        if (_heartbeat_list[info->last_heartbeat()].empty()) {
+            _heartbeat_list.erase(info->last_heartbeat());
+        }
         _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
     }
