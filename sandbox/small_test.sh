@@ -6,7 +6,7 @@ sh ./clear.sh
 sh ./deploy.sh
 
 ldd bfs_client
-ll /usr/local/lib/libsnappy.so.1
+ls -l /usr/local/lib/libsnappy.so.1
 
 sh ./start_bfs.sh
 
