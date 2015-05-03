@@ -96,6 +96,7 @@ public:
                 it->second.erase(node);
                 node = it->second.begin();
             }
+            assert(it->second.empty());
             _heartbeat_list.erase(it);
             it = _heartbeat_list.begin();
         }

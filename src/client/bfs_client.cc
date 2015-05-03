@@ -263,6 +263,8 @@ int main(int argc, char* argv[]) {
         bfs::File* file;
         if (!fs->OpenFile(argv[2], O_WRONLY, &file)) {
             fprintf(stderr, "Open %s fail\n", argv[2]);
+        } else {
+            ret = 0;
         }
     } else if (strcmp(argv[1], "rm") == 0) {
         if (argc != 3) {
@@ -271,6 +273,7 @@ int main(int argc, char* argv[]) {
         }
         if (fs->DeleteFile(argv[2])) {
             printf("%s Removed\n", argv[2]);
+            ret = 0;
         } else {
             fprintf(stderr, "Remove file fail: %s\n", argv[2]);
         }
