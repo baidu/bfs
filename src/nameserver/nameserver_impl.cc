@@ -200,6 +200,17 @@ public:
 
         return ret;
     }
+    void ReplicateDeadBlocks(int32_t id, std::set<int64_t> blocks) {
+        LOG(INFO, "Replicate %d blocks of dead chunkserver: %d\n", blocks.size(), id);
+        MutexLock lock(&_mu);
+        std::set<int64_t>::iterator it = blocks.begin();
+        for (; it != blocks.end(); ++it) {
+            NSBlockMap::iterator nsb_it = _block_map.find(*it);
+            assert(nsb_it != _block_map.end());
+            NSBlock* nsblock = nsb_it->second;
+            nsblock->replica.erase(id);
+        }
+    }
 private:
     Mutex _mu;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
@@ -210,8 +221,9 @@ private:
 
 class ChunkServerManager {
 public:
-    ChunkServerManager(ThreadPool* thread_pool)
+    ChunkServerManager(ThreadPool* thread_pool, BlockManager* block_manager)
         : _thread_pool(thread_pool),
+          _block_manager(block_manager),
           _chunkserver_num(0),
           _next_chunkserver_id(1) {
         _thread_pool->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
@@ -229,6 +241,14 @@ public:
                 ChunkServerInfo* cs = *node;
                 LOG(INFO, "[DeadCheck] Chunkserver %s dead", cs->address().c_str());
                 ///TODO: handle chunkserver fail
+                int32_t id = cs->id();
+                std::set<int64_t> blocks = _chunkserver_block_map[id];
+                boost::function<void ()> task =
+                    boost::bind(&BlockManager::ReplicateDeadBlocks,
+                            _block_manager, id, blocks);
+                _thread_pool->AddTask(task);
+                _chunkserver_block_map.erase(id);
+
                 it->second.erase(node);
                 node = it->second.begin();
             }
@@ -327,13 +347,19 @@ public:
             return true;
         }
     }
+    void AddBlock(int32_t id, int64_t block_id) {
+        MutexLock lock(&_mu);
+        _chunkserver_block_map[id].insert(block_id);
+    }
 
 private:
     ThreadPool* _thread_pool;
+    BlockManager* _block_manager;
     Mutex _mu;      /// _chunkservers list mutext;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
     ServerMap _chunkservers;
     std::map<int32_t, std::set<ChunkServerInfo*> > _heartbeat_list;
+    std::map<int32_t, std::set<int64_t> > _chunkserver_block_map;
     int32_t _chunkserver_num;
     int32_t _next_chunkserver_id;
 };
@@ -348,8 +374,8 @@ NameServerImpl::NameServerImpl() {
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
     }
     _namespace_version = common::timer::get_micros();
-    _chunkserver_manager = new ChunkServerManager(&_thread_pool);
     _block_manager = new BlockManager();
+    _chunkserver_manager = new ChunkServerManager(&_thread_pool, _block_manager);
 }
 NameServerImpl::~NameServerImpl() {
 }
@@ -398,6 +424,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
                 int32_t more_replica_num = 0;
                 _block_manager->AddBlock(cur_block_id, id, cur_block_size, &more_replica_num);
+                _chunkserver_manager->AddBlock(id, cur_block_id);
                 if (more_replica_num != 0) {
                     std::vector<std::pair<int32_t, std::string> > chains;
                     ///TODO: Not get all chunkservers, but get more.
