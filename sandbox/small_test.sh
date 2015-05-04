@@ -7,6 +7,7 @@ sh ./deploy.sh
 
 ldd bfs_client
 ls -l /usr/local/lib/libsnappy.so.1
+cat /etc/ld.so.conf.d/libc.conf
 
 sh ./start_bfs.sh
 
