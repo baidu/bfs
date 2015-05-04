@@ -72,136 +72,6 @@ bool SplitPath(const std::string& path, std::vector<std::string>* element) {
     return true;
 }
 
-class ChunkServerManager {
-public:
-    ChunkServerManager(ThreadPool* thread_pool)
-        : _thread_pool(thread_pool),
-          _chunkserver_num(0),
-          _next_chunkserver_id(1) {
-        _thread_pool->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
-    }
-    void DeadCheck() {
-        int32_t now_time = common::timer::now_time();
-
-        MutexLock lock(&_mu);
-        std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
-
-        while (it != _heartbeat_list.end()
-               && it->first + FLAGS_keepalive_timeout <= now_time) {
-            std::set<ChunkServerInfo*>::iterator node = it->second.begin();
-            while (node != it->second.end()) {
-                ChunkServerInfo* cs = *node;
-                LOG(INFO, "[DeadCheck] Chunkserver %s dead", cs->address().c_str());
-                ///TODO: handle chunkserver fail
-                it->second.erase(node);
-                node = it->second.begin();
-            }
-            assert(it->second.empty());
-            _heartbeat_list.erase(it);
-            it = _heartbeat_list.begin();
-        }
-        int idle_time = 5;
-        if (it != _heartbeat_list.end()) {
-            idle_time = it->first + FLAGS_keepalive_timeout - now_time;
-            // LOG(INFO, "it->first= %d, now_time= %d\n", it->first, now_time);
-            if (idle_time > 5) {
-                idle_time = 5;
-            }
-        }
-        _thread_pool->DelayTask(idle_time * 1000,
-                               boost::bind(&ChunkServerManager::DeadCheck, this));
-    }
-
-    void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
-        MutexLock lock(&_mu);
-        int32_t id = request->chunkserver_id();
-        ChunkServerInfo* info = _chunkservers[id];
-        assert(info);
-        int32_t now_time = common::timer::now_time();
-        _heartbeat_list[info->last_heartbeat()].erase(info);
-        if (_heartbeat_list[info->last_heartbeat()].empty()) {
-            _heartbeat_list.erase(info->last_heartbeat());
-        }
-        _heartbeat_list[now_time].insert(info);
-        info->set_last_heartbeat(now_time);
-    }
-    bool GetChunkServerChains(int num, 
-                              std::vector<std::pair<int32_t,std::string> >* chains) {
-        MutexLock lock(&_mu);
-        if (num > _chunkserver_num) {
-            LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
-                _chunkserver_num, num);
-            return false;
-        }
-        std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
-        std::vector<std::pair<int64_t, ChunkServerInfo*> > chunkserver_load;
-
-        for (; it != _heartbeat_list.end(); ++it) {
-            std::set<ChunkServerInfo*>& set = it->second;
-            for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
-                 sit != set.end(); ++sit) {
-                ChunkServerInfo* cs = *sit;
-                chunkserver_load.push_back(
-                    std::make_pair(cs->data_size(), cs));
-            }
-        }
-        std::sort(chunkserver_load.begin(), chunkserver_load.end());
-        
-        std::vector<std::pair<int64_t, ChunkServerInfo*> >::iterator load_it;
-        load_it = chunkserver_load.begin();
-        for (int i = 0; i < num; ++i, ++load_it) {
-            ChunkServerInfo* cs = load_it->second;
-            chains->push_back(std::make_pair(cs->id(), cs->address()));
-        }
-
-        return true;
-    }
-    int64_t AddChunkServer(const std::string& address) {
-        MutexLock lock(&_mu);
-        int32_t id = _next_chunkserver_id++;
-        ChunkServerInfo* info = new ChunkServerInfo;
-        info->set_id(id);
-        info->set_address(address);
-        _chunkservers[id] = info;
-        int32_t now_time = common::timer::now_time();
-        _heartbeat_list[now_time].insert(info);
-        info->set_last_heartbeat(now_time);
-        ++_chunkserver_num;
-        return id;
-    }
-    std::string GetChunkServer(int32_t id) {
-        MutexLock lock(&_mu);
-        ServerMap::iterator it = _chunkservers.find(id);
-        if (it == _chunkservers.end()) {
-            return "";
-        } else {
-            return it->second->address();
-        }
-    }
-    bool SetChunkServerLoad(int32_t id, int64_t size) {
-        MutexLock lock(&_mu);
-        ServerMap::iterator it = _chunkservers.find(id);
-        if(it == _chunkservers.end()) {
-            LOG(WARNING, "ChunkServer does not exist!, chunkserver id: %d\n", id);
-            assert(0);
-            return false;
-        } else {
-            it->second->set_data_size(size);
-            LOG(INFO, "Get Report of ChunkServerLoad, server id: %d, load: %ld\n", id, size);
-            return true;
-        }
-    }
-
-private: 
-    ThreadPool* _thread_pool;
-    Mutex _mu;      /// _chunkservers list mutext;
-    typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
-    ServerMap _chunkservers;
-    std::map<int32_t, std::set<ChunkServerInfo*> > _heartbeat_list;
-    int32_t _chunkserver_num;
-    int32_t _next_chunkserver_id;
-};
-
 class BlockManager {
 public:
     struct NSBlock {
@@ -336,6 +206,136 @@ private:
     NSBlockMap _block_map;
     int64_t _next_block_id;
     std::map<int64_t, int32_t> _obsolete_blocks;
+};
+
+class ChunkServerManager {
+public:
+    ChunkServerManager(ThreadPool* thread_pool)
+        : _thread_pool(thread_pool),
+          _chunkserver_num(0),
+          _next_chunkserver_id(1) {
+        _thread_pool->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
+    }
+    void DeadCheck() {
+        int32_t now_time = common::timer::now_time();
+
+        MutexLock lock(&_mu);
+        std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
+
+        while (it != _heartbeat_list.end()
+               && it->first + FLAGS_keepalive_timeout <= now_time) {
+            std::set<ChunkServerInfo*>::iterator node = it->second.begin();
+            while (node != it->second.end()) {
+                ChunkServerInfo* cs = *node;
+                LOG(INFO, "[DeadCheck] Chunkserver %s dead", cs->address().c_str());
+                ///TODO: handle chunkserver fail
+                it->second.erase(node);
+                node = it->second.begin();
+            }
+            assert(it->second.empty());
+            _heartbeat_list.erase(it);
+            it = _heartbeat_list.begin();
+        }
+        int idle_time = 5;
+        if (it != _heartbeat_list.end()) {
+            idle_time = it->first + FLAGS_keepalive_timeout - now_time;
+            // LOG(INFO, "it->first= %d, now_time= %d\n", it->first, now_time);
+            if (idle_time > 5) {
+                idle_time = 5;
+            }
+        }
+        _thread_pool->DelayTask(idle_time * 1000,
+                               boost::bind(&ChunkServerManager::DeadCheck, this));
+    }
+
+    void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
+        MutexLock lock(&_mu);
+        int32_t id = request->chunkserver_id();
+        ChunkServerInfo* info = _chunkservers[id];
+        assert(info);
+        int32_t now_time = common::timer::now_time();
+        _heartbeat_list[info->last_heartbeat()].erase(info);
+        if (_heartbeat_list[info->last_heartbeat()].empty()) {
+            _heartbeat_list.erase(info->last_heartbeat());
+        }
+        _heartbeat_list[now_time].insert(info);
+        info->set_last_heartbeat(now_time);
+    }
+    bool GetChunkServerChains(int num,
+                              std::vector<std::pair<int32_t,std::string> >* chains) {
+        MutexLock lock(&_mu);
+        if (num > _chunkserver_num) {
+            LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
+                _chunkserver_num, num);
+            return false;
+        }
+        std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
+        std::vector<std::pair<int64_t, ChunkServerInfo*> > chunkserver_load;
+
+        for (; it != _heartbeat_list.end(); ++it) {
+            std::set<ChunkServerInfo*>& set = it->second;
+            for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
+                 sit != set.end(); ++sit) {
+                ChunkServerInfo* cs = *sit;
+                chunkserver_load.push_back(
+                    std::make_pair(cs->data_size(), cs));
+            }
+        }
+        std::sort(chunkserver_load.begin(), chunkserver_load.end());
+
+        std::vector<std::pair<int64_t, ChunkServerInfo*> >::iterator load_it;
+        load_it = chunkserver_load.begin();
+        for (int i = 0; i < num; ++i, ++load_it) {
+            ChunkServerInfo* cs = load_it->second;
+            chains->push_back(std::make_pair(cs->id(), cs->address()));
+        }
+
+        return true;
+    }
+    int64_t AddChunkServer(const std::string& address) {
+        MutexLock lock(&_mu);
+        int32_t id = _next_chunkserver_id++;
+        ChunkServerInfo* info = new ChunkServerInfo;
+        info->set_id(id);
+        info->set_address(address);
+        _chunkservers[id] = info;
+        int32_t now_time = common::timer::now_time();
+        _heartbeat_list[now_time].insert(info);
+        info->set_last_heartbeat(now_time);
+        ++_chunkserver_num;
+        return id;
+    }
+    std::string GetChunkServer(int32_t id) {
+        MutexLock lock(&_mu);
+        ServerMap::iterator it = _chunkservers.find(id);
+        if (it == _chunkservers.end()) {
+            return "";
+        } else {
+            return it->second->address();
+        }
+    }
+    bool SetChunkServerLoad(int32_t id, int64_t size) {
+        MutexLock lock(&_mu);
+        ServerMap::iterator it = _chunkservers.find(id);
+        if(it == _chunkservers.end()) {
+            LOG(WARNING, "ChunkServer does not exist!, chunkserver id: %d\n", id);
+            assert(0);
+            return false;
+        } else {
+            it->second->set_data_size(size);
+            LOG(INFO, "Get Report of ChunkServerLoad, server id: %d, load: %ld\n", id, size);
+            return true;
+        }
+    }
+
+private:
+    ThreadPool* _thread_pool;
+    Mutex _mu;      /// _chunkservers list mutext;
+    typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
+    ServerMap _chunkservers;
+    std::map<int32_t, std::set<ChunkServerInfo*> > _heartbeat_list;
+    int32_t _chunkserver_num;
+    int32_t _next_chunkserver_id;
 };
 
 NameServerImpl::NameServerImpl() {
