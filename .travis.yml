@@ -6,9 +6,9 @@ install:
     - sudo apt-get install libboost-dev
     - wget https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-$PROTOBUF_VERSION.tar.gz
     - tar xf protobuf-$PROTOBUF_VERSION.tar.gz
-    - ( cd protobuf-$PROTOBUF_VERSION && ./configure && make -j4 && sudo make install && sudo ldconfig )
+    - ( cd protobuf-$PROTOBUF_VERSION && ./configure && make -j4 && sudo make install)
     - git clone https://github.com/google/snappy
-    - ( cd snappy && sh ./autogen.sh && ./configure && make -j2 && sudo make install )
+    - ( cd snappy && sh ./autogen.sh && ./configure && make -j2 && sudo make install && sudo ldconfig )
     - sudo apt-get install zlib1g-dev
     - git clone https://github.com/bluebore/sofa-pbrpc ./thirdparty/sofa-pbrpc
     - ( cd thirdparty/sofa-pbrpc && make -j4 && make install);
