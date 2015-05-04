@@ -163,7 +163,7 @@ public:
         info->set_id(id);
         info->set_address(address);
         _chunkservers[id] = info;
-        int64_t now_time = common::timer::get_micros();
+        int32_t now_time = common::timer::now_time();
         _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
         ++_chunkserver_num;
