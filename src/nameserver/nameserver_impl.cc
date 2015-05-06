@@ -263,6 +263,7 @@ public:
                 _chunkserver_block_map.erase(id);
 
                 it->second.erase(node);
+                _chunkserver_num--;
                 node = it->second.begin();
             }
             assert(it->second.empty());
