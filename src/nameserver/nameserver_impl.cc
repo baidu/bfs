@@ -987,7 +987,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(info_value.data(), info_value.size());
         assert(ret);
-        file_info.set_replicas(3);
+        file_info.set_replicas(replica_num);
         file_info.SerializeToString(&info_value);
         s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
         assert(s.ok());
