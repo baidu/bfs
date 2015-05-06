@@ -60,6 +60,10 @@ public:
                        const ::bfs::FinishBlockRequest* request,
                        ::bfs::FinishBlockResponse* response,
                        ::google::protobuf::Closure* done);
+    void ChangeReplicaNum(::google::protobuf::RpcController* controller,
+                       const ::bfs::ChangeReplicaNumRequest* request,
+                       ::bfs::ChangeReplicaNumResponse* response,
+                       ::google::protobuf::Closure* done);
     void HeartBeat(::google::protobuf::RpcController* controller,
                        const ::bfs::HeartBeatRequest* request,
                        ::bfs::HeartBeatResponse* response,

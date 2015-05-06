@@ -211,6 +211,19 @@ public:
             nsblock->replica.erase(id);
         }
     }
+    bool ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        bool ret = false;
+        if (it == _block_map.end()) {
+            //maybe not report yet
+        } else {
+            NSBlock* nsblock = it->second;
+            nsblock->expect_replica_num = replica_num;
+            ret = true;
+        }
+        return ret;
+    }
 private:
     Mutex _mu;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
@@ -309,7 +322,6 @@ public:
             ChunkServerInfo* cs = load_it->second;
             chains->push_back(std::make_pair(cs->id(), cs->address()));
         }
-
         return true;
     }
     int64_t AddChunkServer(const std::string& address) {
@@ -948,6 +960,48 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
     }
     delete it;
     return ret_status;
+}
+
+void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,
+                                      const ::bfs::ChangeReplicaNumRequest* request,
+                                      ::bfs::ChangeReplicaNumResponse* response,
+                                      ::google::protobuf::Closure* done) {
+    response->set_sequence_id(request->sequence_id());
+    std::string file_name = request->file_name();
+    int32_t replica_num = request->replica_num();
+    std::vector<std::string> keys;
+    int ret_status = 886;
+
+    if (!SplitPath(file_name, &keys)) {
+        LOG(WARNING, "Change replica num SplitPath fail: %s\n", file_name.c_str());
+        response->set_status(ret_status);
+        done->Run();
+        return;
+    }
+
+    const std::string& file_key = keys[keys.size() - 1];
+    std::string info_value;
+    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
+    if (s.ok()) {
+        FileInfo file_info;
+        bool ret = file_info.ParseFromArray(info_value.data(), info_value.size());
+        assert(ret);
+        file_info.set_replicas(3);
+        file_info.SerializeToString(&info_value);
+        s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
+        assert(s.ok());
+        int64_t block_id = file_info.blocks(0);
+        if (_block_manager->ChangeReplicaNum(block_id, replica_num)) {
+            ret_status = 0;
+        } else {
+            ret_status = 886;
+        }
+    } else if (s.IsNotFound()) {
+        LOG(WARNING, "Change replica num not found: %s\n", file_name.c_str());
+        ret_status = 404;
+    }
+    response->set_status(ret_status);
+    done->Run();
 }
 }
 

@@ -369,6 +369,27 @@ public:
         }
         return true;
     }
+    bool ChangeReplicaNum(const char* file_name, int32_t replica_num) {
+        ChangeReplicaNumRequest request;
+        ChangeReplicaNumResponse response;
+        request.set_file_name(file_name);
+        request.set_replica_num(replica_num);
+        request.set_sequence_id(0);
+        bool ret = _rpc_client->SendRequest(_nameserver,
+                &NameServer_Stub::ChangeReplicaNum,
+                &request, &response, 5, 3);
+        if (!ret) {
+            fprintf(stderr, "Change %s replica num to %d rpc fail\n",
+                    file_name, replica_num);
+            return false;
+        }
+        if (response.status() != 0) {
+            fprintf(stderr, "Change %s replica num to %d return: %d\n",
+                    file_name, replica_num, response.status());
+            return false;
+        }
+        return true;
+    }
 private:
     RpcClient* _rpc_client;
     NameServer_Stub* _nameserver;

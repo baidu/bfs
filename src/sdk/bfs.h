@@ -66,6 +66,7 @@ public:
     virtual bool CloseFile(File* file) = 0;
     virtual bool DeleteFile(const char* path) = 0;
     virtual bool Rename(const char* oldpath, const char* newpath) = 0;
+    virtual bool ChangeReplicaNum(const char* file_name, int32_t replica_num) = 0;
 private:
     // No copying allowed
     FS(const FS&);

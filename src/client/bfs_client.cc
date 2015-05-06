@@ -11,6 +11,7 @@
 #include <string.h>
 #include <string>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include "common/timer.h"
 #include "sdk/bfs.h"
@@ -33,6 +34,7 @@ void print_usage() {
     printf("\t    -append <localfile> <bfsfile> : append localfile to bfsfile\n");
     printf("\t    -rmdir <path> : remove empty directory\n");
     printf("\t    -rmr <path> : remove directory recursively\n");
+    printf("\t    -change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
 }
 
 int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
@@ -237,6 +239,21 @@ int BfsRmdir(bfs::FS* fs, int argc, char* argv[], bool recursive) {
     return 0;
 }
 
+int BfsChangeReplicaNum(bfs::FS* fs, int argc, char* argv[]) {
+    if (argc < 2) {
+        print_usage();
+        return 1;
+    }
+    char* file_name = argv[0];
+    int32_t replica_num = atoi(argv[1]);
+    bool ret = fs->ChangeReplicaNum(file_name, replica_num);
+    if (!ret) {
+        fprintf(stderr, "Change %s replica num to %d fail\n", file_name, replica_num);
+        return 1;
+    }
+    return 0;
+}
+
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
@@ -284,7 +301,7 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[1], "put") == 0) {
         ret = BfsPut(fs, argc, argv);
     } else if (strcmp(argv[1], "get") == 0 ) {
-        ret = BfsGet(fs, argc-2, argv+2);
+        ret = BfsGet(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "cat") == 0) {
         ret = BfsCat(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "ls") == 0) {
@@ -295,6 +312,8 @@ int main(int argc, char* argv[]) {
         ret = BfsRmdir(fs, argc - 2, argv + 2, false);
     } else if (strcmp(argv[1], "rmr") == 0) {
         ret = BfsRmdir(fs, argc - 2, argv + 2, true);
+    } else if (strcmp(argv[1], "change_replica_num") == 0) {
+        ret = BfsChangeReplicaNum(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }
