@@ -993,6 +993,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         assert(s.ok());
         int64_t block_id = file_info.blocks(0);
         if (_block_manager->ChangeReplicaNum(block_id, replica_num)) {
+            LOG(INFO, "Change %s replica num to %d\n", file_name.c_str(), replica_num);
             ret_status = 0;
         } else {
             ret_status = 886;
