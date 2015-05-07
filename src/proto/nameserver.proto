@@ -17,7 +17,6 @@ message CreateFileResponse {
     required int32 status = 2;
 }
 
-
 message LocatedBlock {
     required int64 block_id = 1;
     optional int64 block_size = 2;
@@ -105,6 +104,16 @@ message DeleteDirectoryResponse {
     optional int32 status = 2;
 }
 
+message ChangeReplicaNumRequest {
+    optional uint64 sequence_id = 1;
+    required string file_name = 2;
+    required int32 replica_num = 3;
+}
+message ChangeReplicaNumResponse {
+    optional uint64 sequence_id = 1;
+    optional int32 status = 2;
+}
+
 message HeartBeatRequest {
     optional uint64 sequence_id = 1;
     optional string data_server_addr = 2;
@@ -150,6 +159,7 @@ service NameServer {
     rpc FinishBlock(FinishBlockRequest) returns(FinishBlockResponse);
     rpc Unlink(UnlinkRequest) returns(UnlinkResponse);
     rpc DeleteDirectory(DeleteDirectoryRequest) returns(DeleteDirectoryResponse);
+    rpc ChangeReplicaNum(ChangeReplicaNumRequest) returns(ChangeReplicaNumResponse);
 
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
     rpc BlockReport(BlockReportRequest) returns(BlockReportResponse);
