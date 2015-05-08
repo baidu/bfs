@@ -25,7 +25,7 @@ LDFLAGS('-lpthread -lz')
 #ÒÀÀµÄ£¿é
 CONFIGS('public/sofa-pbrpc@1.0.0.21331@COMAKE')
 CONFIGS('third-64/gflags@gflags_2-0-0-100_PD_BL')
-#CONFIGS('third-64/protobuf@2.4.1.500')
+CONFIGS('third-64/protobuf@2.6.1.100')
 #CONFIGS('third-64/snappy@1.0.5.100')
 
 nameserver_sources='src/nameserver/nameserver_main.cc src/nameserver/nameserver_impl.cc src/flags.cc'
