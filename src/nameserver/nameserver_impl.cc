@@ -136,6 +136,22 @@ public:
         }
         return true;
     }
+    bool RemoveBlock(int64_t block_id, int32_t chunkserver_id) {
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        if (it != _block_map.end()) {
+            std::set<int32_t>::iterator cs = it->second->replica.find(chunkserver_id);
+            if (cs != it->second->replica.end()) {
+                it->second->replica.erase(cs);
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            // not report yet ?
+            return false;
+        }
+    }
     bool GetBlock(int64_t block_id, NSBlock* block) {
         MutexLock lock(&_mu);
         NSBlockMap::iterator it = _block_map.find(block_id);
@@ -145,27 +161,41 @@ public:
         *block = *(it->second);
         return true;
     }
-    bool CheckObsoleteBlock(int64_t block_id) {
+    bool CheckObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
-        return _obsolete_blocks.find(block_id) != _obsolete_blocks.end();
-    }
-    void MarkObsoleteBlock(int64_t block_id, int32_t replicas) {
-        MutexLock lock(&_mu);
-        NSBlockMap::iterator it = _block_map.find(block_id);
-        if (it != _block_map.end()) {
-            _block_map.erase(it);
+        std::map<int64_t, std::set<int32_t> >::iterator it
+            = _obsolete_blocks.find(block_id);
+        if (it == _obsolete_blocks.end()) {
+            return false;
+        } else {
+            std::set<int32_t>::iterator cs = it->second.find(chunkserver_id);
+            if (cs != it->second.end()) {
+                return true;
+            } else {
+                return false;
+            }
         }
-        _obsolete_blocks.insert(std::make_pair(block_id, replicas));
     }
-    void UnmarkObsoleteBlock(int64_t block_id) {
+    void MarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
-        std::map<int64_t, int32_t>::iterator it = _obsolete_blocks.find(block_id);
+        _obsolete_blocks[block_id].insert(chunkserver_id);
+    }
+    void UnmarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
+        MutexLock lock(&_mu);
+        std::map<int64_t, std::set<int32_t> >::iterator it = _obsolete_blocks.find(block_id);
         if (it != _obsolete_blocks.end()) {
-            if (--(it->second) == 0) {
-                _obsolete_blocks.erase(it);
+            std::set<int32_t>::iterator cs = it->second.find(chunkserver_id);
+            if (cs != it->second.end()) {
+                it->second.erase(cs);
+                if (it->second.empty()) {
+                    _obsolete_blocks.erase(it);
+                }
+            } else {
+                LOG(WARNING, "Block %ld on chunkserver %d is not marked obsolete\n",
+                        block_id, chunkserver_id);
             }
         } else {
-            LOG(WARNING, "Try to unmark obsolete block that is not marked: %ld\n", block_id);
+            LOG(WARNING, "Block %d is not marked obsolete\n");
         }
     }
     bool MarkFinishBlock(int64_t block_id) {
@@ -189,10 +219,7 @@ public:
         bool ret = false;
         if (it != _block_map.end()) {
             nsblock = it->second;
-            std::set<int32_t>::iterator replica_it = nsblock->replica.begin();
-            for (; replica_it != nsblock->replica.end(); ++replica_it) {
-                chunkserver_id->insert(*replica_it);
-            }
+            *chunkserver_id = nsblock->replica;
             ret = true;
         } else {
             LOG(WARNING, "Can't find block: %ld\n", id);
@@ -229,7 +256,7 @@ private:
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap _block_map;
     int64_t _next_block_id;
-    std::map<int64_t, int32_t> _obsolete_blocks;
+    std::map<int64_t, std::set<int32_t> > _obsolete_blocks;
 };
 
 class ChunkServerManager {
@@ -364,6 +391,10 @@ public:
         MutexLock lock(&_mu);
         _chunkserver_block_map[id].insert(block_id);
     }
+    void RemoveBlock(int32_t id, int64_t block_id) {
+        MutexLock lock(&_mu);
+        _chunkserver_block_map[id].erase(block_id);
+    }
 
 private:
     ThreadPool* _thread_pool;
@@ -428,10 +459,12 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             int64_t cur_block_id = block.block_id();
             int64_t cur_block_size = block.block_size();
 
-            if (_block_manager->CheckObsoleteBlock(cur_block_id)) {
+            if (_block_manager->CheckObsoleteBlock(cur_block_id, id)) {
                 //add to response
                 response->add_obsolete_blocks(cur_block_id);
-                _block_manager->UnmarkObsoleteBlock(cur_block_id);
+                _block_manager->RemoveBlock(cur_block_id, id);
+                _chunkserver_manager->RemoveBlock(id, cur_block_id);
+                _block_manager->UnmarkObsoleteBlock(cur_block_id, id);
             } else {
                 size += cur_block_size;
 
@@ -834,7 +867,12 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
         // Only support file
         if ((file_info.type() & (1<<9)) == 0) {
             for (int i = 0; i < file_info.blocks_size(); i++) {
-                _block_manager->MarkObsoleteBlock(file_info.blocks(i), file_info.replicas());
+                std::set<int32_t> chunkservers;
+                _block_manager->GetReplicaLocation(file_info.blocks(i), &chunkservers);
+                std::set<int32_t>::iterator it = chunkservers.begin();
+                for (; it != chunkservers.end(); ++it) {
+                    _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
+                }
             }
             s = _db->Delete(leveldb::WriteOptions(), file_key);
             if (s.ok()) {
@@ -937,7 +975,12 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
             }
         } else {
             for (int i = 0; i < file_info.blocks_size(); i++) {
-                _block_manager->MarkObsoleteBlock(file_info.blocks(i), file_info.replicas());
+                std::set<int32_t> chunkservers;
+                _block_manager->GetReplicaLocation(file_info.blocks(i), &chunkservers);
+                std::set<int32_t>::iterator it = chunkservers.begin();
+                for (; it!= chunkservers.end(); ++it) {
+                    _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
+                }
             }
             leveldb::Status s = _db->Delete(leveldb::WriteOptions(), std::string(key.data(), key.size()));
             if (s.ok()) {
