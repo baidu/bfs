@@ -119,12 +119,12 @@ public:
             if (!nsblock->pending_change) {
                 nsblock->pending_change = true;
                 if (cur_replica_num > expect_replica_num) {
-                    //not implement here
-                    /*
                     int32_t reduant_num = cur_replica_num - expect_replica_num;
-                    _obsolete_blocks.insert(std::make_pair(id, reduant_num));
-                    LOG(INFO, "Remove block: %ld reduant replicas: %d\n", id, reduant_num);
-                    */
+                    //TODO select chunkservers according to some strategies
+                    std::set<int32_t>::iterator nsit = nsblock->replica.begin();
+                    for (int i = 0; i < reduant_num; i++, ++nsit) {
+                        _obsolete_blocks[id].insert(*nsit);
+                    }
                 } else {
                     // add new replica
                     if (more_replica_num) {
@@ -188,6 +188,8 @@ public:
             if (cs != it->second.end()) {
                 it->second.erase(cs);
                 if (it->second.empty()) {
+                    // pending_change needs to change here
+                    _block_map[block_id]->pending_change = false;
                     _obsolete_blocks.erase(it);
                 }
             } else {
