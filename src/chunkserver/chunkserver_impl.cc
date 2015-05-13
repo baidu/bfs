@@ -639,14 +639,12 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         block->SetSliceNum(packet_seq + 1);
     }
     
-    LOG(INFO, "done Run %d", packet_seq);
-    done->Run();
-    
     if (block->IsComplete() && (block->Finish() || request->is_append())) {
         LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
         _block_manager->FinishBlock(block);
         ReportFinish(block);
     }
+    done->Run();
     block->DecRef();
     block = NULL;
 }

@@ -100,12 +100,19 @@ public:
             nsblock = new NSBlock(id);
             _block_map[id] = nsblock;
             nsblock->block_size = block_size;
+            LOG(DEBUG, "[BMAddBlock] New block %ld, size: %ld", id, block_size);
         } else {
             nsblock = it->second;
-            if (nsblock->block_size && nsblock->block_size !=  block_size) {
-                LOG(WARNING, "block size mismatch, block: %ld\n", id);
-                assert(0);
-                return false;
+            if (nsblock->block_size !=  block_size) {
+                if (nsblock->block_size) {
+                    LOG(WARNING, "block size mismatch, block: %ld\n", id);
+                    assert(0);
+                    return false;
+                } else {
+                    LOG(DEBUG, "Block[%ld] size update, %ld to %ld",
+                        id, nsblock->block_size, block_size);
+                    nsblock->block_size = block_size;
+                }
             }
         }
         if (_next_block_id <= id) {
@@ -606,6 +613,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
         int64_t new_block_id = _block_manager->NewBlock();
+        LOG(DEBUG, "[AddBlock] new block for %s id= %ld.",
+            path.c_str(), new_block_id);
         LocatedBlock* block = response->mutable_block();
         for (int i =0; i<replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
@@ -620,6 +629,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         s = _db->Put(leveldb::WriteOptions(), file_key, infobuf);
         assert(s.ok());
     } else {
+        LOG(INFO, "AddBlock for %s failed.", path.c_str());
         response->set_status(886);
     }
     done->Run();
@@ -836,7 +846,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
             LOG(WARNING, "Rename not found: %s\n", oldpath.c_str());
         }
     } else {
-        LOG(WARNING, "Rename before delete %s\n", newpath.c_str());
+        LOG(WARNING, "Rename target file %s is existent\n", newpath.c_str());
     }
     response->set_status(886);
     done->Run();

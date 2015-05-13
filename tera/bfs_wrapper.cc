@@ -14,10 +14,16 @@ int32_t BfsFile::Write(const char* buf, int32_t len) {
     return _file->Write(buf, len);
 }
 int32_t BfsFile::Flush() {
-    return _file->Flush();
+    if (!_file->Flush()) {
+        return -1;
+    }
+    return 0;
 }
 int32_t BfsFile::Sync() {
-    return _file->Sync();
+    if (!_file->Sync()) {
+        return -1;
+    }
+    return 0;
 }
 int32_t BfsFile::Read(char* buf, int32_t len) {
     return _file->Read(buf, len);
@@ -29,10 +35,20 @@ int64_t BfsFile::Tell() {
     return _file->Seek(0, SEEK_CUR);
 }
 int32_t BfsFile::Seek(int64_t offset) {
-    return _file->Seek(offset, SEEK_SET);
+    int64_t ret = _file->Seek(offset, SEEK_SET);
+    if (ret >= 0) {
+        return 0;
+    }
+    return ret;
 }
 int32_t BfsFile::CloseFile() {
-    return _file->Close();
+    bool ret = _file->Close();
+    delete _file;
+    _file = NULL;
+    if (!ret) {
+        return -1;
+    }
+    return 0;
 }
 
 
@@ -43,9 +59,7 @@ BfsImpl::BfsImpl(const std::string& conf) {
 }
 
 int32_t BfsImpl::CreateDirectory(const std::string& path) {
-    if (!_fs->CreateDirectory(path.c_str())) {
-        return -1;
-    }
+    _fs->CreateDirectory(path.c_str());
     return 0;
 }
 int32_t BfsImpl::DeleteDirectory(const std::string& path) {
@@ -101,11 +115,15 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
 }
 
 leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) {
-    File* file = NULL;
-    if (!_fs->OpenFile(filename.c_str(), flags, &file)) {
+    int openflag = O_WRONLY;
+    if (leveldb::WRONLY != flags) {
+        openflag = O_RDONLY;
+    }
+    bfs::File* file = NULL;
+    if (!_fs->OpenFile(filename.c_str(), openflag, &file)) {
         return NULL;
     }
-    return NULL;
+    return new BfsFile(file);
 }
 
 } // namespace

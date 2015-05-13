@@ -481,7 +481,8 @@ int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
 }
 
 int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
-    //printf("[%p] Read[%s:%ld] offset= %ld\n", this, _name.c_str(), read_len, _read_offset);
+    //LOG(DEBUG, "[%p] Read[%s:%ld] offset= %ld\n",
+    //    this, _name.c_str(), read_len, _read_offset);
     if (_open_flags != O_RDONLY) {
         return -2;
     }
@@ -489,7 +490,8 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
     if (ret >= 0) {
         _read_offset += ret;
     }
-    //printf("[%p] Read[%s:%ld] return %d offset=%ld\n", this, _name.c_str(), read_len, ret, _read_offset);
+    //LOG(DEBUG, "[%p] Read[%s:%ld] return %d offset=%ld\n",
+    //    this, _name.c_str(), read_len, ret, _read_offset);
     return ret;
 }
 
@@ -715,6 +717,7 @@ bool BfsFileImpl::Close() {
         }
         delete _block_for_write;
     }
+    LOG(DEBUG, "File %s closed", _name.c_str());
     _closed = true;
     return ret;
 }
