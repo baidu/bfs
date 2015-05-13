@@ -13,12 +13,14 @@ DEFINE_string(nameserver, "127.0.0.1", "Nameserver host");
 DEFINE_string(nameserver_port, "8828", "Nameserver port");
 DEFINE_int32(keepalive_timeout, 60, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
+DEFINE_int32(nameserver_log_level, 2, "Nameserver log level");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
 DEFINE_string(chunkserver_port, "8825", "Chunkserver port");
 DEFINE_int32(heartbeat_interval, 5, "Heartbeat interval");
 DEFINE_int32(blockreport_interval, 60, "blockreport_interval");
+DEFINE_int32(chunkserver_log_level, 4, "Nameserver log level");
 
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

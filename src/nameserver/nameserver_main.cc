@@ -9,16 +9,19 @@
 #include <sofa/pbrpc/pbrpc.h>
 #include <gflags/gflags.h>
 
+#include "common/logging.h"
 #include "nameserver/nameserver_impl.h"
 
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_port);
+DECLARE_int32(nameserver_log_level);
 
 int main(int argc, char* argv[])
 {
     FLAGS_flagfile = "./bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
-    
+    common::SetLogLevel(FLAGS_nameserver_log_level);
+
     // rpc_server
     sofa::pbrpc::RpcServerOptions options;
     sofa::pbrpc::RpcServer rpc_server(options);
