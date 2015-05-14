@@ -1,6 +1,6 @@
 
-# OPT ?= -O2 -DNDEBUG     # (A) Production use (optimized mode)
-OPT ?= -g2 -Wall          # (B) Debug mode, w/ full line-level debugging symbols
+# OPT ?= -O2 -DNDEBUG # (A) Production use (optimized mode)
+OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 
 # Thirdparty
@@ -23,7 +23,7 @@ LDFLAGS = -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -L$(SNAPPY_PATH)/lib -lsnappy \
           -lgflags -lpthread -lz
 
-CXXFLAGS += $(OPT)
+CXXFLAGS = -Wall -fPIC $(OPT)
 
 PROTO_FILE = $(wildcard src/proto/*.proto)
 PROTO_SRC = $(patsubst %.proto,%.pb.cc,$(PROTO_FILE))
