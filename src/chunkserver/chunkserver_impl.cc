@@ -132,11 +132,11 @@ public:
     bool Writeable() {
         return (_type == InMem || _write_mode == O_APPEND);
     }
-    bool Write(int32_t seq, const char* data, int32_t len) {
+    bool Write(int32_t seq, int64_t offset, const char* data, int32_t len) {
         LOG(INFO, "Block Write %d\n", seq);
-        MutexLock lock(&_mu);
-        if (!Writeable()) {
-            LOG(WARNING, "Write a Unwritable block");
+        if (offset < _datalen) {
+            LOG(WARNING, "Write a finish block: %ld, seq: %d, offset: %ld",
+                _block_id, seq, offset);
             return true;
         }
         char* buf = NULL;
@@ -630,7 +630,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         block->SetWriteMode(O_WRONLY);
     }
 
-    if (!block->Write(packet_seq, databuf.data(), databuf.size())) {
+    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size())) {
         LOG(WARNING, "Write offset[%ld] block_size[%ld] not in sliding window\n",
             offset, block->Size());
         block->DecRef();

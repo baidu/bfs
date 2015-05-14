@@ -69,19 +69,19 @@ public:
         MutexLock lock(&mu_);
         int32_t pos = offset - base_offset_;
         if (pos >= size_) {
-            return false;
+            return -1;
         } else if (pos < 0) {
-            return false;
+            return 1;
         }
         pos = (pos + ready_) % size_;
         if (bitmap_[pos]) {
-            return false;
+            return 1;
         }
         bitmap_[pos] = 1;
         items_[pos] = item;
         ++item_count_;
         Notify();
-        return true;
+        return 0;
     }
     void Reset() {
         base_offset_ = 0;
