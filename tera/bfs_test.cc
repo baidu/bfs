@@ -5,7 +5,11 @@
 // Author: yanshiguang02@baidu.com
 
 #include "dfs.h"
+
 #include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <string>
 
 const char* so_path = "./bfs_wrapper.so";
@@ -68,6 +72,17 @@ int main() {
     ASSERT_TRUE(0 == fp->Sync());
     ASSERT_TRUE(c2len == fp->Write(content2, c2len));
 
+    long lbuf[1024];
+    int buflen = sizeof(lbuf);
+    int bufnum = 1024;
+    for (int i = 0; i < 1024; i++) {
+        for (int j = 0; j < 1024; j++) {
+            lbuf[j] = ((rand() << 16) | rand());
+        }
+        buflen = sizeof(lbuf);
+        ASSERT_TRUE(buflen == fp->Write(reinterpret_cast<char*>(lbuf), buflen));
+    }
+
     /// Close
     ASSERT_TRUE(0 == fp->CloseFile());
     delete fp;
@@ -84,8 +99,7 @@ int main() {
     /// GetFileSize
     uint64_t fsize = 0;
     ASSERT_TRUE(0 == dfs->GetFileSize(file2, &fsize));
-    printf("c1len= %d, c2len= %d, fsize= %ld\n", c1len, c2len, fsize);
-    ASSERT_TRUE(c1len + c2len == static_cast<int>(fsize));
+    ASSERT_TRUE(c1len + c2len + buflen * bufnum == static_cast<int>(fsize));
 
     /// Read
     fp = dfs->OpenFile(file2, leveldb::RDONLY);
@@ -115,12 +129,6 @@ int main() {
     ASSERT_TRUE(nfp != NULL);
     ASSERT_TRUE(c1len == nfp->Read(buf, c1len));
     ASSERT_TRUE(0 == strncmp(buf, content1, c1len));
-    /*
-    ASSERT_TRUE(c2len == nfp->Read(buf, c2len));
-    ASSERT_TRUE(0 == strncmp(buf, content2, c2len));
-    ASSERT_TRUE(c2len == nfp->Pread(c1len, buf, c2len));
-    ASSERT_TRUE(0 == strncmp(buf, content2, c2len));
-    */
     ASSERT_TRUE(0 == nfp->CloseFile());
 
     /// List directory
