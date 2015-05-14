@@ -5,8 +5,8 @@ INCLUDE_PATH= -I../output/include
 
 CXXFLAGS += $(OPT)
 
-LDFLAGS=-L../output/lib -lbfs
-TESTLDFLAGS=-lprotobuf -lpthread -lz -ldl
+LDFLAGS = -L../output/lib -lbfs
+TESTLDFLAGS = -rdynamic -lprotobuf -lpthread -lz -ldl
 #-L../../../../third-64/protobuf/lib/
 
 all: bfs_wrapper.so bfs_test
@@ -16,9 +16,9 @@ bfs_wrapper.so: bfs_wrapper.cc bfs_wrapper.h ../output/lib/libbfs.a
 		-Xlinker "-(" ../libbfs.a \
 		-Xlinker "-)"
 		#../../../../third-64/protobuf/lib/libprotobuf.a \
-		../../../../public/sofa-pbrpc/output/lib/libsofa-pbrpc.a \
-		../../../../third-64/snappy/lib/libsnappy.a \
-		../../../../third-64/gflags/lib/libgflags.a \
+		#../../../../public/sofa-pbrpc/output/lib/libsofa-pbrpc.a \
+		#../../../../third-64/snappy/lib/libsnappy.a \
+		#../../../../third-64/gflags/lib/libgflags.a \
 	
 bfs_test: bfs_test.cc bfs_wrapper.so
 	g++ $(CXXFLAGS) -o $@ bfs_test.cc $(TESTLDFLAGS)
