@@ -568,7 +568,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
 }
 
 void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
-    int64_t s = common::timer::get_micros();
+    common::timer::AutoTimer at(200, "StartWrite", _name.c_str());
     _mu.AssertHeld();
     _write_queue.push(_write_buf);
     _block_for_write->set_block_size(_block_for_write->block_size() + _write_buf->Size());
@@ -577,10 +577,6 @@ void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
         boost::bind(&BfsFileImpl::BackgroundWrite, this, _chains_head);
     common::atomic_inc(&_back_writing);
     g_thread_pool.AddTask(task);
-    int64_t e = common::timer::get_micros();
-    if (e - s > 200) {
-        LOG(INFO, "StartWrite use %.3f ms", (e - s) / 1000.0);
-    }
 }
 
 /// Send local buffer to chunkserver
@@ -653,8 +649,8 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
     } else {
         LOG(DEBUG, "BackgroundWrite done [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
             buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
-        bool r = _write_window->Add(buffer->Sequence(), 0);
-        assert(r);
+        int r = _write_window->Add(buffer->Sequence(), 0);
+        assert(r == 0);
         delete buffer;
         delete request;
     }

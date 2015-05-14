@@ -130,20 +130,25 @@ public:
         return pread(_file_desc, buf, len, offset);
     }
     bool Writeable() {
-        return (_type == InMem);
+        return (_type == InMem || _write_mode == O_APPEND);
     }
     bool Write(int32_t seq, const char* data, int32_t len) {
         LOG(INFO, "Block Write %d\n", seq);
+        MutexLock lock(&_mu);
+        if (!Writeable()) {
+            LOG(WARNING, "Write a Unwritable block");
+            return true;
+        }
         char* buf = NULL;
         if (len) {
             buf = new char[len];
             memcpy(buf, data, len);
         }
-        bool ret = _recv_window->Add(seq, Buffer(buf, len));
-        if (!ret) {
+        int ret = _recv_window->Add(seq, Buffer(buf, len));
+        if (ret != 0) {
             delete[] buf;
         }
-        return ret;
+        return (ret >= 0);
     }
     /// Invoke by slidingwindow, when next buffer arrive.
     void WriteCallback(int32_t seq, Buffer buffer) {
@@ -542,7 +547,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
-        LOG(INFO, "WriteBlock dispatch [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
+        LOG(DEBUG, "[WriteBlock] dispatch [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
         boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
@@ -550,7 +555,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         return;
     }
 
-    LOG(INFO, "WriteBlock [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
+    LOG(INFO, "[WriteBlock] [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
 
     if (request->chunkservers_size()) {
@@ -638,7 +643,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
     }
-    
+
     if (block->IsComplete() && (block->Finish() || request->is_append())) {
         LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
         _block_manager->FinishBlock(block);

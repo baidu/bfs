@@ -24,7 +24,7 @@ int main() {
             char* buf = new char[16];
             snprintf(buf, 16, "%d", t);
  
-            if (sw.Add(t, buf)) {
+            if (0 == sw.Add(t, buf)) {
                 printf("Add %d\n", t);
                 s.insert(t);
             } else {

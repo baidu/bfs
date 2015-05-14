@@ -171,6 +171,7 @@ extern "C" {
 
 leveldb::Dfs* NewDfs(const char* conf) {
     common::SetLogFile("./bfslog");
+    common::SetWarningFile("./bfswf");
     return new bfs::BfsImpl(conf);
 }
 

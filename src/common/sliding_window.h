@@ -61,17 +61,21 @@ public:
     int32_t UpBound() const {
         return base_offset_ + size_ - 1;
     }
-    bool Add(int32_t offset, Item item) {
+    /// Returns:
+    ///     0, Add to receiving buf;
+    ///     1, Already received
+    ///    -1, Not in receiving window
+    int Add(int32_t offset, Item item) {
         MutexLock lock(&mu_);
         int32_t pos = offset - base_offset_;
         if (pos >= size_) {
             return false;
         } else if (pos < 0) {
-            return true;
+            return false;
         }
         pos = (pos + ready_) % size_;
         if (bitmap_[pos]) {
-            return true;
+            return false;
         }
         bitmap_[pos] = 1;
         items_[pos] = item;
