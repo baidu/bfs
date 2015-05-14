@@ -22,9 +22,24 @@
 namespace common {
 
 int g_log_level = 4;
+FILE* g_log_file = stdout;
 
 void SetLogLevel(int level) {
     g_log_level = level;
+}
+
+bool SetLogFile(const char* path, bool append) {
+    const char* mode = append ? "ab" : "wb";
+    FILE* fp = fopen(path, mode);
+    if (fp == NULL) {
+        g_log_file = stdout;
+        return false;
+    }
+    if (g_log_file != stdout) {
+        fclose(g_log_file);
+    }
+    g_log_file = fp;
+    return true;
 }
 
 void Logv(const char* format, va_list ap) {
@@ -84,8 +99,8 @@ void Logv(const char* format, va_list ap) {
         }
 
         assert(p <= limit);
-        fwrite(base, 1, p - base, stdout);
-        fflush(stdout);
+        fwrite(base, 1, p - base, g_log_file);
+        fflush(g_log_file);
         if (base != buffer) {
             delete[] base;
         }
