@@ -62,16 +62,31 @@ master的数据是落地的，不一定非得全内存，通过LRU内存cache保
 其中所有数字都是64位整数，目的是支持高效list操作的同时，支持高效的rename操作。  
 rename操作中，文件夹名字改变，但编号不变。
 
-## Open for write
-
-在namespace中写入， 创建块， 分配datanode。<br />
-如果失败，在nameserver回滚。<br />
-数据发往datanode， 中间网络故障可以重连，但一旦close后不可追加写入。<br />
+## Open for write  
+在namespace中写入， 创建块， 分配datanode。  
+如果失败，在nameserver回滚。  
+数据发往datanode， 中间网络故障可以重连，但一旦close后不可追加写入。  
 nameserver向client发放lease，lease失效后，不可以继续写入。
+
+## sdk端写入流程  
+1. Write  
+    如果_chains_head为空，则同步调用AddBlock  
+    向_write_buf中append数据，如果_write_buf满了，调用StartWrite(_write_buf)  
+2. StartWrite  
+    将_write_buf放入_write_queue中，然后抛出BackgroundWrite事件，++_back_writing  
+3. BackgroundWrite  
+    如果_write_queue非空 且 最小的sequence小于滑动窗口上限，异步调用WriteBlock  
+4. WriteChunkCallback  
+    如果WriteBlock失败，++_back_writing， delay一个DelayWriteChunk  
+    如果WriteBlock成功，更新滑动窗口  
+    如果_write_queue为空，back_writing为0，则唤醒sync，
+    调度一个新的BackgroundWrite  
+5. DelayWriteChunk  
+    异步调用WriteBlock，--_back_writing
 
 ## Open for read
 
-在从namespace中获取datanode信息，向随机datanode读取数据。<br />
+在从namespace中获取datanode信息，向随机datanode读取数据。  
 读取不被保护，如果读过程中文件被删除，后续读取失败
 
 
