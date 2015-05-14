@@ -23,9 +23,24 @@ namespace common {
 
 int g_log_level = 4;
 FILE* g_log_file = stdout;
+FILE* g_warning_file = NULL;
 
 void SetLogLevel(int level) {
     g_log_level = level;
+}
+
+bool SetWarningFile(const char* path, bool append) {
+    const char* mode = append ? "ab" : "wb";
+    FILE* fp = fopen(path, mode);
+    if (fp == NULL) {
+        g_warning_file = stdout;
+        return false;
+    }
+    if (g_warning_file && g_warning_file != stdout) {
+        fclose(g_warning_file);
+    }
+    g_warning_file = fp;
+    return true;
 }
 
 bool SetLogFile(const char* path, bool append) {
@@ -42,7 +57,7 @@ bool SetLogFile(const char* path, bool append) {
     return true;
 }
 
-void Logv(const char* format, va_list ap) {
+void Logv(int log_level, const char* format, va_list ap) {
     const uint64_t thread_id = syscall(__NR_gettid);
 
     // We try twice: the first time with a fixed-size stack allocated buffer,
@@ -101,6 +116,10 @@ void Logv(const char* format, va_list ap) {
         assert(p <= limit);
         fwrite(base, 1, p - base, g_log_file);
         fflush(g_log_file);
+        if (g_warning_file && log_level >= 8) {
+            fwrite(base, 1, p - base, g_warning_file);
+            fflush(g_warning_file);
+        }
         if (base != buffer) {
             delete[] base;
         }
@@ -113,7 +132,7 @@ void Log(int level, const char* fmt, ...) {
     va_start(ap, fmt);
 
     if (level >= g_log_level) {
-        Logv(fmt, ap);
+        Logv(g_log_level, fmt, ap);
     }
     va_end(ap);
 }
