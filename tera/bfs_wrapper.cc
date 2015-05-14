@@ -6,6 +6,7 @@
 
 #include "bfs_wrapper.h"
 
+#include <assert.h>
 #include <bfs.h>
 
 namespace bfs {
