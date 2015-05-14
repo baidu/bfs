@@ -5,6 +5,8 @@
 // Author: yanshiguang02@baidu.com
 
 #include <bfs.h>
+#include <string>
+#include <vector>
 
 #include "dfs.h"
 
@@ -12,7 +14,7 @@ namespace bfs {
 
 class BfsFile : public leveldb::DfsFile {
 public:
-    BfsFile(File* file) : _file(file) {}
+    BfsFile(const std::string& name, File* file) : _name(name), _file(file) {}
     /// Returns the number of bytes written, -1 on error.
     virtual int32_t Write(const char* buf, int32_t len);
     /// Returns 0 on success.
@@ -32,6 +34,7 @@ public:
     /// Returns 0 on success.
     virtual int32_t CloseFile();
 private:
+    std::string _name;
     File* _file;
 };
 

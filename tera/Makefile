@@ -1,7 +1,7 @@
 
 OPT ?= -g2 -Wall
 
-INCLUDE_PATH= -I../output/include
+INCLUDE_PATH= -I../output/include -I../src/
 
 CXXFLAGS += $(OPT)
 
@@ -12,7 +12,7 @@ TESTLDFLAGS = -rdynamic -lprotobuf -lpthread -lz -ldl
 all: bfs_wrapper.so bfs_test
 
 bfs_wrapper.so: bfs_wrapper.cc bfs_wrapper.h ../output/lib/libbfs.a
-	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) $(LDFLAGS) -o $@ bfs_wrapper.cc \
+	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) $(LDFLAGS) -o $@ bfs_wrapper.cc ../src/common/logging.cc \
 		-Xlinker "-(" ../libbfs.a \
 		-Xlinker "-)"
 		#../../../../third-64/protobuf/lib/libprotobuf.a \
