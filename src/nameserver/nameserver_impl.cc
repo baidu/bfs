@@ -103,7 +103,7 @@ public:
             LOG(DEBUG, "[BMAddBlock] New block %ld, size: %ld", id, block_size);
         } else {
             nsblock = it->second;
-            if (nsblock->block_size !=  block_size) {
+            if (nsblock->block_size !=  block_size && block_size) {
                 if (nsblock->block_size) {
                     LOG(WARNING, "block size mismatch, block: %ld\n", id);
                     assert(0);

@@ -162,8 +162,6 @@ public:
                 assert(_meta.block_size == offset + readlen);
             }
         }
-        LOG(INFO, "offset %ld, diskfile_size: %ld, readlen: %d, _bufdatalen: %d",
-            offset, diskfile_size, readlen, _bufdatalen);
         int mem_offset = offset - diskfile_size + readlen;
         if (mem_offset >= 0 && mem_offset < _bufdatalen) {
             int mlen = std::min(_bufdatalen - mem_offset, len - readlen);
