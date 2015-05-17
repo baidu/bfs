@@ -35,7 +35,7 @@ void print_usage() {
     printf("\t    rmdir <path> : remove empty directory\n");
     printf("\t    rmr <path> : remove directory recursively\n");
     printf("\t    change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
-    printf("\t    dus <path> : count disk usage for path\n");
+    printf("\t    du <path> : count disk usage for path\n");
 }
 
 int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
@@ -182,7 +182,7 @@ int64_t BfsDuRecursive(bfs::FS* fs, const std::string& path) {
     return ret;
 }
 
-int BfsDus(bfs::FS* fs, int argc, char* argv[]) {
+int BfsDu(bfs::FS* fs, int argc, char* argv[]) {
     if (argc != 1) {
         print_usage();
         return 1;
@@ -346,8 +346,8 @@ int main(int argc, char* argv[]) {
         ret = BfsRmdir(fs, argc - 2, argv + 2, true);
     } else if (strcmp(argv[1], "change_replica_num") == 0) {
         ret = BfsChangeReplicaNum(fs, argc - 2, argv + 2);
-    } else if (strcmp(argv[1], "dus") == 0) {
-        ret = BfsDus(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "du") == 0) {
+        ret = BfsDu(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }
