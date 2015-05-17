@@ -10,10 +10,12 @@
 #include <stdlib.h>
 #include <bfs.h>
 #include "common/logging.h"
+#include "common/timer.h"
 
 namespace bfs {
 
 int32_t BfsFile::Write(const char* buf, int32_t len) {
+    common::timer::AutoTimer ac(0.1, "BfsFile::Write", _name.c_str());
     int ret = _file->Write(buf, len);
     LOG(INFO, "Write(%s, len: %d) return %d",
         _name.c_str(), len, ret);    
@@ -21,6 +23,7 @@ int32_t BfsFile::Write(const char* buf, int32_t len) {
 }
 
 int32_t BfsFile::Flush() {
+    common::timer::AutoTimer ac(1, "Flush", _name.c_str());
     int ret = -1;
     if (_file->Flush()) {
         ret = 0;
@@ -29,6 +32,7 @@ int32_t BfsFile::Flush() {
     return ret;
 }
 int32_t BfsFile::Sync() {
+    common::timer::AutoTimer ac(10, "Sync", _name.c_str());
     int ret = -1;
     if (_file->Sync()) {
         ret = 0;
@@ -37,23 +41,27 @@ int32_t BfsFile::Sync() {
     return ret;
 }
 int32_t BfsFile::Read(char* buf, int32_t len) {
+    common::timer::AutoTimer ac(1, "Read", _name.c_str());
     int32_t ret = _file->Read(buf, len);
     LOG(INFO, "Read(%s, len: %d) return %d",
         _name.c_str(), len, ret);
     return ret;
 }
 int32_t BfsFile::Pread(int64_t offset, char* buf, int32_t len) {
+    common::timer::AutoTimer ac(1, "Pread", _name.c_str());
     int32_t ret = _file->Pread(buf, len, offset);
     LOG(INFO, "Pread(%s, offset: %ld, len: %d) return %d",
         _name.c_str(), offset, len, ret);
     return ret;
 }
 int64_t BfsFile::Tell() {
+    common::timer::AutoTimer ac(1, "Tell", _name.c_str());
     int64_t ret = _file->Seek(0, SEEK_CUR);
     LOG(INFO, "Tell(%s) return %ld", _name.c_str(), ret);
     return ret;
 }
 int32_t BfsFile::Seek(int64_t offset) {
+    common::timer::AutoTimer ac(1, "Seek", _name.c_str());
     int64_t ret = _file->Seek(offset, SEEK_SET);
     if (ret >= 0) {
         ret = 0;
@@ -62,6 +70,7 @@ int32_t BfsFile::Seek(int64_t offset) {
     return ret;
 }
 int32_t BfsFile::CloseFile() {
+    common::timer::AutoTimer ac(1, "CloseFile", _name.c_str());
     bool ret = _file->Close();
     delete _file;
     _file = NULL;
@@ -103,6 +112,7 @@ int32_t BfsImpl::Exists(const std::string& filename) {
     return 0;
 }
 int32_t BfsImpl::Delete(const std::string& filename) {
+    common::timer::AutoTimer ac(1, "Delete", filename.c_str());
     if (!_fs->DeleteFile(filename.c_str())) {
         LOG(INFO, "Delete(%s) fail", filename.c_str());
         return -1;
@@ -135,6 +145,7 @@ int32_t BfsImpl::Copy(const std::string& from, const std::string& to) {
 }
 
 int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>* result) {
+    common::timer::AutoTimer ac(1, "ListDirectory", path.c_str());
     LOG(INFO, "ListDirectory(%s)", path.c_str());
     if (result == NULL) {
         return -1;
@@ -153,6 +164,7 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
 }
 
 leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) {
+    common::timer::AutoTimer ac(0, "OpenFile", filename.c_str());
     LOG(INFO, "OpenFile(%s,%d)", filename.c_str(), flags);
     int openflag = O_WRONLY;
     if (leveldb::WRONLY != flags) {

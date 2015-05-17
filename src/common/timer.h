@@ -25,7 +25,7 @@ static inline int32_t now_time() {
 
 class AutoTimer {
 public:
-    AutoTimer(long timeout_ms, const char* msg1, const char* msg2 = NULL)
+    AutoTimer(double timeout_ms, const char* msg1, const char* msg2 = NULL)
       : timeout_(timeout_ms),
         msg1_(msg1),
         msg2_(msg2) {
@@ -46,7 +46,7 @@ public:
     }
 private:
     long start_;
-    long timeout_;
+    double timeout_;
     const char* msg1_;
     const char* msg2_;
 };
