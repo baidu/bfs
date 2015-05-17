@@ -110,7 +110,7 @@ public:
 
     /// Init this block before write.
     bool InitForWrite() {
-        int fd  = open(_disk_file.c_str(), O_CREAT | O_TRUNC);
+        int fd  = open(_disk_file.c_str(), O_CREAT | O_RDWR | O_TRUNC);
         if (fd < 0) {
             LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
             return false;
@@ -135,8 +135,6 @@ public:
             return false;
         }
         _finished = true;
-        close(_file_desc);
-        _file_desc = -1;
         return true;
     }
     /// Read operation.
@@ -157,9 +155,11 @@ public:
         if (offset < diskfile_size) {
             int pread_len = std::min(len, static_cast<int>(diskfile_size - offset));
             ret = pread(_file_desc, buf, pread_len, offset);
-            assert(ret == pread_len);
+            if(ret < pread_len) {
+                assert(_meta.block_size == offset + ret);
+            }
         }
-        if (ret < len) {
+        if (ret < len && _bufdatalen) {
             int mlen = std::min(_bufdatalen, len - ret);
             memcpy(buf + ret, _blockbuf, mlen);
             ret += mlen;
@@ -187,7 +187,7 @@ public:
     }
     /// Flush block to disk.
     bool Flush() {
-        LOG(INFO, "Block %s Flush", _meta.block_id);
+        LOG(INFO, "Block %ld Flush to %s", _meta.block_id, _disk_file.c_str());
         MutexLock lock(&_mu);
         if (_bufdatalen) {
             int ret = DiskWrite(_blockbuf, _bufdatalen);
@@ -196,6 +196,14 @@ public:
             _bufdatalen = 0;
         }
         return true;
+    }
+    void Close() {
+        MutexLock lock(&_mu);
+        ///TODO: Error handling
+        int ret = close(_file_desc);
+        assert(ret == 0);
+        _file_desc = -1;
+        LOG(INFO, "Block %ld %s closed", _meta.block_id, _meta.file_path);
     }
     void AddRef() {
         common::atomic_inc(&_refs);
@@ -239,7 +247,7 @@ private:
             int wlen = _buflen - _bufdatalen;
             memcpy(_blockbuf + _bufdatalen, buf, wlen);
             int ret = DiskWrite(_blockbuf, _buflen);
-            assert(ret == wlen);
+            assert(ret == _buflen);
             _bufdatalen = 0;
             buf += wlen;
             len -= wlen;
@@ -355,6 +363,11 @@ public:
             "/%010ld", block_id / 1000);
         assert (len == 15 && meta.file_path[len] == 0);
 
+        // Write meta & sync
+        if (!SyncBlockMeta(meta)) {
+            return NULL;
+        }
+        
         Block* block = new Block(meta, _store_path);
         if (!block->InitForWrite()) {
             LOG(WARNING, "Block %ld, %s init fail", block_id, meta.file_path);
@@ -387,29 +400,35 @@ public:
         }
         return block;
     }
-
-    bool FinishBlock(Block* block) {
-        MutexLock lock(&_mu);
-        int64_t block_id = block->Id();
-        assert( block_id < (10L<<13));
-
-        // Disk flush & sync
-        block->Flush();
-        BlockMeta meta = block->GetMeta();
-
-        // Write meta & sync
+    bool SyncBlockMeta(const BlockMeta& meta) {
         char idstr[64];
-        snprintf(idstr, sizeof(idstr), "%13ld", block_id);
+        snprintf(idstr, sizeof(idstr), "%13ld", meta.block_id);
 
         leveldb::WriteOptions options;
         options.sync = true;
         leveldb::Status s = _metadb->Put(options, idstr,
-            leveldb::Slice(reinterpret_cast<char*>(&meta),sizeof(meta)));
+            leveldb::Slice(reinterpret_cast<const char*>(&meta),sizeof(meta)));
         if (!s.ok()) {
-            fprintf(stderr, "Write to meta fail:%s\n", idstr);
+            Log(WARNING, "Write to meta fail:%s\n", idstr);
             return false;
         }
         return true;
+    }
+    bool CloseBlock(Block* block) {
+        MutexLock lock(&_mu);
+        int64_t block_id = block->Id();
+        assert( block_id < (10L<<13));
+
+        if (!block->MarkFinish()) {
+            return false;
+        }
+        // Disk flush & sync
+        block->Flush();
+        block->Close();
+        
+        // Update meta
+        BlockMeta meta = block->GetMeta();
+        return SyncBlockMeta(meta);
     }
     bool RemoveBlock(int64_t block_id) {
         MutexLock lock(&_mu);
@@ -676,11 +695,9 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         block->SetSliceNum(packet_seq + 1);
     }
 
-    // If complete, mark block finish, and report only once(MarkFinish return true).
-    if (block->IsComplete() && block->MarkFinish()) {
+    // If complete, close block, and report only once(close block return true).
+    if (block->IsComplete() && _block_manager->CloseBlock(block)) {
         LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
-        bool ret = _block_manager->FinishBlock(block);
-        assert (ret);
         ReportFinish(block);
     }
     done->Run();
@@ -705,7 +722,6 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     int32_t read_len = request->read_len();
     int status = 0;
 
-    LOG(INFO, "ReadBlock: %ld offset: %ld len: %d\n", block_id, offset, read_len);
     Block* block = _block_manager->FindBlock(block_id, false);
     if (block == NULL) {
         status = 404;
@@ -716,6 +732,8 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int32_t len = block->Read(buf, read_len, offset);
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
+            LOG(INFO, "ReadBlock: %ld offset: %ld len: %d return: %d",
+                block_id, offset, read_len, len);
         } else {
             status = 882;
             LOG(WARNING, "ReadBlock fail: %ld offset: %ld len: %d\n",
