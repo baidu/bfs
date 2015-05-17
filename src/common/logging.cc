@@ -33,10 +33,9 @@ bool SetWarningFile(const char* path, bool append) {
     const char* mode = append ? "ab" : "wb";
     FILE* fp = fopen(path, mode);
     if (fp == NULL) {
-        g_warning_file = stdout;
         return false;
     }
-    if (g_warning_file && g_warning_file != stdout) {
+    if (g_warning_file) {
         fclose(g_warning_file);
     }
     g_warning_file = fp;
@@ -132,7 +131,7 @@ void Log(int level, const char* fmt, ...) {
     va_start(ap, fmt);
 
     if (level >= g_log_level) {
-        Logv(g_log_level, fmt, ap);
+        Logv(level, fmt, ap);
     }
     va_end(ap);
 }

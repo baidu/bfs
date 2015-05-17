@@ -16,6 +16,7 @@
 DECLARE_string(flagfile);
 DECLARE_string(chunkserver_port);
 DECLARE_string(block_store_path);
+DECLARE_string(chunkserver_warninglog);
 DECLARE_int32(chunkserver_log_level);
 
 static volatile bool s_quit = false;
@@ -29,6 +30,7 @@ int main(int argc, char* argv[])
     FLAGS_flagfile = "./bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     common::SetLogLevel(FLAGS_chunkserver_log_level);
+    common::SetWarningFile(FLAGS_chunkserver_warninglog.c_str());
 
     sofa::pbrpc::RpcServerOptions options;
     sofa::pbrpc::RpcServer rpc_server(options);
