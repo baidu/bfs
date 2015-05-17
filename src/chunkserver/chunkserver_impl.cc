@@ -46,25 +46,37 @@ struct Buffer {
       : data_(o.data_), len_(o.len_) {}
 };
 
+/// Meta of a data block
+struct BlockMeta {
+    int64_t block_id;
+    int64_t block_size;
+    int64_t checksum;
+    char    file_path[16];  // format: /XXX/XXXXXXXXXX not more than 15bytes, index 10^13block
+    BlockMeta()
+      : block_id(0), block_size(0), checksum(0) {
+        file_path[0] = 0;
+    }
+};
+
+/// Data block
 class Block {
 public:
-    Block(int64_t block_id, const std::string diskfile= "", int64_t block_size= 0) :
-      _block_id(block_id), _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
-      _datalen(block_size), _disk_file(diskfile), _file_desc(-1), _refs(0),
+    Block(const BlockMeta& meta, const std::string& store_path) :
+      _meta(meta),
+      _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
+      _bufdatalen(0), _file_desc(-1), _refs(0),
       _recv_window(NULL), _finished(false) {
-        if (diskfile != "") {
-            _type = InDisk;
-        } else {
-            _type = InMem;
-            _recv_window = new common::SlidingWindow<Buffer>(100,
-                           boost::bind(&Block::WriteCallback, this, _1, _2));
-        }
+        _disk_file = store_path + _meta.file_path;
     }
     ~Block() {
+        if (_bufdatalen > 0) {
+            LOG(WARNING, "Data lost, %d bytes in %s,%ld",
+                _bufdatalen, _meta.file_path, _meta.block_size - _bufdatalen);
+        }
         delete[] _blockbuf;
         _blockbuf = NULL;
         _buflen = 0;
-        _datalen = 0;
+        _bufdatalen = 0;
         if (_file_desc >= 0) {
             close(_file_desc);
             _file_desc = -1;
@@ -80,13 +92,33 @@ public:
             }
             delete _recv_window;
         }
-        LOG(INFO, "Block %ld deleted\n", _block_id);
+        LOG(INFO, "Block %ld deleted\n", _meta.block_id);
     }
+    /// Getter
     int64_t Id() const {
-        return _block_id;
+        return _meta.block_id;
     }
     int64_t Size() const {
-        return _datalen;
+        return _meta.block_size;
+    }
+    std::string GetFilePath() const {
+        return _meta.file_path;
+    }
+    BlockMeta GetMeta() const {
+        return _meta;
+    }
+
+    /// Init this block before write.
+    bool InitForWrite() {
+        int fd  = open(_disk_file.c_str(), O_CREAT | O_TRUNC);
+        if (fd < 0) {
+            LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
+            return false;
+        }
+        _file_desc = fd;
+        _recv_window = new common::SlidingWindow<Buffer>(100,
+                       boost::bind(&Block::WriteCallback, this, _1, _2));
+        return true;
     }
     /// Set expected slice num, for IsComplete.
     void SetSliceNum(int32_t num) {
@@ -96,28 +128,21 @@ public:
     bool IsComplete() {
         return (_slice_num == _last_seq + 1);
     }
-    bool Finish() {
+    /// Mark this block is finish, return iff the first.
+    bool MarkFinish() {
         MutexLock lock(&_mu);
         if (_finished) {
             return false;
         }
         _finished = true;
+        close(_file_desc);
+        _file_desc = -1;
         return true;
     }
+    /// Read operation.
     int32_t Read(char* buf, int32_t len, int64_t offset) {
-        /// Raw impliment, no concurrency
         MutexLock lock(&_mu);
-        if (_type == InMem) {
-            int64_t left = _datalen - offset;
-            if (left < 0) {
-                return 0;
-            }
-            if (left > len) {
-                left = len;
-            }
-            memcpy(buf, _blockbuf + offset, left);
-            return left;
-        }
+        int ret = 0;
         if (_file_desc == -1) {
             int fd  = open(_disk_file.c_str(), O_RDONLY);
             if (fd < 0) {
@@ -127,16 +152,26 @@ public:
             }
             _file_desc = fd;
         }
-        return pread(_file_desc, buf, len, offset);
+        ///
+        int64_t diskfile_size = _meta.block_size - _bufdatalen;
+        if (offset < diskfile_size) {
+            int pread_len = std::min(len, static_cast<int>(diskfile_size - offset));
+            ret = pread(_file_desc, buf, pread_len, offset);
+            assert(ret == pread_len);
+        }
+        if (ret < len) {
+            int mlen = std::min(_bufdatalen, len - ret);
+            memcpy(buf + ret, _blockbuf, mlen);
+            ret += mlen;
+        }
+        return ret;
     }
-    bool Writeable() {
-        return (_type == InMem || _write_mode == O_APPEND);
-    }
+    /// Write operation.
     bool Write(int32_t seq, int64_t offset, const char* data, int32_t len) {
         LOG(INFO, "Block Write %d\n", seq);
-        if (offset < _datalen) {
-            LOG(WARNING, "Write a finish block: %ld, seq: %d, offset: %ld",
-                _block_id, seq, offset);
+        if (offset < _meta.block_size) {
+            LOG(WARNING, "Write a finish block %ld, seq: %d, offset: %ld",
+                _meta.block_id, seq, offset);
             return true;
         }
         char* buf = NULL;
@@ -150,64 +185,17 @@ public:
         }
         return (ret >= 0);
     }
-    /// Invoke by slidingwindow, when next buffer arrive.
-    void WriteCallback(int32_t seq, Buffer buffer) {
-        LOG(INFO, "Append done [seq:%d, %ld:%d]\n", seq, _datalen, buffer.len_);
-        Append(seq, buffer.data_, buffer.len_);
-        delete[] buffer.data_;
-    }
-    /// Append to block buffer
-    void Append(int32_t seq, const char*buf, int32_t len) {
-        if (_write_mode == O_WRONLY) {
-            assert (_type == InMem);
-        }
+    /// Flush block to disk.
+    bool Flush() {
+        LOG(INFO, "Block %s Flush", _meta.block_id);
         MutexLock lock(&_mu);
-        if (_blockbuf == NULL) {
-            _buflen = std::max(len*2, 100*1024*1024);
-            _blockbuf = new char[_buflen];
-        } else if (_datalen + len > _buflen) {
-            _buflen = std::max(_buflen * 2, _datalen + len);
-            char* newbuf = new char[_buflen];
-            memcpy(newbuf, _blockbuf, _datalen);
-            delete[] _blockbuf;
-            _blockbuf = newbuf;
+        if (_bufdatalen) {
+            int ret = DiskWrite(_blockbuf, _bufdatalen);
+            assert(ret);
+            _meta.block_size += _bufdatalen;
+            _bufdatalen = 0;
         }
-        if (len) {
-            memcpy(_blockbuf + _datalen, buf, len);
-        }
-        _datalen += len;
-        _last_seq = seq;
-    }
-    bool FlushToDisk(const std::string& path) {
-        MutexLock lock(&_mu);
-        if (_write_mode != O_APPEND) {
-            assert(_type == InMem);
-        }
-        bool ret = false;
-        FILE* fp;
-        if (_write_mode == O_WRONLY) {
-            fp = fopen(path.c_str(), "wb");
-        } else {
-            fp = fopen(path.c_str(), "ab");
-        }
-        if (fp == NULL) {
-            fprintf(stderr, "Open %s for flush fail\n", path.c_str());
-        } else if (fwrite(_blockbuf, _datalen , 1, fp) != 1) {
-            fprintf(stderr, "Write to disk fail: %s\n", path.c_str());
-        } else {
-            ret = true;
-        }
-        if (fp) {
-            fsync(fileno(fp));
-            fclose(fp);
-        }
-        _disk_file = path;
-        _type = InDisk;
-        delete[] _blockbuf;
-        _blockbuf = NULL;
-        _buflen = 0;
-        _recv_window->Reset();
-        return ret;
+        return true;
     }
     void AddRef() {
         common::atomic_inc(&_refs);
@@ -217,26 +205,65 @@ public:
             delete this;
         }
     }
-    std::string GetFilePath() const {
-        return _disk_file;
+private:
+    /// Invoke by slidingwindow, when next buffer arrive.
+    void WriteCallback(int32_t seq, Buffer buffer) {
+        Append(seq, buffer.data_, buffer.len_);
+        //LOG(INFO, "Append done [seq:%d, %ld:%d]\n", seq, _blocksize, buffer.len_);
+        delete[] buffer.data_;
     }
-    void SetWriteMode(int mode) {
-        _write_mode = mode;
+    /// Write data to disk
+    int DiskWrite(const char* buf, int32_t len) {
+        _mu.AssertHeld();
+        int wlen = 0;
+        while (wlen < len) {
+            int w = write(_file_desc, buf + wlen, len - wlen);
+            if (w < 0) {
+                LOG(WARNING, "IOEroro write %s return %s",
+                    _meta.file_path, strerror(errno));
+                assert(0);
+                return wlen;
+            }
+            wlen += w;
+        }
+        return len;
+    }
+    /// Append to block buffer
+    void Append(int32_t seq, const char*buf, int32_t len) {
+        MutexLock lock(&_mu);
+        if (_blockbuf == NULL) {
+            _buflen = 1*1024*1024;
+            _blockbuf = new char[_buflen];
+        } 
+        while (_bufdatalen + len > _buflen) {
+            int wlen = _buflen - _bufdatalen;
+            memcpy(_blockbuf + _bufdatalen, buf, wlen);
+            int ret = DiskWrite(_blockbuf, _buflen);
+            assert(ret == wlen);
+            _bufdatalen = 0;
+            buf += wlen;
+            len -= wlen;
+        }
+        if (len) {
+            memcpy(_blockbuf + _bufdatalen, buf, len);
+            _bufdatalen += len;
+        }
+        _meta.block_size += len;
+        _last_seq = seq;
     }
 private:
     enum Type {
         InDisk,
         InMem,
     };
-    int64_t     _block_id;
+    BlockMeta   _meta;
     int32_t     _last_seq;
     int32_t     _slice_num;
     char*       _blockbuf;
     int64_t     _buflen;
-    int64_t     _datalen;
+    int32_t     _bufdatalen;
     std::string _disk_file;
     int         _file_desc; ///< disk file fd
-    Type        _type;      ///< disk or mem
     volatile int _refs;
     Mutex       _mu;
     common::SlidingWindow<Buffer>* _recv_window;
@@ -246,14 +273,12 @@ private:
 
 class BlockManager {
 public:
-    struct BlockMeta {
-        int64_t block_id;
-        int64_t block_size;
-        int64_t checksum;
-        char    file_name[16];  // format: /XXX/XXXXXXXXXX not more than 15bytes, index 10^13block
-    };
     BlockManager(std::string store_path)
         :_store_path(store_path), _metadb(NULL), _block_num(0) {
+        ///TODO: Multi disk support
+        if (_store_path.empty() || _store_path[_store_path.size() - 1] != '/') {
+            _store_path += "/";
+        }
     }
     ~BlockManager() {
         for (BlockMap::iterator it = _block_map.begin();
@@ -287,7 +312,7 @@ public:
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
 
-            Block* block = new Block(block_id, _store_path + meta.file_name, meta.block_size);
+            Block* block = new Block(meta, _store_path);
             block->AddRef();
             _block_map[block_id] = block;
             _block_num ++;
@@ -316,6 +341,28 @@ public:
         delete it;
         return true;
     }
+    /// Create a new block for write
+    Block* NewBlockForWrite(int64_t block_id) {
+        BlockMeta meta;
+        meta.block_size = 0;
+        meta.checksum = 0;
+        meta.block_id = block_id;
+        int len = snprintf(meta.file_path, sizeof(meta.file_path),
+            "/%03ld", block_id % 1000);
+        // Mkdir dir for data block, ignore error, may already exist.
+        mkdir((_store_path + meta.file_path).c_str(), 0755);
+        len += snprintf(meta.file_path + len, sizeof(meta.file_path) - len,
+            "/%010ld", block_id / 1000);
+        assert (len == 15 && meta.file_path[len] == 0);
+
+        Block* block = new Block(meta, _store_path);
+        if (!block->InitForWrite()) {
+            LOG(WARNING, "Block %ld, %s init fail", block_id, meta.file_path);
+            delete block;
+            return NULL;
+        }
+        return block;
+    }
     Block* FindBlock(int64_t block_id, bool create_if_missing) {
         MutexLock lock(&_mu);
 
@@ -325,7 +372,9 @@ public:
             block = it->second;
         } else if (create_if_missing) {
             ///TODO: LRU block map
-            block = new Block(block_id);
+            block = NewBlockForWrite(block_id);
+            ///TODO: Error handling
+            assert(block);
             // for block_map
             block->AddRef();
             _block_map[block_id] = block;
@@ -344,21 +393,10 @@ public:
         int64_t block_id = block->Id();
         assert( block_id < (10L<<13));
 
-        BlockMeta meta;
-        meta.block_size = block->Size();
-        meta.checksum = 0;
-        meta.block_id = block_id;
-        int len = snprintf(meta.file_name, sizeof(meta.file_name),
-            "/%03ld", block_id % 1000);
-        // Mkdir dir for data block, ignore error, may already exist.
-        mkdir((_store_path + meta.file_name).c_str(), 0755);
-        len += snprintf(meta.file_name + len, sizeof(meta.file_name) - len,
-            "/%010ld", block_id/1000);
-        assert (len == 15 && meta.file_name[len] == 0);
-
         // Disk flush & sync
-        block->FlushToDisk(_store_path + meta.file_name);
-        LOG(INFO, "FlushToDisk %d -> %s", block_id, meta.file_name);
+        block->Flush();
+        BlockMeta meta = block->GetMeta();
+
         // Write meta & sync
         char idstr[64];
         snprintf(idstr, sizeof(idstr), "%13ld", block_id);
@@ -477,7 +515,7 @@ void ChunkServerImpl::Routine() {
             request.set_chunkserver_id(_chunkserver_id);
             request.set_namespace_version(_namespace_version);
 
-            std::vector<BlockManager::BlockMeta> blocks;
+            std::vector<BlockMeta> blocks;
             _block_manager->ListBlocks(&blocks);
             for (size_t i = 0; i < blocks.size(); i++) {
                 ReportBlockInfo* info = request.add_blocks();
@@ -624,12 +662,6 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         return;
     }
 
-    if (request->is_append()) {
-        block->SetWriteMode(O_APPEND);
-    } else {
-        block->SetWriteMode(O_WRONLY);
-    }
-
     if (!block->Write(packet_seq, offset, databuf.data(), databuf.size())) {
         LOG(WARNING, "Write offset[%ld] block_size[%ld] not in sliding window\n",
             offset, block->Size());
@@ -644,9 +676,11 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         block->SetSliceNum(packet_seq + 1);
     }
 
-    if (block->IsComplete() && (block->Finish() || request->is_append())) {
+    // If complete, mark block finish, and report only once(MarkFinish return true).
+    if (block->IsComplete() && block->MarkFinish()) {
         LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
-        _block_manager->FinishBlock(block);
+        bool ret = _block_manager->FinishBlock(block);
+        assert (ret);
         ReportFinish(block);
     }
     done->Run();
