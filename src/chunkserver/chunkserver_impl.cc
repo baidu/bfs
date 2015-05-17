@@ -102,7 +102,7 @@ public:
         return _meta.block_size;
     }
     std::string GetFilePath() const {
-        return _meta.file_path;
+        return _disk_file;
     }
     BlockMeta GetMeta() const {
         return _meta;
@@ -110,7 +110,7 @@ public:
 
     /// Init this block before write.
     bool InitForWrite() {
-        int fd  = open(_disk_file.c_str(), O_CREAT | O_RDWR | O_TRUNC);
+        int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
             LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
             return false;
@@ -192,7 +192,6 @@ public:
         if (_bufdatalen) {
             int ret = DiskWrite(_blockbuf, _bufdatalen);
             assert(ret);
-            _meta.block_size += _bufdatalen;
             _bufdatalen = 0;
         }
         return true;
@@ -242,19 +241,20 @@ private:
         if (_blockbuf == NULL) {
             _buflen = 1*1024*1024;
             _blockbuf = new char[_buflen];
-        } 
-        while (_bufdatalen + len > _buflen) {
+        }
+        int ap_len = len;
+        while (_bufdatalen + ap_len > _buflen) {
             int wlen = _buflen - _bufdatalen;
             memcpy(_blockbuf + _bufdatalen, buf, wlen);
             int ret = DiskWrite(_blockbuf, _buflen);
             assert(ret == _buflen);
             _bufdatalen = 0;
             buf += wlen;
-            len -= wlen;
+            ap_len -= wlen;
         }
-        if (len) {
-            memcpy(_blockbuf + _bufdatalen, buf, len);
-            _bufdatalen += len;
+        if (ap_len) {
+            memcpy(_blockbuf + _bufdatalen, buf, ap_len);
+            _bufdatalen += ap_len;
         }
         _meta.block_size += len;
         _last_seq = seq;
@@ -442,7 +442,8 @@ public:
 
             int ret = remove(file_path.c_str());
             if (ret != 0) {
-                LOG(WARNING, "Remove disk file fails: %s\n", file_path.c_str());
+                LOG(WARNING, "Remove disk file %s fails: %s\n",
+                    file_path.c_str(), strerror(errno));
                 return false;
             } else {
                 LOG(INFO, "Remove disk file done: %s\n", file_path.c_str());
@@ -532,6 +533,7 @@ void ChunkServerImpl::Routine() {
         if (ticks == next_report) {
             BlockReportRequest request;
             request.set_chunkserver_id(_chunkserver_id);
+            request.set_chunkserver_addr(_data_server_addr);
             request.set_namespace_version(_namespace_version);
 
             std::vector<BlockMeta> blocks;
@@ -589,7 +591,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
         return false;
     }
 
-    LOG(INFO, "Reprot finish %ld\n", block->Id());
+    LOG(INFO, "Reprot finish to nameserver done, block_id: %ld\n", block->Id());
     return true;
 }
 

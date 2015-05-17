@@ -457,7 +457,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    ::google::protobuf::Closure* done) {
     int32_t id = request->chunkserver_id();
     int64_t version = request->namespace_version();
-    LOG(INFO, "Report from %d, %d blocks\n", id, request->blocks_size());
+    LOG(INFO, "Report from %d, %s, %d blocks\n",
+        id, request->chunkserver_addr().c_str(), request->blocks_size());
     if (version != _namespace_version) {
         response->set_status(8882);
     } else {

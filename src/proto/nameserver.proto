@@ -138,9 +138,10 @@ message ReplicaInfo {
 message BlockReportRequest {
     optional uint64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
-    optional int64 namespace_version = 3;
-    optional bool is_complete = 4;
-    repeated ReportBlockInfo blocks = 5;
+    optional string chunkserver_addr = 3;
+    optional int64 namespace_version = 4;
+    optional bool is_complete = 5;
+    repeated ReportBlockInfo blocks = 6;
 }
 message BlockReportResponse {
     optional uint64 sequence_id = 1;
