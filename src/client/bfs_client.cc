@@ -74,7 +74,7 @@ int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
             fprintf(stderr, "Can't Open bfs file %s\n", argv[0]);
             return 1;
         }
-        char buf[1024];
+        char buf[10240];
         int64_t bytes = 0;
         int64_t len = 0;
         while (1) {
@@ -107,7 +107,7 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
         delete file;
         return -1;
     }
-    char buf[1024];
+    char buf[10240];
     int64_t bytes = 0;
     int64_t len = 0;
     while (1) {

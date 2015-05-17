@@ -129,6 +129,8 @@ int main() {
     ASSERT_TRUE(nfp != NULL);
     ASSERT_TRUE(c1len == nfp->Read(buf, c1len));
     ASSERT_TRUE(0 == strncmp(buf, content1, c1len));
+    nfp->Read(buf, c2len);  // Undefined
+    ASSERT_TRUE(0 == nfp->Read(buf, c2len));
     ASSERT_TRUE(0 == nfp->CloseFile());
 
     /// List directory

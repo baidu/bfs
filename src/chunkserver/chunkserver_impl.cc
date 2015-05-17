@@ -140,7 +140,10 @@ public:
     /// Read operation.
     int32_t Read(char* buf, int32_t len, int64_t offset) {
         MutexLock lock(&_mu);
-        int ret = 0;
+        if (offset > _meta.block_size) {
+            return -1;
+        }
+        int readlen = 0;
         if (_file_desc == -1) {
             int fd  = open(_disk_file.c_str(), O_RDONLY);
             if (fd < 0) {
@@ -154,17 +157,20 @@ public:
         int64_t diskfile_size = _meta.block_size - _bufdatalen;
         if (offset < diskfile_size) {
             int pread_len = std::min(len, static_cast<int>(diskfile_size - offset));
-            ret = pread(_file_desc, buf, pread_len, offset);
-            if(ret < pread_len) {
-                assert(_meta.block_size == offset + ret);
+            readlen = pread(_file_desc, buf, pread_len, offset);
+            if(readlen < pread_len) {
+                assert(_meta.block_size == offset + readlen);
             }
         }
-        if (ret < len && _bufdatalen) {
-            int mlen = std::min(_bufdatalen, len - ret);
-            memcpy(buf + ret, _blockbuf, mlen);
-            ret += mlen;
+        LOG(INFO, "offset %ld, diskfile_size: %ld, readlen: %d, _bufdatalen: %d",
+            offset, diskfile_size, readlen, _bufdatalen);
+        int mem_offset = offset - diskfile_size + readlen;
+        if (mem_offset >= 0 && mem_offset < _bufdatalen) {
+            int mlen = std::min(_bufdatalen - mem_offset, len - readlen);
+            memcpy(buf + readlen, _blockbuf + mem_offset, mlen);
+            readlen += mlen;
         }
-        return ret;
+        return readlen;
     }
     /// Write operation.
     bool Write(int32_t seq, int64_t offset, const char* data, int32_t len) {
