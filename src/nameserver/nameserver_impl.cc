@@ -336,6 +336,7 @@ public:
             info->set_id(id);
             info->set_address(request->data_server_addr());
             _chunkservers[id] = info;
+            ++_chunkserver_num;
         }
 
         int32_t now_time = common::timer::now_time();
