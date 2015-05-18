@@ -46,6 +46,7 @@ public:
     }
     /// Notify 会在Add中被调用, 用户自己处理锁和死锁的问题
     void Notify() {
+        mu_.AssertHeld();
         while (bitmap_[ready_] == 1) {
             callback_(base_offset_, items_[ready_]);
 

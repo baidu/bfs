@@ -36,6 +36,7 @@ public:
                             ReadBlockResponse* response,
                             ::google::protobuf::Closure* done);
 private:
+    void ChunkServerImpl::LogStatus();
     void WriteNextCallback(const WriteBlockRequest* next_request,
                            WriteBlockResponse* response,
                            bool ret, int error,
