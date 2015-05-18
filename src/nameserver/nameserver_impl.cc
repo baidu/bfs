@@ -321,13 +321,25 @@ public:
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
         MutexLock lock(&_mu);
         int32_t id = request->chunkserver_id();
-        ChunkServerInfo* info = _chunkservers[id];
-        assert(info);
-        int32_t now_time = common::timer::now_time();
-        _heartbeat_list[info->last_heartbeat()].erase(info);
-        if (_heartbeat_list[info->last_heartbeat()].empty()) {
-            _heartbeat_list.erase(info->last_heartbeat());
+        ServerMap::iterator it = _chunkservers.find(id);
+        ChunkServerInfo* info = NULL;
+        if (it != _chunkservers.end()) {
+           info = it->second;
+            assert(info);
+            _heartbeat_list[info->last_heartbeat()].erase(info);
+            if (_heartbeat_list[info->last_heartbeat()].empty()) {
+                _heartbeat_list.erase(info->last_heartbeat());
+            }
+        } else {
+            //reconnect after DeadCheck()
+            info = new ChunkServerInfo;
+            info->set_id(id);
+            info->set_address(request->data_server_addr());
+            _chunkservers[id] = info;
+            ++_chunkserver_num;
         }
+
+        int32_t now_time = common::timer::now_time();
         _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
     }
