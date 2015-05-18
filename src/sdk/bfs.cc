@@ -680,7 +680,7 @@ bool BfsFileImpl::Flush() {
     return true;
 }
 bool BfsFileImpl::Sync() {
-    common::timer::AutoTimer at(100, "Sync", _name.c_str());
+    common::timer::AutoTimer at(50, "Sync", _name.c_str());
     if (_open_flags != O_WRONLY) {
         return false;
     }
@@ -689,7 +689,7 @@ bool BfsFileImpl::Sync() {
         StartWrite(_write_buf);
     }
     while (_back_writing) {
-        _sync_signal.Wait();
+        _sync_signal.Wait((_name + " Sync wait").c_str());
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
     return true;

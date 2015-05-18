@@ -23,18 +23,19 @@ DECLARE_string(nameserver_port);
 void print_usage() {
     printf("Use:\nbfs_client <commond> path\n");
     printf("\t commond:\n");
-    printf("\t    -ls <path> : list the directory\n");
-    printf("\t    -cat <path> : cat the file\n");
-    printf("\t    -mkdir <path> : make director\n");
-    printf("\t    -mv <srcpath> <destpath> : rename director or file\n");
-    printf("\t    -touchz <path> : create a new file\n");
-    printf("\t    -rm <path> : remove a file\n");
-    printf("\t    -get <bfsfile> <localfile> : copy file to local\n");
-    printf("\t    -put <localfile> <bfsfile> : copy file from local to bfs\n");
-    printf("\t    -append <localfile> <bfsfile> : append localfile to bfsfile\n");
-    printf("\t    -rmdir <path> : remove empty directory\n");
-    printf("\t    -rmr <path> : remove directory recursively\n");
-    printf("\t    -change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
+    printf("\t    ls <path> : list the directory\n");
+    printf("\t    cat <path> : cat the file\n");
+    printf("\t    mkdir <path> : make director\n");
+    printf("\t    mv <srcpath> <destpath> : rename director or file\n");
+    printf("\t    touchz <path> : create a new file\n");
+    printf("\t    rm <path> : remove a file\n");
+    printf("\t    get <bfsfile> <localfile> : copy file to local\n");
+    printf("\t    put <localfile> <bfsfile> : copy file from local to bfs\n");
+    printf("\t    append <localfile> <bfsfile> : append localfile to bfsfile\n");
+    printf("\t    rmdir <path> : remove empty directory\n");
+    printf("\t    rmr <path> : remove directory recursively\n");
+    printf("\t    change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
+    printf("\t    du <path> : count disk usage for path\n");
 }
 
 int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
@@ -160,6 +161,37 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
+int64_t BfsDuRecursive(bfs::FS* fs, const std::string& path) {
+    int64_t ret = 0;
+    bfs::BfsFileInfo* files = NULL;
+    int num = 0;
+    fs->ListDirectory(path.c_str(), &files, &num);
+    for (int i = 0; i < num; i++) {
+        int32_t type = files[i].mode;
+        if (type & (1<<9)) {
+            ret += BfsDuRecursive(fs, files[i].name);
+            continue;
+        }
+        bfs::BfsFileInfo fileinfo;
+        if (fs->Stat(files[i].name, &fileinfo)) {
+            ret += fileinfo.size;
+            printf("%s\t %ld\n", files[i].name, fileinfo.size);
+        }
+    }
+    delete files;
+    return ret;
+}
+
+int BfsDu(bfs::FS* fs, int argc, char* argv[]) {
+    if (argc != 1) {
+        print_usage();
+        return 1;
+    }
+    int64_t du = BfsDuRecursive(fs, argv[0]);
+    printf("Total:\t%ld\n", du);
+    return 0;
+}
+
 int BfsList(bfs::FS* fs, int argc, char* argv[]) {
     std::string path("/");
     if (argc == 3) {
@@ -168,7 +200,7 @@ int BfsList(bfs::FS* fs, int argc, char* argv[]) {
     bfs::BfsFileInfo* files = NULL;
     int num;
     fs->ListDirectory(path.c_str(), &files, &num);
-    printf("Found %d itmes\n", num);
+    printf("Found %d items\n", num);
     for (int i = 0; i < num; i++) {
         int32_t type = files[i].mode;
         char statbuf[16] = "drwxrwxrwx";
@@ -314,6 +346,8 @@ int main(int argc, char* argv[]) {
         ret = BfsRmdir(fs, argc - 2, argv + 2, true);
     } else if (strcmp(argv[1], "change_replica_num") == 0) {
         ret = BfsChangeReplicaNum(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "du") == 0) {
+        ret = BfsDu(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }

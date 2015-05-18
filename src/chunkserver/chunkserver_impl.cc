@@ -464,6 +464,7 @@ public:
             if (s.ok()) {
                 LOG(INFO, "Remove meta info done: %s\n", idstr);
                 _block_map.erase(it);
+                block->DecRef();
                 return true;
             } else {
                 LOG(WARNING, "Remove meta info fails: %ld\n", idstr);
@@ -747,6 +748,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         }
         delete[] buf;
     }
+    block->DecRef();
     response->set_status(status);
     done->Run();
 }
