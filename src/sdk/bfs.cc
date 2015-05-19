@@ -715,7 +715,7 @@ bool BfsFileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", _name.c_str());
     bool ret = true;
     MutexLock lock(&_mu, "Close");
-    if (_open_flags == O_WRONLY || _open_flags == O_APPEND) {
+    if (_block_for_write && (_open_flags == O_WRONLY || _open_flags == O_APPEND)) {
         if (!_write_buf) {
             _write_buf = new WriteBuffer(++_last_seq, 32, _block_for_write->block_id(),
                                          _block_for_write->block_size());
@@ -730,6 +730,8 @@ bool BfsFileImpl::Close() {
         delete _block_for_write;
         _block_for_write = NULL;
     }
+    delete _chunkserver;
+    _chunkserver = NULL;
     LOG(DEBUG, "File %s closed", _name.c_str());
     _closed = true;
     return ret;
