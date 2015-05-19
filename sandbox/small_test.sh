@@ -35,3 +35,10 @@ rm -rf ./binary
 # Now we can list a nonexistent item
 ./bfs_client ls /home/user
 
+touch empty_file1
+
+./bfs_client put ./empty_file1 /ef
+
+./bfs_client get /ef ./empty_file2
+
+rm -rf empty_file*
