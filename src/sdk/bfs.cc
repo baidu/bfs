@@ -404,7 +404,7 @@ private:
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, 
                          const std::string name, int32_t flags)
   : _fs(fs), _rpc_client(rpc_client), _name(name),
-    _open_flags(flags), _chains_head(NULL),
+    _open_flags(flags), _chains_head(NULL), _block_for_write(NULL),
     _write_buf(NULL), _last_seq(-1), _back_writing(0),
     _chunkserver(NULL), _read_offset(0), _closed(false),
     _sync_signal(&_mu) {
