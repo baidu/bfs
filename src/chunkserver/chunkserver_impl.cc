@@ -20,6 +20,7 @@
 #include "proto/nameserver.pb.h"
 #include "common/mutex.h"
 #include "common/atomic.h"
+#include "common/counter.h"
 #include "common/mutex.h"
 #include "common/util.h"
 #include "common/timer.h"
@@ -34,6 +35,10 @@ DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);
 
 namespace bfs {
+
+common::Counter g_block_buffers;
+common::Counter g_blocks;
+common::Counter g_writing_bytes;
 
 struct Buffer {
     const char* data_;
@@ -67,14 +72,18 @@ public:
       _bufdatalen(0), _file_desc(-1), _refs(0),
       _recv_window(NULL), _finished(false) {
         _disk_file = store_path + _meta.file_path;
+        g_blocks.Inc();
     }
     ~Block() {
         if (_bufdatalen > 0) {
             LOG(WARNING, "Data lost, %d bytes in %s,%ld",
                 _bufdatalen, _meta.file_path, _meta.block_size - _bufdatalen);
         }
-        delete[] _blockbuf;
-        _blockbuf = NULL;
+        if (_blockbuf) {
+            g_block_buffers.Dec();
+            delete[] _blockbuf;
+            _blockbuf = NULL;
+        }
         _buflen = 0;
         _bufdatalen = 0;
         if (_file_desc >= 0) {
@@ -93,6 +102,7 @@ public:
             delete _recv_window;
         }
         LOG(INFO, "Block %ld deleted\n", _meta.block_id);
+        g_blocks.Dec();
     }
     /// Getter
     int64_t Id() const {
@@ -182,10 +192,12 @@ public:
         if (len) {
             buf = new char[len];
             memcpy(buf, data, len);
+            g_writing_bytes.Add(len);
         }
         int ret = _recv_window->Add(seq, Buffer(buf, len));
         if (ret != 0) {
             delete[] buf;
+            g_writing_bytes.Sub(len);
         }
         return (ret >= 0);
     }
@@ -206,6 +218,9 @@ public:
         int ret = close(_file_desc);
         assert(ret == 0);
         _file_desc = -1;
+        delete _blockbuf;
+        _blockbuf = NULL;
+        g_block_buffers.Dec();
         LOG(INFO, "Block %ld %s closed", _meta.block_id, _meta.file_path);
     }
     void AddRef() {
@@ -222,6 +237,7 @@ private:
         Append(seq, buffer.data_, buffer.len_);
         //LOG(INFO, "Append done [seq:%d, %ld:%d]\n", seq, _blocksize, buffer.len_);
         delete[] buffer.data_;
+        g_writing_bytes.Sub(buffer.len_);
     }
     /// Write data to disk
     int DiskWrite(const char* buf, int32_t len) {
@@ -245,6 +261,7 @@ private:
         if (_blockbuf == NULL) {
             _buflen = 1*1024*1024;
             _blockbuf = new char[_buflen];
+            g_block_buffers.Inc();
         }
         int ap_len = len;
         while (_bufdatalen + ap_len > _buflen) {
@@ -493,7 +510,7 @@ ChunkServerImpl::ChunkServerImpl()
         assert(0);
     }
     _thread_pool = new ThreadPool(10);
-    _thread_pool->Start();
+    _thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
 }
@@ -505,6 +522,12 @@ ChunkServerImpl::~ChunkServerImpl() {
     delete _thread_pool;
     delete _block_manager;
     delete _rpc_client;
+}
+
+void ChunkServerImpl::LogStatus() {
+    LOG(INFO, "blocks %ld, block_buffers %ld, writing_bytes %ld",
+        g_blocks.Get(), g_block_buffers.Get(), g_writing_bytes.Get());
+    _thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
 
 void* ChunkServerImpl::RoutineWrapper(void* arg) {
