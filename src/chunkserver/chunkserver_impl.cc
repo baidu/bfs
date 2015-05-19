@@ -563,6 +563,7 @@ void ChunkServerImpl::Routine() {
             request.set_chunkserver_id(_chunkserver_id);
             request.set_chunkserver_addr(_data_server_addr);
             request.set_namespace_version(_namespace_version);
+            request.set_is_complete(false);
 
             std::vector<BlockMeta> blocks;
             _block_manager->ListBlocks(&blocks);
@@ -607,6 +608,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     BlockReportRequest request;
     request.set_chunkserver_id(_chunkserver_id);
     request.set_namespace_version(_namespace_version);
+    request.set_is_complete(true);
 
     ReportBlockInfo* info = request.add_blocks();
     info->set_block_id(block->Id());
