@@ -37,6 +37,12 @@ public:
                             ::google::protobuf::Closure* done);
 private:
     void LogStatus();
+    void WriteNext(const std::string& next_server,
+                   ChunkServer_Stub* stub,
+                   const WriteBlockRequest* next_request,
+                   const WriteBlockRequest* request,
+                   WriteBlockResponse* response,
+                   ::google::protobuf::Closure* done);
     void WriteNextCallback(const WriteBlockRequest* next_request,
                            WriteBlockResponse* response,
                            bool ret, int error,

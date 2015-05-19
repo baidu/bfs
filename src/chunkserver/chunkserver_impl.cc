@@ -646,23 +646,16 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
 
     if (request->chunkservers_size()) {
-        //common::timer::AutoTimer at(0, "SendToNext", tmpbuf);
-        ChunkServer_Stub* stub = NULL;
-        const std::string& next_server = request->chunkservers(0);
-        _rpc_client->GetStub(next_server, &stub);
         // New request for next chunkserver
         WriteBlockRequest* next_request = new WriteBlockRequest(*request);
         next_request->clear_chunkservers();
         for (int i = 1; i < request->chunkservers_size(); i++) {
             next_request->add_chunkservers(request->chunkservers(i));
         }
-        LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next %s\n",
-            block_id, packet_seq, next_server.c_str());
-        boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
-            boost::bind(&ChunkServerImpl::WriteNextCallback,
-                this, _1, _2, _3, _4, next_server, request, done, stub);
-        _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
-            next_request, response, callback, 5, 3);
+        ChunkServer_Stub* stub = NULL;
+        const std::string& next_server = request->chunkservers(0);
+        _rpc_client->GetStub(next_server, &stub);
+        WriteNext(next_server, stub, next_request, request, response, done);
     } else {
         const WriteBlockRequest* next_request = NULL;
         ChunkServer_Stub* stub = NULL;
@@ -673,6 +666,23 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     }
 }
 
+void ChunkServerImpl::WriteNext(const std::string& next_server,
+                                ChunkServer_Stub* stub,
+                                const WriteBlockRequest* next_request,
+                                const WriteBlockRequest* request,
+                                WriteBlockResponse* response,
+                                ::google::protobuf::Closure* done) {
+    int64_t block_id = request->block_id();
+    int32_t packet_seq = request->packet_seq();
+    LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next %s\n",
+        block_id, packet_seq, next_server.c_str());
+    boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
+        boost::bind(&ChunkServerImpl::WriteNextCallback,
+            this, _1, _2, _3, _4, next_server, request, done, stub);
+    _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
+        next_request, response, callback, 5, 3);
+}
+
 void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
                         WriteBlockResponse* response,
                         bool failed, int error,
@@ -680,12 +690,19 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
                         const WriteBlockRequest* request,
                         ::google::protobuf::Closure* done,
                         ChunkServer_Stub* stub) {
+    /// If RPC_ERROR_SEND_BUFFER_FULL retry send.
+    if (failed && error == sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL) {
+        boost::function<void ()> callback = 
+            boost::bind(&ChunkServerImpl::WriteNext, this, next_server,
+                        stub, next_request, request, response, done);
+        _thread_pool->DelayTask(10, callback);
+        return;
+    }
 
     int64_t block_id = request->block_id();
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
-
     delete stub;
     delete next_request;
     if (failed || response->status() != 0) {
