@@ -40,6 +40,7 @@ private:
     void WriteNextCallback(const WriteBlockRequest* next_request,
                            WriteBlockResponse* response,
                            bool ret, int error,
+                           const std::string& next_server,
                            const WriteBlockRequest* request,
                            ::google::protobuf::Closure* done,
                            ChunkServer_Stub* stub);

@@ -105,9 +105,11 @@ public:
     void WriteChunkCallback(const WriteBlockRequest* request,
                             WriteBlockResponse* response,
                             bool failed, int error,
+                            int retry_times,
                             WriteBuffer* buffer);
     /// When rpc buffer full deley send write reqeust
-    void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request);
+    void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
+                         int retry_times);
     bool Flush();
     bool Sync();
     bool Close();
@@ -529,7 +531,8 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
             request.set_file_name(_name);
             request.set_sequence_id(0);
 
-            bool ret = _rpc_client->SendRequest(_fs->_nameserver, &NameServer_Stub::GetFileLocation,
+            bool ret = _rpc_client->SendRequest(_fs->_nameserver,
+                    &NameServer_Stub::GetFileLocation,
                     &request, &response, 5, 3);
             if (ret && response.status() == 0) {
                 _block_for_write = new LocatedBlock(response.blocks(0));
@@ -609,9 +612,11 @@ void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
         for (int i = 1; i < _block_for_write->chains_size(); i++) {
             request->add_chunkservers(_block_for_write->chains(i).address());
         }
-        
+
+        const int max_retry_times = 5;
         boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-            = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4, buffer);
+            = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4, 
+                          max_retry_times, buffer);
 
         LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
                 buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
@@ -623,10 +628,13 @@ void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
     common::atomic_dec(&_back_writing);    // for AddTask
 }
 
-void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request) {
+void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer,
+                                  const WriteBlockRequest* request,
+                                  int retry_times) {
     WriteBlockResponse* response = new WriteBlockResponse;
     boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-        = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4, buffer);
+        = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+                      retry_times, buffer);
     common::atomic_inc(&_back_writing);
     _rpc_client->AsyncRequest(_chains_head, &ChunkServer_Stub::WriteBlock,
         request, response, callback, 60, 1);
@@ -637,15 +645,23 @@ void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* 
 void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBlockResponse* response,
                                      bool failed, int error,
+                                     int retry_times,
                                      WriteBuffer* buffer) {
-    if (failed || error != 0) {
+    if (failed || response->status() != 0) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error) {
-            LOG(WARNING, "BackgroundWrite failed [id:%ld, offset:%ld, len:%d]\n",
-                buffer->block_id(), buffer->offset(), buffer->Size());
+            LOG(WARNING, "BackgroundWrite failed [id:%ld, offset:%ld, len:%d]"
+                " status: %d, retry_times: %d",
+                buffer->block_id(), buffer->offset(), buffer->Size(),
+                response->status(), retry_times);
+            if (--retry_times == 0) {
+                ///TODO: SetFaild & handle it
+                /// If there is a chunkserver failed, abandon this block, and add a new block ..............
+                assert(0);
+            }
         }
         common::atomic_inc(&_back_writing);
         g_thread_pool.DelayTask(
-            5, boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer, request));
+            5, boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer, request, retry_times));
     } else {
         LOG(DEBUG, "BackgroundWrite done [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
             buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
@@ -712,6 +728,7 @@ bool BfsFileImpl::Close() {
             _sync_signal.Wait();
         }
         delete _block_for_write;
+        _block_for_write = NULL;
     }
     LOG(DEBUG, "File %s closed", _name.c_str());
     _closed = true;

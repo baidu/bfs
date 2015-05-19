@@ -7,6 +7,7 @@
 #ifndef  BFS_RPC_CLIENT_H_
 #define  BFS_RPC_CLIENT_H_
 
+#include <assert.h>
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
 #include <sofa/pbrpc/pbrpc.h>
@@ -93,8 +94,11 @@ public:
         bool failed = rpc_controller->Failed();
         int error = rpc_controller->ErrorCode();
         if (failed || error) {
+            assert(failed && error);
             if (error != sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL) {
                 LOG(WARNING, "RpcCallback: %s\n", rpc_controller->ErrorText().c_str());
+            } else {
+                ///TODO: Retry
             }
         }
         delete rpc_controller;
