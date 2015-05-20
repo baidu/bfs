@@ -376,6 +376,8 @@ public:
         meta.block_size = 0;
         meta.checksum = 0;
         meta.block_id = block_id;
+        
+        assert( block_id < (1L<<40));
         int len = snprintf(meta.file_path, sizeof(meta.file_path),
             "/%03ld", block_id % 1000);
         // Mkdir dir for data block, ignore error, may already exist.
@@ -437,8 +439,6 @@ public:
     }
     bool CloseBlock(Block* block) {
         MutexLock lock(&_mu);
-        int64_t block_id = block->Id();
-        assert( block_id < (10L<<13));
 
         if (!block->MarkFinish()) {
             return false;
