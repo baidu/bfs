@@ -12,6 +12,8 @@ sleep 3
 
 ./bfs_client put ./bfs_client /bfs_client
 
+./bfs_client put ./bfs_client /bfs_client
+
 ./bfs_client mkdir /bin
 
 ./bfs_client mv /bfs_client /bin/bfs_client

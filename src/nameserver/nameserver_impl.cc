@@ -6,6 +6,7 @@
 
 #include "nameserver_impl.h"
 
+#include <fcntl.h>
 #include <set>
 #include <map>
 
@@ -534,6 +535,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                         ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     const std::string& file_name = request->file_name();
+    int flags = request->flags();
     std::vector<std::string> file_keys;
     if (!SplitPath(file_name, &file_keys)) {
         response->set_status(886);
@@ -568,28 +570,32 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     }
     
     const std::string& file_key = file_keys[depth-1];
-    s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
-    if (s.IsNotFound()) {
-        if (request->type() == 0) {
-            file_info.set_type(0755);
-        } else {
-            file_info.set_type(request->type());
-        }
-        file_info.set_id(0);
-        file_info.set_ctime(time(NULL));
-        //file_info.add_blocks();
-        file_info.SerializeToString(&info_value);
-        s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
+    if ((flags & O_TRUNC) == 0) {
+        s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
         if (s.ok()) {
-            LOG(INFO, "CreateFile %s\n", file_key.c_str());
-            response->set_status(0);
-        } else {
-            LOG(WARNING, "CreateFile %s\n fail: Put fail", file_key.c_str());
-            response->set_status(2);
+            LOG(WARNING, "CreateFile %s fail: already exist!\n", file_name.c_str());
+            response->set_status(1);
+            done->Run();
+            return;
         }
+    }
+    int mode = request->mode();
+    if (mode) {
+        file_info.set_type(((1 << 10) - 1) & mode);
     } else {
-        LOG(WARNING, "CreateFile %s fail: already exist!\n", file_name.c_str());
-        response->set_status(1);
+        file_info.set_type(755);
+    }
+    file_info.set_id(0);
+    file_info.set_ctime(time(NULL));
+    //file_info.add_blocks();
+    file_info.SerializeToString(&info_value);
+    s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
+    if (s.ok()) {
+        LOG(INFO, "CreateFile %s\n", file_key.c_str());
+        response->set_status(0);
+    } else {
+        LOG(WARNING, "CreateFile %s\n fail: db put fail", file_key.c_str());
+        response->set_status(2);
     }
     done->Run();
 }

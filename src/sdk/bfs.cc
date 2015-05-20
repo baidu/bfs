@@ -169,7 +169,7 @@ public:
         CreateFileRequest request;
         CreateFileResponse response;
         request.set_file_name(path);
-        request.set_type(0755|(1<<9));
+        request.set_mode(0755|(1<<9));
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::CreateFile,
             &request, &response, 5, 3);
@@ -262,12 +262,13 @@ public:
         common::timer::AutoTimer at(100, "OpenFile", path);
         bool ret = false;
         *file = NULL;
-        if (flags == O_WRONLY) {
+        if (flags & O_WRONLY) {
             CreateFileRequest request;
             CreateFileResponse response;
             request.set_file_name(path);
             request.set_sequence_id(0);
-            request.set_type(0644);
+            request.set_flags(flags);
+            request.set_mode(0644);
             ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::CreateFile,
                 &request, &response, 5, 3);
             if (!ret || response.status() != 0) {
@@ -311,7 +312,7 @@ public:
         if (bfs_file) {
             open_flags = bfs_file->_open_flags;
             if (bfs_file->_block_for_write &&
-                (open_flags == O_WRONLY || open_flags == O_APPEND)) {
+                ((open_flags & O_WRONLY) || open_flags == O_APPEND)) {
                 block_id = bfs_file->_block_for_write->block_id();
             }
         } else {
@@ -323,7 +324,7 @@ public:
             return false;
         }
         if (bfs_file->_block_for_write &&
-            (open_flags == O_WRONLY || open_flags == O_APPEND)) {
+            ((open_flags & O_WRONLY) || open_flags == O_APPEND)) {
             FinishBlockRequest request;
             FinishBlockResponse response;
             request.set_sequence_id(0);
@@ -504,10 +505,10 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
 
 int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
     common::timer::AutoTimer at(100, "Write", _name.c_str());
-    if (_open_flags != O_WRONLY && _open_flags != O_APPEND) {
+    if (!(_open_flags & O_WRONLY) && !(_open_flags & O_APPEND)) {
         return -2;
     }
-    if (_open_flags == O_WRONLY) {
+    if (_open_flags & O_WRONLY) {
         MutexLock lock(&_mu, "Write");
         // Add block
         if (_chains_head == NULL) {
@@ -720,7 +721,7 @@ bool BfsFileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", _name.c_str());
     bool ret = true;
     MutexLock lock(&_mu, "Close");
-    if (_block_for_write && (_open_flags == O_WRONLY || _open_flags == O_APPEND)) {
+    if (_block_for_write && ((_open_flags & O_WRONLY) || _open_flags == O_APPEND)) {
         if (!_write_buf) {
             _write_buf = new WriteBuffer(++_last_seq, 32, _block_for_write->block_id(),
                                          _block_for_write->block_size());

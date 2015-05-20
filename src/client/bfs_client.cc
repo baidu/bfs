@@ -137,7 +137,7 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
     }
     
     bfs::File* file;
-    if (!fs->OpenFile(argv[3], O_WRONLY, &file)) {
+    if (!fs->OpenFile(argv[3], O_WRONLY | O_TRUNC, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", argv[3]);
         return 1;
     }
