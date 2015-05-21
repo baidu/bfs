@@ -916,6 +916,14 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                 for (; it != chunkservers.end(); ++it) {
                     _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
                 }
+                char idstr[64];
+                snprintf(idstr, sizeof(idstr), "%13ld", file_info.blocks(i));
+                s = _block_db->Delete(leveldb::WriteOptions(), idstr);
+                if (s.ok()) {
+                    LOG(INFO, "Remove block done: %s\n", idstr);
+                } else {
+                    LOG(WARNING, "Remove block fail: %s\n", idstr);
+                }
             }
             s = _name_db->Delete(leveldb::WriteOptions(), file_key);
             if (s.ok()) {
