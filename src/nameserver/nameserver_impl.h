@@ -85,7 +85,8 @@ private:
     /// Block map
     BlockManager* _block_manager;
     /// Namespace database
-    leveldb::DB* _db;    ///< 存储nameserver数据
+    leveldb::DB* _name_db;    ///< 存储nameserver数据
+    leveldb::DB* _block_db;
     int64_t _namespace_version;
 };
 
