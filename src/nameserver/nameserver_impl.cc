@@ -263,6 +263,23 @@ public:
         }
         return ret;
     }
+    void RemoveDeadObsoleteBlocks(int32_t id) {
+        MutexLock lock(&_mu);
+        std::map<int64_t, std::set<int32_t> >::iterator block_it = _obsolete_blocks.begin();
+        while (block_it != _obsolete_blocks.end()) {
+            std::set<int32_t>::iterator cs_it = block_it->second.find(id);
+            if (cs_it != block_it->second.end()) {
+                block_it->second.erase(cs_it);
+                if (block_it->second.empty()) {
+                    _obsolete_blocks.erase(block_it++);
+                } else {
+                    ++block_it;
+                }
+            } else {
+                ++block_it;
+            }
+        }
+    }
 private:
     Mutex _mu;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
@@ -300,6 +317,7 @@ public:
                             _block_manager, id, blocks);
                 _thread_pool->AddTask(task);
                 _chunkserver_block_map.erase(id);
+                _block_manager->RemoveDeadObsoleteBlocks(id);
 
                 it->second.erase(node);
                 _chunkserver_num--;
@@ -388,6 +406,10 @@ public:
         info->set_last_heartbeat(now_time);
         ++_chunkserver_num;
         return id;
+    }
+    bool CheckNewChunkserver(int32_t id) {
+        MutexLock lock(&_mu);
+        return _chunkserver_block_map.find(id) == _chunkserver_block_map.end();
     }
     std::string GetChunkServer(int32_t id) {
         MutexLock lock(&_mu);
@@ -485,6 +507,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     } else {
         const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
         int64_t size = 0;
+        bool is_new_chunkserver = _chunkserver_manager->CheckNewChunkserver(id);
         for (int i = 0; i < blocks.size(); i++) {
             const ReportBlockInfo& block =  blocks.Get(i);
             int64_t cur_block_id = block.block_id();
@@ -496,38 +519,51 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 _block_manager->RemoveBlock(cur_block_id, id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
                 _block_manager->UnmarkObsoleteBlock(cur_block_id, id);
-            } else {
-                size += cur_block_size;
+                continue;
+            }
 
-                int32_t more_replica_num = 0;
-                _block_manager->AddBlock(cur_block_id, id, cur_block_size, &more_replica_num);
-                _chunkserver_manager->AddBlock(id, cur_block_id);
-                if (more_replica_num != 0) {
-                    std::vector<std::pair<int32_t, std::string> > chains;
-                    ///TODO: Not get all chunkservers, but get more.
-                    if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {
-                        std::set<int32_t> cur_replica_location;
-                        _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
+            if (is_new_chunkserver) {
+                char idstr[64];
+                snprintf(idstr, sizeof(idstr), "%13ld", cur_block_id);
+                std::string value;
+                leveldb::Status s = _block_db->Get(leveldb::ReadOptions(), idstr, &value);
+                if (!s.ok()) {
+                    //file has already been unlinked
+                    response->add_obsolete_blocks(cur_block_id);
+                    continue;
+                }
+            }
 
-                        std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
-                        ReplicaInfo* info = NULL;
-                        int num;
-                        for (num = 0; num < more_replica_num &&
-                                chains_it != chains.end(); ++chains_it) {
-                            if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                                if (num == 0) {
-                                    info = response->add_new_replicas();
-                                    info->set_block_id(cur_block_id);
-                                }
-                                LOG(INFO, "Add new replica to chunkserver %ld\n", chains_it->first);
-                                info->add_chunkserver_address(chains_it->second);
-                                num++;
+            size += cur_block_size;
+
+            int32_t more_replica_num = 0;
+            _block_manager->AddBlock(cur_block_id, id, cur_block_size, &more_replica_num);
+            _chunkserver_manager->AddBlock(id, cur_block_id);
+            if (more_replica_num != 0) {
+                std::vector<std::pair<int32_t, std::string> > chains;
+                ///TODO: Not get all chunkservers, but get more.
+                if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {
+                    std::set<int32_t> cur_replica_location;
+                    _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
+
+                    std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
+                    ReplicaInfo* info = NULL;
+                    int num;
+                    for (num = 0; num < more_replica_num &&
+                            chains_it != chains.end(); ++chains_it) {
+                        if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
+                            if (num == 0) {
+                                info = response->add_new_replicas();
+                                info->set_block_id(cur_block_id);
                             }
+                            LOG(INFO, "Add new replica to chunkserver %ld\n", chains_it->first);
+                            info->add_chunkserver_address(chains_it->second);
+                            num++;
                         }
-                        //no suitable chunkserver
-                        if (num == 0) {
-                            _block_manager->MarkFinishBlock(cur_block_id);
-                        }
+                    }
+                    //no suitable chunkserver
+                    if (num == 0) {
+                        _block_manager->MarkFinishBlock(cur_block_id);
                     }
                 }
             }
