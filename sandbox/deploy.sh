@@ -1,6 +1,7 @@
 #! /bin/sh
 
 mkdir -p nameserver/bin
+mkdir -p nameserver/db
 mkdir -p chunkserver1/bin
 mkdir -p chunkserver1/data
 mkdir -p chunkserver2/bin

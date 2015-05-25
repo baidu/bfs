@@ -7,8 +7,10 @@
 #include <gflags/gflags.h>
 
 // nameserver
-DEFINE_string(namedb_path, "./db", "Namespace database");
+DEFINE_string(namedb_path, "./db/namedb", "Namespace database");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
+DEFINE_string(blockdb_path, "./db/blockdb", "Block database");
+DEFINE_int64(blockdb_cache_size, 1024L, "Block datebase memery cache size");
 DEFINE_string(nameserver, "127.0.0.1", "Nameserver host");
 DEFINE_string(nameserver_port, "8828", "Nameserver port");
 DEFINE_int32(keepalive_timeout, 60, "Chunkserver keepalive timeout");

@@ -25,6 +25,8 @@
 
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
+DECLARE_string(blockdb_path);
+DECLARE_int64(blockdb_cache_size);
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(default_replica_num);
 
@@ -261,6 +263,23 @@ public:
         }
         return ret;
     }
+    void RemoveDeadObsoleteBlocks(int32_t id) {
+        MutexLock lock(&_mu);
+        std::map<int64_t, std::set<int32_t> >::iterator block_it = _obsolete_blocks.begin();
+        while (block_it != _obsolete_blocks.end()) {
+            std::set<int32_t>::iterator cs_it = block_it->second.find(id);
+            if (cs_it != block_it->second.end()) {
+                block_it->second.erase(cs_it);
+                if (block_it->second.empty()) {
+                    _obsolete_blocks.erase(block_it++);
+                } else {
+                    ++block_it;
+                }
+            } else {
+                ++block_it;
+            }
+        }
+    }
 private:
     Mutex _mu;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
@@ -298,6 +317,7 @@ public:
                             _block_manager, id, blocks);
                 _thread_pool->AddTask(task);
                 _chunkserver_block_map.erase(id);
+                _block_manager->RemoveDeadObsoleteBlocks(id);
 
                 it->second.erase(node);
                 _chunkserver_num--;
@@ -387,6 +407,10 @@ public:
         ++_chunkserver_num;
         return id;
     }
+    bool CheckNewChunkserver(int32_t id) {
+        MutexLock lock(&_mu);
+        return _chunkserver_block_map.find(id) == _chunkserver_block_map.end();
+    }
     std::string GetChunkServer(int32_t id) {
         MutexLock lock(&_mu);
         ServerMap::iterator it = _chunkservers.find(id);
@@ -438,10 +462,16 @@ NameServerImpl::NameServerImpl() {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
-    leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &_db);
+    leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &_name_db);
     if (!s.ok()) {
-        _db = NULL;
-        LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
+        _name_db = NULL;
+        LOG(FATAL, "Open _name_db fail: %s\n", s.ToString().c_str());
+    }
+    options.block_cache = leveldb::NewLRUCache(FLAGS_blockdb_cache_size * 1024L * 1024L);
+    s = leveldb::DB::Open(options, FLAGS_blockdb_path, &_block_db);
+    if (!s.ok()) {
+        _block_db = NULL;
+        LOG(FATAL, "Open _block_db fail: %s\n", s.ToString().c_str());
     }
     _namespace_version = common::timer::get_micros();
     _block_manager = new BlockManager();
@@ -481,6 +511,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     } else {
         const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
         int64_t size = 0;
+        bool is_new_chunkserver = _chunkserver_manager->CheckNewChunkserver(id);
         for (int i = 0; i < blocks.size(); i++) {
             const ReportBlockInfo& block =  blocks.Get(i);
             int64_t cur_block_id = block.block_id();
@@ -492,38 +523,51 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 _block_manager->RemoveBlock(cur_block_id, id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
                 _block_manager->UnmarkObsoleteBlock(cur_block_id, id);
-            } else {
-                size += cur_block_size;
+                continue;
+            }
 
-                int32_t more_replica_num = 0;
-                _block_manager->AddBlock(cur_block_id, id, cur_block_size, &more_replica_num);
-                _chunkserver_manager->AddBlock(id, cur_block_id);
-                if (more_replica_num != 0) {
-                    std::vector<std::pair<int32_t, std::string> > chains;
-                    ///TODO: Not get all chunkservers, but get more.
-                    if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {
-                        std::set<int32_t> cur_replica_location;
-                        _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
+            if (is_new_chunkserver) {
+                char idstr[64];
+                snprintf(idstr, sizeof(idstr), "%13ld", cur_block_id);
+                std::string value;
+                leveldb::Status s = _block_db->Get(leveldb::ReadOptions(), idstr, &value);
+                if (!s.ok()) {
+                    //file has already been unlinked
+                    response->add_obsolete_blocks(cur_block_id);
+                    continue;
+                }
+            }
 
-                        std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
-                        ReplicaInfo* info = NULL;
-                        int num;
-                        for (num = 0; num < more_replica_num &&
-                                chains_it != chains.end(); ++chains_it) {
-                            if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                                if (num == 0) {
-                                    info = response->add_new_replicas();
-                                    info->set_block_id(cur_block_id);
-                                }
-                                LOG(INFO, "Add new replica to chunkserver %ld\n", chains_it->first);
-                                info->add_chunkserver_address(chains_it->second);
-                                num++;
+            size += cur_block_size;
+
+            int32_t more_replica_num = 0;
+            _block_manager->AddBlock(cur_block_id, id, cur_block_size, &more_replica_num);
+            _chunkserver_manager->AddBlock(id, cur_block_id);
+            if (more_replica_num != 0) {
+                std::vector<std::pair<int32_t, std::string> > chains;
+                ///TODO: Not get all chunkservers, but get more.
+                if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {
+                    std::set<int32_t> cur_replica_location;
+                    _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
+
+                    std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
+                    ReplicaInfo* info = NULL;
+                    int num;
+                    for (num = 0; num < more_replica_num &&
+                            chains_it != chains.end(); ++chains_it) {
+                        if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
+                            if (num == 0) {
+                                info = response->add_new_replicas();
+                                info->set_block_id(cur_block_id);
                             }
+                            LOG(INFO, "Add new replica to chunkserver %ld\n", chains_it->first);
+                            info->add_chunkserver_address(chains_it->second);
+                            num++;
                         }
-                        //no suitable chunkserver
-                        if (num == 0) {
-                            _block_manager->MarkFinishBlock(cur_block_id);
-                        }
+                    }
+                    //no suitable chunkserver
+                    if (num == 0) {
+                        _block_manager->MarkFinishBlock(cur_block_id);
                     }
                 }
             }
@@ -553,12 +597,12 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     int depth = file_keys.size();
     leveldb::Status s;
     for (int i=0; i < depth-1; ++i) {
-        s = _db->Get(leveldb::ReadOptions(), file_keys[i], &info_value);
+        s = _name_db->Get(leveldb::ReadOptions(), file_keys[i], &info_value);
         if (s.IsNotFound()) {
             file_info.set_type((1<<9)|0755);
             file_info.set_ctime(time(NULL));
             file_info.SerializeToString(&info_value);
-            s = _db->Put(leveldb::WriteOptions(), file_keys[i], info_value);
+            s = _name_db->Put(leveldb::WriteOptions(), file_keys[i], info_value);
             assert (s.ok());
             LOG(INFO, "Create path recursively: %s\n",file_keys[i].c_str()+2);
         } else {
@@ -575,7 +619,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     
     const std::string& file_key = file_keys[depth-1];
     if ((flags & O_TRUNC) == 0) {
-        s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
+        s = _name_db->Get(leveldb::ReadOptions(), file_key, &info_value);
         if (s.ok()) {
             LOG(WARNING, "CreateFile %s fail: already exist!\n", file_name.c_str());
             response->set_status(1);
@@ -593,7 +637,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     file_info.set_ctime(time(NULL));
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
-    s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
+    s = _name_db->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s\n", file_key.c_str());
         response->set_status(0);
@@ -619,7 +663,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     const std::string& file_key = elements[elements.size()-1];
     MutexLock lock(&_mu);
     std::string infobuf;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &infobuf);
+    leveldb::Status s = _name_db->Get(leveldb::ReadOptions(), file_key, &infobuf);
     if (!s.ok()) {
         LOG(WARNING, "AddBlock file not found: %s\n", path.c_str());
         response->set_status(2445);
@@ -649,7 +693,11 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         response->set_status(0);
         file_info.add_blocks(new_block_id);
         file_info.SerializeToString(&infobuf);
-        s = _db->Put(leveldb::WriteOptions(), file_key, infobuf);
+        s = _name_db->Put(leveldb::WriteOptions(), file_key, infobuf);
+        assert(s.ok());
+        char idstr[64];
+        snprintf(idstr, sizeof(idstr), "%13ld", new_block_id);
+        s = _block_db->Put(leveldb::WriteOptions(), idstr, path);
         assert(s.ok());
     } else {
         LOG(INFO, "AddBlock for %s failed.", path.c_str());
@@ -690,7 +738,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
     const std::string& file_key = elements[elements.size()-1];
     // Get FileInfo
     std::string infobuf;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &infobuf);
+    leveldb::Status s = _name_db->Get(leveldb::ReadOptions(), file_key, &infobuf);
     if (!s.ok()) {
         // No this file
         LOG(INFO, "NameServerImpl::GetFileLocation: NotFound: %s\n", request->file_name().c_str());
@@ -759,7 +807,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
 
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
     //printf("List Directory: %s, return: ", file_start_key.c_str());
-    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
+    leveldb::Iterator* it = _name_db->NewIterator(leveldb::ReadOptions());
     for (it->Seek(file_start_key); it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
         if (key.compare(file_end_key)>=0) {
@@ -796,7 +844,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
 
     const std::string& file_key = keys[keys.size()-1];
     std::string value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &value);
+    leveldb::Status s = _name_db->Get(leveldb::ReadOptions(), file_key, &value);
     if (s.ok()) {
         FileInfo* file_info = response->mutable_file_info();
         bool ret = file_info->ParseFromArray(value.data(), value.size());
@@ -841,10 +889,10 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     const std::string& old_key = oldkeys[oldkeys.size()-1];
     const std::string& new_key = newkeys[newkeys.size()-1];
     std::string value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), new_key, &value);
+    leveldb::Status s = _name_db->Get(leveldb::ReadOptions(), new_key, &value);
     // New file must be not found
     if (s.IsNotFound()) {
-        s = _db->Get(leveldb::ReadOptions(), old_key, &value);
+        s = _name_db->Get(leveldb::ReadOptions(), old_key, &value);
         if (s.ok()) {
             FileInfo file_info;
             bool ret = file_info.ParseFromArray(value.data(), value.size());
@@ -854,7 +902,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
                 leveldb::WriteBatch batch;
                 batch.Put(new_key, value);
                 batch.Delete(old_key);
-                s = _db->Write(leveldb::WriteOptions(), &batch);
+                s = _name_db->Write(leveldb::WriteOptions(), &batch);
                 if (s.ok()) {
                     response->set_status(0);
                     done->Run();
@@ -894,7 +942,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
 
     const std::string& file_key = keys[keys.size()-1];
     std::string value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &value);
+    leveldb::Status s = _name_db->Get(leveldb::ReadOptions(), file_key, &value);
     if (s.ok()) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(value.data(), value.size());
@@ -908,8 +956,16 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                 for (; it != chunkservers.end(); ++it) {
                     _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
                 }
+                char idstr[64];
+                snprintf(idstr, sizeof(idstr), "%13ld", file_info.blocks(i));
+                s = _block_db->Delete(leveldb::WriteOptions(), idstr);
+                if (s.ok()) {
+                    LOG(INFO, "Remove block done: %s\n", idstr);
+                } else {
+                    LOG(WARNING, "Remove block fail: %s\n", idstr);
+                }
             }
-            s = _db->Delete(leveldb::WriteOptions(), file_key);
+            s = _name_db->Delete(leveldb::WriteOptions(), file_key);
             if (s.ok()) {
                 LOG(INFO, "Unlink done: %s\n", path.c_str());
                 ret_status = 0;
@@ -958,7 +1014,7 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
     std::string dentry_key = keys[keys.size() - 1];
     {
         std::string value;
-        leveldb::Status s = _db->Get(leveldb::ReadOptions(), dentry_key, &value);
+        leveldb::Status s = _name_db->Get(leveldb::ReadOptions(), dentry_key, &value);
         if (!s.ok()) {
             LOG(INFO, "Delete Directory, %s is not found.", dentry_key.data() + 2);
             return 404;
@@ -984,7 +1040,7 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
         file_end_key += '#';
     }
 
-    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
+    leveldb::Iterator* it = _name_db->NewIterator(leveldb::ReadOptions());
     it->Seek(file_start_key);
     if (it->Valid() && recursive == false) {
         LOG(WARNING, "Try to delete an unempty directory unrecursively: %s\n", dentry_key.c_str());
@@ -1017,7 +1073,7 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
                     _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
                 }
             }
-            leveldb::Status s = _db->Delete(leveldb::WriteOptions(), std::string(key.data(), key.size()));
+            leveldb::Status s = _name_db->Delete(leveldb::WriteOptions(), std::string(key.data(), key.size()));
             if (s.ok()) {
                 LOG(INFO, "Unlink file done: %s\n", std::string(key.data() + 2, key.size() - 2).c_str());
             } else {
@@ -1029,7 +1085,7 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
     }
 
     if (ret_status == 0) {
-        leveldb::Status s = _db->Delete(leveldb::WriteOptions(), dentry_key);
+        leveldb::Status s = _name_db->Delete(leveldb::WriteOptions(), dentry_key);
         if (s.ok()) {
             LOG(INFO, "Unlink dentry done: %s\n", dentry_key.c_str() + 2);
         } else {
@@ -1060,14 +1116,14 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
 
     const std::string& file_key = keys[keys.size() - 1];
     std::string info_value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
+    leveldb::Status s = _name_db->Get(leveldb::ReadOptions(), file_key, &info_value);
     if (s.ok()) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(info_value.data(), info_value.size());
         assert(ret);
         file_info.set_replicas(replica_num);
         file_info.SerializeToString(&info_value);
-        s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
+        s = _name_db->Put(leveldb::WriteOptions(), file_key, info_value);
         assert(s.ok());
         int64_t block_id = file_info.blocks(0);
         if (_block_manager->ChangeReplicaNum(block_id, replica_num)) {
