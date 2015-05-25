@@ -108,13 +108,17 @@ public:
             return false;
         }
     }
-    bool RemoveBlock(int64_t block_id, int32_t chunkserver_id) {
+    bool RemoveReplicaBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
         NSBlockMap::iterator it = _block_map.find(block_id);
         if (it != _block_map.end()) {
             std::set<int32_t>::iterator cs = it->second->replica.find(chunkserver_id);
             if (cs != it->second->replica.end()) {
                 it->second->replica.erase(cs);
+                if (it->second->replica.empty()) {
+                    delete it->second;
+                    _block_map.erase(it);
+                }
                 return true;
             } else {
                 return false;
@@ -161,7 +165,10 @@ public:
                 it->second.erase(cs);
                 if (it->second.empty()) {
                     // pending_change needs to change here
-                    _block_map[block_id]->pending_change = false;
+                    NSBlockMap::iterator block_it = _block_map.find(block_id);
+                    if (block_it != _block_map.end()) {
+                        block_it->second->pending_change = false;
+                    }
                     _obsolete_blocks.erase(it);
                 }
             } else {
@@ -169,7 +176,7 @@ public:
                         block_id, chunkserver_id);
             }
         } else {
-            LOG(WARNING, "Block %d is not marked obsolete\n");
+            LOG(WARNING, "Block %ld is not marked obsolete\n", block_id);
         }
     }
     bool MarkFinishBlock(int64_t block_id) {
@@ -206,10 +213,24 @@ public:
         MutexLock lock(&_mu);
         std::set<int64_t>::iterator it = blocks.begin();
         for (; it != blocks.end(); ++it) {
+            //have been unlinked?
+            std::map<int64_t, std::set<int32_t> >::iterator obsolete_it
+                = _obsolete_blocks.find(*it);
+            if (obsolete_it != _obsolete_blocks.end()) {
+                std::set<int32_t>:: iterator cs = obsolete_it->second.find(id);
+                if (cs != obsolete_it->second.end()) {
+                    obsolete_it->second.erase(id);
+                    if (obsolete_it->second.empty()) {
+                        _obsolete_blocks.erase(obsolete_it);
+                    }
+                }
+            }
+            //may have been unlinked, not in _block_map
             NSBlockMap::iterator nsb_it = _block_map.find(*it);
-            assert(nsb_it != _block_map.end());
-            NSBlock* nsblock = nsb_it->second;
-            nsblock->replica.erase(id);
+            if (nsb_it != _block_map.end()) {
+                NSBlock* nsblock = nsb_it->second;
+                nsblock->replica.erase(id);
+            }
         }
     }
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
@@ -285,6 +306,13 @@ public:
         }
         return true;
     }
+    void RemoveBlock(int64_t block_id) {
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        delete it->second;
+        _block_map.erase(it);
+    }
+
 private:
     Mutex _mu;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
@@ -514,41 +542,48 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             if (_block_manager->CheckObsoleteBlock(cur_block_id, id)) {
                 //add to response
                 response->add_obsolete_blocks(cur_block_id);
-                _block_manager->RemoveBlock(cur_block_id, id);
+                _block_manager->RemoveReplicaBlock(cur_block_id, id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
                 _block_manager->UnmarkObsoleteBlock(cur_block_id, id);
-            } else {
-                size += cur_block_size;
+                continue;
+            }
+            int32_t more_replica_num = 0;
+            if (!_block_manager->UpdateBlockInfo(cur_block_id, id,
+                                                 cur_block_size,
+                                                 &more_replica_num)) {
+                response->add_obsolete_blocks(cur_block_id);
+                _chunkserver_manager->RemoveBlock(id, cur_block_id);
+                continue;
+            }
 
-                int32_t more_replica_num = 0;
-                _block_manager->UpdateBlockInfo(cur_block_id, id, cur_block_size, &more_replica_num);
-                _chunkserver_manager->AddBlock(id, cur_block_id);
-                if (more_replica_num != 0) {
-                    std::vector<std::pair<int32_t, std::string> > chains;
-                    ///TODO: Not get all chunkservers, but get more.
-                    if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {
-                        std::set<int32_t> cur_replica_location;
-                        _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
+            size += cur_block_size;
+            _block_manager->UpdateBlockInfo(cur_block_id, id, cur_block_size, &more_replica_num);
+            _chunkserver_manager->AddBlock(id, cur_block_id);
+            if (more_replica_num != 0) {
+                std::vector<std::pair<int32_t, std::string> > chains;
+                ///TODO: Not get all chunkservers, but get more.
+                if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {
+                    std::set<int32_t> cur_replica_location;
+                    _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
 
-                        std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
-                        ReplicaInfo* info = NULL;
-                        int num;
-                        for (num = 0; num < more_replica_num &&
-                                chains_it != chains.end(); ++chains_it) {
-                            if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                                if (num == 0) {
-                                    info = response->add_new_replicas();
-                                    info->set_block_id(cur_block_id);
-                                }
-                                LOG(INFO, "Add new replica to chunkserver %ld\n", chains_it->first);
-                                info->add_chunkserver_address(chains_it->second);
-                                num++;
+                    std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
+                    ReplicaInfo* info = NULL;
+                    int num;
+                    for (num = 0; num < more_replica_num &&
+                            chains_it != chains.end(); ++chains_it) {
+                        if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
+                            if (num == 0) {
+                                info = response->add_new_replicas();
+                                info->set_block_id(cur_block_id);
                             }
+                            LOG(INFO, "Add new replica to chunkserver %ld\n", chains_it->first);
+                            info->add_chunkserver_address(chains_it->second);
+                            num++;
                         }
-                        //no suitable chunkserver
-                        if (num == 0) {
-                            _block_manager->MarkFinishBlock(cur_block_id);
-                        }
+                    }
+                    //no suitable chunkserver
+                    if (num == 0) {
+                        _block_manager->MarkFinishBlock(cur_block_id);
                     }
                 }
             }
@@ -933,6 +968,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                 for (; it != chunkservers.end(); ++it) {
                     _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
                 }
+                _block_manager->RemoveBlock(file_info.blocks(i));
             }
             s = _db->Delete(leveldb::WriteOptions(), file_key);
             if (s.ok()) {
