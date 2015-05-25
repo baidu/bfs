@@ -102,47 +102,10 @@ public:
             _block_map[id] = nsblock;
             nsblock->block_size = block_size;
             LOG(DEBUG, "[BMAddBlock] New block %ld, size: %ld", id, block_size);
+            return true;
         } else {
-            nsblock = it->second;
-            if (nsblock->block_size !=  block_size && block_size) {
-                if (nsblock->block_size) {
-                    LOG(WARNING, "block size mismatch, block: %ld\n", id);
-                    assert(0);
-                    return false;
-                } else {
-                    LOG(DEBUG, "Block[%ld] size update, %ld to %ld",
-                        id, nsblock->block_size, block_size);
-                    nsblock->block_size = block_size;
-                }
-            }
+            return false;
         }
-        if (_next_block_id <= id) {
-            _next_block_id = id + 1;
-        }
-        /// 增加一个副本, 无论之前已经有几个了, 多余的通过gc处理
-        nsblock->replica.insert(server_id);
-        int32_t cur_replica_num = nsblock->replica.size();
-        int32_t expect_replica_num = nsblock->expect_replica_num;
-        if (cur_replica_num != expect_replica_num) {
-            if (!nsblock->pending_change) {
-                nsblock->pending_change = true;
-                if (cur_replica_num > expect_replica_num) {
-                    int32_t reduant_num = cur_replica_num - expect_replica_num;
-                    //TODO select chunkservers according to some strategies
-                    std::set<int32_t>::iterator nsit = nsblock->replica.begin();
-                    for (int i = 0; i < reduant_num; i++, ++nsit) {
-                        _obsolete_blocks[id].insert(*nsit);
-                    }
-                } else {
-                    // add new replica
-                    if (more_replica_num) {
-                        *more_replica_num = expect_replica_num - cur_replica_num;
-                        LOG(INFO, "Need to add %d new replica for block: %ld\n", *more_replica_num, id);
-                    }
-                }
-            }
-        }
-        return true;
     }
     bool RemoveBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
@@ -260,6 +223,66 @@ public:
             ret = true;
         }
         return ret;
+    }
+    void InitBlockInfo(int64_t block_id) {
+        MutexLock lock(&_mu);
+        NSBlock* nsblock = NULL;
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        //Don't suppport soft link now
+        assert(it == _block_map.end());
+        nsblock = new NSBlock(block_id);
+        _block_map[block_id] = nsblock;
+        LOG(INFO, "Init block info: %ld\n", block_id);
+        if (_next_block_id <= block_id) {
+            _next_block_id = block_id + 1;
+        }
+    }
+    bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
+                         int32_t* more_replica_num = NULL) {
+        MutexLock lock(&_mu);
+        NSBlock* nsblock = NULL;
+        NSBlockMap::iterator it = _block_map.find(id);
+        if (it == _block_map.end()) {
+            //have been removed
+            return false;
+        } else {
+            nsblock = it->second;
+            if (nsblock->block_size !=  block_size && block_size) {
+                if (nsblock->block_size) {
+                    LOG(WARNING, "block size mismatch, block: %ld\n", id);
+                    assert(0);
+                    return false;
+                } else {
+                    LOG(DEBUG, "Block[%ld] size update, %ld to %ld",
+                        id, nsblock->block_size, block_size);
+                    nsblock->block_size = block_size;
+                }
+            }
+        }
+        /// 增加一个副本, 无论之前已经有几个了, 多余的通过gc处理
+        nsblock->replica.insert(server_id);
+        int32_t cur_replica_num = nsblock->replica.size();
+        int32_t expect_replica_num = nsblock->expect_replica_num;
+        if (cur_replica_num != expect_replica_num) {
+            if (!nsblock->pending_change) {
+                nsblock->pending_change = true;
+                if (cur_replica_num > expect_replica_num) {
+                    int32_t reduant_num = cur_replica_num - expect_replica_num;
+                    //TODO select chunkservers according to some strategies
+                    std::set<int32_t>::iterator nsit = nsblock->replica.begin();
+                    for (int i = 0; i < reduant_num; i++, ++nsit) {
+                        _obsolete_blocks[id].insert(*nsit);
+                    }
+                } else {
+                    // add new replica
+                    if (more_replica_num) {
+                        *more_replica_num = expect_replica_num - cur_replica_num;
+                        LOG(INFO, "Need to add %d new replica for block: %ld\n", *more_replica_num, id);
+                    }
+                }
+            }
+        }
+        return true;
     }
 private:
     Mutex _mu;
@@ -446,6 +469,7 @@ NameServerImpl::NameServerImpl() {
     _namespace_version = common::timer::get_micros();
     _block_manager = new BlockManager();
     _chunkserver_manager = new ChunkServerManager(&_thread_pool, _block_manager);
+    RebuildBlockMap();
 }
 NameServerImpl::~NameServerImpl() {
 }
@@ -496,7 +520,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 size += cur_block_size;
 
                 int32_t more_replica_num = 0;
-                _block_manager->AddBlock(cur_block_id, id, cur_block_size, &more_replica_num);
+                _block_manager->UpdateBlockInfo(cur_block_id, id, cur_block_size, &more_replica_num);
                 _chunkserver_manager->AddBlock(id, cur_block_id);
                 if (more_replica_num != 0) {
                     std::vector<std::pair<int32_t, std::string> > chains;
@@ -1082,6 +1106,24 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     }
     response->set_status(ret_status);
     done->Run();
+}
+void NameServerImpl::RebuildBlockMap() {
+    MutexLock lock(&_mu);
+    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
+    std::string info_value;
+    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+        info_value = it->value().ToString();
+        FileInfo file_info;
+        bool ret = file_info.ParseFromString(info_value);
+        assert(ret);
+        if ((file_info.type() & (1 << 9)) == 0) {
+            //a file
+            for (int i = 0; i < file_info.blocks_size(); i++) {
+                int64_t block_id = file_info.blocks(i);
+                _block_manager->InitBlockInfo(block_id);
+            }
+        }
+    }
 }
 }
 
