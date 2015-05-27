@@ -396,7 +396,7 @@ public:
             return it->second->address();
         }
     }
-    bool SetChunkServerLoad(int32_t id, int64_t size) {
+    bool SetChunkServerLoad(int32_t id, int64_t size, bool is_complete) {
         MutexLock lock(&_mu);
         ServerMap::iterator it = _chunkservers.find(id);
         if(it == _chunkservers.end()) {
@@ -404,6 +404,10 @@ public:
             assert(0);
             return false;
         } else {
+            if (is_complete) {
+                int cur_load = it->second->data_size();
+                size += cur_load;
+            }
             it->second->set_data_size(size);
             LOG(INFO, "Get Report of ChunkServerLoad, server id: %d, load: %ld\n", id, size);
             return true;
@@ -524,7 +528,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 }
             }
         }
-        _chunkserver_manager->SetChunkServerLoad(id, size);
+        _chunkserver_manager->SetChunkServerLoad(id, size, request->is_complete());
     }
     done->Run();
 }
