@@ -74,6 +74,7 @@ public:
                        ::google::protobuf::Closure* done);
 private:
     int DeleteDirectoryRecursive(std::string& path, bool recursive);
+    void RebuildBlockMap();
 
 private:
     /// Global thread pool
