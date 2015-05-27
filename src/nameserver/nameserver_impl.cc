@@ -557,7 +557,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             }
 
             size += cur_block_size;
-            _block_manager->UpdateBlockInfo(cur_block_id, id, cur_block_size, &more_replica_num);
             _chunkserver_manager->AddBlock(id, cur_block_id);
             if (more_replica_num != 0) {
                 std::vector<std::pair<int32_t, std::string> > chains;
