@@ -17,8 +17,10 @@ namespace bfs {
 int32_t BfsFile::Write(const char* buf, int32_t len) {
     common::timer::AutoTimer ac(0.1, "BfsFile::Write", _name.c_str());
     int ret = _file->Write(buf, len);
-    LOG(INFO, "Write(%s, len: %d) return %d",
-        _name.c_str(), len, ret);    
+    if (ret != len) {
+        LOG(INFO, "Write(%s, len: %d) return %d",
+            _name.c_str(), len, ret);
+    }
     return ret;
 }
 
@@ -43,8 +45,10 @@ int32_t BfsFile::Sync() {
 int32_t BfsFile::Read(char* buf, int32_t len) {
     common::timer::AutoTimer ac(1, "Read", _name.c_str());
     int32_t ret = _file->Read(buf, len);
-    LOG(INFO, "Read(%s, len: %d) return %d",
-        _name.c_str(), len, ret);
+    if (ret != len) {
+        LOG(INFO, "Read(%s, len: %d) return %d",
+            _name.c_str(), len, ret);
+    }
     return ret;
 }
 int32_t BfsFile::Pread(int64_t offset, char* buf, int32_t len) {
@@ -70,6 +74,7 @@ int32_t BfsFile::Seek(int64_t offset) {
     return ret;
 }
 int32_t BfsFile::CloseFile() {
+    LOG(INFO, "CloseFile(%s)", _name.c_str());
     common::timer::AutoTimer ac(1, "CloseFile", _name.c_str());
     bool ret = _file->Close();
     delete _file;
@@ -156,7 +161,11 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
         return -1;
     }
     for (int i = 0; i < num; i++) {
-        result->push_back(files[i].name);
+        char* pathname = files[i].name;
+        char* filename = rindex(pathname, '/');
+        if (filename != NULL && filename[0] != '\0') {
+            result->push_back(filename + 1);
+        }
     }
     delete files;
     LOG(INFO, "ListDirectory(%s) return %lu items", path.c_str(), result->size());    
