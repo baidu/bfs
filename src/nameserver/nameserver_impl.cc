@@ -981,7 +981,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
         }
     } else if (s.IsNotFound()) {
         LOG(WARNING, "Unlink not found: %s\n", path.c_str());
-        ret_status = 0;
+        ret_status = 404;
     }
     
     response->set_status(ret_status);
