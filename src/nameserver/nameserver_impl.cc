@@ -1147,11 +1147,9 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
 void NameServerImpl::RebuildBlockMap() {
     MutexLock lock(&_mu);
     leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
-    std::string info_value;
     for (it->SeekToFirst(); it->Valid(); it->Next()) {
-        info_value = it->value().ToString();
         FileInfo file_info;
-        bool ret = file_info.ParseFromString(info_value);
+        bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
         if ((file_info.type() & (1 << 9)) == 0) {
             //a file
