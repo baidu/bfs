@@ -655,9 +655,10 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBuffer* buffer) {
     if (failed || response->status() != 0) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error) {
-            LOG(WARNING, "BackgroundWrite failed [id:%ld, offset:%ld, len:%d]"
+            LOG(WARNING, "BackgroundWrite failed [bid:%ld, seq:%d, offset:%ld, len:%d]"
                 " status: %d, retry_times: %d",
-                buffer->block_id(), buffer->offset(), buffer->Size(),
+                buffer->block_id(), buffer->Sequence(),
+                buffer->offset(), buffer->Size(),
                 response->status(), retry_times);
             if (--retry_times == 0) {
                 ///TODO: SetFaild & handle it

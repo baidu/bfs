@@ -121,6 +121,7 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
     }
     printf("Read %ld bytes from %s\n", bytes, argv[1]);
     delete file;
+    fclose(fp);
     return 0;
 }
 
@@ -129,6 +130,8 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 0;
     }
+
+    int ret = 0;
     common::timer::AutoTimer at(0, "BfsPut", argv[3]);
     FILE* fp = fopen(argv[2], "rb");
     if (fp == NULL) {
@@ -139,6 +142,7 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
     bfs::File* file;
     if (!fs->OpenFile(argv[3], O_WRONLY | O_TRUNC, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", argv[3]);
+        fclose(fp);
         return 1;
     }
     char buf[1024];
@@ -154,11 +158,12 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
     }
     if (!fs->CloseFile(file)) {
         fprintf(stderr, "close fail: %s\n", argv[3]);
-        return 1;
+        ret = 1;
     }
     delete file;
+    fclose(fp);
     printf("Put file to bfs %s %ld bytes\n", argv[3], len);
-    return 0;
+    return ret;
 }
 
 int64_t BfsDuRecursive(bfs::FS* fs, const std::string& path) {
@@ -236,6 +241,7 @@ int BfsAppend(bfs::FS* fs, int argc, char* argv[]) {
     bfs::File* file;
     if (!fs->OpenFile(argv[3], O_APPEND, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", argv[3]);
+        fclose(fp);
         return 1;
     }
     char buf[1024];
@@ -254,6 +260,7 @@ int BfsAppend(bfs::FS* fs, int argc, char* argv[]) {
         return 1;
     }
     delete file;
+    fclose(fp);
     printf("Append to bfs %s %ld bytes\n", argv[3], len);
     return 0;
 }

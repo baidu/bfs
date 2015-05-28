@@ -861,6 +861,7 @@ void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
                 offset += len;
                 packet_seq++;
             }
+            delete cur_chunkserver;
             delete[] buf;
         }
         // send to nameserver finish

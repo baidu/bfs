@@ -494,6 +494,7 @@ NameServerImpl::NameServerImpl() {
     if (!s.ok()) {
         _db = NULL;
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
+        return;
     }
     _namespace_version = common::timer::get_micros();
     _block_manager = new BlockManager();
