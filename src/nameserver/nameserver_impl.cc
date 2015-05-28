@@ -545,6 +545,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 _block_manager->RemoveReplicaBlock(cur_block_id, id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
                 _block_manager->UnmarkObsoleteBlock(cur_block_id, id);
+                LOG(INFO, "obsolete_block: %ld in _obsolete_blocks", cur_block_id);
                 continue;
             }
             int32_t more_replica_num = 0;
@@ -553,6 +554,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                                  &more_replica_num)) {
                 response->add_obsolete_blocks(cur_block_id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
+                LOG(INFO, "obsolete_block: %ld not in _block_map", cur_block_id);
                 continue;
             }
 

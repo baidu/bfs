@@ -198,8 +198,14 @@ public:
         if (ret != 0) {
             delete[] buf;
             g_writing_bytes.Sub(len);
+            if (ret < 0) {
+                LOG(WARNING, "Write block %ld seq: %d, offset: %ld, block_size: %ld"
+                             " not in sliding window\n",
+                    _meta.block_id, seq, offset, _meta.block_size);
+                return false;
+            }
         }
-        return (ret >= 0);
+        return true;
     }
     /// Flush block to disk.
     bool Flush() {
@@ -738,8 +744,6 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     }
 
     if (!block->Write(packet_seq, offset, databuf.data(), databuf.size())) {
-        LOG(WARNING, "Write offset[%ld] block_size[%ld] not in sliding window\n",
-            offset, block->Size());
         block->DecRef();
         response->set_status(812);
         done->Run();
