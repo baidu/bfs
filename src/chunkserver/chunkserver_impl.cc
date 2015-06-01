@@ -76,7 +76,7 @@ public:
     }
     ~Block() {
         if (_bufdatalen > 0) {
-            LOG(WARNING, "Data lost, %d bytes in %s,%ld",
+            LOG(INFO, "Data lost, %d bytes in %s,%ld",
                 _bufdatalen, _meta.file_path, _meta.block_size - _bufdatalen);
         }
         if (_blockbuf) {
@@ -92,7 +92,8 @@ public:
         }
         if (_recv_window) {
             if (_recv_window->Size()) {
-                fprintf(stderr, "recv_window fragments: %d\n",  _recv_window->Size());
+                LOG(INFO, "bid:%ld recv_window fragments: %d\n",  
+                    _meta.block_id, _recv_window->Size());
                 std::vector<std::pair<int32_t,Buffer> > frags;
                 _recv_window->GetFragments(&frags);
                 for (uint32_t i = 0; i < frags.size(); i++) {

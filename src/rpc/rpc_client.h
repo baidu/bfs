@@ -59,7 +59,7 @@ public:
             (stub->*func)(&controller, request, response, NULL);
             if (controller.Failed()) {
                 if (retry < retry_times - 1) {
-                    LOG(WARNING, "Send failed, retry ...\n");
+                    LOG(DEBUG, "Send failed, retry ...\n");
                     usleep(1000000);
                 } else {
                     LOG(WARNING, "SendRequest fail: %s\n", controller.ErrorText().c_str());

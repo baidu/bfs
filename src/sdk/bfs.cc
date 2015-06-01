@@ -144,6 +144,7 @@ private:
     bool _closed;                       ///< 是否关闭
     Mutex   _mu;
     CondVar _sync_signal;               ///< _sync_var
+    bool _bg_error;                     ///< background write error
 };
 
 class FSImpl : public FS {
@@ -408,7 +409,7 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
     _open_flags(flags), _chains_head(NULL), _block_for_write(NULL),
     _write_buf(NULL), _last_seq(-1), _back_writing(0),
     _chunkserver(NULL), _read_offset(0), _closed(false),
-    _sync_signal(&_mu) {
+    _sync_signal(&_mu), _bg_error(false) {
     _write_window = new common::SlidingWindow<int>(100,
                         boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
 }
@@ -505,8 +506,16 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
 
 int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
     common::timer::AutoTimer at(100, "Write", _name.c_str());
-    if (!(_open_flags & O_WRONLY) && !(_open_flags & O_APPEND)) {
-        return -2;
+
+    {
+        MutexLock lock(&_mu, "Write");
+        if (!(_open_flags & O_WRONLY) && !(_open_flags & O_APPEND)) {
+            return -2;
+        }
+        if (_bg_error || _closed) {
+            return -3;
+        }
+        common::atomic_inc(&_back_writing);
     }
     if (_open_flags & O_WRONLY) {
         MutexLock lock(&_mu, "Write");
@@ -520,6 +529,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
                 &request, &response, 5, 3);
             if (!ret || !response.has_block()) {
                 LOG(WARNING, "AddBlock fail for %s\n", _name.c_str());
+                common::atomic_dec(&_back_writing); 
                 return -1;
             }
             _block_for_write = new LocatedBlock(response.block());
@@ -530,8 +540,8 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
             _rpc_client->GetStub(addr, &_chains_head);
         }
     } else if (_open_flags == O_APPEND) {
+        MutexLock lock(&_mu, "Append");
         if (_chains_head == NULL) {
-            MutexLock lock(&_mu, "Append");
             FileLocationRequest request;
             FileLocationResponse response;
             request.set_file_name(_name);
@@ -545,7 +555,8 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
                 const std::string& addr = _block_for_write->chains(0).address();
                 _rpc_client->GetStub(addr, &_chains_head);
             } else {
-                fprintf(stderr, "Locate file %s error: %d\n", _name.c_str(), response.status());
+                LOG(WARNING, "Locate file %s error: %d\n", _name.c_str(), response.status());
+                common::atomic_dec(&_back_writing); 
                 return -1;
             }
         }
@@ -573,6 +584,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
         }
     }
     // printf("Write return %d, buf_size=%d\n", w, file->_write_buf->Size());
+    common::atomic_dec(&_back_writing); 
     return w;
 }
 
@@ -655,23 +667,30 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBuffer* buffer) {
     if (failed || response->status() != 0) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error) {
-            LOG(WARNING, "BackgroundWrite failed [bid:%ld, seq:%d, offset:%ld, len:%d]"
-                " status: %d, retry_times: %d",
-                buffer->block_id(), buffer->Sequence(),
-                buffer->offset(), buffer->Size(),
-                response->status(), retry_times);
+            if (retry_times < 5) {
+                LOG(WARNING, "BackgroundWrite failed "
+                    "[bid:%ld, seq:%d, offset:%ld, len:%d]"
+                    " status: %d, retry_times: %d",
+                    buffer->block_id(), buffer->Sequence(),
+                    buffer->offset(), buffer->Size(),
+                    response->status(), retry_times);
+            }
             if (--retry_times == 0) {
                 ///TODO: SetFaild & handle it
-                /// If there is a chunkserver failed, abandon this block, and add a new block ..............
-                assert(0);
+                _bg_error = true;
+                delete buffer;
+                delete request;
             }
         }
-        common::atomic_inc(&_back_writing);
-        g_thread_pool.DelayTask(
-            5, boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer, request, retry_times));
+        if (!_bg_error) {
+            common::atomic_inc(&_back_writing);
+            g_thread_pool.DelayTask(5,
+                boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer, request, retry_times));
+        }
     } else {
-        LOG(DEBUG, "BackgroundWrite done [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
-            buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
+        LOG(DEBUG, "BackgroundWrite done bid:%ld, seq:%d, offset:%ld, len:%d, _back_writing:%d",
+            buffer->block_id(), buffer->Sequence(), buffer->offset(), 
+            buffer->Size(), _back_writing);
         int r = _write_window->Add(buffer->Sequence(), 0);
         assert(r == 0);
         delete buffer;
@@ -681,7 +700,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
 
     {
         MutexLock lock(&_mu, "WriteChunkCallback");
-        if (_write_queue.empty()) {
+        if (_write_queue.empty() || _bg_error) {
             common::atomic_dec(&_back_writing);    // for AsyncRequest
             if (_back_writing == 0) {
                 _sync_signal.Broadcast();
@@ -715,12 +734,11 @@ bool BfsFileImpl::Sync() {
         _sync_signal.Wait((_name + " Sync wait").c_str());
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
-    return true;
+    return !_bg_error;
 }
 
 bool BfsFileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", _name.c_str());
-    bool ret = true;
     MutexLock lock(&_mu, "Close");
     if (_block_for_write && ((_open_flags & O_WRONLY) || _open_flags == O_APPEND)) {
         if (!_write_buf) {
@@ -728,6 +746,7 @@ bool BfsFileImpl::Close() {
                                          _block_for_write->block_size());
         }
         _write_buf->SetLast();
+        LOG(INFO, "Close write seq: %d", _write_buf->Sequence());
         StartWrite(_write_buf);
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
@@ -741,7 +760,7 @@ bool BfsFileImpl::Close() {
     _chunkserver = NULL;
     LOG(DEBUG, "File %s closed", _name.c_str());
     _closed = true;
-    return ret;
+    return !_bg_error;
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs) {

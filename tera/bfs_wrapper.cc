@@ -34,6 +34,7 @@ int32_t BfsFile::Flush() {
     return ret;
 }
 int32_t BfsFile::Sync() {
+    LOG(INFO, "Sync(%s) start", _name.c_str());
     common::timer::AutoTimer ac(10, "Sync", _name.c_str());
     int ret = -1;
     if (_file->Sync()) {
