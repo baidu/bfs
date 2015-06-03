@@ -179,7 +179,7 @@ public:
             LOG(WARNING, "Block %ld is not marked obsolete\n", block_id);
         }
     }
-    bool MarkFinishBlock(int64_t block_id) {
+    bool MarkBlockStable(int64_t block_id) {
         MutexLock lock(&_mu);
         NSBlock* nsblock = NULL;
         NSBlockMap::iterator it = _block_map.find(block_id);
@@ -565,7 +565,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             size += cur_block_size;
             _chunkserver_manager->AddBlock(id, cur_block_id);
             if (more_replica_num != 0 && new_chunkserver) {
-                _block_manager->MarkFinishBlock(cur_block_id);
+                _block_manager->MarkBlockStable(cur_block_id);
             } else if (more_replica_num != 0 && !new_chunkserver) {
                 std::vector<std::pair<int32_t, std::string> > chains;
                 ///TODO: Not get all chunkservers, but get more.
@@ -590,7 +590,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                     }
                     //no suitable chunkserver
                     if (num == 0) {
-                        _block_manager->MarkFinishBlock(cur_block_id);
+                        _block_manager->MarkBlockStable(cur_block_id);
                     }
                 }
             }
@@ -732,7 +732,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          ::google::protobuf::Closure* done) {
     int64_t block_id = request->block_id();
     response->set_sequence_id(request->sequence_id());
-    if (_block_manager->MarkFinishBlock(block_id)) {
+    if (_block_manager->MarkBlockStable(block_id)) {
         response->set_status(0);
     } else {
         response->set_status(886);
@@ -1165,7 +1165,7 @@ void NameServerImpl::RebuildBlockMap() {
                 int64_t block_id = file_info.blocks(i);
                 _block_manager->InitBlockInfo(block_id);
                 _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
-                _block_manager->MarkFinishBlock(block_id);
+                _block_manager->MarkBlockStable(block_id);
             }
         }
     }
