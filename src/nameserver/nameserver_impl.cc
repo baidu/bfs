@@ -236,15 +236,13 @@ public:
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
         MutexLock lock(&_mu);
         NSBlockMap::iterator it = _block_map.find(block_id);
-        bool ret = false;
         if (it == _block_map.end()) {
-            //maybe not report yet
+            assert(0);
         } else {
             NSBlock* nsblock = it->second;
             nsblock->expect_replica_num = replica_num;
-            ret = true;
+            return true;
         }
-        return ret;
     }
     void InitBlockInfo(int64_t block_id) {
         MutexLock lock(&_mu);
@@ -1159,6 +1157,8 @@ void NameServerImpl::RebuildBlockMap() {
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 int64_t block_id = file_info.blocks(i);
                 _block_manager->InitBlockInfo(block_id);
+                _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
+                _block_manager->MarkFinishBlock(block_id);
             }
         }
     }
