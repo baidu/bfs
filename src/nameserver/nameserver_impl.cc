@@ -653,6 +653,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     }
     file_info.set_id(0);
     file_info.set_ctime(time(NULL));
+    file_info.set_replicas(FLAGS_default_replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
@@ -693,7 +694,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         assert(0);
     }
     /// replica num
-    int replica_num = FLAGS_default_replica_num;
+    int replica_num = file_info.replicas();
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
