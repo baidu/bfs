@@ -179,7 +179,7 @@ public:
             LOG(WARNING, "Block %ld is not marked obsolete\n", block_id);
         }
     }
-    bool MarkFinishBlock(int64_t block_id) {
+    bool MarkBlockStable(int64_t block_id) {
         MutexLock lock(&_mu);
         NSBlock* nsblock = NULL;
         NSBlockMap::iterator it = _block_map.find(block_id);
@@ -236,15 +236,13 @@ public:
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
         MutexLock lock(&_mu);
         NSBlockMap::iterator it = _block_map.find(block_id);
-        bool ret = false;
         if (it == _block_map.end()) {
-            //maybe not report yet
+            assert(0);
         } else {
             NSBlock* nsblock = it->second;
             nsblock->expect_replica_num = replica_num;
-            ret = true;
+            return true;
         }
-        return ret;
     }
     void InitBlockInfo(int64_t block_id) {
         MutexLock lock(&_mu);
@@ -473,6 +471,10 @@ public:
         MutexLock lock(&_mu);
         _chunkserver_block_map[id].erase(block_id);
     }
+    bool IsNewChunkserver(int32_t id) {
+        MutexLock lock(&_mu);
+        return _chunkserver_block_map.find(id) == _chunkserver_block_map.end();
+    }
 
 private:
     ThreadPool* _thread_pool;
@@ -535,6 +537,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     } else {
         const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
         int64_t size = 0;
+        bool new_chunkserver = _chunkserver_manager->IsNewChunkserver(id);
         for (int i = 0; i < blocks.size(); i++) {
             const ReportBlockInfo& block =  blocks.Get(i);
             int64_t cur_block_id = block.block_id();
@@ -561,7 +564,9 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
             size += cur_block_size;
             _chunkserver_manager->AddBlock(id, cur_block_id);
-            if (more_replica_num != 0) {
+            if (more_replica_num != 0 && new_chunkserver) {
+                _block_manager->MarkBlockStable(cur_block_id);
+            } else if (more_replica_num != 0 && !new_chunkserver) {
                 std::vector<std::pair<int32_t, std::string> > chains;
                 ///TODO: Not get all chunkservers, but get more.
                 if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {
@@ -585,7 +590,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                     }
                     //no suitable chunkserver
                     if (num == 0) {
-                        _block_manager->MarkFinishBlock(cur_block_id);
+                        _block_manager->MarkBlockStable(cur_block_id);
                     }
                 }
             }
@@ -653,6 +658,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     }
     file_info.set_id(0);
     file_info.set_ctime(time(NULL));
+    file_info.set_replicas(FLAGS_default_replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
@@ -693,7 +699,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         assert(0);
     }
     /// replica num
-    int replica_num = FLAGS_default_replica_num;
+    int replica_num = file_info.replicas();
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
@@ -726,7 +732,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          ::google::protobuf::Closure* done) {
     int64_t block_id = request->block_id();
     response->set_sequence_id(request->sequence_id());
-    if (_block_manager->MarkFinishBlock(block_id)) {
+    if (_block_manager->MarkBlockStable(block_id)) {
         response->set_status(0);
     } else {
         response->set_status(886);
@@ -1158,6 +1164,8 @@ void NameServerImpl::RebuildBlockMap() {
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 int64_t block_id = file_info.blocks(i);
                 _block_manager->InitBlockInfo(block_id);
+                _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
+                _block_manager->MarkBlockStable(block_id);
             }
         }
     }
