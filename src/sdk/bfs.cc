@@ -309,11 +309,14 @@ public:
     bool CloseFile(File* file) {
         int64_t block_id = -1;
         int open_flags = -1;
+        bool empty_file = false;
         BfsFileImpl* bfs_file = dynamic_cast<BfsFileImpl*>(file);
         if (bfs_file) {
             open_flags = bfs_file->_open_flags;
-            if (bfs_file->_block_for_write &&
-                ((open_flags & O_WRONLY) || open_flags == O_APPEND)) {
+            if (!bfs_file->_block_for_write) {
+                empty_file = true;
+            }
+            if (!empty_file && ((open_flags & O_WRONLY) || open_flags == O_APPEND)) {
                 block_id = bfs_file->_block_for_write->block_id();
             }
         } else {
@@ -324,8 +327,7 @@ public:
             LOG(WARNING, "Close file fail\n");
             return false;
         }
-        if (bfs_file->_block_for_write &&
-            ((open_flags & O_WRONLY) || open_flags == O_APPEND)) {
+        if (!empty_file && ((open_flags & O_WRONLY) || open_flags == O_APPEND)) {
             FinishBlockRequest request;
             FinishBlockResponse response;
             request.set_sequence_id(0);
