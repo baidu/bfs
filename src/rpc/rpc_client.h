@@ -23,7 +23,7 @@ public:
         // 定义 client 对象，一个 client 程序只需要一个 client 对象
         // 可以通过 client_options 指定一些配置参数，譬如线程数、流控等
         sofa::pbrpc::RpcClientOptions options;
-        options.max_pending_buffer_size = 10;
+        options.max_pending_buffer_size = 128;
         _rpc_client = new sofa::pbrpc::RpcClient(options);
     }
     ~RpcClient() {

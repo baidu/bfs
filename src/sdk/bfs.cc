@@ -746,7 +746,6 @@ bool BfsFileImpl::Close() {
                                          _block_for_write->block_size());
         }
         _write_buf->SetLast();
-        LOG(INFO, "Close write seq: %d", _write_buf->Sequence());
         StartWrite(_write_buf);
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());

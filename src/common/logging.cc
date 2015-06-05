@@ -9,15 +9,20 @@
 
 #include "logging.h"
 
-#include <unistd.h>
-#include <syscall.h>
-#include <sys/time.h>
-#include <time.h>
-
 #include <assert.h>
+#include <boost/bind.hpp>
+#include <queue>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string>
+#include <syscall.h>
+#include <sys/time.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <common/mutex.h>
+#include <common/thread.h>
 
 namespace common {
 
@@ -28,6 +33,63 @@ FILE* g_warning_file = NULL;
 void SetLogLevel(int level) {
     g_log_level = level;
 }
+
+class AsyncLogger {
+public:
+    AsyncLogger()
+      : jobs_(&mu_), stopped_(false) {
+        thread_.Start(boost::bind(&AsyncLogger::AsyncWriter, this));
+    }
+    ~AsyncLogger() {
+        stopped_ = true;
+        {
+            MutexLock lock(&mu_);
+            jobs_.Signal();
+        }
+        thread_.Join();
+        // close fd
+    }
+    void WriteLog(int log_level, const char* buffer, int32_t len) {
+        MutexLock lock(&mu_);
+        buffer_queue_.push(make_pair(log_level, new std::string(buffer, len)));
+        jobs_.Signal();
+    }
+    void AsyncWriter() {
+        MutexLock lock(&mu_);
+        while (1) {
+            int loglen = 0;
+            int wflen = 0;
+            while (!buffer_queue_.empty() && !stopped_) {
+                int log_level = buffer_queue_.front().first;
+                std::string* str = buffer_queue_.front().second;
+                buffer_queue_.pop();
+                mu_.Unlock();
+                fwrite(str->data(), 1, str->size(), g_log_file);
+                loglen += str->size();
+                if (g_warning_file && log_level >= 8) {
+                    fwrite(str->data(), 1, str->size(), g_warning_file);
+                    wflen += str->size();
+                }
+                delete str;
+                mu_.Lock();
+            }
+            if (loglen) fflush(g_log_file);
+            if (wflen) fflush(g_warning_file);
+            if (stopped_) {
+                break;
+            }
+            jobs_.Wait();
+        }
+    }
+private:
+    Mutex mu_;
+    CondVar jobs_;
+    bool stopped_;
+    Thread thread_;
+    std::queue<std::pair<int, std::string*> > buffer_queue_;
+};
+
+AsyncLogger g_logger;
 
 bool SetWarningFile(const char* path, bool append) {
     const char* mode = append ? "ab" : "wb";
@@ -113,12 +175,13 @@ void Logv(int log_level, const char* format, va_list ap) {
         }
 
         assert(p <= limit);
-        fwrite(base, 1, p - base, g_log_file);
-        fflush(g_log_file);
-        if (g_warning_file && log_level >= 8) {
-            fwrite(base, 1, p - base, g_warning_file);
-            fflush(g_warning_file);
-        }
+        //fwrite(base, 1, p - base, g_log_file);
+        //fflush(g_log_file);
+        //if (g_warning_file && log_level >= 8) {
+        //    fwrite(base, 1, p - base, g_warning_file);
+        //    fflush(g_warning_file);
+        //}
+        g_logger.WriteLog(log_level, base, p - base);
         if (base != buffer) {
             delete[] base;
         }
