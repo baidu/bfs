@@ -191,14 +191,12 @@ public:
             if (nsblock->removed) {
                 delete nsblock;
                 _block_map.erase(block_id);
-                ret = false;
             } else {
                 nsblock->pending_change = false;
                 ret = true;
             }
         } else {
             LOG(WARNING, "Can't find block: %ld\n", block_id);
-            ret = false;
         }
         return ret;
     }
