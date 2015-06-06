@@ -82,10 +82,11 @@ public:
         int64_t block_size;
         int32_t expect_replica_num;
         bool pending_change;
+        bool removed;
         NSBlock(int64_t block_id)
          : id(block_id), version(0), block_size(0),
            expect_replica_num(FLAGS_default_replica_num),
-           pending_change(true) {
+           pending_change(true), removed(false) {
         }
     };
     BlockManager():_next_block_id(1) {}
@@ -182,16 +183,34 @@ public:
     bool MarkBlockStable(int64_t block_id) {
         MutexLock lock(&_mu);
         NSBlock* nsblock = NULL;
+        bool ret = false;
         NSBlockMap::iterator it = _block_map.find(block_id);
         if (it != _block_map.end()) {
             nsblock = it->second;
             assert(nsblock->pending_change == true);
-            nsblock->pending_change = false;
-            return true;
+            if (nsblock->removed) {
+                delete nsblock;
+                _block_map.erase(block_id);
+            } else {
+                nsblock->pending_change = false;
+                ret = true;
+            }
         } else {
             LOG(WARNING, "Can't find block: %ld\n", block_id);
-            return false;
         }
+        return ret;
+    }
+    bool MarkUnstableBlockRemoved(int64_t block_id) {
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        assert(it != _block_map.end());
+        NSBlock* nsblock = it->second;
+        bool ret = false;
+        if (nsblock->pending_change) {
+            nsblock->removed = true;
+            ret = true;
+        }
+        return ret;
     }
     bool GetReplicaLocation(int64_t id, std::set<int32_t>* chunkserver_id) {
         MutexLock lock(&_mu);
@@ -970,13 +989,17 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
         // Only support file
         if ((file_info.type() & (1<<9)) == 0) {
             for (int i = 0; i < file_info.blocks_size(); i++) {
+                int64_t block_id = file_info.blocks(i);
+                if (_block_manager->MarkUnstableBlockRemoved(block_id)) {
+                    continue;
+                }
                 std::set<int32_t> chunkservers;
-                _block_manager->GetReplicaLocation(file_info.blocks(i), &chunkservers);
+                _block_manager->GetReplicaLocation(block_id, &chunkservers);
                 std::set<int32_t>::iterator it = chunkservers.begin();
                 for (; it != chunkservers.end(); ++it) {
-                    _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
+                    _block_manager->MarkObsoleteBlock(block_id, *it);
                 }
-                _block_manager->RemoveBlock(file_info.blocks(i));
+                _block_manager->RemoveBlock(block_id);
             }
             s = _db->Delete(leveldb::WriteOptions(), file_key);
             if (s.ok()) {
