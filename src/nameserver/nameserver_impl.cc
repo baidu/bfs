@@ -329,6 +329,28 @@ public:
         delete it->second;
         _block_map.erase(it);
     }
+    void MarkPullBlock(int32_t dst_cs, int64_t block_id, const std::string& src_cs) {
+        MutexLock lock(&_mu);
+        _blocks_to_replicate[dst_cs].insert(std::make_pair(block_id, src_cs));
+        LOG(INFO, "Add replicate info: dst cs: %d, block id: %ld, src cs: %s\n",
+                dst_cs, block_id, src_cs.c_str());
+    }
+    bool GetPullBlocks(int32_t id, std::set<std::pair<int64_t, std::string> >* blocks) {
+        MutexLock lock(&_mu);
+        bool ret = false;
+        std::map<int32_t, std::set<std::pair<int64_t, std::string> > >::iterator
+            it = _blocks_to_replicate.find(id);
+        if (it != _blocks_to_replicate.end()) {
+            std::set<std::pair<int64_t, std::string> >::iterator block_it = it->second.begin();
+            for (; block_it != it->second.end(); ++block_it) {
+                blocks->insert(std::make_pair(block_it->first, block_it->second));
+            }
+            /// TODO: Don't erase here
+            _blocks_to_replicate.erase(it);
+            ret = true;
+        }
+        return ret;
+    }
 
 private:
     Mutex _mu;
@@ -336,6 +358,7 @@ private:
     NSBlockMap _block_map;
     int64_t _next_block_id;
     std::map<int64_t, std::set<int32_t> > _obsolete_blocks;
+    std::map<int32_t, std::set<std::pair<int64_t, std::string> > > _blocks_to_replicate;
 };
 
 class ChunkServerManager {
@@ -593,17 +616,12 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                     _block_manager->GetReplicaLocation(cur_block_id, &cur_replica_location);
 
                     std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
-                    ReplicaInfo* info = NULL;
                     int num;
                     for (num = 0; num < more_replica_num &&
                             chains_it != chains.end(); ++chains_it) {
                         if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                            if (num == 0) {
-                                info = response->add_new_replicas();
-                                info->set_block_id(cur_block_id);
-                            }
-                            LOG(INFO, "Add new replica to chunkserver %ld\n", chains_it->first);
-                            info->add_chunkserver_address(chains_it->second);
+                            _block_manager->MarkPullBlock(chains_it->first, cur_block_id,
+                                                          request->chunkserver_addr());
                             num++;
                         }
                     }
@@ -612,6 +630,18 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                         _block_manager->MarkBlockStable(cur_block_id);
                     }
                 }
+            }
+        }
+        std::set<std::pair<int64_t, std::string> > pull_blocks;
+        if (_block_manager->GetPullBlocks(id, &pull_blocks)) {
+            ReplicaInfo* info = NULL;
+            std::set<std::pair<int64_t, std::string> >::iterator it = pull_blocks.begin();
+            for (; it != pull_blocks.end(); ++it) {
+                info = response->add_new_replicas();
+                info->set_block_id(it->first);
+                info->add_chunkserver_address(it->second);
+                LOG(INFO, "Add pull block: %ld, dst cs: %d, src cs: %s\n",
+                        it->first, id, it->second.c_str());
             }
         }
         _chunkserver_manager->SetChunkServerLoad(id, size, request->is_complete());
