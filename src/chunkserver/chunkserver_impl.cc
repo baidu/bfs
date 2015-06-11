@@ -592,18 +592,23 @@ void ChunkServerImpl::Routine() {
                 for (int i = 0; i < response.obsolete_blocks_size(); i++) {
                     obsolete_blocks.push_back(response.obsolete_blocks(i));
                 }
-                boost::function<void ()> task =
-                    boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks, this, obsolete_blocks);
-                _thread_pool->AddTask(task);
+                if (!obsolete_blocks.empty()) {
+                    boost::function<void ()> task =
+                        boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
+                                    this, obsolete_blocks);
+                    _thread_pool->AddTask(task);
+                }
 
                 std::vector<ReplicaInfo> new_replica_info;
                 for (int i = 0; i < response.new_replicas_size(); i++) {
                     new_replica_info.push_back(response.new_replicas(i));
                 }
-                boost::function<void ()> new_replica_task =
-                    boost::bind(&ChunkServerImpl::AddNewReplica, this, new_replica_info);
-                _thread_pool->AddTask(new_replica_task);
-
+                if (!new_replica_info.empty()) {
+                    boost::function<void ()> new_replica_task =
+                        boost::bind(&ChunkServerImpl::AddNewReplica,
+                                    this, new_replica_info);
+                    _thread_pool->AddTask(new_replica_task);
+                }
             }
         }
         ++ ticks;
@@ -815,6 +820,9 @@ void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
     }
 }
 void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
+    PullBlockReportRequest report_request;
+    report_request.set_sequence_id(0);
+    report_request.set_chunkserver_id(_chunkserver_id);
     for (size_t i = 0; i < new_replica_info.size(); i++) {
         int64_t block_id = new_replica_info[i].block_id();
         ChunkServer_Stub* chunkserver = NULL;
@@ -863,6 +871,15 @@ void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
         delete chunkserver;
         ReportFinish(block);
         block->DecRef();
+        report_request.add_blocks(block_id);
+    }
+
+    PullBlockReportResponse report_response;
+    if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::PullBlockReport,
+                &report_request, &report_response, 5, 3)) {
+        LOG(WARNING, "Report pull finish fail, chunkserver id: %d\n", _chunkserver_id);
+    } else {
+        LOG(INFO, "Report pull finish dnne, chunkserver id: %d\n", _chunkserver_id);
     }
 }
 

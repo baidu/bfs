@@ -82,6 +82,7 @@ public:
         int64_t block_size;
         int32_t expect_replica_num;
         bool pending_change;
+        std::set<int32_t> pulling_chunkservers;
         bool removed;
         NSBlock(int64_t block_id)
          : id(block_id), version(0), block_size(0),
@@ -332,8 +333,27 @@ public:
     void MarkPullBlock(int32_t dst_cs, int64_t block_id, const std::string& src_cs) {
         MutexLock lock(&_mu);
         _blocks_to_replicate[dst_cs].insert(std::make_pair(block_id, src_cs));
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        assert(it != _block_map.end());
+        NSBlock* nsblock = it->second;
+        nsblock->pulling_chunkservers.insert(dst_cs);
         LOG(INFO, "Add replicate info: dst cs: %d, block id: %ld, src cs: %s\n",
                 dst_cs, block_id, src_cs.c_str());
+    }
+    void UnmarkPullBlock(int64_t block_id, int32_t id) {
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        if (it != _block_map.end()) {
+            NSBlock* nsblock = it->second;
+            assert(nsblock);
+            nsblock->pulling_chunkservers.erase(id);
+            if (nsblock->pulling_chunkservers.empty() && nsblock->pending_change) {
+                nsblock->pending_change = false;
+                LOG(INFO, "Block %ld finish replicate\n", block_id);
+            }
+        } else {
+            LOG(WARNING, "Can't find block: %ld\n", block_id);
+        }
     }
     bool GetPullBlocks(int32_t id, std::set<std::pair<int64_t, std::string> >* blocks) {
         MutexLock lock(&_mu);
@@ -345,7 +365,6 @@ public:
             for (; block_it != it->second.end(); ++block_it) {
                 blocks->insert(std::make_pair(block_it->first, block_it->second));
             }
-            /// TODO: Don't erase here
             _blocks_to_replicate.erase(it);
             ret = true;
         }
@@ -645,6 +664,19 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             }
         }
         _chunkserver_manager->SetChunkServerLoad(id, size, request->is_complete());
+    }
+    done->Run();
+}
+
+void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controller,
+                   const PullBlockReportRequest* request,
+                   PullBlockReportResponse* response,
+                   ::google::protobuf::Closure* done) {
+    response->set_sequence_id(request->sequence_id());
+    response->set_status(0);
+    int32_t chunkserver_id = request->chunkserver_id();
+    for (int i = 0; i < request->blocks_size(); i++) {
+        _block_manager->UnmarkPullBlock(request->blocks(i), chunkserver_id);
     }
     done->Run();
 }
