@@ -228,7 +228,7 @@ public:
 
         return ret;
     }
-    void ReplicateDeadBlocks(int32_t id, std::set<int64_t> blocks) {
+    void DealDeadBlocks(int32_t id, std::set<int64_t> blocks) {
         LOG(INFO, "Replicate %d blocks of dead chunkserver: %d\n", blocks.size(), id);
         MutexLock lock(&_mu);
         std::set<int64_t>::iterator it = blocks.begin();
@@ -250,8 +250,14 @@ public:
             if (nsb_it != _block_map.end()) {
                 NSBlock* nsblock = nsb_it->second;
                 nsblock->replica.erase(id);
+                nsblock->pulling_chunkservers.erase(id);
+                if (nsblock->pulling_chunkservers.empty() &&
+                        nsblock->pending_change) {
+                    nsblock->pending_change = false;
+                }
             }
         }
+        _blocks_to_replicate.erase(id);
     }
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
         MutexLock lock(&_mu);
@@ -401,11 +407,10 @@ public:
             while (node != it->second.end()) {
                 ChunkServerInfo* cs = *node;
                 LOG(INFO, "[DeadCheck] Chunkserver %s dead", cs->address().c_str());
-                ///TODO: handle chunkserver fail
                 int32_t id = cs->id();
                 std::set<int64_t> blocks = _chunkserver_block_map[id];
                 boost::function<void ()> task =
-                    boost::bind(&BlockManager::ReplicateDeadBlocks,
+                    boost::bind(&BlockManager::DealDeadBlocks,
                             _block_manager, id, blocks);
                 _thread_pool->AddTask(task);
                 _chunkserver_block_map.erase(id);
