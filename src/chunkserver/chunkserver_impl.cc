@@ -33,6 +33,7 @@ DECLARE_string(nameserver_port);
 DECLARE_string(chunkserver_port);
 DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);
+DECLARE_int32(write_buf_size);
 
 namespace bfs {
 
@@ -185,8 +186,9 @@ public:
     bool Write(int32_t seq, int64_t offset, const char* data, int32_t len) {
         LOG(INFO, "Block Write %d\n", seq);
         if (offset < _meta.block_size) {
-            LOG(WARNING, "Write a finish block %ld, seq: %d, offset: %ld",
-                _meta.block_id, seq, offset);
+            assert (offset + len <= _meta.block_size);
+            LOG(WARNING, "Write a finish block %ld, size %ld, seq: %d, offset: %ld",
+                _meta.block_id, _meta.block_size, seq, offset);
             return true;
         }
         char* buf = NULL;
@@ -266,7 +268,7 @@ private:
     void Append(int32_t seq, const char*buf, int32_t len) {
         MutexLock lock(&_mu);
         if (_blockbuf == NULL) {
-            _buflen = 1*1024*1024;
+            _buflen = FLAGS_write_buf_size;
             _blockbuf = new char[_buflen];
             g_block_buffers.Inc();
         }
@@ -554,7 +556,7 @@ void ChunkServerImpl::Routine() {
             request.set_namespace_version(_namespace_version);
             HeartBeatResponse response;
             if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
-                    &request, &response, 5, 1)) {
+                    &request, &response, 15, 1)) {
                 LOG(WARNING, "Heat beat fail\n");
             } else if (_namespace_version != response.namespace_version()) {
                 LOG(INFO, "Connect to nameserver, new chunkserver_id: %d\n",
@@ -690,7 +692,7 @@ void ChunkServerImpl::WriteNext(const std::string& next_server,
         boost::bind(&ChunkServerImpl::WriteNextCallback,
             this, _1, _2, _3, _4, next_server, request, done, stub);
     _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
-        next_request, response, callback, 5, 3);
+        next_request, response, callback, 30, 3);
 }
 
 void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
@@ -847,7 +849,7 @@ void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
                         request.add_chunkservers(new_replica_info[i].chunkserver_address(j));
                     }
                     if (!_rpc_client->SendRequest(cur_chunkserver,
-                                &ChunkServer_Stub::WriteBlock, &request, &response, 5, 3)) {
+                                &ChunkServer_Stub::WriteBlock, &request, &response, 15, 3)) {
                         LOG(WARNING, "AddNewReplica %ld rpc call fail\n", block_id);
                         break;
                     }
@@ -871,7 +873,7 @@ void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
         request.set_sequence_id(0);
         request.set_block_id(block_id);
         if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::FinishBlock,
-                    &request, &response, 5, 3)) {
+                    &request, &response, 15, 3)) {
             LOG(WARNING, "Fail to report finish to nameserver: %ld\n", block_id);
         } else {
             if (response.status() == 0) {
