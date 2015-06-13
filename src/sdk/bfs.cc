@@ -762,11 +762,13 @@ bool BfsFileImpl::Close() {
         StartWrite(_write_buf);
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
+        int wait_time = 0;
         while (_back_writing) {
             _sync_signal.TimeWait(1000, (_name + " Close wait").c_str());
             if (++wait_time >= 30 && (wait_time % 10 == 0)) {
                 LOG(WARNING, "Close timeout %d s, %s _back_writing= %d",
                     wait_time, _name.c_str(), _back_writing);
+            }
         }
         delete _block_for_write;
         _block_for_write = NULL;
