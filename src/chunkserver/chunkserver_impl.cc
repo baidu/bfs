@@ -829,17 +829,22 @@ void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
         Block* block = _block_manager->FindBlock(block_id, true);
         if (!block) {
             LOG(WARNING, "Cant't create block: %ld\n", block_id);
-            /// TODO: handle error
-        } else {
-            if (!_rpc_client->GetStub(new_replica_info[i].chunkserver_address(0),
-                                        &chunkserver)) {
-                LOG(WARNING, "Can't connect to chunkserver: %s\n",
-                        new_replica_info[i].chunkserver_address(0).c_str());
-                /// TODO: handle error
-            }
+            //ignore this block
+            continue;
+        }
+        if (!_rpc_client->GetStub(new_replica_info[i].chunkserver_address(0),
+                    &chunkserver)) {
+            LOG(WARNING, "Can't connect to chunkserver: %s\n",
+                    new_replica_info[i].chunkserver_address(0).c_str());
+            //remove this block
+            block->DecRef();
+            _block_manager->RemoveBlock(block_id);
+            report_request.add_blocks(block_id);
+            continue;
         }
         int64_t seq = -1;
         int64_t offset = 0;
+        bool success = true;
         while (1) {
             ReadBlockRequest request;
             ReadBlockResponse response;
@@ -851,13 +856,15 @@ void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
                                                 &ChunkServer_Stub::ReadBlock,
                                                 &request, &response, 5, 3);
             if (!ret || response.status() != 0) {
-                /// TODO: handle error
+                success = false;
+                break;
             }
             int32_t len = response.databuf().size();
             const char* buf = response.databuf().data();
             if (len) {
                 if (!block->Write(seq, offset, buf, len)) {
-                    /// TODO: handler error
+                    success = false;
+                    break;
                 }
             } else {
                 block->SetSliceNum(seq);
@@ -869,8 +876,10 @@ void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
             offset += len;
         }
         delete chunkserver;
-        ReportFinish(block);
         block->DecRef();
+        if (!success) {
+            _block_manager->RemoveBlock(block_id);
+        }
         report_request.add_blocks(block_id);
     }
 
