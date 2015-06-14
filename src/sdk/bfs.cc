@@ -173,7 +173,7 @@ public:
         request.set_mode(0755|(1<<9));
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::CreateFile,
-            &request, &response, 5, 3);
+            &request, &response, 15, 3);
         if (!ret || response.status() != 0) {
             return false;
         } else {
@@ -189,7 +189,7 @@ public:
         request.set_path(path);
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::ListDirectory,
-            &request, &response, 5, 3);
+            &request, &response, 15, 3);
         if (!ret || response.status() != 0) {
             LOG(WARNING, "List fail: %s\n", path);
             return false;
@@ -215,7 +215,7 @@ public:
         request.set_path(path);
         request.set_recursive(recursive);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::DeleteDirectory,
-                &request, &response, 5, 3);
+                &request, &response, 15, 3);
         if (!ret) {
             LOG(WARNING, "DeleteDirectory fail: %s\n", path);
             return false;
@@ -231,7 +231,7 @@ public:
         request.set_path(path);
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Stat,
-            &request, &response, 5, 3);
+            &request, &response, 15, 3);
         if (!ret) {
             LOG(WARNING, "Stat fail: %s\n", path);
             return false;
@@ -244,7 +244,7 @@ public:
         request.set_path(path);
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Stat,
-            &request, &response, 5, 3);
+            &request, &response, 15, 3);
         if (!ret) {
             fprintf(stderr, "Stat rpc fail: %s\n", path);
             return false;
@@ -271,7 +271,7 @@ public:
             request.set_flags(flags);
             request.set_mode(0644);
             ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::CreateFile,
-                &request, &response, 5, 3);
+                &request, &response, 15, 3);
             if (!ret || response.status() != 0) {
                 fprintf(stderr, "Open file for write fail: %s, status= %d\n",
                     path, response.status());
@@ -286,7 +286,7 @@ public:
             request.set_file_name(path);
             request.set_sequence_id(0);
             ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::GetFileLocation,
-                &request, &response, 5, 3);
+                &request, &response, 15, 3);
             if (ret && response.status() == 0) {
                 BfsFileImpl* f = new BfsFileImpl(this, _rpc_client, path, flags);
                 f->_located_blocks.CopyFrom(response.blocks());
@@ -333,7 +333,7 @@ public:
             request.set_sequence_id(0);
             request.set_block_id(block_id);
             bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::FinishBlock,
-                    &request, &response, 5, 3);
+                    &request, &response, 15, 3);
 
             return ret && response.status() == 0;
         } else {
@@ -348,7 +348,7 @@ public:
         request.set_sequence_id(seq);
         // printf("Delete file: %s\n", path);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Unlink,
-            &request, &response, 5, 1);
+            &request, &response, 15, 1);
         if (!ret) {
             fprintf(stderr, "Unlink rpc fail: %s\n", path);
             return false;
@@ -366,7 +366,7 @@ public:
         request.set_newpath(newpath);
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::Rename,
-            &request, &response, 5, 3);
+            &request, &response, 15, 3);
         if (!ret) {
             fprintf(stderr, "Rename rpc fail: %s to %s\n", oldpath, newpath);
             return false;
@@ -386,7 +386,7 @@ public:
         request.set_sequence_id(0);
         bool ret = _rpc_client->SendRequest(_nameserver,
                 &NameServer_Stub::ChangeReplicaNum,
-                &request, &response, 5, 3);
+                &request, &response, 15, 3);
         if (!ret) {
             fprintf(stderr, "Change %s replica num to %d rpc fail\n",
                     file_name, replica_num);
@@ -455,11 +455,11 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
         }
         if (retry_times == 1) {
             ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
-                    &request, &response, 5, 3);
+                    &request, &response, 15, 3);
         } else {
             _fs->_rpc_client->GetStub(lcblock.chains(next_server++).address(), &_chunkserver);
             ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
-                    &request, &response, 5, 3);
+                    &request, &response, 15, 3);
         }
     }
 
@@ -528,7 +528,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
             request.set_sequence_id(0);
             request.set_file_name(_name);
             bool ret = _rpc_client->SendRequest(_fs->_nameserver, &NameServer_Stub::AddBlock,
-                &request, &response, 5, 3);
+                &request, &response, 15, 3);
             if (!ret || !response.has_block()) {
                 LOG(WARNING, "AddBlock fail for %s\n", _name.c_str());
                 common::atomic_dec(&_back_writing); 
@@ -551,7 +551,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
 
             bool ret = _rpc_client->SendRequest(_fs->_nameserver,
                     &NameServer_Stub::GetFileLocation,
-                    &request, &response, 5, 3);
+                    &request, &response, 15, 3);
             if (ret && response.status() == 0) {
                 _block_for_write = new LocatedBlock(response.blocks(0));
                 const std::string& addr = _block_for_write->chains(0).address();
@@ -670,7 +670,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
     if (failed || response->status() != 0) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error) {
             if (retry_times < 5) {
-                LOG(WARNING, "BackgroundWrite failed "
+                LOG(INFO, "BackgroundWrite failed "
                     "[bid:%ld, seq:%d, offset:%ld, len:%d]"
                     " status: %d, retry_times: %d",
                     buffer->block_id(), buffer->Sequence(),
@@ -678,6 +678,12 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                     response->status(), retry_times);
             }
             if (--retry_times == 0) {
+                LOG(WARNING, "BackgroundWrite error "
+                    "[bid:%ld, seq:%d, offset:%ld, len:%d]"
+                    " status: %d, retry_times: %d",
+                    buffer->block_id(), buffer->Sequence(),
+                    buffer->offset(), buffer->Size(),
+                    response->status(), retry_times);
                 ///TODO: SetFaild & handle it
                 _bg_error = true;
                 delete buffer;
@@ -732,8 +738,13 @@ bool BfsFileImpl::Sync() {
     if (_write_buf && _write_buf->Size()) {
         StartWrite(_write_buf);
     }
+    int wait_time = 0;
     while (_back_writing) {
-        _sync_signal.Wait((_name + " Sync wait").c_str());
+        _sync_signal.TimeWait(1000, (_name + " Sync wait").c_str());
+        if (++wait_time >= 30 && (wait_time % 10 == 0)) {
+            LOG(WARNING, "Sync timeout %d s, %s _back_writing= %d",
+                wait_time, _name.c_str(), _back_writing);
+        }
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
     return !_bg_error;
@@ -751,8 +762,13 @@ bool BfsFileImpl::Close() {
         StartWrite(_write_buf);
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
+        int wait_time = 0;
         while (_back_writing) {
-            _sync_signal.Wait();
+            _sync_signal.TimeWait(1000, (_name + " Close wait").c_str());
+            if (++wait_time >= 30 && (wait_time % 10 == 0)) {
+                LOG(WARNING, "Close timeout %d s, %s _back_writing= %d",
+                    wait_time, _name.c_str(), _back_writing);
+            }
         }
         delete _block_for_write;
         _block_for_write = NULL;
