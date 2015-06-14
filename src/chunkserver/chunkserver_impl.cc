@@ -607,7 +607,7 @@ void ChunkServerImpl::Routine() {
                 }
                 if (!new_replica_info.empty()) {
                     boost::function<void ()> new_replica_task =
-                        boost::bind(&ChunkServerImpl::AddNewReplica,
+                        boost::bind(&ChunkServerImpl::PullNewBlocks,
                                     this, new_replica_info);
                     _thread_pool->AddTask(new_replica_task);
                 }
@@ -821,7 +821,7 @@ void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
         }
     }
 }
-void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
+void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
     PullBlockReportRequest report_request;
     report_request.set_sequence_id(0);
     report_request.set_chunkserver_id(_chunkserver_id);
