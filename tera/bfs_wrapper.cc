@@ -8,6 +8,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include <bfs.h>
 #include "common/logging.h"
 #include "common/timer.h"
