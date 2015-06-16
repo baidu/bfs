@@ -594,18 +594,23 @@ void ChunkServerImpl::Routine() {
                 for (int i = 0; i < response.obsolete_blocks_size(); i++) {
                     obsolete_blocks.push_back(response.obsolete_blocks(i));
                 }
-                boost::function<void ()> task =
-                    boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks, this, obsolete_blocks);
-                _thread_pool->AddTask(task);
+                if (!obsolete_blocks.empty()) {
+                    boost::function<void ()> task =
+                        boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
+                                    this, obsolete_blocks);
+                    _thread_pool->AddTask(task);
+                }
 
                 std::vector<ReplicaInfo> new_replica_info;
                 for (int i = 0; i < response.new_replicas_size(); i++) {
                     new_replica_info.push_back(response.new_replicas(i));
                 }
-                boost::function<void ()> new_replica_task =
-                    boost::bind(&ChunkServerImpl::AddNewReplica, this, new_replica_info);
-                _thread_pool->AddTask(new_replica_task);
-
+                if (!new_replica_info.empty()) {
+                    boost::function<void ()> new_replica_task =
+                        boost::bind(&ChunkServerImpl::PullNewBlocks,
+                                    this, new_replica_info);
+                    _thread_pool->AddTask(new_replica_task);
+                }
             }
         }
         ++ ticks;
@@ -816,72 +821,76 @@ void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
         }
     }
 }
-void ChunkServerImpl::AddNewReplica(std::vector<ReplicaInfo> new_replica_info) {
+void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
+    PullBlockReportRequest report_request;
+    report_request.set_sequence_id(0);
+    report_request.set_chunkserver_id(_chunkserver_id);
     for (size_t i = 0; i < new_replica_info.size(); i++) {
         int64_t block_id = new_replica_info[i].block_id();
-        Block* block = _block_manager->FindBlock(block_id, false);
-        if (block == NULL) {
-            LOG(WARNING, "ReadBlock not found: %ld\n", block_id);
-        } else {
-            char* buf = new char[256 * 1024];
-            ChunkServer_Stub* cur_chunkserver = NULL;
-            if (!_rpc_client->GetStub(new_replica_info[i].chunkserver_address(0), &cur_chunkserver)) {
-                LOG(WARNING, "Can't connect to chunkserver:%s\n",
-                        new_replica_info[i].chunkserver_address(0).c_str());
-                continue;
+        ChunkServer_Stub* chunkserver = NULL;
+        Block* block = _block_manager->FindBlock(block_id, true);
+        if (!block) {
+            LOG(WARNING, "Cant't create block: %ld\n", block_id);
+            //ignore this block
+            continue;
+        }
+        if (!_rpc_client->GetStub(new_replica_info[i].chunkserver_address(0),
+                    &chunkserver)) {
+            LOG(WARNING, "Can't connect to chunkserver: %s\n",
+                    new_replica_info[i].chunkserver_address(0).c_str());
+            //remove this block
+            block->DecRef();
+            _block_manager->RemoveBlock(block_id);
+            report_request.add_blocks(block_id);
+            continue;
+        }
+        int64_t seq = -1;
+        int64_t offset = 0;
+        bool success = true;
+        while (1) {
+            ReadBlockRequest request;
+            ReadBlockResponse response;
+            request.set_sequence_id(++seq);
+            request.set_block_id(block_id);
+            request.set_offset(offset);
+            request.set_read_len(256 * 1024);
+            bool ret = _rpc_client->SendRequest(chunkserver,
+                                                &ChunkServer_Stub::ReadBlock,
+                                                &request, &response, 15, 3);
+            if (!ret || response.status() != 0) {
+                success = false;
+                break;
             }
-            int32_t len;
-            int64_t offset = 0;
-            int64_t packet_seq = 0;
-            while((len = block->Read(buf, 256 * 1024, offset)) != -1) {
-                if (len >= 0) {
-                    WriteBlockRequest request;
-                    WriteBlockResponse response;
-                    int64_t seq = common::timer::get_micros();
-                    request.set_sequence_id(seq);
-                    request.set_block_id(block_id);
-                    request.set_databuf(buf, len);
-                    request.set_offset(offset);
-                    request.set_is_last(len == 0);
-                    request.set_packet_seq(packet_seq);
-                    request.set_is_append(false);
-                    for (int j = 1; j < new_replica_info[i].chunkserver_address_size(); j++) {
-                        request.add_chunkservers(new_replica_info[i].chunkserver_address(j));
-                    }
-                    if (!_rpc_client->SendRequest(cur_chunkserver,
-                                &ChunkServer_Stub::WriteBlock, &request, &response, 15, 3)) {
-                        LOG(WARNING, "AddNewReplica %ld rpc call fail\n", block_id);
-                        break;
-                    }
-                    if (response.status() != 0) {
-                        LOG(WARNING, "AddNewReplica %ld fail\n", block_id);
-                        break;
-                    }
-                }
-                if (len == 0) {
+            int32_t len = response.databuf().size();
+            const char* buf = response.databuf().data();
+            if (len) {
+                if (!block->Write(seq, offset, buf, len)) {
+                    success = false;
                     break;
                 }
-                offset += len;
-                packet_seq++;
-            }
-            delete cur_chunkserver;
-            delete[] buf;
-        }
-        // send to nameserver finish
-        FinishBlockRequest request;
-        FinishBlockResponse response;
-        request.set_sequence_id(0);
-        request.set_block_id(block_id);
-        if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::FinishBlock,
-                    &request, &response, 15, 3)) {
-            LOG(WARNING, "Fail to report finish to nameserver: %ld\n", block_id);
-        } else {
-            if (response.status() == 0) {
-                LOG(INFO, "Report add new replica finish to nameserver: %ld\n", block_id);
             } else {
-                LOG(WARNING, "Report add new replica finish to nameserver fail: %ld\n", block_id);
+                block->SetSliceNum(seq);
             }
+            if (block->IsComplete() && _block_manager->CloseBlock(block)) {
+                LOG(INFO, "Pull block: %ld finish\n", block_id);
+                break;
+            }
+            offset += len;
         }
+        delete chunkserver;
+        block->DecRef();
+        if (!success) {
+            _block_manager->RemoveBlock(block_id);
+        }
+        report_request.add_blocks(block_id);
+    }
+
+    PullBlockReportResponse report_response;
+    if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::PullBlockReport,
+                &report_request, &report_response, 15, 3)) {
+        LOG(WARNING, "Report pull finish fail, chunkserver id: %d\n", _chunkserver_id);
+    } else {
+        LOG(INFO, "Report pull finish dnne, chunkserver id: %d\n", _chunkserver_id);
     }
 }
 
