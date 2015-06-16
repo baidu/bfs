@@ -740,10 +740,10 @@ bool BfsFileImpl::Sync() {
     }
     int wait_time = 0;
     while (_back_writing) {
-        _sync_signal.TimeWait(1000, (_name + " Sync wait").c_str());
+        bool finish = _sync_signal.TimeWait(1000, (_name + " Sync wait").c_str());
         if (++wait_time >= 30 && (wait_time % 10 == 0)) {
-            LOG(WARNING, "Sync timeout %d s, %s _back_writing= %d",
-                wait_time, _name.c_str(), _back_writing);
+            LOG(WARNING, "Sync timeout %d s, %s _back_writing= %d, finish= %d",
+                wait_time, _name.c_str(), _back_writing, finish);
         }
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());

@@ -156,6 +156,7 @@ public:
     void MarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
         _obsolete_blocks[block_id].insert(chunkserver_id);
+        LOG(INFO, "MarkObsoleteBlock %ld on %d", block_id, chunkserver_id);
     }
     void UnmarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);

@@ -4,31 +4,27 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#include "dfs.h"
-
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
 
+#include <common/test_utils.h>
+
+#include "dfs.h"
+
 const char* so_path = "./bfs_wrapper.so";
-const char* dfs_conf = "yq01-tera60.yq01:8828";
+//const char* dfs_conf = "yq01-tera60.yq01:8828";
+const char* dfs_conf = "127.0.0.1:8828";
 
 const std::string test_path("/test");
 
-#define ASSERT_TRUE(x) \
-    do { \
-        bool ret = x; \
-        if (!ret) { \
-            printf("\033[31m[Test failed]\033[0m: %d, %s\n", __LINE__, #x); \
-            exit(1); \
-        } else { \
-            printf("\033[32m[Test pass]\033[0m: %s\n", #x); \
-        } \
-    } while(0)
+int main(int argc, char* argv[]) {
+    if (argc > 1) {
+        dfs_conf = argv[1];
+    }
 
-int main() {
     dlerror();
     void* handle = dlopen(so_path, RTLD_NOW);
     const char* err = dlerror();

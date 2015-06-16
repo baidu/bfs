@@ -26,6 +26,7 @@ LDFLAGS('-lpthread -lz')
 CONFIGS('public/sofa-pbrpc@1.1.0.0')
 CONFIGS('third-64/gflags@gflags_2-0-0-100_PD_BL')
 CONFIGS('third-64/protobuf@2.6.1.200')
+CONFIGS('third-64/tcmalloc@tcmalloc_1-7-0-200_PD_BL')
 #CONFIGS('third-64/snappy@1.0.5.100')
 
 PROTOC('../../../third-64/protobuf/bin/protoc')
