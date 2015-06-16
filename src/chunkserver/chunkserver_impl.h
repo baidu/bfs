@@ -51,7 +51,7 @@ private:
                            ::google::protobuf::Closure* done,
                            ChunkServer_Stub* stub);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
-    void AddNewReplica(std::vector<ReplicaInfo> new_replica_info);
+    void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
