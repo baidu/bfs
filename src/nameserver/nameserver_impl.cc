@@ -866,6 +866,11 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                 for (std::set<int32_t>::iterator it = nsblock.replica.begin();
                         it != nsblock.replica.end(); ++it) {
                     int32_t server_id = *it;
+                    if (nsblock.pulling_chunkservers.find(server_id) !=
+                            nsblock.pulling_chunkservers.end()) {
+                        //this replica is under construction
+                        continue;
+                    }
                     std::string addr = _chunkserver_manager->GetChunkServer(server_id);
                     LOG(INFO, "return server %s for %ld", addr.c_str(), block_id);
                     ChunkServerInfo* info = lcblock->add_chains();
