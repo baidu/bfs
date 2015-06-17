@@ -116,7 +116,7 @@ public:
         pthread_cond_wait(&cond_, &mu_->mu_);
         mu_->AfterLock(msg, msg_threshold);
     }
-    // Time wait in m
+    // Time wait in ms, return true iff signalled
     bool TimeWait(int timeout, const char* msg = NULL) {
         timespec ts;
         struct timeval tv;

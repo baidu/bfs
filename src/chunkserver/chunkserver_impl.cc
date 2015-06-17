@@ -447,7 +447,6 @@ public:
         return true;
     }
     bool CloseBlock(Block* block) {
-        MutexLock lock(&_mu);
 
         if (!block->MarkFinish()) {
             return false;
@@ -461,41 +460,44 @@ public:
         return SyncBlockMeta(meta);
     }
     bool RemoveBlock(int64_t block_id) {
-        MutexLock lock(&_mu);
-        BlockMap::iterator it = _block_map.find(block_id);
-        if (it == _block_map.end()) {
-            LOG(WARNING, "Try to remove block that does not exist: %ld\n", block_id);
+        Block* block = NULL;
+        {
+            MutexLock lock(&_mu);
+            BlockMap::iterator it = _block_map.find(block_id);
+            if (it == _block_map.end()) {
+                LOG(WARNING, "Try to remove block that does not exist: %ld\n", block_id);
+                return false;
+            }
+            block = it->second;
+        }
+
+        std::string file_path = block->GetFilePath();
+        int ret = remove(file_path.c_str());
+        if (ret != 0) {
+            LOG(WARNING, "Remove disk file %s fails: %s\n",
+                file_path.c_str(), strerror(errno));
             return false;
         } else {
-            Block* block = it->second;
-            std::string file_path = block->GetFilePath();
+            LOG(INFO, "Remove disk file done: %s\n", file_path.c_str());
+        }
 
-            int ret = remove(file_path.c_str());
-            if (ret != 0) {
-                LOG(WARNING, "Remove disk file %s fails: %s\n",
-                    file_path.c_str(), strerror(errno));
-                return false;
-            } else {
-                LOG(INFO, "Remove disk file done: %s\n", file_path.c_str());
-            }
+        char dir_name[5];
+        snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
+        // Rmdir, ignore error when not empty.
+        rmdir((_store_path + dir_name).c_str());
+        char idstr[14];
+        snprintf(idstr, sizeof(idstr), "%13ld", block_id);
 
-            char dir_name[5];
-            snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
-            // Rmdir, ignore error when not empty.
-            rmdir((_store_path + dir_name).c_str());
-            char idstr[14];
-            snprintf(idstr, sizeof(idstr), "%13ld", block_id);
-
-            leveldb::Status s = _metadb->Delete(leveldb::WriteOptions(), idstr);
-            if (s.ok()) {
-                LOG(INFO, "Remove meta info done: %s\n", idstr);
-                _block_map.erase(it);
-                block->DecRef();
-                return true;
-            } else {
-                LOG(WARNING, "Remove meta info fails: %ld\n", idstr);
-                return false;
-            }
+        leveldb::Status s = _metadb->Delete(leveldb::WriteOptions(), idstr);
+        if (s.ok()) {
+            LOG(INFO, "Remove meta info done: %s\n", idstr);
+            MutexLock lock(&_mu);
+            _block_map.erase(block_id);
+            block->DecRef();
+            return true;
+        } else {
+            LOG(WARNING, "Remove meta info fails: %ld\n", idstr);
+            return false;
         }
     }
 private:
@@ -653,12 +655,16 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         response->set_sequence_id(request->sequence_id());
         LOG(DEBUG, "[WriteBlock] dispatch [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
+        response->add_desc("Recv");
+        response->add_timestamp(common::timer::get_micros());
         boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
         _thread_pool->AddTask(task);
         return;
     }
 
+    response->add_desc("Process");
+    response->add_timestamp(common::timer::get_micros());
     LOG(INFO, "[WriteBlock] [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
 
@@ -743,6 +749,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         response->set_status(0);
     }
 
+    int64_t find_start = common::timer::get_micros();
     /// search;
     Block* block = _block_manager->FindBlock(block_id, true);
     if (!block) {
@@ -752,14 +759,21 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         return;
     }
 
+    int64_t write_start = common::timer::get_micros();
     if (!block->Write(packet_seq, offset, databuf.data(), databuf.size())) {
         block->DecRef();
         response->set_status(812);
         done->Run();
         return;
     }
-    LOG(INFO, "WriteBlock done [bid:%ld, seq:%d, offset:%ld, len:%lu]\n",
-        block_id, packet_seq, offset, databuf.size());
+    int64_t time_end = common::timer::get_micros();
+    LOG(INFO, "WriteBlock done [bid:%ld, seq:%d, offset:%ld, len:%lu] use %d %d %d %d %d ms",
+        block_id, packet_seq, offset, databuf.size(),
+        (response->timestamp(1) - response->timestamp(0)) / 1000, // dispatch time
+        (find_start - response->timestamp(1)) / 1000, // async time
+        (write_start - find_start) / 1000,  // find time
+        (time_end - write_start) / 1000,    // write time
+        (time_end - response->timestamp(0)) / 1000); // total time
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
     }
@@ -768,6 +782,12 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     if (block->IsComplete() && _block_manager->CloseBlock(block)) {
         LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
         ReportFinish(block);
+    }
+    int64_t time_now = common::timer::get_micros();
+    if (time_now - response->timestamp(0) > 3000000) {
+        LOG(WARNING, "WriteBlock slow [bid:%ld, seq:%d, offset:%ld, len:%lu] use %d ms",
+            block_id, packet_seq, offset, databuf.size(), 
+            (time_now - response->timestamp(0)) / 1000);
     }
     done->Run();
     block->DecRef();
