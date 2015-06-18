@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
     }
 
     dlerror();
-    void* handle = dlopen(so_path, RTLD_NOW);
+    void* handle = dlopen(so_path, RTLD_LAZY | RTLD_DEEPBIND | RTLD_LOCAL);
     const char* err = dlerror();
     if (handle == NULL) {
         fprintf(stderr, "Open %s fail: %s\n", so_path, err);
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
     std::vector<std::string> result;
     ASSERT_TRUE(0 == dfs->ListDirectory(test_path, &result));
     ASSERT_TRUE(2 == result.size());
-    ASSERT_TRUE(file2 == result[0]);
+    ASSERT_TRUE(file2.substr(file2.rfind('/')+1) == result[0]);
 
     /// Delete
     ASSERT_TRUE(0 == dfs->Delete(file2));

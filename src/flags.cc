@@ -23,6 +23,7 @@ DEFINE_int32(blockreport_interval, 60, "blockreport_interval");
 DEFINE_int32(chunkserver_log_level, 4, "Nameserver log level");
 DEFINE_string(chunkserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
+DEFINE_int32(chunkserver_thread_num, 50, "Chunkserver work thread num");
 
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

@@ -91,24 +91,9 @@ public:
         }
     };
     BlockManager():_next_block_id(1) {}
-    int64_t NewBlock() {
+    int64_t NewBlockID() {
         MutexLock lock(&_mu);
         return ++_next_block_id;
-    }
-    bool AddBlock(int64_t id, int32_t server_id, int64_t block_size,
-                  int32_t* more_replica_num = NULL) {
-        MutexLock lock(&_mu);
-        NSBlock* nsblock = NULL;
-        NSBlockMap::iterator it = _block_map.find(id);
-        if (it == _block_map.end()) {
-            nsblock = new NSBlock(id);
-            _block_map[id] = nsblock;
-            nsblock->block_size = block_size;
-            LOG(DEBUG, "[BMAddBlock] New block %ld, size: %ld", id, block_size);
-            return true;
-        } else {
-            return false;
-        }
     }
     bool RemoveReplicaBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
@@ -253,7 +238,7 @@ public:
             return true;
         }
     }
-    void InitBlockInfo(int64_t block_id) {
+    void AddNewBlock(int64_t block_id) {
         MutexLock lock(&_mu);
         NSBlock* nsblock = NULL;
         NSBlockMap::iterator it = _block_map.find(block_id);
@@ -754,7 +739,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         done->Run();
     }
     const std::string& file_key = elements[elements.size()-1];
-    MutexLock lock(&_mu);
+
+    // MutexLock lock(&_mu); todo: lock on file, instead of lock on nameserver
     std::string infobuf;
     leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &infobuf);
     if (!s.ok()) {
@@ -772,15 +758,16 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
-        int64_t new_block_id = _block_manager->NewBlock();
+        int64_t new_block_id = _block_manager->NewBlockID();
         LOG(DEBUG, "[AddBlock] new block for %s id= %ld.",
             path.c_str(), new_block_id);
         LocatedBlock* block = response->mutable_block();
+        _block_manager->AddNewBlock(new_block_id);
         for (int i =0; i<replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to response\n", chains[i].second.c_str());
-            _block_manager->AddBlock(new_block_id, chains[i].first, 0);
+            _block_manager->UpdateBlockInfo(new_block_id, chains[i].first, 0);
         }
         block->set_block_id(new_block_id);
         response->set_status(0);
@@ -840,7 +827,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             BlockManager::NSBlock nsblock(block_id);
             if (!_block_manager->GetBlock(block_id, &nsblock)) {
-                // 新加的Block, 信息还没汇报上来, 忽略它
+                LOG(WARNING, "GetFileLocation GetBlock fail %ld", block_id);
                 continue;
             } else {
                 LocatedBlock* lcblock = response->add_blocks();
@@ -851,7 +838,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                     int32_t server_id = *it;
                     if (nsblock.pulling_chunkservers.find(server_id) !=
                             nsblock.pulling_chunkservers.end()) {
-                        //this replica is under construction
+                        LOG(INFO, "replica is under construction %ld on %d", block_id, server_id);
                         continue;
                     }
                     std::string addr = _chunkserver_manager->GetChunkServer(server_id);
@@ -861,7 +848,9 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                 }
             }
         }
-        // 找到文件了, 就返回成功
+        LOG(INFO, "NameServerImpl::GetFileLocation: %s return %d",
+            request->file_name().c_str(),info.blocks_size());
+        // success if file exist
         response->set_status(0);
     }
     done->Run();
@@ -1238,7 +1227,7 @@ void NameServerImpl::RebuildBlockMap() {
             //a file
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 int64_t block_id = file_info.blocks(i);
-                _block_manager->InitBlockInfo(block_id);
+                _block_manager->AddNewBlock(block_id);
                 _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
                 _block_manager->MarkBlockStable(block_id);
             }

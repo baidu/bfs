@@ -34,6 +34,7 @@ DECLARE_string(chunkserver_port);
 DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);
 DECLARE_int32(write_buf_size);
+DECLARE_int32(chunkserver_thread_num);
 
 namespace bfs {
 
@@ -57,10 +58,8 @@ struct BlockMeta {
     int64_t block_id;
     int64_t block_size;
     int64_t checksum;
-    char    file_path[16];  // format: /XXX/XXXXXXXXXX not more than 15bytes, index 10^13block
     BlockMeta()
       : block_id(0), block_size(0), checksum(0) {
-        file_path[0] = 0;
     }
 };
 
@@ -72,13 +71,13 @@ public:
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
       _bufdatalen(0), _file_desc(-1), _refs(0),
       _recv_window(NULL), _finished(false) {
-        _disk_file = store_path + _meta.file_path;
+        _disk_file = store_path;
         g_blocks.Inc();
     }
     ~Block() {
         if (_bufdatalen > 0) {
             LOG(INFO, "Data lost, %d bytes in %s,%ld",
-                _bufdatalen, _meta.file_path, _meta.block_size - _bufdatalen);
+                _bufdatalen, _disk_file.c_str(), _meta.block_size - _bufdatalen);
         }
         if (_blockbuf) {
             g_block_buffers.Dec();
@@ -122,6 +121,21 @@ public:
 
     /// Init this block before write.
     bool InitForWrite() {
+        MutexLock lock(&_mu);
+        if (_file_desc >= 0) {
+            return true;
+        }
+        assert(_meta.block_id < (1L<<40));
+        char file_path[16];
+        int len = snprintf(file_path, sizeof(file_path), "/%03ld", _meta.block_id % 1000);
+        assert(len == 4);
+        _disk_file += file_path;
+        // Mkdir dir for data block, ignore error, may already exist.
+        mkdir(_disk_file.c_str(), 0755);
+        len = snprintf(file_path, sizeof(file_path), "/%010ld", _meta.block_id / 1000);
+        assert (len == 11);
+        _disk_file += file_path;
+
         int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
             LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
@@ -184,6 +198,9 @@ public:
     }
     /// Write operation.
     bool Write(int32_t seq, int64_t offset, const char* data, int32_t len) {
+        if (!InitForWrite()) {
+            return false;
+        }
         LOG(INFO, "Block Write %d\n", seq);
         if (offset < _meta.block_size) {
             assert (offset + len <= _meta.block_size);
@@ -230,7 +247,7 @@ public:
         delete _blockbuf;
         _blockbuf = NULL;
         g_block_buffers.Dec();
-        LOG(INFO, "Block %ld %s closed", _meta.block_id, _meta.file_path);
+        LOG(INFO, "Block %ld %s closed", _meta.block_id, _disk_file.c_str());
     }
     void AddRef() {
         common::atomic_inc(&_refs);
@@ -256,7 +273,7 @@ private:
             int w = write(_file_desc, buf + wlen, len - wlen);
             if (w < 0) {
                 LOG(WARNING, "IOEroro write %s return %s",
-                    _meta.file_path, strerror(errno));
+                    _disk_file.c_str(), strerror(errno));
                 assert(0);
                 return wlen;
             }
@@ -379,52 +396,31 @@ public:
         delete it;
         return true;
     }
-    /// Create a new block for write
-    Block* NewBlockForWrite(int64_t block_id) {
-        BlockMeta meta;
-        meta.block_size = 0;
-        meta.checksum = 0;
-        meta.block_id = block_id;
-        
-        assert( block_id < (1L<<40));
-        int len = snprintf(meta.file_path, sizeof(meta.file_path),
-            "/%03ld", block_id % 1000);
-        // Mkdir dir for data block, ignore error, may already exist.
-        mkdir((_store_path + meta.file_path).c_str(), 0755);
-        len += snprintf(meta.file_path + len, sizeof(meta.file_path) - len,
-            "/%010ld", block_id / 1000);
-        assert (len == 15 && meta.file_path[len] == 0);
-
-        // Write meta & sync
-        if (!SyncBlockMeta(meta)) {
-            return NULL;
-        }
-        
-        Block* block = new Block(meta, _store_path);
-        if (!block->InitForWrite()) {
-            LOG(WARNING, "Block %ld, %s init fail", block_id, meta.file_path);
-            delete block;
-            return NULL;
-        }
-        return block;
-    }
-    Block* FindBlock(int64_t block_id, bool create_if_missing) {
-        MutexLock lock(&_mu);
-
+    Block* FindBlock(int64_t block_id, bool create_if_missing, int64_t* sync_time = NULL) {
+        bool new_create = false;
         Block* block = NULL;
-        BlockMap::iterator it = _block_map.find(block_id);
-        if (it != _block_map.end()) {
-            block = it->second;
-        } else if (create_if_missing) {
-            ///TODO: LRU block map
-            block = NewBlockForWrite(block_id);
-            ///TODO: Error handling
-            assert(block);
-            // for block_map
-            block->AddRef();
-            _block_map[block_id] = block;
-        } else {
-            // not found
+        {
+            MutexLock lock(&_mu);
+            BlockMap::iterator it = _block_map.find(block_id);
+            if (it != _block_map.end()) {
+                block = it->second;
+            } else if (create_if_missing) {
+                ///TODO: LRU block map
+                BlockMeta meta;
+                meta.block_id = block_id;
+                block = new Block(meta, _store_path);
+                new_create = true;
+                // for block_map
+                block->AddRef();
+                _block_map[block_id] = block;
+            } else {
+                // not found
+            }
+        }
+        // Write meta & sync
+        if (new_create && !SyncBlockMeta(block->GetMeta(), sync_time)) {
+            delete block;
+            block = NULL;
         }
         // for user
         if (block) {
@@ -432,14 +428,19 @@ public:
         }
         return block;
     }
-    bool SyncBlockMeta(const BlockMeta& meta) {
+    bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
         char idstr[64];
         snprintf(idstr, sizeof(idstr), "%13ld", meta.block_id);
 
         leveldb::WriteOptions options;
         options.sync = true;
+        int64_t time_start = common::timer::get_micros();
         leveldb::Status s = _metadb->Put(options, idstr,
             leveldb::Slice(reinterpret_cast<const char*>(&meta),sizeof(meta)));
+        int64_t time_use = common::timer::get_micros() - time_start;
+        LOG(INFO, "SyncBlockMeta use %ld ms, id: %ld size: %ld",
+            time_use / 1000, meta.block_id, meta.block_size);
+        if (sync_time) *sync_time = time_use;
         if (!s.ok()) {
             Log(WARNING, "Write to meta fail:%s\n", idstr);
             return false;
@@ -447,7 +448,6 @@ public:
         return true;
     }
     bool CloseBlock(Block* block) {
-
         if (!block->MarkFinish()) {
             return false;
         }
@@ -457,7 +457,7 @@ public:
         
         // Update meta
         BlockMeta meta = block->GetMeta();
-        return SyncBlockMeta(meta);
+        return SyncBlockMeta(meta, NULL);
     }
     bool RemoveBlock(int64_t block_id) {
         Block* block = NULL;
@@ -520,7 +520,7 @@ ChunkServerImpl::ChunkServerImpl()
     if (!_rpc_client->GetStub(ns_address, &_nameserver)) {
         assert(0);
     }
-    _thread_pool = new ThreadPool(10);
+    _thread_pool = new ThreadPool(FLAGS_chunkserver_thread_num);
     _thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
@@ -751,7 +751,8 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
 
     int64_t find_start = common::timer::get_micros();
     /// search;
-    Block* block = _block_manager->FindBlock(block_id, true);
+    int64_t sync_time = 0;
+    Block* block = _block_manager->FindBlock(block_id, true, &sync_time);
     if (!block) {
         LOG(WARNING, "Block not found: %ld\n", block_id);
         response->set_status(8404);
@@ -766,29 +767,31 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         done->Run();
         return;
     }
-    int64_t time_end = common::timer::get_micros();
-    LOG(INFO, "WriteBlock done [bid:%ld, seq:%d, offset:%ld, len:%lu] use %d %d %d %d %d ms",
-        block_id, packet_seq, offset, databuf.size(),
-        (response->timestamp(1) - response->timestamp(0)) / 1000, // dispatch time
-        (find_start - response->timestamp(1)) / 1000, // async time
-        (write_start - find_start) / 1000,  // find time
-        (time_end - write_start) / 1000,    // write time
-        (time_end - response->timestamp(0)) / 1000); // total time
+    int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
     }
 
     // If complete, close block, and report only once(close block return true).
+    int64_t report_start = write_end;
     if (block->IsComplete() && _block_manager->CloseBlock(block)) {
         LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
+        report_start = common::timer::get_micros();
         ReportFinish(block);
     }
-    int64_t time_now = common::timer::get_micros();
-    if (time_now - response->timestamp(0) > 3000000) {
-        LOG(WARNING, "WriteBlock slow [bid:%ld, seq:%d, offset:%ld, len:%lu] use %d ms",
-            block_id, packet_seq, offset, databuf.size(), 
-            (time_now - response->timestamp(0)) / 1000);
-    }
+
+    int64_t time_end = common::timer::get_micros();
+    LOG(INFO, "WriteBlock done [bid:%ld, seq:%d, offset:%ld, len:%lu] "
+              "use %ld %ld %ld %ld %ld %ld %ld %ld ms",
+        block_id, packet_seq, offset, databuf.size(),
+        (response->timestamp(1) - response->timestamp(0)) / 1000, // dispatch time
+        (find_start - response->timestamp(1)) / 1000, // async time
+        (write_start - find_start - sync_time) / 1000,  // find time
+        sync_time / 1000, // create sync time
+        (write_end - write_start) / 1000,    // write time
+        (report_start - write_end) / 1000, // close time
+        (time_end - report_start) / 1000, // report time
+        (time_end - response->timestamp(0)) / 1000); // total time
     done->Run();
     block->DecRef();
     block = NULL;
