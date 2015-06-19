@@ -83,7 +83,6 @@ public:
         int32_t expect_replica_num;
         bool pending_change;
         std::set<int32_t> pulling_chunkservers;
-        bool removed;
         NSBlock(int64_t block_id)
          : id(block_id), version(0), block_size(0),
            expect_replica_num(FLAGS_default_replica_num),
