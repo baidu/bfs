@@ -72,6 +72,15 @@ public:
       _bufdatalen(0), _file_desc(-1), _refs(0),
       _recv_window(NULL), _finished(false) {
         _disk_file = store_path;
+        char file_path[16];
+        int len = snprintf(file_path, sizeof(file_path), "/%03ld", _meta.block_id % 1000);
+        assert(len == 4);
+        _disk_file += file_path;
+        // Mkdir dir for data block, ignore error, may already exist.
+        mkdir(_disk_file.c_str(), 0755);
+        len = snprintf(file_path, sizeof(file_path), "/%010ld", _meta.block_id / 1000);
+        assert (len == 11);
+        _disk_file += file_path;
         g_blocks.Inc();
     }
     ~Block() {
@@ -119,23 +128,13 @@ public:
         return _meta;
     }
 
-    /// Init this block before write.
-    bool InitForWrite() {
+    /// Open corresponding file for write.
+    bool OpenForWrite() {
         MutexLock lock(&_mu);
         if (_file_desc >= 0) {
             return true;
         }
         assert(_meta.block_id < (1L<<40));
-        char file_path[16];
-        int len = snprintf(file_path, sizeof(file_path), "/%03ld", _meta.block_id % 1000);
-        assert(len == 4);
-        _disk_file += file_path;
-        // Mkdir dir for data block, ignore error, may already exist.
-        mkdir(_disk_file.c_str(), 0755);
-        len = snprintf(file_path, sizeof(file_path), "/%010ld", _meta.block_id / 1000);
-        assert (len == 11);
-        _disk_file += file_path;
-
         int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
             LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
@@ -198,7 +197,7 @@ public:
     }
     /// Write operation.
     bool Write(int32_t seq, int64_t offset, const char* data, int32_t len) {
-        if (!InitForWrite()) {
+        if (!OpenForWrite()) {
             return false;
         }
         LOG(INFO, "Block Write %d\n", seq);
