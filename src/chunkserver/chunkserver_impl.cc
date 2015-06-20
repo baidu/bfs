@@ -71,16 +71,12 @@ public:
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
       _bufdatalen(0), _file_desc(-1), _refs(0),
       _recv_window(NULL), _finished(false) {
-        _disk_file = store_path;
+        assert(_meta.block_id < (1L<<40));
         char file_path[16];
-        int len = snprintf(file_path, sizeof(file_path), "/%03ld", _meta.block_id % 1000);
-        assert(len == 4);
-        _disk_file += file_path;
-        // Mkdir dir for data block, ignore error, may already exist.
-        mkdir(_disk_file.c_str(), 0755);
-        len = snprintf(file_path, sizeof(file_path), "/%010ld", _meta.block_id / 1000);
-        assert (len == 11);
-        _disk_file += file_path;
+        int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
+            _meta.block_id % 1000, _meta.block_id / 1000);
+        assert (len == 15);
+        _disk_file = store_path + file_path;
         g_blocks.Inc();
     }
     ~Block() {
@@ -134,7 +130,9 @@ public:
         if (_file_desc >= 0) {
             return true;
         }
-        assert(_meta.block_id < (1L<<40));
+        std::string dir = _disk_file.substr(0, _disk_file.rfind('/'));
+        // Mkdir dir for data block, ignore error, may already exist.
+        mkdir(dir.c_str(), 0755);
         int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
             LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
