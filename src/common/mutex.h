@@ -12,10 +12,11 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include "timer.h"
+#include "logging.h"
 
 namespace common {
 
-// #define MUTEX_DEBUG
+#define MUTEX_DEBUG
 
 // A Mutex represents an exclusive lock.
 class Mutex {
@@ -29,7 +30,7 @@ public:
     }
     // Lock the mutex.
     // Will deadlock if the mutex is already locked by this thread.
-    void Lock(const char* msg = NULL, int64_t msg_threshold = 100) {
+    void Lock(const char* msg = NULL, int64_t msg_threshold = 5000) {
         #ifdef MUTEX_DEBUG
         int64_t s = 0;
         if (msg) {
@@ -40,7 +41,7 @@ public:
         AfterLock(msg, msg_threshold);
         #ifdef MUTEX_DEBUG_
         if (msg && lock_time_ - s > msg_threshold) {
-            printf("%s wait lock %.3f ms\n", msg, (lock_time_ -s) / 1000.0);
+            printf("[Mutex] %s wait lock %.3f ms\n", msg, (lock_time_ -s) / 1000.0);
         }
         #endif
     } 
@@ -69,7 +70,7 @@ private:
     void BeforeUnlock() {
         #ifdef MUTEX_DEBUG
         if (msg_ && timer::get_micros() - lock_time_ > msg_threshold_) {
-            printf("%s locked %.3f ms\n", msg_, (timer::get_micros() - lock_time_) / 1000.0);
+            printf("[Mutex] %s locked %.3f ms\n", msg_, (timer::get_micros() - lock_time_) / 1000.0);
         }
         msg_ = NULL;
         #endif
@@ -89,8 +90,9 @@ private:
 // Mutex lock guard
 class MutexLock {
 public:
-    explicit MutexLock(Mutex *mu, const char* msg = NULL) : mu_(mu) {
-        mu_->Lock(msg);
+    explicit MutexLock(Mutex *mu, const char* msg = NULL, int64_t msg_threshold = 5000)
+      : mu_(mu) {
+        mu_->Lock(msg, msg_threshold);
     }
     ~MutexLock() {
         mu_->Unlock();

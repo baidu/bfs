@@ -67,7 +67,7 @@ public:
     ///     1, Already received
     ///    -1, Not in receiving window
     int Add(int32_t offset, Item item) {
-        MutexLock lock(&mu_);
+        MutexLock lock(&mu_, "Slinding Add", 50000);
         int32_t pos = offset - base_offset_;
         if (pos >= size_) {
             return -1;

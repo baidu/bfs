@@ -69,7 +69,8 @@ public:
     Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool) :
       _thread_pool(thread_pool), _meta(meta),
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
-      _bufdatalen(0), _disk_file_size(0), _file_desc(-1), _refs(0),
+      _bufdatalen(0), _disk_writing(false),
+      _disk_file_size(0), _file_desc(-1), _refs(0),
       _recv_window(NULL), _finished(false) {
         assert(_meta.block_id < (1L<<40));
         char file_path[16];
@@ -78,6 +79,8 @@ public:
         assert (len == 15);
         _disk_file = store_path + file_path;
         g_blocks.Inc();
+        _recv_window = new common::SlidingWindow<Buffer>(100,
+                       boost::bind(&Block::WriteCallback, this, _1, _2));
     }
     ~Block() {
         if (_bufdatalen > 0) {
@@ -139,8 +142,6 @@ public:
             return false;
         }
         _file_desc = fd;
-        _recv_window = new common::SlidingWindow<Buffer>(100,
-                       boost::bind(&Block::WriteCallback, this, _1, _2));
         return true;
     }
     /// Set expected slice num, for IsComplete.
@@ -166,7 +167,7 @@ public:
         if (offset > _meta.block_size) {
             return -1;
         }
-        if (_file_desc == -1) {
+        if (_disk_file_size && _file_desc == -1) {
             int fd  = open(_disk_file.c_str(), O_RDONLY);
             if (fd < 0) {
                 fprintf(stderr, "Open block [%s] for read fail: %s\n",
@@ -212,10 +213,8 @@ public:
         return readlen;
     }
     /// Write operation.
-    bool Write(int32_t seq, int64_t offset, const char* data, int32_t len) {
-        if (!OpenForWrite()) {
-            return false;
-        }
+    bool Write(int32_t seq, int64_t offset, const char* data,
+               int32_t len, int64_t* add_use = NULL) {
         LOG(INFO, "Block Write %d\n", seq);
         if (offset < _meta.block_size) {
             assert (offset + len <= _meta.block_size);
@@ -229,7 +228,9 @@ public:
             memcpy(buf, data, len);
             g_writing_bytes.Add(len);
         }
+        int64_t add_start = common::timer::get_micros();
         int ret = _recv_window->Add(seq, Buffer(buf, len));
+        if (add_use) *add_use = common::timer::get_micros() - add_start;
         if (ret != 0) {
             delete[] buf;
             g_writing_bytes.Sub(len);
@@ -245,7 +246,7 @@ public:
     /// Flush block to disk.
     void Close() {
         LOG(INFO, "Block %ld Flush to %s", _meta.block_id, _disk_file.c_str());
-        MutexLock lock(&_mu);
+        MutexLock lock(&_mu, "Block::Close", 50000);
         if (_bufdatalen) {
             _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
             this->AddRef();
@@ -281,10 +282,16 @@ private:
         g_writing_bytes.Sub(buffer.len_);
     }
     void DiskWrite() {
+        if (!OpenForWrite()) {
+            assert(0);
+        }
         MutexLock lock(&_mu);
-        while (!_block_buf_list.empty()) {
+        while (!_disk_writing && !_block_buf_list.empty()) {
+            _disk_writing = true;
             const char* buf = _block_buf_list[0].first;
             int len = _block_buf_list[0].second;
+
+            // Unlock when disk write
             _mu.Unlock();
             int wlen = 0;
             while (wlen < len) {
@@ -297,13 +304,15 @@ private:
                 }
                 wlen += w;
             }
+            // Re-Lock for commit
             _mu.Lock();
             _disk_file_size += len;
             delete[] buf;
             g_block_buffers.Dec();
             _block_buf_list.erase(_block_buf_list.begin());
-            this->DecRef();
+            _disk_writing = false;
         }
+        this->DecRef();
     }
     /// Append to block buffer
     void Append(int32_t seq, const char*buf, int32_t len) {
@@ -344,9 +353,10 @@ private:
     int32_t     _last_seq;
     int32_t     _slice_num;
     char*       _blockbuf;
-    std::vector<std::pair<const char*,int> > _block_buf_list;
     int64_t     _buflen;
     int32_t     _bufdatalen;
+    std::vector<std::pair<const char*,int> > _block_buf_list;
+    bool        _disk_writing;
     std::string _disk_file;
     int32_t     _disk_file_size;
     int         _file_desc; ///< disk file fd
@@ -465,7 +475,7 @@ public:
         snprintf(idstr, sizeof(idstr), "%13ld", meta.block_id);
 
         leveldb::WriteOptions options;
-        options.sync = true;
+        // options.sync = true;
         int64_t time_start = common::timer::get_micros();
         leveldb::Status s = _metadb->Put(options, idstr,
             leveldb::Slice(reinterpret_cast<const char*>(&meta),sizeof(meta)));
@@ -792,8 +802,9 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         return;
     }
 
+    int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
-    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size())) {
+    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), &add_used)) {
         block->DecRef();
         response->set_status(812);
         done->Run();
@@ -814,12 +825,14 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
 
     int64_t time_end = common::timer::get_micros();
     LOG(INFO, "WriteBlock done [bid:%ld, seq:%d, offset:%ld, len:%lu] "
-              "use %ld %ld %ld %ld %ld %ld %ld %ld ms",
+              "use %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld ms",
         block_id, packet_seq, offset, databuf.size(),
+        (response->timestamp(0) - request->sequence_id()) / 1000, // recv
         (response->timestamp(1) - response->timestamp(0)) / 1000, // dispatch time
         (find_start - response->timestamp(1)) / 1000, // async time
         (write_start - find_start - sync_time) / 1000,  // find time
         sync_time / 1000, // create sync time
+        add_used / 1000, // sliding window add
         (write_end - write_start) / 1000,    // write time
         (report_start - write_end) / 1000, // close time
         (time_end - report_start) / 1000, // report time
