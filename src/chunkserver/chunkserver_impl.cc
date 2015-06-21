@@ -66,10 +66,10 @@ struct BlockMeta {
 /// Data block
 class Block {
 public:
-    Block(const BlockMeta& meta, const std::string& store_path) :
-      _meta(meta),
+    Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool) :
+      _thread_pool(thread_pool), _meta(meta),
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
-      _bufdatalen(0), _file_desc(-1), _refs(0),
+      _bufdatalen(0), _disk_file_size(0), _file_desc(-1), _refs(0),
       _recv_window(NULL), _finished(false) {
         assert(_meta.block_id < (1L<<40));
         char file_path[16];
@@ -166,7 +166,6 @@ public:
         if (offset > _meta.block_size) {
             return -1;
         }
-        int readlen = 0;
         if (_file_desc == -1) {
             int fd  = open(_disk_file.c_str(), O_RDONLY);
             if (fd < 0) {
@@ -176,21 +175,40 @@ public:
             }
             _file_desc = fd;
         }
-        ///
-        int64_t diskfile_size = _meta.block_size - _bufdatalen;
-        if (offset < diskfile_size) {
-            int pread_len = std::min(len, static_cast<int>(diskfile_size - offset));
-            readlen = pread(_file_desc, buf, pread_len, offset);
-            if(readlen < pread_len) {
-                assert(_meta.block_size == offset + readlen);
-            }
+        /// Read from disk
+        int readlen = 0;
+        while (offset + readlen < _disk_file_size) {
+            int pread_len = std::min(len - readlen,
+                                     static_cast<int>(_disk_file_size - offset - readlen));
+            _mu.Unlock();
+            int ret = pread(_file_desc, buf + readlen, pread_len, offset + readlen);
+            assert(ret == pread_len);
+            readlen += ret;
+            _mu.Lock();
+            if (readlen >= len) return readlen;
+            // If disk_file_size change, read again.
         }
-        int mem_offset = offset - diskfile_size + readlen;
-        if (mem_offset >= 0 && mem_offset < _bufdatalen) {
+        // Read from block_buf_list
+        int mem_offset = offset + readlen - _disk_file_size;
+        uint32_t buf_id = mem_offset / FLAGS_write_buf_size;
+        while (buf_id < _block_buf_list.size()) {
+            const char* block_buf = _block_buf_list[buf_id].first;
+            int buf_len = _block_buf_list[buf_id].second;
+            int mlen = std::min(len - readlen, buf_len - mem_offset);
+            memcpy(buf + readlen, block_buf, mlen);
+            readlen += mlen;
+            mem_offset = 0;
+            buf_id ++;
+            if (readlen >= len) return readlen;
+        }
+        // Read from block buf
+        assert (mem_offset >= 0);
+        if (mem_offset < _bufdatalen) {
             int mlen = std::min(_bufdatalen - mem_offset, len - readlen);
             memcpy(buf + readlen, _blockbuf + mem_offset, mlen);
             readlen += mlen;
         }
+
         return readlen;
     }
     /// Write operation.
@@ -225,18 +243,17 @@ public:
         return true;
     }
     /// Flush block to disk.
-    bool Flush() {
+    void Close() {
         LOG(INFO, "Block %ld Flush to %s", _meta.block_id, _disk_file.c_str());
         MutexLock lock(&_mu);
         if (_bufdatalen) {
-            int ret = DiskWrite(_blockbuf, _bufdatalen);
-            assert(ret);
+            _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
+            this->AddRef();
+            _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
+            _blockbuf = NULL;
             _bufdatalen = 0;
         }
-        return true;
-    }
-    void Close() {
-        MutexLock lock(&_mu);
+        /*
         ///TODO: Error handling
         int ret = close(_file_desc);
         assert(ret == 0);
@@ -245,6 +262,7 @@ public:
         _blockbuf = NULL;
         g_block_buffers.Dec();
         LOG(INFO, "Block %ld %s closed", _meta.block_id, _disk_file.c_str());
+        */
     }
     void AddRef() {
         common::atomic_inc(&_refs);
@@ -262,21 +280,30 @@ private:
         delete[] buffer.data_;
         g_writing_bytes.Sub(buffer.len_);
     }
-    /// Write data to disk
-    int DiskWrite(const char* buf, int32_t len) {
-        _mu.AssertHeld();
-        int wlen = 0;
-        while (wlen < len) {
-            int w = write(_file_desc, buf + wlen, len - wlen);
-            if (w < 0) {
-                LOG(WARNING, "IOEroro write %s return %s",
-                    _disk_file.c_str(), strerror(errno));
-                assert(0);
-                return wlen;
+    void DiskWrite() {
+        MutexLock lock(&_mu);
+        while (!_block_buf_list.empty()) {
+            const char* buf = _block_buf_list[0].first;
+            int len = _block_buf_list[0].second;
+            _mu.Unlock();
+            int wlen = 0;
+            while (wlen < len) {
+                int w = write(_file_desc, buf + wlen, len - wlen);
+                if (w < 0) {
+                    LOG(WARNING, "IOEroro write %s return %s",
+                        _disk_file.c_str(), strerror(errno));
+                    assert(0);
+                    break;
+                }
+                wlen += w;
             }
-            wlen += w;
+            _mu.Lock();
+            _disk_file_size += len;
+            delete[] buf;
+            g_block_buffers.Dec();
+            _block_buf_list.erase(_block_buf_list.begin());
+            this->DecRef();
         }
-        return len;
     }
     /// Append to block buffer
     void Append(int32_t seq, const char*buf, int32_t len) {
@@ -290,8 +317,12 @@ private:
         while (_bufdatalen + ap_len > _buflen) {
             int wlen = _buflen - _bufdatalen;
             memcpy(_blockbuf + _bufdatalen, buf, wlen);
-            int ret = DiskWrite(_blockbuf, _buflen);
-            assert(ret == _buflen);
+            _block_buf_list.push_back(std::make_pair(_blockbuf, FLAGS_write_buf_size));
+            this->AddRef();
+            _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
+            
+            _blockbuf = new char[_buflen];
+            g_block_buffers.Inc();
             _bufdatalen = 0;
             buf += wlen;
             ap_len -= wlen;
@@ -308,13 +339,16 @@ private:
         InDisk,
         InMem,
     };
+    ThreadPool* _thread_pool;
     BlockMeta   _meta;
     int32_t     _last_seq;
     int32_t     _slice_num;
     char*       _blockbuf;
+    std::vector<std::pair<const char*,int> > _block_buf_list;
     int64_t     _buflen;
     int32_t     _bufdatalen;
     std::string _disk_file;
+    int32_t     _disk_file_size;
     int         _file_desc; ///< disk file fd
     volatile int _refs;
     Mutex       _mu;
@@ -325,8 +359,9 @@ private:
 
 class BlockManager {
 public:
-    BlockManager(std::string store_path)
-        :_store_path(store_path), _metadb(NULL), _block_num(0) {
+    BlockManager(ThreadPool* thread_pool, std::string store_path)
+        :_thread_pool(thread_pool), _store_path(store_path),
+         _metadb(NULL), _block_num(0) {
         ///TODO: Multi disk support
         if (_store_path.empty() || _store_path[_store_path.size() - 1] != '/') {
             _store_path += "/";
@@ -364,7 +399,7 @@ public:
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
 
-            Block* block = new Block(meta, _store_path);
+            Block* block = new Block(meta, _store_path, _thread_pool);
             block->AddRef();
             _block_map[block_id] = block;
             _block_num ++;
@@ -405,7 +440,7 @@ public:
                 ///TODO: LRU block map
                 BlockMeta meta;
                 meta.block_id = block_id;
-                block = new Block(meta, _store_path);
+                block = new Block(meta, _store_path, _thread_pool);
                 new_create = true;
                 // for block_map
                 block->AddRef();
@@ -449,7 +484,6 @@ public:
             return false;
         }
         // Disk flush & sync
-        block->Flush();
         block->Close();
         
         // Update meta
@@ -498,6 +532,7 @@ public:
         }
     }
 private:
+    ThreadPool* _thread_pool;
     std::string _store_path;
     typedef std::map<int64_t, Block*> BlockMap;
     BlockMap  _block_map;
@@ -509,7 +544,8 @@ private:
 ChunkServerImpl::ChunkServerImpl()
     : _quit(false), _chunkserver_id(0), _namespace_version(0) {
     _data_server_addr = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
-    _block_manager = new BlockManager(FLAGS_block_store_path);
+    _thread_pool = new ThreadPool(FLAGS_chunkserver_thread_num);
+    _block_manager = new BlockManager(_thread_pool,FLAGS_block_store_path);
     bool s_ret = _block_manager->LoadStorage();
     assert(s_ret == true);
     _rpc_client = new RpcClient();
@@ -517,7 +553,6 @@ ChunkServerImpl::ChunkServerImpl()
     if (!_rpc_client->GetStub(ns_address, &_nameserver)) {
         assert(0);
     }
-    _thread_pool = new ThreadPool(FLAGS_chunkserver_thread_num);
     _thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
