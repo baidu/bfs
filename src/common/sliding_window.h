@@ -23,7 +23,7 @@ public:
     SlidingWindow(int32_t size, SlidingCallback callback)
       : bitmap_(NULL), items_(NULL), item_count_(0), 
         callback_(callback), size_(size),
-        base_offset_(0), ready_(0) {
+        base_offset_(0), ready_(0), notifying_(false) {
         bitmap_ = new char[size];
         memset(bitmap_, 0, size);
         items_ = new Item[size];
@@ -44,12 +44,13 @@ public:
             }
         }
     }
-    /// Notify 会在Add中被调用, 用户自己处理锁和死锁的问题
     void Notify() {
         mu_.AssertHeld();
+        notifying_ = true;
         while (bitmap_[ready_] == 1) {
+            mu_.Unlock();
             callback_(base_offset_, items_[ready_]);
-
+            mu_.Lock("SlidingWindow::Notify relock");
             bitmap_[ready_] = 0;
             ++ready_;
             ++base_offset_;
@@ -58,14 +59,19 @@ public:
                 ready_ = 0;
             }
         }
+        notifying_ = false;
     }
     int32_t UpBound() const {
         return base_offset_ + size_ - 1;
     }
-    /// Returns:
+    /// Add a new item to slinding window.
+    //  Returns:
     ///     0, Add to receiving buf;
     ///     1, Already received
     ///    -1, Not in receiving window
+    /// Notes:
+    ///     There is no thread pool, so SlidingCallback would be called by Add.
+    ///     Pay attention to a deadlock.
     int Add(int32_t offset, Item item) {
         MutexLock lock(&mu_, "Slinding Add", 50000);
         int32_t pos = offset - base_offset_;
@@ -81,13 +87,8 @@ public:
         bitmap_[pos] = 1;
         items_[pos] = item;
         ++item_count_;
-        Notify();
+        if (!notifying_) Notify();
         return 0;
-    }
-    void Reset() {
-        base_offset_ = 0;
-        ready_ = 0;
-        memset(bitmap_, 0, size_);
     }
 private:
     char* bitmap_;
@@ -97,6 +98,7 @@ private:
     int32_t size_;
     int32_t base_offset_;
     int32_t ready_;
+    bool notifying_;
     Mutex mu_;
 };
 
