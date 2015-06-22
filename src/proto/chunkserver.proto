@@ -34,6 +34,7 @@ message ReadBlockResponse {
     optional uint64 sequence_id = 1;
     optional int32 status = 2;
     optional bytes databuf = 3;
+    repeated int64 timestamp = 9;
 }
 
 service ChunkServer {

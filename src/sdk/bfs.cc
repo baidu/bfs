@@ -436,7 +436,7 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     int64_t block_id = lcblock.block_id();
     ReadBlockRequest request;
     ReadBlockResponse response;
-    request.set_sequence_id(0);
+    request.set_sequence_id(common::timer::get_micros());
     request.set_block_id(block_id);
     request.set_offset(offset);
     request.set_read_len(read_len);

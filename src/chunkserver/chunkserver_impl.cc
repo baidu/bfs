@@ -129,10 +129,10 @@ public:
 
     /// Open corresponding file for write.
     bool OpenForWrite() {
-        MutexLock lock(&_mu);
-        if (_file_desc >= 0) {
-            return true;
-        }
+        _mu.AssertHeld();
+        if (_file_desc >= 0) return true;
+        /// Unlock for disk operating.
+        _mu.Unlock();
         std::string dir = _disk_file.substr(0, _disk_file.rfind('/'));
         // Mkdir dir for data block, ignore error, may already exist.
         mkdir(dir.c_str(), 0755);
@@ -141,6 +141,7 @@ public:
             LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
             return false;
         }
+        _mu.Lock("Block::OpenForWrite");
         _file_desc = fd;
         return true;
     }
@@ -154,7 +155,7 @@ public:
     }
     /// Mark this block is finish, return iff the first.
     bool MarkFinish() {
-        MutexLock lock(&_mu);
+        MutexLock lock(&_mu, "Block::MarkFinish", 1000);
         if (_finished) {
             return false;
         }
@@ -163,7 +164,7 @@ public:
     }
     /// Read operation.
     int32_t Read(char* buf, int32_t len, int64_t offset) {
-        MutexLock lock(&_mu);
+        MutexLock lock(&_mu, "Block::Read", 1000);
         if (offset > _meta.block_size) {
             return -1;
         }
@@ -185,7 +186,7 @@ public:
             int ret = pread(_file_desc, buf + readlen, pread_len, offset + readlen);
             assert(ret == pread_len);
             readlen += ret;
-            _mu.Lock();
+            _mu.Lock("Block::Read relock", 1000);
             if (readlen >= len) return readlen;
             // If disk_file_size change, read again.
         }
@@ -246,7 +247,7 @@ public:
     /// Flush block to disk.
     void Close() {
         LOG(INFO, "Block %ld Flush to %s", _meta.block_id, _disk_file.c_str());
-        MutexLock lock(&_mu, "Block::Close", 50000);
+        MutexLock lock(&_mu, "Block::Close", 1000);
         if (_bufdatalen) {
             _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
             this->AddRef();
@@ -282,41 +283,41 @@ private:
         g_writing_bytes.Sub(buffer.len_);
     }
     void DiskWrite() {
-        if (!OpenForWrite()) {
-            assert(0);
-        }
-        MutexLock lock(&_mu);
-        while (!_disk_writing && !_block_buf_list.empty()) {
+        MutexLock lock(&_mu, "Block::DiskWrite", 1000);
+        if (!_disk_writing) {
             _disk_writing = true;
-            const char* buf = _block_buf_list[0].first;
-            int len = _block_buf_list[0].second;
+            if (!OpenForWrite())assert(0);
+            while (!_block_buf_list.empty()) {
+                const char* buf = _block_buf_list[0].first;
+                int len = _block_buf_list[0].second;
 
-            // Unlock when disk write
-            _mu.Unlock();
-            int wlen = 0;
-            while (wlen < len) {
-                int w = write(_file_desc, buf + wlen, len - wlen);
-                if (w < 0) {
-                    LOG(WARNING, "IOEroro write %s return %s",
-                        _disk_file.c_str(), strerror(errno));
-                    assert(0);
-                    break;
+                // Unlock when disk write
+                _mu.Unlock();
+                int wlen = 0;
+                while (wlen < len) {
+                    int w = write(_file_desc, buf + wlen, len - wlen);
+                    if (w < 0) {
+                        LOG(WARNING, "IOEroro write %s return %s",
+                            _disk_file.c_str(), strerror(errno));
+                        assert(0);
+                        break;
+                    }
+                    wlen += w;
                 }
-                wlen += w;
+                // Re-Lock for commit
+                _mu.Lock("Block::DiskWrite ReLock", 1000);
+                _disk_file_size += len;
+                delete[] buf;
+                g_block_buffers.Dec();
+                _block_buf_list.erase(_block_buf_list.begin());
             }
-            // Re-Lock for commit
-            _mu.Lock();
-            _disk_file_size += len;
-            delete[] buf;
-            g_block_buffers.Dec();
-            _block_buf_list.erase(_block_buf_list.begin());
             _disk_writing = false;
         }
         this->DecRef();
     }
     /// Append to block buffer
     void Append(int32_t seq, const char*buf, int32_t len) {
-        MutexLock lock(&_mu);
+        MutexLock lock(&_mu, "BlockAppend", 1000);
         if (_blockbuf == NULL) {
             _buflen = FLAGS_write_buf_size;
             _blockbuf = new char[_buflen];
@@ -442,7 +443,7 @@ public:
         bool new_create = false;
         Block* block = NULL;
         {
-            MutexLock lock(&_mu);
+            MutexLock lock(&_mu, "BlockManger::Find", 1000);
             BlockMap::iterator it = _block_map.find(block_id);
             if (it != _block_map.end()) {
                 block = it->second;
@@ -848,6 +849,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
                         ::google::protobuf::Closure* done) {
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
+        response->add_timestamp(common::timer::get_micros());
         boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::ReadBlock, this, controller, request, response, done);
         _thread_pool->AddTask(task);
@@ -859,18 +861,27 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     int32_t read_len = request->read_len();
     int status = 0;
 
+    int64_t find_start = common::timer::get_micros();
     Block* block = _block_manager->FindBlock(block_id, false);
     if (block == NULL) {
         status = 404;
         LOG(WARNING, "ReadBlock not found: %ld offset: %ld len: %d\n",
                 block_id, offset, read_len);
     } else {
+        int64_t read_start = common::timer::get_micros();
         char* buf = new char[read_len];
         int32_t len = block->Read(buf, read_len, offset);
+        int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
-            LOG(INFO, "ReadBlock: %ld offset: %ld len: %d return: %d",
-                block_id, offset, read_len, len);
+            LOG(INFO, "ReadBlock: %ld offset: %ld len: %d return: %d "
+                      "use %ld %ld %ld %ld %ld",
+                block_id, offset, read_len, len,
+                (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time
+                (find_start - response->timestamp(0)) / 1000,   // dispatch time
+                (read_start - find_start) / 1000, // find time
+                (read_end - read_start) / 1000,  // read time
+                (read_end - response->timestamp(0)) / 1000);    // service time
         } else {
             status = 882;
             LOG(WARNING, "ReadBlock fail: %ld offset: %ld len: %d\n",
