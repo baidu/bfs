@@ -12,7 +12,6 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include "timer.h"
-#include "logging.h"
 
 namespace common {
 
