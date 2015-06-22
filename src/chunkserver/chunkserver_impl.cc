@@ -42,6 +42,8 @@ common::Counter g_block_buffers;
 common::Counter g_blocks;
 common::Counter g_writing_bytes;
 common::Counter g_find_operations;
+common::Counter g_rpc_delay;
+common::Counter g_rpc_count;
 
 struct Buffer {
     const char* data_;
@@ -305,11 +307,11 @@ private:
                     }
                     wlen += w;
                 }
+                delete[] buf;
+                g_block_buffers.Dec();
                 // Re-Lock for commit
                 _mu.Lock("Block::DiskWrite ReLock", 1000);
                 _disk_file_size += len;
-                delete[] buf;
-                g_block_buffers.Dec();
                 _block_buf_list.erase(_block_buf_list.begin());
             }
             _disk_writing = false;
@@ -583,9 +585,13 @@ ChunkServerImpl::~ChunkServerImpl() {
 }
 
 void ChunkServerImpl::LogStatus() {
-    LOG(INFO, "[Status] blocks %ld, block_buffers %ld, writing_bytes %ld, find_ops %ld",
+    int64_t rpc_count = g_rpc_count.Clear();
+    int64_t rpc_delay = rpc_count ? (g_rpc_delay.Clear() / rpc_count / 1000) : 0;
+    LOG(INFO, "[Status] blocks %ld, block_buffers %ld, writing_bytes %ld, "
+              "find_ops %ld, rpc_delay(ms) %ld",
         g_blocks.Get(), g_block_buffers.Get(),
-        g_writing_bytes.Get(), g_find_operations.Clear()/5);
+        g_writing_bytes.Get(), g_find_operations.Clear()/5,
+        rpc_delay);
     _thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
 
@@ -843,6 +849,8 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         (report_start - write_end) / 1000, // close time
         (time_end - report_start) / 1000, // report time
         (time_end - response->timestamp(0)) / 1000); // total time
+    g_rpc_delay.Add(response->timestamp(0) - request->sequence_id());
+    g_rpc_count.Inc();
     done->Run();
     block->DecRef();
     block = NULL;
