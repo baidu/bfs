@@ -32,16 +32,15 @@ public:
     // Will deadlock if the mutex is already locked by this thread.
     void Lock(const char* msg = NULL, int64_t msg_threshold = 5000) {
         #ifdef MUTEX_DEBUG
-        int64_t s = 0;
-        if (msg) {
-            s = timer::get_micros();
-        }
+        int64_t s = (msg) ? timer::get_micros() : 0;
         #endif
         pthread_mutex_lock(&mu_);
         AfterLock(msg, msg_threshold);
-        #ifdef MUTEX_DEBUG_
+        #ifdef MUTEX_DEBUG
         if (msg && lock_time_ - s > msg_threshold) {
-            printf("[Mutex] %s wait lock %.3f ms\n", msg, (lock_time_ -s) / 1000.0);
+            char buf[32];
+            common::timer::now_time_str(buf, sizeof(buf));
+            printf("%s [Mutex] %s wait lock %.3f ms\n", buf, msg, (lock_time_ -s) / 1000.0);
         }
         #endif
     } 
@@ -70,7 +69,10 @@ private:
     void BeforeUnlock() {
         #ifdef MUTEX_DEBUG
         if (msg_ && timer::get_micros() - lock_time_ > msg_threshold_) {
-            printf("[Mutex] %s locked %.3f ms\n", msg_, (timer::get_micros() - lock_time_) / 1000.0);
+            char buf[32];
+            common::timer::now_time_str(buf, sizeof(buf));
+            printf("%s [Mutex] %s locked %.3f ms\n", 
+                   buf, msg_, (timer::get_micros() - lock_time_) / 1000.0);
         }
         msg_ = NULL;
         #endif
