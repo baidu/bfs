@@ -20,6 +20,7 @@ DEFINE_string(block_store_path, "./data", "Data path");
 DEFINE_string(chunkserver_port, "8825", "Chunkserver port");
 DEFINE_int32(heartbeat_interval, 5, "Heartbeat interval");
 DEFINE_int32(blockreport_interval, 60, "blockreport_interval");
+DEFINE_int32(blockreport_size, 100, "blockreport_size");
 DEFINE_int32(chunkserver_log_level, 4, "Nameserver log level");
 DEFINE_string(chunkserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
