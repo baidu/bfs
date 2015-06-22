@@ -487,11 +487,14 @@ public:
             assert(0);
             return false;
         } else {
-            if (is_complete) {
-                int cur_load = it->second->data_size();
-                size += cur_load;
+            int64_t cur_report_size = it->second->current_report_size();
+            cur_report_size += size;
+            if (!is_complete) {
+                it->second->set_current_report_size(cur_report_size);
+            } else {
+                it->second->set_data_size(cur_report_size);
+                it->second->set_current_report_size(0);
             }
-            it->second->set_data_size(size);
             LOG(INFO, "Get Report of ChunkServerLoad, server id: %d, load: %ld\n", id, size);
             return true;
         }
