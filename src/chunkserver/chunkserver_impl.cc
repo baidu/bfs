@@ -41,7 +41,9 @@ namespace bfs {
 common::Counter g_block_buffers;
 common::Counter g_blocks;
 common::Counter g_writing_bytes;
-common::Counter g_find_operations;
+common::Counter g_find_ops;
+common::Counter g_read_ops;
+common::Counter g_write_ops;
 common::Counter g_rpc_delay;
 common::Counter g_rpc_count;
 
@@ -447,7 +449,7 @@ public:
         Block* block = NULL;
         {
             MutexLock lock(&_mu, "BlockManger::Find", 1000);
-            g_find_operations.Inc();
+            g_find_ops.Inc();
             BlockMap::iterator it = _block_map.find(block_id);
             if (it != _block_map.end()) {
                 block = it->second;
@@ -587,10 +589,10 @@ ChunkServerImpl::~ChunkServerImpl() {
 void ChunkServerImpl::LogStatus() {
     int64_t rpc_count = g_rpc_count.Clear();
     int64_t rpc_delay = rpc_count ? (g_rpc_delay.Clear() / rpc_count / 1000) : 0;
-    LOG(INFO, "[Status] blocks %ld, block_buffers %ld, writing_bytes %ld, "
-              "find_ops %ld, rpc_delay(ms) %ld",
-        g_blocks.Get(), g_block_buffers.Get(),
-        g_writing_bytes.Get(), g_find_operations.Clear()/5,
+    LOG(INFO, "[Status] blocks %ld block_buffers %ld writing_bytes %ld "
+              "find %ld read %ld write %ld rpc_delay(ms) %ld",
+        g_blocks.Get(), g_block_buffers.Get(), g_writing_bytes.Get(),
+        g_find_ops.Clear()/5, g_read_ops.Clear()/5, g_write_ops.Clear()/5,
         rpc_delay);
     _thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
@@ -851,6 +853,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         (time_end - response->timestamp(0)) / 1000); // total time
     g_rpc_delay.Add(response->timestamp(0) - request->sequence_id());
     g_rpc_count.Inc();
+    g_write_ops.Inc();
     done->Run();
     block->DecRef();
     block = NULL;
@@ -895,6 +898,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
                 (read_start - find_start) / 1000, // find time
                 (read_end - read_start) / 1000,  // read time
                 (read_end - response->timestamp(0)) / 1000);    // service time
+            g_read_ops.Inc();
         } else {
             status = 882;
             LOG(WARNING, "ReadBlock fail: %ld offset: %ld len: %d\n",
