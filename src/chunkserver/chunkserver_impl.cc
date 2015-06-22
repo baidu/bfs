@@ -41,6 +41,7 @@ namespace bfs {
 common::Counter g_block_buffers;
 common::Counter g_blocks;
 common::Counter g_writing_bytes;
+common::Counter g_find_operations;
 
 struct Buffer {
     const char* data_;
@@ -444,6 +445,7 @@ public:
         Block* block = NULL;
         {
             MutexLock lock(&_mu, "BlockManger::Find", 1000);
+            g_find_operations.Inc();
             BlockMap::iterator it = _block_map.find(block_id);
             if (it != _block_map.end()) {
                 block = it->second;
@@ -504,7 +506,7 @@ public:
     bool RemoveBlock(int64_t block_id) {
         Block* block = NULL;
         {
-            MutexLock lock(&_mu);
+            MutexLock lock(&_mu, "BlockManager::RemoveBlock", 1000);
             BlockMap::iterator it = _block_map.find(block_id);
             if (it == _block_map.end()) {
                 LOG(WARNING, "Try to remove block that does not exist: %ld\n", block_id);
@@ -533,8 +535,10 @@ public:
         leveldb::Status s = _metadb->Delete(leveldb::WriteOptions(), idstr);
         if (s.ok()) {
             LOG(INFO, "Remove meta info done: %s\n", idstr);
-            MutexLock lock(&_mu);
-            _block_map.erase(block_id);
+            {
+                MutexLock lock(&_mu, "BlockManager::RemoveBlock erase", 1000);
+                _block_map.erase(block_id);
+            }
             block->DecRef();
             return true;
         } else {
@@ -579,8 +583,9 @@ ChunkServerImpl::~ChunkServerImpl() {
 }
 
 void ChunkServerImpl::LogStatus() {
-    LOG(INFO, "[Status] blocks %ld, block_buffers %ld, writing_bytes %ld",
-        g_blocks.Get(), g_block_buffers.Get(), g_writing_bytes.Get());
+    LOG(INFO, "[Status] blocks %ld, block_buffers %ld, writing_bytes %ld, find_ops %ld",
+        g_blocks.Get(), g_block_buffers.Get(),
+        g_writing_bytes.Get(), g_find_operations.Clear()/5);
     _thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
 
@@ -889,9 +894,9 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         }
         delete[] buf;
     }
-    block->DecRef();
     response->set_status(status);
     done->Run();
+    block->DecRef();
 }
 void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
     for (size_t i = 0; i < blocks.size(); i++) {

@@ -22,10 +22,11 @@
 
 DECLARE_string(nameserver);
 DECLARE_string(nameserver_port);
+DECLARE_int32(sdk_thread_num);
 
 namespace bfs {
 
-ThreadPool g_thread_pool(4);
+ThreadPool g_thread_pool(FLAGS_sdk_thread_num);
 
 struct LocatedBlocks {
     int64_t _file_length;

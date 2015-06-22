@@ -91,11 +91,11 @@ public:
     };
     BlockManager():_next_block_id(1) {}
     int64_t NewBlockID() {
-        MutexLock lock(&_mu);
+        MutexLock lock(&_mu, "BlockManager::NewBlockID", 1000);
         return ++_next_block_id;
     }
     bool RemoveReplicaBlock(int64_t block_id, int32_t chunkserver_id) {
-        MutexLock lock(&_mu);
+        MutexLock lock(&_mu, "BlockManager::RemoveReplicaBlock", 1000);
         NSBlockMap::iterator it = _block_map.find(block_id);
         if (it != _block_map.end()) {
             std::set<int32_t>::iterator cs = it->second->replica.find(chunkserver_id);
@@ -115,7 +115,7 @@ public:
         }
     }
     bool GetBlock(int64_t block_id, NSBlock* block) {
-        MutexLock lock(&_mu);
+        MutexLock lock(&_mu, "BlockManager::GetBlock", 1000);
         NSBlockMap::iterator it = _block_map.find(block_id);
         if (it == _block_map.end()) {
             return false;
@@ -124,7 +124,7 @@ public:
         return true;
     }
     bool CheckObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
-        MutexLock lock(&_mu);
+        MutexLock lock(&_mu, "BlockManager::CheckObsoleteBlock", 1000);
         std::map<int64_t, std::set<int32_t> >::iterator it
             = _obsolete_blocks.find(block_id);
         if (it == _obsolete_blocks.end()) {
