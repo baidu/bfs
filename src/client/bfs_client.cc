@@ -145,7 +145,7 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
         fclose(fp);
         return 1;
     }
-    char buf[1024];
+    char buf[10240];
     int64_t len = 0;
     int64_t bytes = 0;
     while ( (bytes = fread(buf, 1, sizeof(buf), fp)) > 0) {

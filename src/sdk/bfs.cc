@@ -22,10 +22,11 @@
 
 DECLARE_string(nameserver);
 DECLARE_string(nameserver_port);
+DECLARE_int32(sdk_thread_num);
 
 namespace bfs {
 
-ThreadPool g_thread_pool(4);
+ThreadPool g_thread_pool(FLAGS_sdk_thread_num);
 
 struct LocatedBlocks {
     int64_t _file_length;
@@ -429,14 +430,15 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     if (_located_blocks._blocks.empty()) {
         return 0;
     } else if (_located_blocks._blocks[0].chains_size() == 0) {
-        printf("No located servers or _located_blocks[%lu]\n", _located_blocks._blocks.size());
+        LOG(WARNING, "No located servers or _located_blocks[%lu]",
+            _located_blocks._blocks.size());
         return -3;
     }
     LocatedBlock& lcblock = _located_blocks._blocks[0];
     int64_t block_id = lcblock.block_id();
     ReadBlockRequest request;
     ReadBlockResponse response;
-    request.set_sequence_id(0);
+    request.set_sequence_id(common::timer::get_micros());
     request.set_block_id(block_id);
     request.set_offset(offset);
     request.set_read_len(read_len);
@@ -510,7 +512,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
     common::timer::AutoTimer at(100, "Write", _name.c_str());
 
     {
-        MutexLock lock(&_mu, "Write");
+        MutexLock lock(&_mu, "Write", 1000);
         if (!(_open_flags & O_WRONLY) && !(_open_flags & O_APPEND)) {
             return -2;
         }
@@ -520,7 +522,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
         common::atomic_inc(&_back_writing);
     }
     if (_open_flags & O_WRONLY) {
-        MutexLock lock(&_mu, "Write");
+        MutexLock lock(&_mu, "Write", 1000);
         // Add block
         if (_chains_head == NULL) {
             AddBlockRequest request;
@@ -591,7 +593,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
 }
 
 void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
-    common::timer::AutoTimer at(200, "StartWrite", _name.c_str());
+    common::timer::AutoTimer at(10, "StartWrite", _name.c_str());
     _mu.AssertHeld();
     _write_queue.push(_write_buf);
     _block_for_write->set_block_size(_block_for_write->block_size() + _write_buf->Size());
