@@ -589,7 +589,7 @@ ChunkServerImpl::~ChunkServerImpl() {
 void ChunkServerImpl::LogStatus() {
     int64_t rpc_count = g_rpc_count.Clear();
     int64_t rpc_delay = rpc_count ? (g_rpc_delay.Clear() / rpc_count / 1000) : 0;
-    LOG(INFO, "[Status] blocks %ld block_buffers %ld writing_bytes %ld "
+    LOG(INFO, "[Status] blocks %ld buffers %ld writing(B) %ld "
               "find %ld read %ld write %ld rpc_delay(ms) %ld",
         g_blocks.Get(), g_block_buffers.Get(), g_writing_bytes.Get(),
         g_find_ops.Clear()/5, g_read_ops.Clear()/5, g_write_ops.Clear()/5,
