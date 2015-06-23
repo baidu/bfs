@@ -83,6 +83,15 @@ public:
             _meta.block_id % 1000, _meta.block_id / 1000);
         assert (len == 15);
         _disk_file = store_path + file_path;
+        if (access(_disk_file.c_str(), F_OK) == 0) {
+            struct stat file_info;
+            if (stat(_disk_file.c_str(), &file_info) < 0) {
+                fprintf(stderr, "Get file info [%s] for read fail: %s\n",
+                        _disk_file.c_str(), strerror(errno));
+                assert(0);
+            }
+            _disk_file_size = file_info.st_size;
+        }
         g_blocks.Inc();
         _recv_window = new common::SlidingWindow<Buffer>(100,
                        boost::bind(&Block::WriteCallback, this, _1, _2));
