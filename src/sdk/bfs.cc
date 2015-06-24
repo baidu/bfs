@@ -430,7 +430,7 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     if (_located_blocks._blocks.empty()) {
         return 0;
     } else if (_located_blocks._blocks[0].chains_size() == 0) {
-        LOG(WARNING, "No located servers or _located_blocks[%lu]",
+        LOG(WARNING, "No located servers or _located_blocks[%lu]\n",
             _located_blocks._blocks.size());
         return -3;
     }
