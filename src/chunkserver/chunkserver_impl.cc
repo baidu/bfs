@@ -63,8 +63,9 @@ struct BlockMeta {
     int64_t block_id;
     int64_t block_size;
     int64_t checksum;
+    bool finished;
     BlockMeta()
-      : block_id(0), block_size(0), checksum(0) {
+      : block_id(0), block_size(0), checksum(0), finished(false) {
     }
 };
 
@@ -76,21 +77,27 @@ public:
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
       _bufdatalen(0), _disk_writing(false),
       _disk_file_size(0), _file_desc(-1), _refs(0),
-      _recv_window(NULL), _finished(false) {
+      _recv_window(NULL) {
         assert(_meta.block_id < (1L<<40));
         char file_path[16];
         int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
             _meta.block_id % 1000, _meta.block_id / 1000);
         assert (len == 15);
         _disk_file = store_path + file_path;
-        if (access(_disk_file.c_str(), F_OK) == 0) {
-            struct stat file_info;
-            if (stat(_disk_file.c_str(), &file_info) < 0) {
-                fprintf(stderr, "Get file info [%s] for read fail: %s\n",
-                        _disk_file.c_str(), strerror(errno));
+        if (_meta.finished) {
+            if (access(_disk_file.c_str(), F_OK) == 0) {
+                struct stat file_info;
+                if (stat(_disk_file.c_str(), &file_info) < 0) {
+                    fprintf(stderr, "Get file info [%s] for read fail: %s\n",
+                            _disk_file.c_str(), strerror(errno));
+                    assert(0);
+                }
+                _disk_file_size = file_info.st_size;
+            } else {
+                LOG(WARNING, "File [%s] of block %ld doesn't exist\n",
+                        _disk_file.c_str(), _meta.block_id);
                 assert(0);
             }
-            _disk_file_size = file_info.st_size;
         }
         g_blocks.Inc();
         _recv_window = new common::SlidingWindow<Buffer>(100,
@@ -170,10 +177,10 @@ public:
     /// Mark this block is finish, return iff the first.
     bool MarkFinish() {
         MutexLock lock(&_mu, "Block::MarkFinish", 1000);
-        if (_finished) {
+        if (_meta.finished) {
             return false;
         }
-        _finished = true;
+        _meta.finished = true;
         return true;
     }
     /// Read operation.
@@ -378,7 +385,6 @@ private:
     volatile int _refs;
     Mutex       _mu;
     common::SlidingWindow<Buffer>* _recv_window;
-    bool        _finished;
     int         _write_mode;
 };
 
