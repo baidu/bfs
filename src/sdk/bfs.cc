@@ -593,7 +593,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
 }
 
 void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
-    common::timer::AutoTimer at(10, "StartWrite", _name.c_str());
+    common::timer::AutoTimer at(5, "StartWrite", _name.c_str());
     _mu.AssertHeld();
     _write_queue.push(_write_buf);
     _block_for_write->set_block_size(_block_for_write->block_size() + _write_buf->Size());
