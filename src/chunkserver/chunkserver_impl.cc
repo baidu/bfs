@@ -75,7 +75,7 @@ public:
       _thread_pool(thread_pool), _meta(meta),
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
       _bufdatalen(0), _disk_writing(false),
-      _disk_file_size(0), _file_desc(-1), _refs(0),
+      _disk_file_size(meta.block_size), _file_desc(-1), _refs(0),
       _recv_window(NULL), _finished(false) {
         assert(_meta.block_id < (1L<<40));
         char file_path[16];
