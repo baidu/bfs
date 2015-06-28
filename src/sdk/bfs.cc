@@ -425,17 +425,28 @@ BfsFileImpl::~BfsFileImpl () {
 }
 
 int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
-    MutexLock lock(&_mu, "Pread");
-     
-    if (_located_blocks._blocks.empty()) {
-        return 0;
-    } else if (_located_blocks._blocks[0].chains_size() == 0) {
-        LOG(WARNING, "No located servers or _located_blocks[%lu]",
-            _located_blocks._blocks.size());
-        return -3;
+    LocatedBlock lcblock;
+    ChunkServer_Stub* chunk_server = NULL;
+    std::string cs_addr;
+
+    {
+        MutexLock lock(&_mu, "Pread");
+        if (_located_blocks._blocks.empty()) {
+            return 0;
+        } else if (_located_blocks._blocks[0].chains_size() == 0) {
+            LOG(WARNING, "No located servers or _located_blocks[%lu]",
+                _located_blocks._blocks.size());
+            return -3;
+        }
+        lcblock.CopyFrom(_located_blocks._blocks[0]);
+        cs_addr = lcblock.chains(0).address();
+        if (_chunkserver == NULL) {
+            _fs->_rpc_client->GetStub(cs_addr, &_chunkserver);
+        }
+        chunk_server = _chunkserver;
     }
-    LocatedBlock& lcblock = _located_blocks._blocks[0];
     int64_t block_id = lcblock.block_id();
+
     ReadBlockRequest request;
     ReadBlockResponse response;
     request.set_sequence_id(common::timer::get_micros());
@@ -443,24 +454,24 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     request.set_offset(offset);
     request.set_read_len(read_len);
     bool ret = false;
-    int retry_times = 0;
     int next_server = 0;
-    if (_chunkserver == NULL) {
-        int first_server = rand() % lcblock.chains_size();
-        _fs->_rpc_client->GetStub(lcblock.chains(first_server).address(), &_chunkserver);
-    }
 
-    while (!ret || response.status() != 0) {
-        if (retry_times++ > lcblock.chains_size()) {
-            break;
-        }
-        if (retry_times == 1) {
-            ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
+    for (int retry_times = 0; retry_times < lcblock.chains_size(); retry_times++) {
+        LOG(DEBUG, "Start Pread: %s", cs_addr.c_str());
+        ret = _fs->_rpc_client->SendRequest(chunk_server, &ChunkServer_Stub::ReadBlock,
                     &request, &response, 15, 3);
+
+        if (!ret || response.status() != 0) {
+            ///TODO: Add to _bad_chunkservers
+            cs_addr = lcblock.chains(++next_server).address();
+            LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
+            _fs->_rpc_client->GetStub(cs_addr, &chunk_server);
+            {
+                MutexLock lock(&_mu, "Pread change _chunkserver");
+                _chunkserver = chunk_server;
+            }
         } else {
-            _fs->_rpc_client->GetStub(lcblock.chains(next_server++).address(), &_chunkserver);
-            ret = _fs->_rpc_client->SendRequest(_chunkserver, &ChunkServer_Stub::ReadBlock,
-                    &request, &response, 15, 3);
+            break;
         }
     }
 
