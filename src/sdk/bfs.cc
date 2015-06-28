@@ -446,7 +446,6 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     int retry_times = 0;
     int next_server = 0;
     if (_chunkserver == NULL) {
-        srand(time(NULL));
         int first_server = rand() % lcblock.chains_size();
         _fs->_rpc_client->GetStub(lcblock.chains(first_server).address(), &_chunkserver);
     }
