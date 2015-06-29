@@ -581,9 +581,10 @@ void ChunkServerImpl::Routine() {
                 std::vector<BlockMeta>(blocks).swap(blocks);
             }
             size_t blocks_num = blocks.size();
+            size_t last_block = ticks ?
+                next_report_offset + FLAGS_blockreport_size : blocks_num;
             size_t i = next_report_offset;
-            for (; i < next_report_offset + FLAGS_blockreport_size
-                    && i < blocks_num; i++) {
+            for (; i < last_block && i < blocks_num; i++) {
                 ReportBlockInfo* info = request.add_blocks();
                 info->set_block_id(blocks[i].block_id);
                 info->set_block_size(blocks[i].block_size);
