@@ -96,6 +96,7 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
+    common::timer::AutoTimer at(0, "BfsGet", argv[0]);
     bfs::File* file;
     if (!fs->OpenFile(argv[0], O_RDONLY, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", argv[0]);

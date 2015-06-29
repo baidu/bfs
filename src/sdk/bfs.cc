@@ -23,6 +23,7 @@
 DECLARE_string(nameserver);
 DECLARE_string(nameserver_port);
 DECLARE_int32(sdk_thread_num);
+DECLARE_int32(sdk_file_reada_len);
 
 namespace bfs {
 
@@ -93,7 +94,7 @@ class BfsFileImpl : public File {
 public:
     BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name, int32_t flags);
     ~BfsFileImpl ();
-    int64_t Pread(char* buf, int64_t read_size, int64_t offset);
+    int64_t Pread(char* buf, int64_t read_size, int64_t offset, bool reada = false);
     int64_t Seek(int64_t offset, int32_t whence);
     int64_t Read(char* buf, int64_t read_size);
     int64_t Write(const char* buf, int64_t write_size);
@@ -141,6 +142,9 @@ private:
     LocatedBlocks _located_blocks;      ///< block meta for read
     ChunkServer_Stub* _chunkserver;     ///< located chunkserver
     int64_t _read_offset;               ///< 读取的偏移
+    char* _reada_buffer;                ///< Read ahead buffer
+    int32_t _reada_buf_len;             ///< Read ahead buffer length
+    int64_t _reada_base;                ///< Read ahead base offset
 
     bool _closed;                       ///< 是否关闭
     Mutex   _mu;
@@ -411,7 +415,8 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
   : _fs(fs), _rpc_client(rpc_client), _name(name),
     _open_flags(flags), _chains_head(NULL), _block_for_write(NULL),
     _write_buf(NULL), _last_seq(-1), _back_writing(0),
-    _chunkserver(NULL), _read_offset(0), _closed(false),
+    _chunkserver(NULL), _read_offset(0), _reada_buffer(NULL),
+    _reada_buf_len(0), _reada_base(0), _closed(false),
     _sync_signal(&_mu), _bg_error(false) {
     _write_window = new common::SlidingWindow<int>(100,
                         boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
@@ -421,10 +426,21 @@ BfsFileImpl::~BfsFileImpl () {
     if (!_closed) {
         _fs->CloseFile(this);
     }
+    delete[] _reada_buffer;
+    _reada_buffer = NULL;
     delete _write_window;
+    _write_window = NULL;
 }
 
-int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
+int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool reada) {
+    if (reada) {
+        MutexLock lock(&_mu, "Pread read buffer");
+        if (_reada_base <= offset && _reada_base + _reada_buf_len > offset + read_len) {
+            memcpy(buf, _reada_buffer + (offset - _reada_base), read_len);
+            return read_len;
+        }
+    }
+    const int reada_len = FLAGS_sdk_file_reada_len;
     LocatedBlock lcblock;
     ChunkServer_Stub* chunk_server = NULL;
     std::string cs_addr;
@@ -452,14 +468,15 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     request.set_sequence_id(common::timer::get_micros());
     request.set_block_id(block_id);
     request.set_offset(offset);
-    request.set_read_len(read_len);
+    int32_t rlen = (reada && read_len < reada_len) ? reada_len : read_len;
+    request.set_read_len(rlen);
     bool ret = false;
     int next_server = 0;
 
-    for (int retry_times = 0; retry_times < lcblock.chains_size(); retry_times++) {
+    for (int retry_times = 0; retry_times < lcblock.chains_size() * 2; retry_times++) {
         LOG(DEBUG, "Start Pread: %s", cs_addr.c_str());
         ret = _fs->_rpc_client->SendRequest(chunk_server, &ChunkServer_Stub::ReadBlock,
-                    &request, &response, 15, 3);
+                    &request, &response, 15, 1);
 
         if (!ret || response.status() != 0) {
             ///TODO: Add to _bad_chunkservers
@@ -483,6 +500,16 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset) {
     //printf("Pread[%s:%ld:%ld] return %lu bytes\n",
     //       _name.c_str(), offset, read_len, response.databuf().size());
     int64_t ret_len = response.databuf().size();
+    if (read_len < ret_len) {
+        MutexLock lock(&_mu, "Pread fill buffer");
+        _reada_buf_len = ret_len - read_len;
+        if (_reada_buffer == NULL) {
+            _reada_buffer = new char[_reada_buf_len];
+        }
+        memcpy(_reada_buffer, response.databuf().data() + read_len, _reada_buf_len);
+        _reada_base = offset + read_len;
+        ret_len = read_len;
+    }
     assert(read_len >= ret_len);
     memcpy(buf, response.databuf().data(), ret_len);
     return ret_len;
@@ -509,7 +536,7 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
     if (_open_flags != O_RDONLY) {
         return -2;
     }
-    int ret = Pread(buf, read_len, _read_offset);
+    int ret = Pread(buf, read_len, _read_offset, true);
     if (ret >= 0) {
         _read_offset += ret;
     }
