@@ -522,9 +522,8 @@ public:
         std::string file_path = block->GetFilePath();
         int ret = remove(file_path.c_str());
         if (ret != 0) {
-            LOG(WARNING, "Remove disk file %s fails: %s\n",
-                file_path.c_str(), strerror(errno));
-            return false;
+            LOG(WARNING, "Remove disk file %s fails: %d (%s)\n",
+                file_path.c_str(), errno, strerror(errno));
         } else {
             LOG(INFO, "Remove disk file done: %s\n", file_path.c_str());
         }
@@ -908,7 +907,9 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     }
     response->set_status(status);
     done->Run();
-    block->DecRef();
+    if (block) {
+        block->DecRef();
+    }
 }
 void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
     for (size_t i = 0; i < blocks.size(); i++) {
