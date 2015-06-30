@@ -434,7 +434,7 @@ BfsFileImpl::~BfsFileImpl () {
 
 int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool reada) {
     if (reada) {
-        MutexLock lock(&_mu, "Pread read buffer");
+        MutexLock lock(&_mu, "Pread read buffer", 1000);
         if (_reada_base <= offset && _reada_base + _reada_buf_len > offset + read_len) {
             memcpy(buf, _reada_buffer + (offset - _reada_base), read_len);
             return read_len;
@@ -446,7 +446,7 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
     std::string cs_addr;
 
     {
-        MutexLock lock(&_mu, "Pread");
+        MutexLock lock(&_mu, "Pread GetStub", 1000);
         if (_located_blocks._blocks.empty()) {
             return 0;
         } else if (_located_blocks._blocks[0].chains_size() == 0) {
@@ -476,15 +476,15 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
     for (int retry_times = 0; retry_times < lcblock.chains_size() * 2; retry_times++) {
         LOG(DEBUG, "Start Pread: %s", cs_addr.c_str());
         ret = _fs->_rpc_client->SendRequest(chunk_server, &ChunkServer_Stub::ReadBlock,
-                    &request, &response, 15, 1);
+                    &request, &response, 15, 3);
 
         if (!ret || response.status() != 0) {
             ///TODO: Add to _bad_chunkservers
-            cs_addr = lcblock.chains(++next_server).address();
+            cs_addr = lcblock.chains((++next_server) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
             _fs->_rpc_client->GetStub(cs_addr, &chunk_server);
             {
-                MutexLock lock(&_mu, "Pread change _chunkserver");
+                MutexLock lock(&_mu, "Pread change _chunkserver", 1000);
                 _chunkserver = chunk_server;
             }
         } else {
@@ -501,7 +501,7 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
     //       _name.c_str(), offset, read_len, response.databuf().size());
     int64_t ret_len = response.databuf().size();
     if (read_len < ret_len) {
-        MutexLock lock(&_mu, "Pread fill buffer");
+        MutexLock lock(&_mu, "Pread fill buffer", 1000);
         _reada_buf_len = ret_len - read_len;
         if (_reada_buffer == NULL) {
             _reada_buffer = new char[_reada_buf_len];
@@ -559,7 +559,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
         common::atomic_inc(&_back_writing);
     }
     if (_open_flags & O_WRONLY) {
-        MutexLock lock(&_mu, "Write", 1000);
+        MutexLock lock(&_mu, "Write AddBlock", 1000);
         // Add block
         if (_chains_head == NULL) {
             AddBlockRequest request;
@@ -581,7 +581,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
             _rpc_client->GetStub(addr, &_chains_head);
         }
     } else if (_open_flags == O_APPEND) {
-        MutexLock lock(&_mu, "Append");
+        MutexLock lock(&_mu, "Append", 1000);
         if (_chains_head == NULL) {
             FileLocationRequest request;
             FileLocationResponse response;
@@ -605,7 +605,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
 
     int w = 0;
     while (w < len) {
-        MutexLock lock(&_mu, "WriteInternal");
+        MutexLock lock(&_mu, "WriteInternal", 1000);
         if (_write_buf == NULL) {
             _write_buf = new WriteBuffer(++_last_seq, 256*1024,
                                          _block_for_write->block_id(),
@@ -638,18 +638,20 @@ void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
     boost::function<void ()> task = 
         boost::bind(&BfsFileImpl::BackgroundWrite, this, _chains_head);
     common::atomic_inc(&_back_writing);
+    _mu.Unlock();
     g_thread_pool.AddTask(task);
+    _mu.Lock("StartWrite relock", 1000);
 }
 
 /// Send local buffer to chunkserver
 void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
-    MutexLock lock(&_mu, "BackgroundWrite");
+    MutexLock lock(&_mu, "BackgroundWrite", 1000);
     while(!_write_queue.empty() && 
           _write_window->UpBound() > _write_queue.top()->Sequence()) {
         WriteBuffer* buffer = _write_queue.top();
         _write_queue.pop();
         _mu.Unlock();
-        
+
         WriteBlockRequest* request = new WriteBlockRequest;
         WriteBlockResponse* response = new WriteBlockResponse;
         int64_t offset = buffer->offset();
@@ -682,7 +684,7 @@ void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
         common::atomic_inc(&_back_writing);
         _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
             request, response, callback, 60, 1);
-        _mu.Lock("BackgroundWriteRelock");
+        _mu.Lock("BackgroundWriteRelock", 1000);
     }
     common::atomic_dec(&_back_writing);    // for AddTask
 }
@@ -746,7 +748,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
     delete response;
 
     {
-        MutexLock lock(&_mu, "WriteChunkCallback");
+        MutexLock lock(&_mu, "WriteChunkCallback", 1000);
         if (_write_queue.empty() || _bg_error) {
             common::atomic_dec(&_back_writing);    // for AsyncRequest
             if (_back_writing == 0) {
@@ -773,7 +775,7 @@ bool BfsFileImpl::Sync() {
     if (_open_flags != O_WRONLY) {
         return false;
     }
-    MutexLock lock(&_mu, "Sync");
+    MutexLock lock(&_mu, "Sync", 1000);
     if (_write_buf && _write_buf->Size()) {
         StartWrite(_write_buf);
     }
@@ -791,7 +793,7 @@ bool BfsFileImpl::Sync() {
 
 bool BfsFileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", _name.c_str());
-    MutexLock lock(&_mu, "Close");
+    MutexLock lock(&_mu, "Close", 1000);
     if (_block_for_write && ((_open_flags & O_WRONLY) || _open_flags == O_APPEND)) {
         if (!_write_buf) {
             _write_buf = new WriteBuffer(++_last_seq, 32, _block_for_write->block_id(),
