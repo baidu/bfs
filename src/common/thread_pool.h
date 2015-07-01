@@ -17,6 +17,8 @@
 
 namespace common {
 
+static const int kDebugCheckTime = 5000;
+
 // An unscalable thread pool implimention.
 class ThreadPool {
 public:
@@ -76,19 +78,19 @@ public:
 
     // Add a task to the thread pool.
     void AddTask(const Task& task) {
-        MutexLock lock(&mutex_, "AddTask");
+        MutexLock lock(&mutex_, "AddTask", kDebugCheckTime);
         queue_.push_back(task);
         ++pending_num_;
         work_cv_.Signal();
     }
     void AddPriorityTask(const Task& task) {
-        MutexLock lock(&mutex_);
+        MutexLock lock(&mutex_, "AddPriorityTask", kDebugCheckTime);
         queue_.push_front(task);
         ++pending_num_;
         work_cv_.Signal();
     }
     int64_t DelayTask(int64_t delay_ms, const Task& task) {
-        MutexLock lock(&mutex_);
+        MutexLock lock(&mutex_, "DelayTask", kDebugCheckTime);
         int64_t now_time = timer::get_micros() / 1000;
         int64_t exe_time = now_time + delay_ms;
         BGItem bg_item = {++last_task_id_, exe_time, task, false};
@@ -104,7 +106,7 @@ public:
         }
         while (1) {
             {
-                MutexLock lock(&mutex_);
+                MutexLock lock(&mutex_, "CancelTask", kDebugCheckTime);
                 if (running_task_id_ != task_id) {
                     BGMap::iterator it = latest_.find(task_id);
                     if (it == latest_.end()) {
@@ -133,7 +135,7 @@ private:
     void ThreadProc() {
         while (true) {
             Task task;
-            MutexLock lock(&mutex_, "ThreadProc");
+            MutexLock lock(&mutex_, "ThreadProc", kDebugCheckTime);
             while (time_queue_.empty() && queue_.empty() && !stop_) {
                 work_cv_.Wait("ThreadProcWait");
             }
@@ -153,7 +155,7 @@ private:
                         running_task_id_ = bg_item.id;
                         mutex_.Unlock();
                         task();
-                        mutex_.Lock("ThreadProcRelock");
+                        mutex_.Lock("ThreadProcRelock", kDebugCheckTime);
                         running_task_id_ = 0;
                     }
                     continue;
@@ -169,7 +171,7 @@ private:
                 --pending_num_;
                 mutex_.Unlock();
                 task();
-                mutex_.Lock("ThreadProcRelock2");
+                mutex_.Lock("ThreadProcRelock2", kDebugCheckTime);
             }
         }
     }

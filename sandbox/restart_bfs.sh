@@ -1,5 +1,8 @@
 #! /bin/sh
 
+killall -9 chunkserver
+killall -9 nameserver
+
 cd nameserver;
 ./bin/nameserver 1>nlog1 2>&1 &
 echo $! > pid

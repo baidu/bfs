@@ -26,5 +26,8 @@ DEFINE_string(chunkserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
 DEFINE_int32(chunkserver_thread_num, 50, "Chunkserver work thread num");
 
+// SDK
+DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
+DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
