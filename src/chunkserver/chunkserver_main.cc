@@ -33,6 +33,7 @@ int main(int argc, char* argv[])
     common::SetWarningFile(FLAGS_chunkserver_warninglog.c_str());
 
     sofa::pbrpc::RpcServerOptions options;
+    options.work_thread_num = 8;
     sofa::pbrpc::RpcServer rpc_server(options);
 
     bfs::ChunkServerImpl* chunkserver_service = new bfs::ChunkServerImpl();
