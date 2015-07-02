@@ -436,6 +436,7 @@ public:
             Block* block = new Block(meta, _store_path, _thread_pool);
             block->AddRef();
             _block_map[block_id] = block;
+            block->MarkFinish();
             _block_num ++;
         }
         delete it;
