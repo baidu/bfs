@@ -502,11 +502,13 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
     int64_t ret_len = response.databuf().size();
     if (read_len < ret_len) {
         MutexLock lock(&_mu, "Pread fill buffer", 1000);
-        _reada_buf_len = ret_len - read_len;
-        if (_reada_buffer == NULL) {
+        int64_t cache_len = ret_len - read_len;
+        if (cache_len > _reada_buf_len) {
+            delete[] _reada_buffer;
+            _reada_buf_len = cache_len;
             _reada_buffer = new char[_reada_buf_len];
         }
-        memcpy(_reada_buffer, response.databuf().data() + read_len, _reada_buf_len);
+        memcpy(_reada_buffer, response.databuf().data() + read_len, cache_len);
         _reada_base = offset + read_len;
         ret_len = read_len;
     }
