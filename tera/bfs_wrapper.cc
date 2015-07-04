@@ -18,6 +18,7 @@ namespace bfs {
 int32_t BfsFile::Write(const char* buf, int32_t len) {
     common::timer::AutoTimer ac(0.1, "BfsFile::Write", _name.c_str());
     int ret = _file->Write(buf, len);
+    LOG(INFO, "Write(%s, len: %d) return %d", _name.c_str(), len, ret);
     if (ret != len) {
         LOG(INFO, "Write(%s, len: %d) return %d",
             _name.c_str(), len, ret);
@@ -47,6 +48,7 @@ int32_t BfsFile::Sync() {
 int32_t BfsFile::Read(char* buf, int32_t len) {
     common::timer::AutoTimer ac(1, "Read", _name.c_str());
     int32_t ret = _file->Read(buf, len);
+    LOG(INFO, "Read(%s, len: %d) return %d", _name.c_str(), len, ret);
     if (ret != len) {
         LOG(INFO, "Read(%s, len: %d) return %d",
             _name.c_str(), len, ret);
@@ -55,7 +57,7 @@ int32_t BfsFile::Read(char* buf, int32_t len) {
 }
 int32_t BfsFile::Pread(int64_t offset, char* buf, int32_t len) {
     common::timer::AutoTimer ac(1, "Pread", _name.c_str());
-    int32_t ret = _file->Pread(buf, len, offset);
+    int32_t ret = _file->Pread(buf, len, offset, true);
     LOG(INFO, "Pread(%s, offset: %ld, len: %d) return %d",
         _name.c_str(), offset, len, ret);
     return ret;
