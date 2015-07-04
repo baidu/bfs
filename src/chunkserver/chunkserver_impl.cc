@@ -33,6 +33,7 @@ DECLARE_string(nameserver_port);
 DECLARE_string(chunkserver_port);
 DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);
+DECLARE_int32(blockreport_size);
 DECLARE_int32(write_buf_size);
 DECLARE_int32(chunkserver_thread_num);
 
@@ -604,6 +605,8 @@ void* ChunkServerImpl::RoutineWrapper(void* arg) {
 void ChunkServerImpl::Routine() {
     static int64_t ticks = 0;
     int64_t next_report = -1;
+    size_t next_report_offset = 0;
+    std::vector<BlockMeta> blocks;
     while (!_quit) {
         // heartbeat
         if (ticks % FLAGS_heartbeat_interval == 0) {
@@ -629,15 +632,28 @@ void ChunkServerImpl::Routine() {
             request.set_chunkserver_id(_chunkserver_id);
             request.set_chunkserver_addr(_data_server_addr);
             request.set_namespace_version(_namespace_version);
-            request.set_is_complete(false);
 
-            std::vector<BlockMeta> blocks;
-            _block_manager->ListBlocks(&blocks);
-            for (size_t i = 0; i < blocks.size(); i++) {
+            if (next_report_offset == 0) {
+                blocks.clear();
+                _block_manager->ListBlocks(&blocks);
+                std::vector<BlockMeta>(blocks).swap(blocks);
+            }
+            size_t blocks_num = blocks.size();
+            size_t last_block = ticks ?
+                next_report_offset + FLAGS_blockreport_size : blocks_num;
+            size_t i = next_report_offset;
+            for (; i < last_block && i < blocks_num; i++) {
                 ReportBlockInfo* info = request.add_blocks();
                 info->set_block_id(blocks[i].block_id);
                 info->set_block_size(blocks[i].block_size);
                 info->set_version(0);
+            }
+            next_report_offset = i;
+            if (next_report_offset >= blocks_num) {
+                next_report_offset = 0;
+                request.set_is_complete(true);
+            } else {
+                request.set_is_complete(false);
             }
             BlockReportResponse response;
             if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::BlockReport,
@@ -680,7 +696,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     request.set_chunkserver_id(_chunkserver_id);
     request.set_chunkserver_addr(_data_server_addr);
     request.set_namespace_version(_namespace_version);
-    request.set_is_complete(true);
+    request.set_is_complete(false);
 
     ReportBlockInfo* info = request.add_blocks();
     info->set_block_id(block->Id());

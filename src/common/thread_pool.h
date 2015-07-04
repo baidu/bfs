@@ -135,7 +135,7 @@ public:
         }
         task_delay_ = 0;
         task_num_ = 0;
-        return 0;
+        return ret;
     }
 private:
     ThreadPool(const ThreadPool&);

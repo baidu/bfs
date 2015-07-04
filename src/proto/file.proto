@@ -17,6 +17,7 @@ message ChunkServerInfo {
     optional string address = 2;
     optional int32 last_heartbeat = 3;
     optional int64 data_size = 4;
-    optional int64 disk_size = 5;
+    optional int64 current_report_size = 5;
+    optional int64 disk_size = 6;
 }
 
