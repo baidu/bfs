@@ -45,6 +45,7 @@ common::Counter g_writing_bytes;
 common::Counter g_find_ops;
 common::Counter g_read_ops;
 common::Counter g_write_ops;
+common::Counter g_write_bytes;
 common::Counter g_rpc_delay;
 common::Counter g_rpc_count;
 
@@ -589,10 +590,11 @@ ChunkServerImpl::~ChunkServerImpl() {
 void ChunkServerImpl::LogStatus() {
     int64_t rpc_count = g_rpc_count.Clear();
     int64_t rpc_delay = rpc_count ? (g_rpc_delay.Clear() / rpc_count / 1000) : 0;
-    LOG(INFO, "[Status] blocks %ld buffers %ld writing(B) %ld "
-              "find %ld read %ld write %ld rpc_delay(ms) %ld",
-        g_blocks.Get(), g_block_buffers.Get(), g_writing_bytes.Get(),
-        g_find_ops.Clear()/5, g_read_ops.Clear()/5, g_write_ops.Clear()/5,
+    LOG(INFO, "[Status] blocks %ld buffers %ld "
+              "find %ld read %ld write %ld %.2f MB, rpc_delay(ms) %ld",
+        g_blocks.Get(), g_block_buffers.Get(),
+        g_find_ops.Clear()/5, g_read_ops.Clear()/5,
+        g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024.0,
         rpc_delay);
     _thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
@@ -839,6 +841,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         done->Run();
         return;
     }
+    g_write_bytes.Add(databuf.size());
     int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
