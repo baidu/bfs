@@ -148,7 +148,8 @@ public:
         mkdir(dir.c_str(), 0755);
         int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
-            LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
+            LOG(WARNING, "Open block file %s fail: %s",
+                _disk_file.c_str(), strerror(errno));
             return false;
         }
         _mu.Lock("Block::OpenForWrite");
