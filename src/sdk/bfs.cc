@@ -437,10 +437,10 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
         MutexLock lock(&_mu, "Pread read buffer", 1000);
         if (_reada_base <= offset && _reada_base + _reada_buf_len > offset + read_len) {
             memcpy(buf, _reada_buffer + (offset - _reada_base), read_len);
+            //LOG(INFO, "Read %s %ld from cache %ld", _name.c_str(), offset, read_len);
             return read_len;
         }
     }
-    const int reada_len = FLAGS_sdk_file_reada_len;
     LocatedBlock lcblock;
     ChunkServer_Stub* chunk_server = NULL;
     std::string cs_addr;
@@ -468,7 +468,10 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
     request.set_sequence_id(common::timer::get_micros());
     request.set_block_id(block_id);
     request.set_offset(offset);
-    int32_t rlen = (reada && read_len < reada_len) ? reada_len : read_len;
+    int32_t rlen = read_len;
+    if (reada && read_len < FLAGS_sdk_file_reada_len) {
+        rlen = FLAGS_sdk_file_reada_len;
+    }
     request.set_read_len(rlen);
     bool ret = false;
     int next_server = 0;
@@ -505,9 +508,9 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
         int64_t cache_len = ret_len - read_len;
         if (cache_len > _reada_buf_len) {
             delete[] _reada_buffer;
-            _reada_buf_len = cache_len;
-            _reada_buffer = new char[_reada_buf_len];
+            _reada_buffer = new char[cache_len];
         }
+        _reada_buf_len = cache_len;
         memcpy(_reada_buffer, response.databuf().data() + read_len, cache_len);
         _reada_base = offset + read_len;
         ret_len = read_len;
@@ -539,11 +542,10 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
         return -2;
     }
     int ret = Pread(buf, read_len, _read_offset, true);
+    //LOG(INFO, "Read[%s:%ld,%ld] return %d", _name.c_str(), _read_offset, read_len, ret);
     if (ret >= 0) {
         _read_offset += ret;
     }
-    //LOG(DEBUG, "[%p] Read[%s:%ld] return %d offset=%ld\n",
-    //    this, _name.c_str(), read_len, ret, _read_offset);
     return ret;
 }
 
