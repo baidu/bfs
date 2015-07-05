@@ -59,7 +59,7 @@ public:
         while (1) {
             int loglen = 0;
             int wflen = 0;
-            while (!buffer_queue_.empty() && !stopped_) {
+            while (!buffer_queue_.empty()) {
                 int log_level = buffer_queue_.front().first;
                 std::string* str = buffer_queue_.front().second;
                 buffer_queue_.pop();
