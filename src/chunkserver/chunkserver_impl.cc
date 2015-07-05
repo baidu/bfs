@@ -47,6 +47,7 @@ common::Counter g_read_ops;
 common::Counter g_write_ops;
 common::Counter g_write_bytes;
 common::Counter g_rpc_delay;
+common::Counter g_rpc_delay_all;
 common::Counter g_rpc_count;
 
 struct Buffer {
@@ -200,11 +201,12 @@ public:
         // Read from block_buf_list
         int mem_offset = offset + readlen - _disk_file_size;
         uint32_t buf_id = mem_offset / FLAGS_write_buf_size;
+        mem_offset %= FLAGS_write_buf_size;
         while (buf_id < _block_buf_list.size()) {
             const char* block_buf = _block_buf_list[buf_id].first;
             int buf_len = _block_buf_list[buf_id].second;
             int mlen = std::min(len - readlen, buf_len - mem_offset);
-            memcpy(buf + readlen, block_buf, mlen);
+            memcpy(buf + readlen, block_buf + mem_offset, mlen);
             readlen += mlen;
             mem_offset = 0;
             buf_id ++;
@@ -589,13 +591,18 @@ ChunkServerImpl::~ChunkServerImpl() {
 
 void ChunkServerImpl::LogStatus() {
     int64_t rpc_count = g_rpc_count.Clear();
-    int64_t rpc_delay = rpc_count ? (g_rpc_delay.Clear() / rpc_count / 1000) : 0;
+    int64_t rpc_delay = 0;
+    int64_t delay_all = 0;
+    if (rpc_count) {
+        rpc_delay = g_rpc_delay.Clear() / rpc_count / 1000;
+        delay_all = g_rpc_delay_all.Clear() / rpc_count / 1000;
+    }
     LOG(INFO, "[Status] blocks %ld buffers %ld "
-              "find %ld read %ld write %ld %.2f MB, rpc_delay(ms) %ld",
+              "find %ld read %ld write %ld %.2f MB, rpc_delay(ms) %ld %ld",
         g_blocks.Get(), g_block_buffers.Get(),
         g_find_ops.Clear()/5, g_read_ops.Clear()/5,
-        g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024.0,
-        rpc_delay);
+        g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024 / 5.0,
+        rpc_delay, delay_all);
     _thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
 
@@ -870,6 +877,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         (time_end - report_start) / 1000, // report time
         (time_end - response->timestamp(0)) / 1000); // total time
     g_rpc_delay.Add(response->timestamp(0) - request->sequence_id());
+    g_rpc_delay_all.Add(time_end - request->sequence_id());
     g_rpc_count.Inc();
     g_write_ops.Inc();
     done->Run();
@@ -908,7 +916,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
-            LOG(INFO, "ReadBlock: %ld offset: %ld len: %d return: %d "
+            LOG(INFO, "ReadBlock %ld offset: %ld len: %d return: %d "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
                 (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time
@@ -919,7 +927,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
             g_read_ops.Inc();
         } else {
             status = 882;
-            LOG(WARNING, "ReadBlock fail: %ld offset: %ld len: %d\n",
+            LOG(WARNING, "ReadBlock %ld fail offset: %ld len: %d\n",
                 block_id, offset, read_len);
         }
         delete[] buf;
