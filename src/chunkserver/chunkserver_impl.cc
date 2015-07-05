@@ -81,7 +81,7 @@ public:
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
       _bufdatalen(0), _disk_writing(false),
       _disk_file_size(meta.block_size), _file_desc(-1), _refs(0),
-      _recv_window(NULL), _finished(false) {
+      _recv_window(NULL), _finished(false), _deleted(false) {
         assert(_meta.block_id < (1L<<40));
         char file_path[16];
         int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
@@ -94,8 +94,8 @@ public:
     }
     ~Block() {
         if (_bufdatalen > 0) {
-            LOG(INFO, "Data lost, %d bytes in %s,%ld",
-                _bufdatalen, _disk_file.c_str(), _meta.block_size - _bufdatalen);
+            LOG(INFO, "Data lost, %d bytes in %s",
+                _bufdatalen, _disk_file.c_str());
         }
         if (_blockbuf) {
             g_block_buffers.Dec();
@@ -104,6 +104,19 @@ public:
         }
         _buflen = 0;
         _bufdatalen = 0;
+
+        for (uint32_t i = 0; i < _block_buf_list.size(); i++) {
+            const char* buf = _block_buf_list[0].first;
+            int len = _block_buf_list[0].second;
+            if (!_deleted) {
+                LOG(WARNING, "Data lost, %d bytes in %s,%ld _block_buf_list",
+                    len, _disk_file.c_str());
+            }
+            delete[] buf;
+            g_block_buffers.Dec();
+        }
+        _block_buf_list.clear();
+
         if (_file_desc >= 0) {
             close(_file_desc);
             _file_desc = -1;
@@ -136,7 +149,9 @@ public:
     BlockMeta GetMeta() const {
         return _meta;
     }
-
+    void SetDeleted() {
+        _deleted = true;
+    }
     /// Open corresponding file for write.
     bool OpenForWrite() {
         _mu.AssertHeld();
@@ -296,10 +311,10 @@ private:
     }
     void DiskWrite() {
         MutexLock lock(&_mu, "Block::DiskWrite", 1000);
-        if (!_disk_writing) {
+        if (!_disk_writing && !_deleted) {
             _disk_writing = true;
             if (!OpenForWrite())assert(0);
-            while (!_block_buf_list.empty()) {
+            while (!_block_buf_list.empty() && !_deleted) {
                 const char* buf = _block_buf_list[0].first;
                 int len = _block_buf_list[0].second;
 
@@ -378,6 +393,7 @@ private:
     common::SlidingWindow<Buffer>* _recv_window;
     bool        _finished;
     int         _write_mode;
+    bool        _deleted;
 };
 
 class BlockManager {
@@ -526,6 +542,7 @@ public:
             block = it->second;
         }
 
+        block->SetDeleted();
         std::string file_path = block->GetFilePath();
         int ret = remove(file_path.c_str());
         if (ret != 0) {
