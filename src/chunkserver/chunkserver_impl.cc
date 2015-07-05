@@ -768,11 +768,8 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         _rpc_client->GetStub(next_server, &stub);
         WriteNext(next_server, stub, next_request, request, response, done);
     } else {
-        const WriteBlockRequest* next_request = NULL;
-        ChunkServer_Stub* stub = NULL;
         boost::function<void ()> callback =
-            boost::bind(&ChunkServerImpl::WriteNextCallback,
-                this, next_request, response, false, 0, "", request, done, stub);
+            boost::bind(&ChunkServerImpl::LocalWriteBlock, this, response, request, done);
         _work_thread_pool->AddTask(callback);
     }
 }
@@ -809,13 +806,13 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         _work_thread_pool->DelayTask(10, callback);
         return;
     }
+    delete next_request;
+    delete stub;
 
     int64_t block_id = request->block_id();
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
-    delete stub;
-    delete next_request;
     if (failed || response->status() != 0) {
         if (!response->has_bad_chunkserver()) {
             response->set_bad_chunkserver("self address");
@@ -832,6 +829,19 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     } else {
         LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next done", block_id, packet_seq);
     }
+    
+    boost::function<void ()> callback =
+        boost::bind(&ChunkServerImpl::LocalWriteBlock, this, response, request, done);
+    _work_thread_pool->AddTask(callback);
+}
+
+void ChunkServerImpl::LocalWriteBlock(WriteBlockResponse* response,
+                        const WriteBlockRequest* request,
+                        ::google::protobuf::Closure* done) {
+    int64_t block_id = request->block_id();
+    const std::string& databuf = request->databuf();
+    int64_t offset = request->offset();
+    int32_t packet_seq = request->packet_seq();
 
     if (!response->has_status()) {
         response->set_status(0);

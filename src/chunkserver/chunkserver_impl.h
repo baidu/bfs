@@ -50,6 +50,9 @@ private:
                            const WriteBlockRequest* request,
                            ::google::protobuf::Closure* done,
                            ChunkServer_Stub* stub);
+    void LocalWriteBlock(WriteBlockResponse* response,
+                         const WriteBlockRequest* request,
+                         ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
 private:
