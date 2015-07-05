@@ -35,7 +35,9 @@ DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);
 DECLARE_int32(blockreport_size);
 DECLARE_int32(write_buf_size);
-DECLARE_int32(chunkserver_thread_num);
+DECLARE_int32(chunkserver_work_thread_num);
+DECLARE_int32(chunkserver_read_thread_num);
+DECLARE_int32(chunkserver_write_thread_num);
 
 namespace bfs {
 
@@ -566,8 +568,10 @@ private:
 ChunkServerImpl::ChunkServerImpl()
     : _quit(false), _chunkserver_id(0), _namespace_version(0) {
     _data_server_addr = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
-    _thread_pool = new ThreadPool(FLAGS_chunkserver_thread_num);
-    _block_manager = new BlockManager(_thread_pool,FLAGS_block_store_path);
+    _work_thread_pool = new ThreadPool(FLAGS_chunkserver_work_thread_num);
+    _read_thread_pool = new ThreadPool(FLAGS_chunkserver_read_thread_num);
+    _write_thread_pool = new ThreadPool(FLAGS_chunkserver_write_thread_num);
+    _block_manager = new BlockManager(_write_thread_pool, FLAGS_block_store_path);
     bool s_ret = _block_manager->LoadStorage();
     assert(s_ret == true);
     _rpc_client = new RpcClient();
@@ -575,7 +579,7 @@ ChunkServerImpl::ChunkServerImpl()
     if (!_rpc_client->GetStub(ns_address, &_nameserver)) {
         assert(0);
     }
-    _thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
+    _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
 }
@@ -583,8 +587,12 @@ ChunkServerImpl::ChunkServerImpl()
 ChunkServerImpl::~ChunkServerImpl() {
     _quit = true;
     pthread_join(_routine_thread, NULL);
-    _thread_pool->Stop(true);
-    delete _thread_pool;
+    _work_thread_pool->Stop(true);
+    _read_thread_pool->Stop(true);
+    _write_thread_pool->Stop(true);
+    delete _work_thread_pool;
+    delete _read_thread_pool;
+    delete _write_thread_pool;
     delete _block_manager;
     delete _rpc_client;
 }
@@ -603,7 +611,7 @@ void ChunkServerImpl::LogStatus() {
         g_find_ops.Clear()/5, g_read_ops.Clear()/5,
         g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024 / 5.0,
         rpc_delay, delay_all);
-    _thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
+    _work_thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
 
 void* ChunkServerImpl::RoutineWrapper(void* arg) {
@@ -680,7 +688,7 @@ void ChunkServerImpl::Routine() {
                     boost::function<void ()> task =
                         boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
                                     this, obsolete_blocks);
-                    _thread_pool->AddTask(task);
+                    _write_thread_pool->AddTask(task);
                 }
 
                 std::vector<ReplicaInfo> new_replica_info;
@@ -691,7 +699,7 @@ void ChunkServerImpl::Routine() {
                     boost::function<void ()> new_replica_task =
                         boost::bind(&ChunkServerImpl::PullNewBlocks,
                                     this, new_replica_info);
-                    _thread_pool->AddTask(new_replica_task);
+                    _write_thread_pool->AddTask(new_replica_task);
                 }
             }
         }
@@ -739,7 +747,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         response->add_timestamp(common::timer::get_micros());
         boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
-        _thread_pool->AddTask(task);
+        _work_thread_pool->AddTask(task);
         return;
     }
 
@@ -765,7 +773,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         boost::function<void ()> callback =
             boost::bind(&ChunkServerImpl::WriteNextCallback,
                 this, next_request, response, false, 0, "", request, done, stub);
-        _thread_pool->AddTask(callback);
+        _work_thread_pool->AddTask(callback);
     }
 }
 
@@ -798,7 +806,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         boost::function<void ()> callback = 
             boost::bind(&ChunkServerImpl::WriteNext, this, next_server,
                         stub, next_request, request, response, done);
-        _thread_pool->DelayTask(10, callback);
+        _work_thread_pool->DelayTask(10, callback);
         return;
     }
 
@@ -894,7 +902,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         response->add_timestamp(common::timer::get_micros());
         boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::ReadBlock, this, controller, request, response, done);
-        _thread_pool->AddTask(task);
+        _read_thread_pool->AddTask(task);
         return;
     }
 

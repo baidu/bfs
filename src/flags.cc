@@ -24,7 +24,9 @@ DEFINE_int32(blockreport_size, 100, "blockreport_size");
 DEFINE_int32(chunkserver_log_level, 4, "Nameserver log level");
 DEFINE_string(chunkserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
-DEFINE_int32(chunkserver_thread_num, 50, "Chunkserver work thread num");
+DEFINE_int32(chunkserver_work_thread_num, 10, "Chunkserver work thread num");
+DEFINE_int32(chunkserver_read_thread_num, 10, "Chunkserver work thread num");
+DEFINE_int32(chunkserver_write_thread_num, 10, "Chunkserver work thread num");
 
 // SDK
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
