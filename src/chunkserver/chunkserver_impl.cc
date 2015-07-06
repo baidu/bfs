@@ -109,8 +109,8 @@ public:
             const char* buf = _block_buf_list[0].first;
             int len = _block_buf_list[0].second;
             if (!_deleted) {
-                LOG(WARNING, "Data lost, %d bytes in %s,%ld _block_buf_list",
-                    len, _disk_file.c_str());
+                LOG(WARNING, "Data lost, %d bytes in %s, %ld _block_buf_list",
+                    len, _disk_file.c_str(), _meta.block_id);
             }
             delete[] buf;
             g_block_buffers.Dec();
