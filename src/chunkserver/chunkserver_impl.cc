@@ -381,7 +381,7 @@ private:
     int32_t     _last_seq;
     int32_t     _slice_num;
     char*       _blockbuf;
-    int64_t     _buflen;
+    int32_t     _buflen;
     int32_t     _bufdatalen;
     std::vector<std::pair<const char*,int> > _block_buf_list;
     bool        _disk_writing;
