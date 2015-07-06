@@ -50,13 +50,18 @@ private:
                            const WriteBlockRequest* request,
                            ::google::protobuf::Closure* done,
                            ChunkServer_Stub* stub);
+    void LocalWriteBlock(WriteBlockResponse* response,
+                         const WriteBlockRequest* request,
+                         ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
     RpcClient*      _rpc_client;
-    ThreadPool*     _thread_pool;
+    ThreadPool*     _work_thread_pool;
+    ThreadPool*     _read_thread_pool;
+    ThreadPool*     _write_thread_pool;
     NameServer_Stub* _nameserver;
     pthread_t _routine_thread;
     bool _quit;

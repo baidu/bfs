@@ -36,7 +36,9 @@ DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);
 DECLARE_int32(blockreport_size);
 DECLARE_int32(write_buf_size);
-DECLARE_int32(chunkserver_thread_num);
+DECLARE_int32(chunkserver_work_thread_num);
+DECLARE_int32(chunkserver_read_thread_num);
+DECLARE_int32(chunkserver_write_thread_num);
 
 namespace bfs {
 
@@ -46,7 +48,9 @@ common::Counter g_writing_bytes;
 common::Counter g_find_ops;
 common::Counter g_read_ops;
 common::Counter g_write_ops;
+common::Counter g_write_bytes;
 common::Counter g_rpc_delay;
+common::Counter g_rpc_delay_all;
 common::Counter g_rpc_count;
 
 struct Buffer {
@@ -78,7 +82,7 @@ public:
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
       _bufdatalen(0), _disk_writing(false),
       _disk_file_size(meta.block_size), _file_desc(-1), _refs(0),
-      _recv_window(NULL), _finished(false) {
+      _recv_window(NULL), _finished(false), _deleted(false) {
         assert(_meta.block_id < (1L<<40));
         char file_path[16];
         int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
@@ -91,8 +95,8 @@ public:
     }
     ~Block() {
         if (_bufdatalen > 0) {
-            LOG(INFO, "Data lost, %d bytes in %s,%ld",
-                _bufdatalen, _disk_file.c_str(), _meta.block_size - _bufdatalen);
+            LOG(INFO, "Data lost, %d bytes in %s",
+                _bufdatalen, _disk_file.c_str());
         }
         if (_blockbuf) {
             g_block_buffers.Dec();
@@ -101,6 +105,19 @@ public:
         }
         _buflen = 0;
         _bufdatalen = 0;
+
+        for (uint32_t i = 0; i < _block_buf_list.size(); i++) {
+            const char* buf = _block_buf_list[0].first;
+            int len = _block_buf_list[0].second;
+            if (!_deleted) {
+                LOG(WARNING, "Data lost, %d bytes in %s,%ld _block_buf_list",
+                    len, _disk_file.c_str());
+            }
+            delete[] buf;
+            g_block_buffers.Dec();
+        }
+        _block_buf_list.clear();
+
         if (_file_desc >= 0) {
             close(_file_desc);
             _file_desc = -1;
@@ -133,7 +150,9 @@ public:
     BlockMeta GetMeta() const {
         return _meta;
     }
-
+    void SetDeleted() {
+        _deleted = true;
+    }
     /// Open corresponding file for write.
     bool OpenForWrite() {
         _mu.AssertHeld();
@@ -145,7 +164,8 @@ public:
         mkdir(dir.c_str(), 0755);
         int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
-            LOG(WARNING, "Open block file %s fail", _disk_file.c_str());
+            LOG(WARNING, "Open block file %s fail: %s",
+                _disk_file.c_str(), strerror(errno));
             return false;
         }
         _mu.Lock("Block::OpenForWrite");
@@ -204,11 +224,12 @@ public:
         // Read from block_buf_list
         int mem_offset = offset + readlen - _disk_file_size;
         uint32_t buf_id = mem_offset / FLAGS_write_buf_size;
+        mem_offset %= FLAGS_write_buf_size;
         while (buf_id < _block_buf_list.size()) {
             const char* block_buf = _block_buf_list[buf_id].first;
             int buf_len = _block_buf_list[buf_id].second;
             int mlen = std::min(len - readlen, buf_len - mem_offset);
-            memcpy(buf + readlen, block_buf, mlen);
+            memcpy(buf + readlen, block_buf + mem_offset, mlen);
             readlen += mlen;
             mem_offset = 0;
             buf_id ++;
@@ -303,10 +324,10 @@ private:
     }
     void DiskWrite() {
         MutexLock lock(&_mu, "Block::DiskWrite", 1000);
-        if (!_disk_writing) {
+        if (!_disk_writing && !_deleted) {
             _disk_writing = true;
             if (!OpenForWrite())assert(0);
-            while (!_block_buf_list.empty()) {
+            while (!_block_buf_list.empty() && !_deleted) {
                 const char* buf = _block_buf_list[0].first;
                 int len = _block_buf_list[0].second;
 
@@ -385,6 +406,7 @@ private:
     common::SlidingWindow<Buffer>* _recv_window;
     bool        _finished;
     int         _write_mode;
+    bool        _deleted;
 };
 
 class BlockManager {
@@ -551,6 +573,7 @@ public:
             block = it->second;
         }
 
+        block->SetDeleted();
         std::string file_path = block->GetFilePath();
         int ret = remove(file_path.c_str());
         if (ret != 0) {
@@ -602,8 +625,10 @@ private:
 ChunkServerImpl::ChunkServerImpl()
     : _quit(false), _chunkserver_id(0), _namespace_version(0) {
     _data_server_addr = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
-    _thread_pool = new ThreadPool(FLAGS_chunkserver_thread_num);
-    _block_manager = new BlockManager(_thread_pool,FLAGS_block_store_path);
+    _work_thread_pool = new ThreadPool(FLAGS_chunkserver_work_thread_num);
+    _read_thread_pool = new ThreadPool(FLAGS_chunkserver_read_thread_num);
+    _write_thread_pool = new ThreadPool(FLAGS_chunkserver_write_thread_num);
+    _block_manager = new BlockManager(_write_thread_pool, FLAGS_block_store_path);
     bool s_ret = _block_manager->LoadStorage();
     assert(s_ret == true);
     _rpc_client = new RpcClient();
@@ -611,7 +636,7 @@ ChunkServerImpl::ChunkServerImpl()
     if (!_rpc_client->GetStub(ns_address, &_nameserver)) {
         assert(0);
     }
-    _thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
+    _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
 }
@@ -619,21 +644,31 @@ ChunkServerImpl::ChunkServerImpl()
 ChunkServerImpl::~ChunkServerImpl() {
     _quit = true;
     pthread_join(_routine_thread, NULL);
-    _thread_pool->Stop(true);
-    delete _thread_pool;
+    _work_thread_pool->Stop(true);
+    _read_thread_pool->Stop(true);
+    _write_thread_pool->Stop(true);
+    delete _work_thread_pool;
+    delete _read_thread_pool;
+    delete _write_thread_pool;
     delete _block_manager;
     delete _rpc_client;
 }
 
 void ChunkServerImpl::LogStatus() {
     int64_t rpc_count = g_rpc_count.Clear();
-    int64_t rpc_delay = rpc_count ? (g_rpc_delay.Clear() / rpc_count / 1000) : 0;
-    LOG(INFO, "[Status] blocks %ld buffers %ld writing(B) %ld "
-              "find %ld read %ld write %ld rpc_delay(ms) %ld",
-        g_blocks.Get(), g_block_buffers.Get(), g_writing_bytes.Get(),
-        g_find_ops.Clear()/5, g_read_ops.Clear()/5, g_write_ops.Clear()/5,
-        rpc_delay);
-    _thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
+    int64_t rpc_delay = 0;
+    int64_t delay_all = 0;
+    if (rpc_count) {
+        rpc_delay = g_rpc_delay.Clear() / rpc_count / 1000;
+        delay_all = g_rpc_delay_all.Clear() / rpc_count / 1000;
+    }
+    LOG(INFO, "[Status] blocks %ld buffers %ld "
+              "find %ld read %ld write %ld %.2f MB, rpc_delay(ms) %ld %ld",
+        g_blocks.Get(), g_block_buffers.Get(),
+        g_find_ops.Clear()/5, g_read_ops.Clear()/5,
+        g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024 / 5.0,
+        rpc_delay, delay_all);
+    _work_thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
 
 void* ChunkServerImpl::RoutineWrapper(void* arg) {
@@ -710,7 +745,7 @@ void ChunkServerImpl::Routine() {
                     boost::function<void ()> task =
                         boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
                                     this, obsolete_blocks);
-                    _thread_pool->AddTask(task);
+                    _write_thread_pool->AddTask(task);
                 }
 
                 std::vector<ReplicaInfo> new_replica_info;
@@ -721,7 +756,7 @@ void ChunkServerImpl::Routine() {
                     boost::function<void ()> new_replica_task =
                         boost::bind(&ChunkServerImpl::PullNewBlocks,
                                     this, new_replica_info);
-                    _thread_pool->AddTask(new_replica_task);
+                    _write_thread_pool->AddTask(new_replica_task);
                 }
             }
         }
@@ -769,7 +804,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         response->add_timestamp(common::timer::get_micros());
         boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
-        _thread_pool->AddTask(task);
+        _work_thread_pool->AddTask(task);
         return;
     }
 
@@ -790,12 +825,9 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         _rpc_client->GetStub(next_server, &stub);
         WriteNext(next_server, stub, next_request, request, response, done);
     } else {
-        const WriteBlockRequest* next_request = NULL;
-        ChunkServer_Stub* stub = NULL;
         boost::function<void ()> callback =
-            boost::bind(&ChunkServerImpl::WriteNextCallback,
-                this, next_request, response, false, 0, "", request, done, stub);
-        _thread_pool->AddTask(callback);
+            boost::bind(&ChunkServerImpl::LocalWriteBlock, this, response, request, done);
+        _work_thread_pool->AddTask(callback);
     }
 }
 
@@ -828,16 +860,16 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         boost::function<void ()> callback = 
             boost::bind(&ChunkServerImpl::WriteNext, this, next_server,
                         stub, next_request, request, response, done);
-        _thread_pool->DelayTask(10, callback);
+        _work_thread_pool->DelayTask(10, callback);
         return;
     }
+    delete next_request;
+    delete stub;
 
     int64_t block_id = request->block_id();
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
-    delete stub;
-    delete next_request;
     if (failed || response->status() != 0) {
         if (!response->has_bad_chunkserver()) {
             response->set_bad_chunkserver("self address");
@@ -854,6 +886,19 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     } else {
         LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next done", block_id, packet_seq);
     }
+    
+    boost::function<void ()> callback =
+        boost::bind(&ChunkServerImpl::LocalWriteBlock, this, response, request, done);
+    _work_thread_pool->AddTask(callback);
+}
+
+void ChunkServerImpl::LocalWriteBlock(WriteBlockResponse* response,
+                        const WriteBlockRequest* request,
+                        ::google::protobuf::Closure* done) {
+    int64_t block_id = request->block_id();
+    const std::string& databuf = request->databuf();
+    int64_t offset = request->offset();
+    int32_t packet_seq = request->packet_seq();
 
     if (!response->has_status()) {
         response->set_status(0);
@@ -878,6 +923,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         done->Run();
         return;
     }
+    g_write_bytes.Add(databuf.size());
     int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
@@ -906,6 +952,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         (time_end - report_start) / 1000, // report time
         (time_end - response->timestamp(0)) / 1000); // total time
     g_rpc_delay.Add(response->timestamp(0) - request->sequence_id());
+    g_rpc_delay_all.Add(time_end - request->sequence_id());
     g_rpc_count.Inc();
     g_write_ops.Inc();
     done->Run();
@@ -922,7 +969,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         response->add_timestamp(common::timer::get_micros());
         boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::ReadBlock, this, controller, request, response, done);
-        _thread_pool->AddTask(task);
+        _read_thread_pool->AddTask(task);
         return;
     }
 
@@ -944,7 +991,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
-            LOG(INFO, "ReadBlock: %ld offset: %ld len: %d return: %d "
+            LOG(INFO, "ReadBlock %ld offset: %ld len: %d return: %d "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
                 (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time
@@ -955,7 +1002,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
             g_read_ops.Inc();
         } else {
             status = 882;
-            LOG(WARNING, "ReadBlock fail: %ld offset: %ld len: %d\n",
+            LOG(WARNING, "ReadBlock %ld fail offset: %ld len: %d\n",
                 block_id, offset, read_len);
         }
         delete[] buf;

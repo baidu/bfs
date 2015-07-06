@@ -50,3 +50,5 @@ kill -9 `cat chunkserver2/pid`
 ./bfs_client get /bin/bfs_client ./binary
 
 rm -rf ./binary
+
+echo "Test done!"

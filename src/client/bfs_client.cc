@@ -115,6 +115,9 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
     while (1) {
         len = file->Read(buf, sizeof(buf));
         if (len <= 0) {
+            if (len < 0) {
+                fprintf(stderr, "Read from %s fail.\n", argv[0]);
+            }
             break;
         }
         bytes += len;
@@ -123,7 +126,7 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
     printf("Read %ld bytes from %s\n", bytes, argv[1]);
     delete file;
     fclose(fp);
-    return 0;
+    return len;
 }
 
 int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
