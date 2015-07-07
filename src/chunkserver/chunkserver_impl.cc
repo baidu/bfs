@@ -69,8 +69,9 @@ struct BlockMeta {
     int64_t block_id;
     int64_t block_size;
     int64_t checksum;
+    int64_t version;
     BlockMeta()
-      : block_id(0), block_size(0), checksum(0) {
+      : block_id(0), block_size(0), checksum(0), version(-1) {
     }
 };
 
@@ -95,8 +96,8 @@ public:
     }
     ~Block() {
         if (_bufdatalen > 0) {
-            LOG(INFO, "Data lost, %d bytes in %s",
-                _bufdatalen, _disk_file.c_str());
+            LOG(INFO, "Data lost, %d bytes in #%ld %s",
+                _bufdatalen, _meta.block_id, _disk_file.c_str());
         }
         if (_blockbuf) {
             g_block_buffers.Dec();
@@ -106,12 +107,16 @@ public:
         _buflen = 0;
         _bufdatalen = 0;
 
+        LOG(INFO, "Relese #%ld _block_buf_list size= %lu",
+            _meta.block_id, _block_buf_list.size());
         for (uint32_t i = 0; i < _block_buf_list.size(); i++) {
             const char* buf = _block_buf_list[0].first;
             int len = _block_buf_list[0].second;
             if (!_deleted) {
-                LOG(WARNING, "Data lost, %d bytes in %s,%ld _block_buf_list",
-                    len, _disk_file.c_str());
+                LOG(WARNING, "Data lost, %d bytes in %s, #%ld _block_buf_list",
+                    len, _disk_file.c_str(), _meta.block_id);
+            } else {
+                LOG(INFO, "Relese _block_buf_list %d for #%ld ", len, _meta.block_id);
             }
             delete[] buf;
             g_block_buffers.Dec();
@@ -124,7 +129,7 @@ public:
         }
         if (_recv_window) {
             if (_recv_window->Size()) {
-                LOG(INFO, "bid:%ld recv_window fragments: %d\n",  
+                LOG(INFO, "#%ld recv_window fragments: %d\n",  
                     _meta.block_id, _recv_window->Size());
                 std::vector<std::pair<int32_t,Buffer> > frags;
                 _recv_window->GetFragments(&frags);
@@ -134,7 +139,7 @@ public:
             }
             delete _recv_window;
         }
-        LOG(INFO, "Block %ld deleted\n", _meta.block_id);
+        LOG(INFO, "Block #%ld deleted\n", _meta.block_id);
         g_blocks.Dec();
     }
     /// Getter
@@ -164,8 +169,8 @@ public:
         mkdir(dir.c_str(), 0755);
         int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
-            LOG(WARNING, "Open block file %s fail: %s",
-                _disk_file.c_str(), strerror(errno));
+            LOG(WARNING, "Open block #%ld %s fail: %s",
+                _meta.block_id, _disk_file.c_str(), strerror(errno));
             return false;
         }
         _mu.Lock("Block::OpenForWrite");
@@ -248,10 +253,9 @@ public:
     /// Write operation.
     bool Write(int32_t seq, int64_t offset, const char* data,
                int32_t len, int64_t* add_use = NULL) {
-        LOG(INFO, "Block Write %d\n", seq);
         if (offset < _meta.block_size) {
             assert (offset + len <= _meta.block_size);
-            LOG(WARNING, "Write a finish block %ld, size %ld, seq: %d, offset: %ld",
+            LOG(WARNING, "Write a finish block #%ld size %ld, seq: %d, offset: %ld",
                 _meta.block_id, _meta.block_size, seq, offset);
             return true;
         }
@@ -268,7 +272,7 @@ public:
             delete[] buf;
             g_writing_bytes.Sub(len);
             if (ret < 0) {
-                LOG(WARNING, "Write block %ld seq: %d, offset: %ld, block_size: %ld"
+                LOG(WARNING, "Write block #%ld seq: %d, offset: %ld, block_size: %ld"
                              " not in sliding window\n",
                     _meta.block_id, seq, offset, _meta.block_size);
                 return false;
@@ -285,7 +289,7 @@ public:
                 _file_desc = -1;
             }
         } else {
-            LOG(INFO, "Block %ld Flush to %s", _meta.block_id, _disk_file.c_str());
+            LOG(INFO, "Block #%ld Flush to %s", _meta.block_id, _disk_file.c_str());
             MutexLock lock(&_mu, "Block::Close", 1000);
             if (_bufdatalen) {
                 _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
@@ -302,7 +306,7 @@ public:
             delete _blockbuf;
             _blockbuf = NULL;
             g_block_buffers.Dec();
-            LOG(INFO, "Block %ld %s closed", _meta.block_id, _disk_file.c_str());
+            LOG(INFO, "Block #%ld %s closed", _meta.block_id, _disk_file.c_str());
             */
         }
     }
@@ -318,7 +322,6 @@ private:
     /// Invoke by slidingwindow, when next buffer arrive.
     void WriteCallback(int32_t seq, Buffer buffer) {
         Append(seq, buffer.data_, buffer.len_);
-        //LOG(INFO, "Append done [seq:%d, %ld:%d]\n", seq, _blocksize, buffer.len_);
         delete[] buffer.data_;
         g_writing_bytes.Sub(buffer.len_);
     }
@@ -337,8 +340,8 @@ private:
                 while (wlen < len) {
                     int w = write(_file_desc, buf + wlen, len - wlen);
                     if (w < 0) {
-                        LOG(WARNING, "IOEroro write %s return %s",
-                            _disk_file.c_str(), strerror(errno));
+                        LOG(WARNING, "IOEroro write #%ld %s return %s",
+                            _meta.block_id, _disk_file.c_str(), strerror(errno));
                         assert(0);
                         break;
                     }
@@ -394,7 +397,7 @@ private:
     int32_t     _last_seq;
     int32_t     _slice_num;
     char*       _blockbuf;
-    int64_t     _buflen;
+    int32_t     _buflen;
     int32_t     _bufdatalen;
     std::vector<std::pair<const char*,int> > _block_buf_list;
     bool        _disk_writing;
@@ -541,8 +544,6 @@ public:
         leveldb::Status s = _metadb->Put(options, idstr,
             leveldb::Slice(reinterpret_cast<const char*>(&meta),sizeof(meta)));
         int64_t time_use = common::timer::get_micros() - time_start;
-        LOG(INFO, "SyncBlockMeta use %ld ms, id: %ld size: %ld",
-            time_use / 1000, meta.block_id, meta.block_size);
         if (sync_time) *sync_time = time_use;
         if (!s.ok()) {
             Log(WARNING, "Write to meta fail:%s\n", idstr);
@@ -566,7 +567,7 @@ public:
             MutexLock lock(&_mu, "BlockManager::RemoveBlock", 1000);
             BlockMap::iterator it = _block_map.find(block_id);
             if (it == _block_map.end()) {
-                LOG(WARNING, "Try to remove block that does not exist: %ld\n", block_id);
+                LOG(WARNING, "Try to remove block that does not exist: #%ld ", block_id);
                 return false;
             }
             _block_cache->Remove(block_id);
@@ -577,10 +578,11 @@ public:
         std::string file_path = block->GetFilePath();
         int ret = remove(file_path.c_str());
         if (ret != 0) {
-            LOG(WARNING, "Remove disk file %s fails: %d (%s)\n",
-                file_path.c_str(), errno, strerror(errno));
+            LOG(WARNING, "Remove #%ld disk file %s fails: %d (%s)\n",
+                block_id, file_path.c_str(), errno, strerror(errno));
         } else {
-            LOG(INFO, "Remove disk file done: %s\n", file_path.c_str());
+            LOG(INFO, "Remove #%ld disk file done: %s\n", 
+                block_id, file_path.c_str());
         }
 
         char dir_name[5];
@@ -592,7 +594,7 @@ public:
 
         leveldb::Status s = _metadb->Delete(leveldb::WriteOptions(), idstr);
         if (s.ok()) {
-            LOG(INFO, "Remove meta info done: %s\n", idstr);
+            LOG(INFO, "Remove #%ld meta info done: %s", block_id, idstr);
             {
                 MutexLock lock(&_mu, "BlockManager::RemoveBlock erase", 1000);
                 _block_map.erase(block_id);
@@ -600,7 +602,7 @@ public:
             block->DecRef();
             return true;
         } else {
-            LOG(WARNING, "Remove meta info fails: %ld\n", idstr);
+            LOG(WARNING, "Remove #%ld meta info fails: %ld\n", block_id, idstr);
             return false;
         }
     }
@@ -798,7 +800,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
-        LOG(DEBUG, "[WriteBlock] dispatch [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
+        LOG(DEBUG, "[WriteBlock] dispatch #%ld seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
         response->add_desc("Recv");
         response->add_timestamp(common::timer::get_micros());
@@ -810,7 +812,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 
     response->add_desc("Process");
     response->add_timestamp(common::timer::get_micros());
-    LOG(INFO, "[WriteBlock] [bid:%ld, seq:%d, offset:%ld, len:%lu] %lu\n",
+    LOG(INFO, "[WriteBlock] #%ld seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
 
     if (request->chunkservers_size()) {
@@ -839,7 +841,7 @@ void ChunkServerImpl::WriteNext(const std::string& next_server,
                                 ::google::protobuf::Closure* done) {
     int64_t block_id = request->block_id();
     int32_t packet_seq = request->packet_seq();
-    LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next %s\n",
+    LOG(INFO, "[Writeblock] send #%ld seq:%d] to next %s\n",
         block_id, packet_seq, next_server.c_str());
     boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
         boost::bind(&ChunkServerImpl::WriteNextCallback,
@@ -874,7 +876,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         if (!response->has_bad_chunkserver()) {
             response->set_bad_chunkserver("self address");
         }
-        LOG(WARNING, "WriteNext %s fail: [bid:%ld, seq:%d, offset:%ld, len:%lu], "
+        LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu], "
                      "status= %d, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
             response->status(), error);
@@ -884,7 +886,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         done->Run();
         return;
     } else {
-        LOG(INFO, "Writeblock send [bid:%ld, seq:%d] to next done", block_id, packet_seq);
+        LOG(INFO, "[Writeblock] send #%ld seq:%d] to next done", block_id, packet_seq);
     }
     
     boost::function<void ()> callback =
@@ -909,7 +911,7 @@ void ChunkServerImpl::LocalWriteBlock(WriteBlockResponse* response,
     int64_t sync_time = 0;
     Block* block = _block_manager->FindBlock(block_id, true, &sync_time);
     if (!block) {
-        LOG(WARNING, "Block not found: %ld\n", block_id);
+        LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
         response->set_status(8404);
         done->Run();
         return;
@@ -932,13 +934,13 @@ void ChunkServerImpl::LocalWriteBlock(WriteBlockResponse* response,
     // If complete, close block, and report only once(close block return true).
     int64_t report_start = write_end;
     if (block->IsComplete() && _block_manager->CloseBlock(block)) {
-        LOG(INFO, "WriteBlock block finish [%ld:%ld]\n", block_id, block->Size());
+        LOG(INFO, "[WriteBlock] block finish #%ld size:%ld", block_id, block->Size());
         report_start = common::timer::get_micros();
         ReportFinish(block);
     }
 
     int64_t time_end = common::timer::get_micros();
-    LOG(INFO, "WriteBlock done [bid:%ld, seq:%d, offset:%ld, len:%lu] "
+    LOG(INFO, "[WriteBlock] done #%ld seq:%d, offset:%ld, len:%lu] "
               "use %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld ms",
         block_id, packet_seq, offset, databuf.size(),
         (response->timestamp(0) - request->sequence_id()) / 1000, // recv
@@ -982,7 +984,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     Block* block = _block_manager->FindBlock(block_id, false);
     if (block == NULL) {
         status = 404;
-        LOG(WARNING, "ReadBlock not found: %ld offset: %ld len: %d\n",
+        LOG(WARNING, "ReadBlock not found: #%ld offset: %ld len: %d\n",
                 block_id, offset, read_len);
     } else {
         int64_t read_start = common::timer::get_micros();
@@ -991,7 +993,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
-            LOG(INFO, "ReadBlock %ld offset: %ld len: %d return: %d "
+            LOG(INFO, "ReadBlock #%ld offset: %ld len: %d return: %d "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
                 (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time
@@ -1002,7 +1004,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
             g_read_ops.Inc();
         } else {
             status = 882;
-            LOG(WARNING, "ReadBlock %ld fail offset: %ld len: %d\n",
+            LOG(WARNING, "ReadBlock #%ld fail offset: %ld len: %d\n",
                 block_id, offset, read_len);
         }
         delete[] buf;
@@ -1016,7 +1018,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
 void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
     for (size_t i = 0; i < blocks.size(); i++) {
         if (!_block_manager->RemoveBlock(blocks[i])) {
-            LOG(WARNING, "Remove block fail: %ld\n", blocks[i]);
+            LOG(WARNING, "Remove block fail: #%ld ", blocks[i]);
         }
     }
 }
@@ -1029,7 +1031,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
         ChunkServer_Stub* chunkserver = NULL;
         Block* block = _block_manager->FindBlock(block_id, true);
         if (!block) {
-            LOG(WARNING, "Cant't create block: %ld\n", block_id);
+            LOG(WARNING, "Cant't create block: #%ld ", block_id);
             //ignore this block
             continue;
         }
@@ -1071,7 +1073,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
                 block->SetSliceNum(seq);
             }
             if (block->IsComplete() && _block_manager->CloseBlock(block)) {
-                LOG(INFO, "Pull block: %ld finish\n", block_id);
+                LOG(INFO, "Pull block: #%ld finish\n", block_id);
                 break;
             }
             offset += len;
