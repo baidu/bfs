@@ -468,7 +468,7 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
     request.set_sequence_id(common::timer::get_micros());
     request.set_block_id(block_id);
     request.set_offset(offset);
-    int32_t rlen = read_len;
+    int64_t rlen = read_len;
     if (reada && read_len < FLAGS_sdk_file_reada_len) {
         rlen = FLAGS_sdk_file_reada_len;
     }
