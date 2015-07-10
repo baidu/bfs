@@ -69,6 +69,8 @@ int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
+    int64_t bytes = 0;
+    int32_t len;
     for (int i = 0; i < argc; i++) {
         bfs::File* file;
         if (!fs->OpenFile(argv[i], O_RDONLY, &file)) {
@@ -76,11 +78,13 @@ int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
             return 1;
         }
         char buf[10240];
-        int64_t bytes = 0;
-        int64_t len = 0;
+        len = 0;
         while (1) {
             len = file->Read(buf, sizeof(buf));
             if (len <= 0) {
+                if (len < 0) {
+                    fprintf(stderr, "Read from %s fail.\n", argv[0]);
+                }
                 break;
             }
             bytes += len;
@@ -88,7 +92,7 @@ int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
         }
         delete file;
     }
-    return 0;
+    return len;
 }
 
 int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
@@ -111,7 +115,7 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
     }
     char buf[10240];
     int64_t bytes = 0;
-    int64_t len = 0;
+    int32_t len = 0;
     while (1) {
         len = file->Read(buf, sizeof(buf));
         if (len <= 0) {
@@ -151,9 +155,9 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
     }
     char buf[10240];
     int64_t len = 0;
-    int64_t bytes = 0;
+    int32_t bytes = 0;
     while ( (bytes = fread(buf, 1, sizeof(buf), fp)) > 0) {
-        int64_t write_bytes = file->Write(buf, bytes);
+        int32_t write_bytes = file->Write(buf, bytes);
         if (write_bytes < bytes) {
             fprintf(stderr, "Write fail: [%s:%ld]\n", argv[3], len);
             return 1;
