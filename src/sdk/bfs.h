@@ -24,10 +24,10 @@ class File {
 public:
     File() {}
     virtual ~File() {}
-    virtual int64_t Pread(char* buf, int64_t read_size, int64_t offset, bool reada = false) = 0;
+    virtual int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false) = 0;
     virtual int64_t Seek(int64_t offset, int32_t whence) = 0;
-    virtual int64_t Read(char* buf, int64_t read_size) = 0;
-    virtual int64_t Write(const char* buf, int64_t write_size) = 0;
+    virtual int32_t Read(char* buf, int32_t read_size) = 0;
+    virtual int32_t Write(const char* buf, int32_t write_size) = 0;
     virtual bool Flush() = 0;
     virtual bool Sync() = 0;
     virtual bool Close() = 0;

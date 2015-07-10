@@ -94,10 +94,10 @@ class BfsFileImpl : public File {
 public:
     BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name, int32_t flags);
     ~BfsFileImpl ();
-    int64_t Pread(char* buf, int64_t read_size, int64_t offset, bool reada = false);
+    int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false);
     int64_t Seek(int64_t offset, int32_t whence);
-    int64_t Read(char* buf, int64_t read_size);
-    int64_t Write(const char* buf, int64_t write_size);
+    int32_t Read(char* buf, int32_t read_size);
+    int32_t Write(const char* buf, int32_t write_size);
     /// Add buffer to  async write list
     void StartWrite(WriteBuffer *buffer);
     /// Send local buffer to chunkserver
@@ -432,7 +432,7 @@ BfsFileImpl::~BfsFileImpl () {
     _write_window = NULL;
 }
 
-int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool reada) {
+int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada) {
     if (reada) {
         MutexLock lock(&_mu, "Pread read buffer", 1000);
         if (_reada_base <= offset && _reada_base + _reada_buf_len >= offset + read_len) {
@@ -468,7 +468,7 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
     request.set_sequence_id(common::timer::get_micros());
     request.set_block_id(block_id);
     request.set_offset(offset);
-    int64_t rlen = read_len;
+    int32_t rlen = read_len;
     if (reada && read_len < FLAGS_sdk_file_reada_len) {
         rlen = FLAGS_sdk_file_reada_len;
     }
@@ -502,10 +502,10 @@ int64_t BfsFileImpl::Pread(char* buf, int64_t read_len, int64_t offset, bool rea
 
     //printf("Pread[%s:%ld:%ld] return %lu bytes\n",
     //       _name.c_str(), offset, read_len, response.databuf().size());
-    int64_t ret_len = response.databuf().size();
+    int32_t ret_len = response.databuf().size();
     if (read_len < ret_len) {
         MutexLock lock(&_mu, "Pread fill buffer", 1000);
-        int64_t cache_len = ret_len - read_len;
+        int32_t cache_len = ret_len - read_len;
         if (cache_len > _reada_buf_len) {
             delete[] _reada_buffer;
             _reada_buffer = new char[cache_len];
@@ -535,13 +535,13 @@ int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
     return _read_offset;
 }
 
-int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
+int32_t BfsFileImpl::Read(char* buf, int32_t read_len) {
     //LOG(DEBUG, "[%p] Read[%s:%ld] offset= %ld\n",
     //    this, _name.c_str(), read_len, _read_offset);
     if (_open_flags != O_RDONLY) {
         return -2;
     }
-    int ret = Pread(buf, read_len, _read_offset, true);
+    int32_t ret = Pread(buf, read_len, _read_offset, true);
     //LOG(INFO, "Read[%s:%ld,%ld] return %d", _name.c_str(), _read_offset, read_len, ret);
     if (ret >= 0) {
         _read_offset += ret;
@@ -549,7 +549,7 @@ int64_t BfsFileImpl::Read(char* buf, int64_t read_len) {
     return ret;
 }
 
-int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
+int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
     common::timer::AutoTimer at(100, "Write", _name.c_str());
 
     {
@@ -607,7 +607,7 @@ int64_t BfsFileImpl::Write(const char* buf, int64_t len) {
         }
     }
 
-    int w = 0;
+    int32_t w = 0;
     while (w < len) {
         MutexLock lock(&_mu, "WriteInternal", 1000);
         if (_write_buf == NULL) {
