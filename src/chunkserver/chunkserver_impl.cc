@@ -43,6 +43,8 @@ DECLARE_int32(chunkserver_write_thread_num);
 namespace bfs {
 
 common::Counter g_block_buffers;
+common::Counter g_buffers_new;
+common::Counter g_buffers_delete;
 common::Counter g_blocks;
 common::Counter g_writing_bytes;
 common::Counter g_find_ops;
@@ -100,14 +102,15 @@ public:
                 _bufdatalen, _meta.block_id, _disk_file.c_str());
         }
         if (_blockbuf) {
-            g_block_buffers.Dec();
             delete[] _blockbuf;
+            g_block_buffers.Dec();
+            g_buffers_delete.Inc();
             _blockbuf = NULL;
         }
         _buflen = 0;
         _bufdatalen = 0;
 
-        LOG(INFO, "Relese #%ld _block_buf_list size= %lu",
+        LOG(INFO, "Release #%ld _block_buf_list size= %lu",
             _meta.block_id, _block_buf_list.size());
         for (uint32_t i = 0; i < _block_buf_list.size(); i++) {
             const char* buf = _block_buf_list[0].first;
@@ -116,10 +119,11 @@ public:
                 LOG(WARNING, "Data lost, %d bytes in %s, #%ld _block_buf_list",
                     len, _disk_file.c_str(), _meta.block_id);
             } else {
-                LOG(INFO, "Relese _block_buf_list %d for #%ld ", len, _meta.block_id);
+                LOG(INFO, "Release _block_buf_list %d for #%ld ", len, _meta.block_id);
             }
             delete[] buf;
             g_block_buffers.Dec();
+            g_buffers_delete.Inc();
         }
         _block_buf_list.clear();
 
@@ -349,6 +353,7 @@ private:
                 }
                 delete[] buf;
                 g_block_buffers.Dec();
+                g_buffers_delete.Inc();
                 // Re-Lock for commit
                 _mu.Lock("Block::DiskWrite ReLock", 1000);
                 _disk_file_size += len;
@@ -365,6 +370,7 @@ private:
             _buflen = FLAGS_write_buf_size;
             _blockbuf = new char[_buflen];
             g_block_buffers.Inc();
+            g_buffers_new.Inc();
         }
         int ap_len = len;
         while (_bufdatalen + ap_len > _buflen) {
@@ -376,6 +382,7 @@ private:
             
             _blockbuf = new char[_buflen];
             g_block_buffers.Inc();
+            g_buffers_new.Inc();
             _bufdatalen = 0;
             buf += wlen;
             ap_len -= wlen;
@@ -664,9 +671,10 @@ void ChunkServerImpl::LogStatus() {
         rpc_delay = g_rpc_delay.Clear() / rpc_count / 1000;
         delay_all = g_rpc_delay_all.Clear() / rpc_count / 1000;
     }
-    LOG(INFO, "[Status] blocks %ld buffers %ld "
+    LOG(INFO, "[Status] blocks %ld buffers %ld +%ld -%ld "
               "find %ld read %ld write %ld %.2f MB, rpc_delay(ms) %ld %ld",
-        g_blocks.Get(), g_block_buffers.Get(),
+        g_blocks.Get(), g_block_buffers.Get(), 
+        g_buffers_new.Clear() / 5, g_buffers_delete.Clear() / 5,
         g_find_ops.Clear()/5, g_read_ops.Clear()/5,
         g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024 / 5.0,
         rpc_delay, delay_all);
@@ -812,8 +820,8 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 
     response->add_desc("Process");
     response->add_timestamp(common::timer::get_micros());
-    LOG(INFO, "[WriteBlock] #%ld seq:%d, offset:%ld, len:%lu] %lu\n",
-           block_id, packet_seq, offset, databuf.size(), request->sequence_id());
+    LOG(INFO, "[WriteBlock] #%ld seq:%d, offset:%ld, len:%lu",
+           block_id, packet_seq, offset, databuf.size());
 
     if (request->chunkservers_size()) {
         // New request for next chunkserver
@@ -940,7 +948,7 @@ void ChunkServerImpl::LocalWriteBlock(WriteBlockResponse* response,
     }
 
     int64_t time_end = common::timer::get_micros();
-    LOG(INFO, "[WriteBlock] done #%ld seq:%d, offset:%ld, len:%lu] "
+    LOG(INFO, "[WriteBlock] done #%ld seq:%d, offset:%ld, len:%lu "
               "use %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld ms",
         block_id, packet_seq, offset, databuf.size(),
         (response->timestamp(0) - request->sequence_id()) / 1000, // recv

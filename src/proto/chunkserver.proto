@@ -28,7 +28,7 @@ message ReadBlockRequest {
     optional uint64 sequence_id = 1;
     optional int64 block_id = 2;
     optional int64 offset = 3;
-    optional int64 read_len = 4;
+    optional int32 read_len = 4;
 }
 message ReadBlockResponse {
     optional uint64 sequence_id = 1;

@@ -141,7 +141,7 @@ public:
     void MarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
         _obsolete_blocks[block_id].insert(chunkserver_id);
-        LOG(INFO, "MarkObsoleteBlock %ld on %d", block_id, chunkserver_id);
+        LOG(INFO, "MarkObsoleteBlock #%ld on %d", block_id, chunkserver_id);
     }
     void UnmarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
@@ -159,11 +159,11 @@ public:
                     _obsolete_blocks.erase(it);
                 }
             } else {
-                LOG(WARNING, "Block %ld on chunkserver %d is not marked obsolete\n",
+                LOG(WARNING, "Block #%ld on chunkserver %d is not marked obsolete\n",
                         block_id, chunkserver_id);
             }
         } else {
-            LOG(WARNING, "Block %ld is not marked obsolete\n", block_id);
+            LOG(WARNING, "Block #%ld is not marked obsolete\n", block_id);
         }
     }
     bool MarkBlockStable(int64_t block_id) {
@@ -176,7 +176,7 @@ public:
             nsblock->pending_change = false;
             return true;
         } else {
-            LOG(WARNING, "Can't find block: %ld\n", block_id);
+            LOG(WARNING, "Can't find block: #%ld ", block_id);
             return false;
         }
     }
@@ -190,7 +190,7 @@ public:
             *chunkserver_id = nsblock->replica;
             ret = true;
         } else {
-            LOG(WARNING, "Can't find block: %ld\n", id);
+            LOG(WARNING, "Can't find block: #%ld ", id);
         }
 
         return ret;
@@ -245,7 +245,7 @@ public:
         assert(it == _block_map.end());
         nsblock = new NSBlock(block_id);
         _block_map[block_id] = nsblock;
-        LOG(INFO, "Init block info: %ld\n", block_id);
+        LOG(INFO, "Init block info: #%ld ", block_id);
         if (_next_block_id <= block_id) {
             _next_block_id = block_id + 1;
         }
@@ -262,11 +262,11 @@ public:
             nsblock = it->second;
             if (nsblock->block_size !=  block_size && block_size) {
                 if (nsblock->block_size) {
-                    LOG(WARNING, "block size mismatch, block: %ld\n", id);
+                    LOG(WARNING, "block #%ld size mismatch", id);
                     assert(0);
                     return false;
                 } else {
-                    LOG(DEBUG, "Block[%ld] size update, %ld to %ld",
+                    LOG(DEBUG, "block #%ld size update, %ld to %ld",
                         id, nsblock->block_size, block_size);
                     nsblock->block_size = block_size;
                 }
@@ -290,7 +290,7 @@ public:
                     // add new replica
                     if (more_replica_num) {
                         *more_replica_num = expect_replica_num - cur_replica_num;
-                        LOG(INFO, "Need to add %d new replica for block: %ld\n", *more_replica_num, id);
+                        LOG(INFO, "Need to add %d new replica for #%ld ", *more_replica_num, id);
                     }
                 }
             }
@@ -310,7 +310,7 @@ public:
         assert(it != _block_map.end());
         NSBlock* nsblock = it->second;
         nsblock->pulling_chunkservers.insert(dst_cs);
-        LOG(INFO, "Add replicate info: dst cs: %d, block id: %ld, src cs: %s\n",
+        LOG(INFO, "Add replicate info: dst cs: %d, block #%ld, src cs: %s\n",
                 dst_cs, block_id, src_cs.c_str());
     }
     void UnmarkPullBlock(int64_t block_id, int32_t id) {
@@ -322,10 +322,10 @@ public:
             nsblock->pulling_chunkservers.erase(id);
             if (nsblock->pulling_chunkservers.empty() && nsblock->pending_change) {
                 nsblock->pending_change = false;
-                LOG(INFO, "Block %ld finish replicate\n", block_id);
+                LOG(INFO, "Block #%ld finish replicate\n", block_id);
             }
         } else {
-            LOG(WARNING, "Can't find block: %ld\n", block_id);
+            LOG(WARNING, "Can't find block: #%ld ", block_id);
         }
     }
     bool GetPullBlocks(int32_t id, std::set<std::pair<int64_t, std::string> >* blocks) {
@@ -585,7 +585,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 _block_manager->RemoveReplicaBlock(cur_block_id, id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
                 _block_manager->UnmarkObsoleteBlock(cur_block_id, id);
-                LOG(INFO, "obsolete_block: %ld in _obsolete_blocks", cur_block_id);
+                LOG(INFO, "obsolete_block: #%ld in _obsolete_blocks", cur_block_id);
                 continue;
             }
             int32_t more_replica_num = 0;
@@ -594,7 +594,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                                  &more_replica_num)) {
                 response->add_obsolete_blocks(cur_block_id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
-                LOG(INFO, "obsolete_block: %ld not in _block_map", cur_block_id);
+                LOG(INFO, "obsolete_block: #%ld not in _block_map", cur_block_id);
                 continue;
             }
 
@@ -634,7 +634,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 info = response->add_new_replicas();
                 info->set_block_id(it->first);
                 info->add_chunkserver_address(it->second);
-                LOG(INFO, "Add pull block: %ld, dst cs: %d, src cs: %s\n",
+                LOG(INFO, "Add pull block: #%ld dst cs: %d, src cs: %s\n",
                         it->first, id, it->second.c_str());
             }
         }
@@ -722,7 +722,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         LOG(INFO, "CreateFile %s\n", file_key.c_str());
         response->set_status(0);
     } else {
-        LOG(WARNING, "CreateFile %s\n fail: db put fail", file_key.c_str());
+        LOG(WARNING, "CreateFile %s fail: db put fail", file_key.c_str());
         response->set_status(2);
     }
     done->Run();
@@ -761,7 +761,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
         int64_t new_block_id = _block_manager->NewBlockID();
-        LOG(DEBUG, "[AddBlock] new block for %s id= %ld.",
+        LOG(DEBUG, "[AddBlock] new block for %s id= #%ld ",
             path.c_str(), new_block_id);
         LocatedBlock* block = response->mutable_block();
         _block_manager->AddNewBlock(new_block_id);
@@ -829,7 +829,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             BlockManager::NSBlock nsblock(block_id);
             if (!_block_manager->GetBlock(block_id, &nsblock)) {
-                LOG(WARNING, "GetFileLocation GetBlock fail %ld", block_id);
+                LOG(WARNING, "GetFileLocation GetBlock fail #%ld ", block_id);
                 continue;
             } else {
                 LocatedBlock* lcblock = response->add_blocks();
@@ -840,11 +840,11 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                     int32_t server_id = *it;
                     if (nsblock.pulling_chunkservers.find(server_id) !=
                             nsblock.pulling_chunkservers.end()) {
-                        LOG(INFO, "replica is under construction %ld on %d", block_id, server_id);
+                        LOG(INFO, "replica is under construction #%ld on %d", block_id, server_id);
                         continue;
                     }
                     std::string addr = _chunkserver_manager->GetChunkServer(server_id);
-                    LOG(INFO, "return server %s for %ld", addr.c_str(), block_id);
+                    LOG(INFO, "return server %s for #%ld ", addr.c_str(), block_id);
                     ChunkServerInfo* info = lcblock->add_chains();
                     info->set_address(addr);
                 }
@@ -1043,6 +1043,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                     _block_manager->MarkObsoleteBlock(block_id, *it);
                 }
                 _block_manager->RemoveBlock(block_id);
+                LOG(INFO, "Unlink remove block #%ld", block_id);
             }
             s = _db->Delete(leveldb::WriteOptions(), file_key);
             if (s.ok()) {
