@@ -11,7 +11,6 @@ message WriteBlockRequest {
     optional bytes databuf = 5;
     repeated string chunkservers = 6;
     optional bool is_last = 7;
-    required bool is_append = 8;
     repeated string desc = 11;
     repeated int64 timestamp = 12;
 }

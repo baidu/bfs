@@ -31,7 +31,6 @@ void print_usage() {
     printf("\t    rm <path> : remove a file\n");
     printf("\t    get <bfsfile> <localfile> : copy file to local\n");
     printf("\t    put <localfile> <bfsfile> : copy file from local to bfs\n");
-    printf("\t    append <localfile> <bfsfile> : append localfile to bfsfile\n");
     printf("\t    rmdir <path> : remove empty directory\n");
     printf("\t    rmr <path> : remove directory recursively\n");
     printf("\t    change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
@@ -234,45 +233,6 @@ int BfsList(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsAppend(bfs::FS* fs, int argc, char* argv[]) {
-    if (argc != 4) {
-        print_usage();
-        return 0;
-    }
-    common::timer::AutoTimer at(0, "BfsAppend", argv[3]);
-    FILE* fp = fopen(argv[2], "rb");
-    if (fp == NULL) {
-        fprintf(stderr, "Can't open local file %s\n", argv[2]);
-        return 1;
-    }
-
-    bfs::File* file;
-    if (!fs->OpenFile(argv[3], O_APPEND, &file)) {
-        fprintf(stderr, "Can't Open bfs file %s\n", argv[3]);
-        fclose(fp);
-        return 1;
-    }
-    char buf[1024];
-    int64_t len = 0;
-    int64_t bytes = 0;
-    while ( (bytes = fread(buf, 1, sizeof(buf), fp)) > 0) {
-        int64_t write_bytes = file->Write(buf, bytes);
-        if (write_bytes < bytes) {
-            fprintf(stderr, "Append fail: [%s:%ld]\n", argv[3], len);
-            return 1;
-        }
-        len += bytes;
-    }
-    if (!fs->CloseFile(file)) {
-        fprintf(stderr, "close fail: %s\n", argv[3]);
-        return 1;
-    }
-    delete file;
-    fclose(fp);
-    printf("Append to bfs %s %ld bytes\n", argv[3], len);
-    return 0;
-}
-
 int BfsRmdir(bfs::FS* fs, int argc, char* argv[], bool recursive) {
     if (argc < 1) {
         print_usage();
@@ -353,8 +313,6 @@ int main(int argc, char* argv[]) {
         ret = BfsCat(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "ls") == 0) {
         ret = BfsList(fs, argc, argv);
-    } else if (strcmp(argv[1], "append") == 0) {
-        ret = BfsAppend(fs, argc, argv);
     } else if (strcmp(argv[1], "rmdir") == 0) {
         ret = BfsRmdir(fs, argc - 2, argv + 2, false);
     } else if (strcmp(argv[1], "rmr") == 0) {
