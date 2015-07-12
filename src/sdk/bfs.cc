@@ -302,11 +302,8 @@ public:
                 fprintf(stderr, "OpenFile return %d\n", response.status());
                 ret = false;
             }
-        } else if (flags == O_APPEND) {
-            *file = new BfsFileImpl(this, _rpc_client, path, flags);
-            ret = true;
         } else {
-            LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY or O_APPEND\n");
+            LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY\n");
             ret = false;
         }
         return ret;
@@ -321,7 +318,7 @@ public:
             if (!bfs_file->_block_for_write) {
                 empty_file = true;
             }
-            if (!empty_file && ((open_flags & O_WRONLY) || open_flags == O_APPEND)) {
+            if (!empty_file && (open_flags & O_WRONLY)) {
                 block_id = bfs_file->_block_for_write->block_id();
             }
         } else {
@@ -332,7 +329,7 @@ public:
             LOG(WARNING, "Close file fail\n");
             return false;
         }
-        if (!empty_file && ((open_flags & O_WRONLY) || open_flags == O_APPEND)) {
+        if (!empty_file && (open_flags & O_WRONLY)) {
             FinishBlockRequest request;
             FinishBlockResponse response;
             request.set_sequence_id(0);
@@ -554,7 +551,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
 
     {
         MutexLock lock(&_mu, "Write", 1000);
-        if (!(_open_flags & O_WRONLY) && !(_open_flags & O_APPEND)) {
+        if (!(_open_flags & O_WRONLY)) {
             return -2;
         }
         if (_bg_error || _closed) {
@@ -583,27 +580,6 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             //printf("_block_for_write addr %s\n", 
             //        file->_block_for_write->chains(0).address().c_str());
             _rpc_client->GetStub(addr, &_chains_head);
-        }
-    } else if (_open_flags == O_APPEND) {
-        MutexLock lock(&_mu, "Append", 1000);
-        if (_chains_head == NULL) {
-            FileLocationRequest request;
-            FileLocationResponse response;
-            request.set_file_name(_name);
-            request.set_sequence_id(0);
-
-            bool ret = _rpc_client->SendRequest(_fs->_nameserver,
-                    &NameServer_Stub::GetFileLocation,
-                    &request, &response, 15, 3);
-            if (ret && response.status() == 0) {
-                _block_for_write = new LocatedBlock(response.blocks(0));
-                const std::string& addr = _block_for_write->chains(0).address();
-                _rpc_client->GetStub(addr, &_chains_head);
-            } else {
-                LOG(WARNING, "Locate file %s error: %d\n", _name.c_str(), response.status());
-                common::atomic_dec(&_back_writing); 
-                return -1;
-            }
         }
     }
 
@@ -666,11 +642,6 @@ void BfsFileImpl::BackgroundWrite(ChunkServer_Stub* stub) {
         request->set_offset(offset);
         request->set_is_last(buffer->IsLast());
         request->set_packet_seq(buffer->Sequence());
-        if (_open_flags == O_WRONLY) {
-            request->set_is_append(false);
-        } else {
-            request->set_is_append(true);
-        }
         //request->add_desc("start");
         //request->add_timestamp(common::timer::get_micros());
         
@@ -798,7 +769,7 @@ bool BfsFileImpl::Sync() {
 bool BfsFileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", _name.c_str());
     MutexLock lock(&_mu, "Close", 1000);
-    if (_block_for_write && ((_open_flags & O_WRONLY) || _open_flags == O_APPEND)) {
+    if (_block_for_write && (_open_flags & O_WRONLY)) {
         if (!_write_buf) {
             _write_buf = new WriteBuffer(++_last_seq, 32, _block_for_write->block_id(),
                                          _block_for_write->block_size());

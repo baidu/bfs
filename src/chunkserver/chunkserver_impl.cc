@@ -402,7 +402,6 @@ private:
     Mutex       _mu;
     common::SlidingWindow<Buffer>* _recv_window;
     bool        _finished;
-    int         _write_mode;
     bool        _deleted;
 };
 
