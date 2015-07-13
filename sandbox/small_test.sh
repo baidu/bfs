@@ -20,6 +20,8 @@ sleep 3
 
 ./bfs_client get /bin/bfs_client ./binary
 
+diff ./bfs_client ./binary > /dev/null
+
 rm -rf ./binary
 
 ./bfs_client ls /
@@ -42,6 +44,8 @@ touch empty_file1
 ./bfs_client put ./empty_file1 /ef
 
 ./bfs_client get /ef ./empty_file2
+
+diff ./empty_file1 ./empty_file2 > /dev/null
 
 rm -rf empty_file*
 
