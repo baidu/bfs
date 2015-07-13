@@ -433,9 +433,10 @@ BfsFileImpl::~BfsFileImpl () {
 }
 
 int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada) {
-    if (reada) {
+    {
         MutexLock lock(&_mu, "Pread read buffer", 1000);
-        if (_reada_base <= offset && _reada_base + _reada_buf_len >= offset + read_len) {
+        if (_reada_buffer && _reada_base <= offset &&
+                _reada_base + _reada_buf_len >= offset + read_len) {
             memcpy(buf, _reada_buffer + (offset - _reada_base), read_len);
             //LOG(INFO, "Read %s %ld from cache %ld", _name.c_str(), offset, read_len);
             return read_len;
