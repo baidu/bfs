@@ -61,6 +61,8 @@ public:
     virtual bool Access(const char* path, int32_t mode) = 0;
     /// Stat
     virtual bool Stat(const char* path, BfsFileInfo* fileinfo) = 0;
+    /// GetFileSize: get real file size
+    virtual bool GetFileSize(const char* path, int64_t* file_size) = 0;
     /// Open file for read or write, flags: O_WRONLY or O_RDONLY
     virtual bool OpenFile(const char* path, int32_t flags, File** file) = 0;
     virtual bool CloseFile(File* file) = 0;

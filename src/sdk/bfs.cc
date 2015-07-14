@@ -264,6 +264,56 @@ public:
         }
         return false;
     }
+    bool GetFileSize(const char* path, int64_t* file_size) {
+        if (file_size == NULL) {
+            return false;
+        }
+        FileLocationRequest request;
+        FileLocationResponse response;
+        request.set_file_name(path);
+        request.set_sequence_id(0);
+        bool ret = _rpc_client->SendRequest(_nameserver, 
+            &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
+        if (!ret || response.status() != 0) {
+            LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
+            return false;
+        }
+        *file_size = 0;
+        for (int i = 0; i < response.blocks_size(); i++) {
+            const LocatedBlock& block = response.blocks(i);
+            ChunkServer_Stub* chunkserver = NULL;
+            bool available = false;
+            for (int j = 0; j < block.chains_size(); j++) {
+                std::string addr = block.chains(j).address();
+                ret = _rpc_client->GetStub(addr, &chunkserver);
+                if (!ret) {
+                    LOG(INFO, "GetFileSize(%s) connect chunkserver fail %s",
+                        path, addr.c_str());
+                    chunkserver = NULL;
+                } else {
+                    GetBlockInfoRequest gbi_request;
+                    gbi_request.set_block_id(block.block_id());
+                    gbi_request.set_sequence_id(common::timer::get_micros());
+                    GetBlockInfoResponse gbi_response;
+                    ret = _rpc_client->SendRequest(chunkserver, 
+                        &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
+                    if (!ret || gbi_response.status() != 0) {
+                        LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail",
+                            path, addr.c_str());
+                        continue;
+                    }
+                    *file_size += gbi_response.block_size();
+                    available = true;
+                    break;
+                }
+            }
+            if (!available) {
+                LOG(WARNING, "GetFileSize(%s) fail no available chunkserver", path);
+                return false;
+            }
+        }
+        return true;
+    }
     bool OpenFile(const char* path, int32_t flags, File** file) {
         common::timer::AutoTimer at(100, "OpenFile", path);
         bool ret = false;

@@ -130,12 +130,12 @@ int32_t BfsImpl::Delete(const std::string& filename) {
     return 0;
 }
 int32_t BfsImpl::GetFileSize(const std::string& filename, uint64_t* size) {
-    BfsFileInfo fileinfo;
-    if (!_fs->Stat(filename.c_str(), &fileinfo)) {
+    int64_t file_size = 0;
+    if (!_fs->GetFileSize(filename.c_str(), &file_size)) {
         LOG(INFO, "GetFileSize(%s) fail", filename.c_str());
         return -1;
     }
-    *size = fileinfo.size;
+    *size = file_size;
     LOG(INFO, "GetFileSize(%s) return %lu", filename.c_str(), *size);
     return 0;
 }

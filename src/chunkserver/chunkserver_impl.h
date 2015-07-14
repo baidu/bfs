@@ -32,9 +32,13 @@ public:
                             WriteBlockResponse* response,
                             ::google::protobuf::Closure* done);
     virtual void ReadBlock(::google::protobuf::RpcController* controller,
-                            const ReadBlockRequest* request,
-                            ReadBlockResponse* response,
-                            ::google::protobuf::Closure* done);
+                           const ReadBlockRequest* request,
+                           ReadBlockResponse* response,
+                           ::google::protobuf::Closure* done);
+    virtual void GetBlockInfo(::google::protobuf::RpcController* controller,
+                              const GetBlockInfoRequest* request,
+                              GetBlockInfoResponse* response,
+                              ::google::protobuf::Closure* done);
 private:
     void LogStatus();
     void WriteNext(const std::string& next_server,

@@ -1063,7 +1063,46 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
     }
 }
 
-} // namespace bfs
 
+void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller,
+                                   const GetBlockInfoRequest* request,
+                                   GetBlockInfoResponse* response,
+                                   ::google::protobuf::Closure* done) {
+    if (!response->has_sequence_id()) {
+        response->set_sequence_id(request->sequence_id());
+        response->add_timestamp(common::timer::get_micros());
+        boost::function<void ()> task =
+            boost::bind(&ChunkServerImpl::GetBlockInfo, this, controller, request, response, done);
+        _read_thread_pool->AddTask(task);
+        return;
+    }
+    int64_t block_id = request->block_id();
+    int status = 0;
+
+    int64_t find_start = common::timer::get_micros();
+    Block* block = _block_manager->FindBlock(block_id, false);
+    int64_t find_end = common::timer::get_micros();
+    if (block == NULL) {
+        status = 404;
+        LOG(WARNING, "GetBlockInfo not found: #%ld ",block_id);
+    } else {
+        int64_t block_size = block->GetMeta().block_size;
+        response->set_block_size(block_size);
+        status = 0;
+        LOG(INFO, "GetBlockInfo #%ld return: %d "
+                  "use %ld %ld %ld %ld",
+            block_id, block_size,
+            (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time
+            (find_start - response->timestamp(0)) / 1000,   // dispatch time
+            (find_end - find_start) / 1000, // find time
+            (find_end - response->timestamp(0)) / 1000);    // service time
+    }
+    done->Run();
+
+    if (block) block->DecRef();
+
+}
+
+} // namespace bfs
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
