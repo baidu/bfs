@@ -119,6 +119,9 @@ int main(int argc, char* argv[]) {
     ASSERT_TRUE(c1len == fp->Write(content1, c1len));
     ASSERT_TRUE(0 == fp->Flush());
     ASSERT_TRUE(0 == fp->Sync());
+    uint64_t file_size = 0;
+    ASSERT_TRUE(0 == dfs->GetFileSize(file3, &file_size));
+    ASSERT_TRUE(file_size == (uint64_t)c1len);
     ASSERT_TRUE(c2len == fp->Write(content2, c2len));
     
     leveldb::DfsFile* nfp = dfs->OpenFile(file3, leveldb::RDONLY);

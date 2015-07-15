@@ -171,7 +171,7 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
             result->push_back(filename + 1);
         }
     }
-    delete files;
+    delete[] files;
     LOG(INFO, "ListDirectory(%s) return %lu items", path.c_str(), result->size());    
     return 0;
 }
