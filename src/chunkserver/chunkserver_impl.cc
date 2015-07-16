@@ -26,6 +26,7 @@
 #include "common/timer.h"
 #include "common/sliding_window.h"
 #include "common/logging.h"
+#include "common/lru.h"
 
 DECLARE_string(block_store_path);
 DECLARE_string(nameserver);
@@ -197,6 +198,10 @@ public:
         _finished = true;
         return true;
     }
+    bool IsFinish() {
+        MutexLock lock(&_mu, "Block::IsFinish", 1000);
+        return _finished;
+    }
     /// Read operation.
     int32_t Read(char* buf, int32_t len, int64_t offset) {
         MutexLock lock(&_mu, "Block::Read", 1000);
@@ -281,25 +286,33 @@ public:
     }
     /// Flush block to disk.
     void Close() {
-        LOG(INFO, "Block #%ld Flush to %s", _meta.block_id, _disk_file.c_str());
-        MutexLock lock(&_mu, "Block::Close", 1000);
-        if (_bufdatalen) {
-            _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
-            this->AddRef();
-            _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
+        if (_finished) {
+            if (_file_desc >= 0) {
+                int ret = close(_file_desc);
+                assert(ret == 0);
+                _file_desc = -1;
+            }
+        } else {
+            LOG(INFO, "Block #%ld Flush to %s", _meta.block_id, _disk_file.c_str());
+            MutexLock lock(&_mu, "Block::Close", 1000);
+            if (_bufdatalen) {
+                _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
+                this->AddRef();
+                _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
+                _blockbuf = NULL;
+                _bufdatalen = 0;
+            }
+            /*
+            ///TODO: Error handling
+            int ret = close(_file_desc);
+            assert(ret == 0);
+            _file_desc = -1;
+            delete _blockbuf;
             _blockbuf = NULL;
-            _bufdatalen = 0;
+            g_block_buffers.Dec();
+            LOG(INFO, "Block #%ld %s closed", _meta.block_id, _disk_file.c_str());
+            */
         }
-        /*
-        ///TODO: Error handling
-        int ret = close(_file_desc);
-        assert(ret == 0);
-        _file_desc = -1;
-        delete _blockbuf;
-        _blockbuf = NULL;
-        g_block_buffers.Dec();
-        LOG(INFO, "Block #%ld %s closed", _meta.block_id, _disk_file.c_str());
-        */
     }
     void AddRef() {
         common::atomic_inc(&_refs);
@@ -409,11 +422,13 @@ class BlockManager {
 public:
     BlockManager(ThreadPool* thread_pool, std::string store_path)
         :_thread_pool(thread_pool), _store_path(store_path),
-         _metadb(NULL), _block_num(0) {
+        _block_cache(NULL), _metadb(NULL), _block_num(0) {
         ///TODO: Multi disk support
         if (_store_path.empty() || _store_path[_store_path.size() - 1] != '/') {
             _store_path += "/";
         }
+        _block_cache = new common::LRU<int64_t, Block*>(100, RemoveBlockCacheCallback);
+        assert(_block_cache);
     }
     ~BlockManager() {
         for (BlockMap::iterator it = _block_map.begin();
@@ -421,6 +436,8 @@ public:
             it->second->DecRef();
         }
         _block_map.clear();
+        delete _block_cache;
+        _block_cache = NULL;
         delete _metadb;
         _metadb = NULL;
     }
@@ -450,6 +467,7 @@ public:
             Block* block = new Block(meta, _store_path, _thread_pool);
             block->AddRef();
             _block_map[block_id] = block;
+            block->MarkFinish();
             _block_num ++;
         }
         delete it;
@@ -479,27 +497,40 @@ public:
     Block* FindBlock(int64_t block_id, bool create_if_missing, int64_t* sync_time = NULL) {
         bool new_create = false;
         Block* block = NULL;
+        Block** cached_block = NULL;
         {
             MutexLock lock(&_mu, "BlockManger::Find", 1000);
             g_find_ops.Inc();
-            BlockMap::iterator it = _block_map.find(block_id);
-            if (it != _block_map.end()) {
-                block = it->second;
-            } else if (create_if_missing) {
-                ///TODO: LRU block map
-                BlockMeta meta;
-                meta.block_id = block_id;
-                block = new Block(meta, _store_path, _thread_pool);
-                new_create = true;
-                // for block_map
-                block->AddRef();
-                _block_map[block_id] = block;
+            cached_block = _block_cache->Find(block_id);
+            if (cached_block) {
+                block = *cached_block;
             } else {
-                // not found
+                BlockMap::iterator it = _block_map.find(block_id);
+                if (it != _block_map.end()) {
+                    block = it->second;
+                } else if (create_if_missing) {
+                    ///TODO: LRU block map
+                    BlockMeta meta;
+                    meta.block_id = block_id;
+                    block = new Block(meta, _store_path, _thread_pool);
+                    new_create = true;
+                    // for block_map
+                    block->AddRef();
+                    _block_map[block_id] = block;
+                } else {
+                    // not found
+                }
+
+                if (block) {
+                    _block_cache->Insert(block_id, block);
+                    // for _block_cache
+                    block->AddRef();
+                }
             }
         }
         // Write meta & sync
         if (new_create && !SyncBlockMeta(block->GetMeta(), sync_time)) {
+            _block_cache->Remove(block_id);
             delete block;
             block = NULL;
         }
@@ -527,12 +558,11 @@ public:
         return true;
     }
     bool CloseBlock(Block* block) {
+        // Disk flush & sync
+        block->Close();
         if (!block->MarkFinish()) {
             return false;
         }
-        // Disk flush & sync
-        block->Close();
-        
         // Update meta
         BlockMeta meta = block->GetMeta();
         return SyncBlockMeta(meta, NULL);
@@ -546,6 +576,7 @@ public:
                 LOG(WARNING, "Try to remove block that does not exist: #%ld ", block_id);
                 return false;
             }
+            _block_cache->Remove(block_id);
             block = it->second;
         }
 
@@ -582,10 +613,18 @@ public:
         }
     }
 private:
+    static void RemoveBlockCacheCallback(int64_t &block_id, Block* &block) {
+        if (block->IsFinish()) {
+            block->Close();
+        }
+        block->DecRef();
+    }
+private:
     ThreadPool* _thread_pool;
     std::string _store_path;
     typedef std::map<int64_t, Block*> BlockMap;
     BlockMap  _block_map;
+    common::LRU<int64_t, Block*>* _block_cache;
     leveldb::DB* _metadb;
     int64_t _block_num;
     Mutex   _mu;
