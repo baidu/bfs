@@ -1097,6 +1097,7 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
             (find_end - find_start) / 1000, // find time
             (find_end - response->timestamp(0)) / 1000);    // service time
     }
+    response->set_status(status);
     done->Run();
 
     if (block) block->DecRef();
