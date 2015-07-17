@@ -511,7 +511,7 @@ public:
                 _block_map[block_id] = block;
                 // Unlock for write meta & sync
                 _mu.Unlock();
-                if (SyncBlockMeta(meta, sync_time)) {
+                if (!SyncBlockMeta(meta, sync_time)) {
                     delete block;
                     block = NULL;
                 }
