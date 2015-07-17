@@ -11,7 +11,8 @@ echo '--block_store_path=./data1,./data2' >> bfs.flag
 
 cp bfs.flag nameserver/
 
-for((i=0;i<4;i++)) do
+for i in `seq 0 3`;
+do
     mkdir -p chunkserver$i/bin
     mkdir -p chunkserver$i/data1
     mkdir -p chunkserver$i/data2
