@@ -33,7 +33,6 @@ void SplitString(const std::string& full,
 
         if (!tmp.empty()) {
             result->push_back(tmp);
-            tmp.clear();
         }
     }
 }
