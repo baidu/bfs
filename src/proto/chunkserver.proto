@@ -4,7 +4,7 @@ package bfs;
 option cc_generic_services = true;
 
 message WriteBlockRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int64 block_id = 2;
     optional int64 offset = 3;
     optional int32 packet_seq = 4;
@@ -16,7 +16,7 @@ message WriteBlockRequest {
 }
 
 message WriteBlockResponse {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     optional int32 status = 2;
     optional string bad_chunkserver = 3;
     repeated string desc = 11;
@@ -24,24 +24,24 @@ message WriteBlockResponse {
 }
 
 message ReadBlockRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int64 block_id = 2;
     optional int64 offset = 3;
     optional int32 read_len = 4;
 }
 message ReadBlockResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 status = 2;
     optional bytes databuf = 3;
     repeated int64 timestamp = 9;
 }
 
 message GetBlockInfoRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int64 block_id = 2;
 }
 message GetBlockInfoResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 status = 2;
     optional int64 block_size = 3;
     repeated int64 timestamp = 9;

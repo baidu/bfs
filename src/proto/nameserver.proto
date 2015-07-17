@@ -5,7 +5,7 @@ package bfs;
 option cc_generic_services = true;
 
 message CreateFileRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional string file_name = 2;
     optional int32 mode = 3;
     optional int32 flags = 4;
@@ -14,7 +14,7 @@ message CreateFileRequest {
 }
 
 message CreateFileResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     required int32 status = 2;
 }
 
@@ -25,104 +25,104 @@ message LocatedBlock {
 }
 
 message FileLocationRequest {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     required string file_name = 2;
     optional int64 offset = 3;
     optional int32 block_num = 4 [default = 10];
 }
 
 message FileLocationResponse {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     required int32 status = 2;
     repeated LocatedBlock blocks = 3;
 }
 
 message ListDirectoryRequest {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     required string path = 2;
 }
 message ListDirectoryResponse {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     required int32 status = 2;
     repeated FileInfo files = 3;
 }
 
 message StatRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     required string path = 2;
 }
 message StatResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 status = 2;
     optional FileInfo file_info = 3;
 }
 
 message RenameRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     required string oldpath = 2;
     required string newpath = 3;
 }
 message RenameResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 status = 2;
 }
 
 message AddBlockRequest {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     required string file_name = 2;
 }
 message AddBlockResponse {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     optional int32 status = 2;
     optional LocatedBlock block = 3;
 }
 
 message FinishBlockRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int64 block_id = 2;
 }
 message FinishBlockResponse {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     optional int32 status = 2;
 }
 
 message UnlinkRequest {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     required string path = 2;
 }
 message UnlinkResponse {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     optional int32 status = 2;
 }
 
 message DeleteDirectoryRequest {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     required string path = 2;
     required bool recursive = 3;
 }
 message DeleteDirectoryResponse {
-    required uint64 sequence_id = 1;
+    required int64 sequence_id = 1;
     optional int32 status = 2;
 }
 
 message ChangeReplicaNumRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     required string file_name = 2;
     required int32 replica_num = 3;
 }
 message ChangeReplicaNumResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 status = 2;
 }
 
 message HeartBeatRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional string data_server_addr = 2;
     optional int32 chunkserver_id = 3;
     optional int64 namespace_version = 4;
 }
 message HeartBeatResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     optional int64 namespace_version = 3;
 }
@@ -137,7 +137,7 @@ message ReplicaInfo {
     repeated string chunkserver_address = 2;
 }
 message BlockReportRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     optional string chunkserver_addr = 3;
     optional int64 namespace_version = 4;
@@ -145,18 +145,18 @@ message BlockReportRequest {
     repeated ReportBlockInfo blocks = 6;
 }
 message BlockReportResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 status = 2;
     repeated int64 obsolete_blocks = 3;
     repeated ReplicaInfo new_replicas = 4;
 }
 message PullBlockReportRequest {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     repeated int64 blocks = 3;
 }
 message PullBlockReportResponse {
-    optional uint64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional int32 status = 2;
 }
 
