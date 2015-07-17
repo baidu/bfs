@@ -108,7 +108,7 @@ static inline int atomic_swap(volatile void *lockword, int value)
     );
     return value;
 }
-static inline int atomic_swap64(volatile void *lockword, long value)
+static inline long atomic_swap64(volatile void *lockword, long value)
 {
     asm volatile(
             "lock xchg %0, (%1);"
@@ -155,7 +155,7 @@ static inline int atomic_comp_swap(volatile void *mem, int xchg, int cmp)
  * @author yanshiguang02
  * @date 2012/09/09 13:54:15
 **/
-static inline int atomic_comp_swap64(volatile void *mem, long long xchg, long long cmp)
+static inline long atomic_comp_swap64(volatile void *mem, long long xchg, long long cmp)
 {
     asm volatile(
             "lock cmpxchg %1, (%2)"
