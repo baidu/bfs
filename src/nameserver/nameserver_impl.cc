@@ -92,7 +92,7 @@ public:
     BlockManager():_next_block_id(1) {}
     int64_t NewBlockID() {
         MutexLock lock(&_mu, "BlockManager::NewBlockID", 1000);
-        return ++_next_block_id;
+        return _next_block_id++;
     }
     bool RemoveReplicaBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu, "BlockManager::RemoveReplicaBlock", 1000);

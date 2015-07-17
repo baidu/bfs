@@ -26,6 +26,7 @@
 #include "common/timer.h"
 #include "common/sliding_window.h"
 #include "common/logging.h"
+#include "common/string_util.h"
 
 DECLARE_string(block_store_path);
 DECLARE_string(nameserver);
@@ -407,13 +408,10 @@ private:
 
 class BlockManager {
 public:
-    BlockManager(ThreadPool* thread_pool, std::string store_path)
-        :_thread_pool(thread_pool), _store_path(store_path),
+    BlockManager(ThreadPool* thread_pool, const std::string& store_path)
+        :_thread_pool(thread_pool),
          _metadb(NULL), _block_num(0) {
-        ///TODO: Multi disk support
-        if (_store_path.empty() || _store_path[_store_path.size() - 1] != '/') {
-            _store_path += "/";
-        }
+         ParseStorePath(store_path);
     }
     ~BlockManager() {
         for (BlockMap::iterator it = _block_map.begin();
@@ -424,12 +422,32 @@ public:
         delete _metadb;
         _metadb = NULL;
     }
+    void ParseStorePath(const std::string& store_path) {
+         common::SplitString(store_path, ",", &_store_path_list);
+         for (uint32_t i = 0 ;i < _store_path_list.size(); ++i) {
+            std::string& store_path = _store_path_list[i];
+            store_path = common::TrimString(store_path, " ");
+            if (store_path.empty() || store_path[store_path.size() - 1] != '/') {
+                store_path += "/";
+            }
+            LOG(INFO, "Use store path: %s", store_path.c_str());
+         }
+         std::sort(_store_path_list.begin(), _store_path_list.end());
+         std::vector<std::string>::iterator it
+            = std::unique(_store_path_list.begin(), _store_path_list.end());
+         _store_path_list.resize(std::distance(_store_path_list.begin(), it));
+         LOG(INFO, "%lu store path used.", _store_path_list.size());
+         assert(_store_path_list.size() > 0);
+    }
+    const std::string& GetStorePath(int64_t block_id) {
+        return _store_path_list[block_id % _store_path_list.size()];
+    }
     bool LoadStorage() {
         assert (_block_num == 0);
         MutexLock lock(&_mu);
         leveldb::Options options;
         options.create_if_missing = true;
-        leveldb::Status s = leveldb::DB::Open(options, _store_path+"/meta/", &_metadb);
+        leveldb::Status s = leveldb::DB::Open(options, _store_path_list[0] + "meta/", &_metadb);
         if (!s.ok()) {
             LOG(WARNING, "Load blocks fail");
             return false;
@@ -446,8 +464,7 @@ public:
             assert(it->value().size() == sizeof(meta));
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
-
-            Block* block = new Block(meta, _store_path, _thread_pool);
+            Block* block = new Block(meta, GetStorePath(block_id), _thread_pool);
             block->AddRef();
             _block_map[block_id] = block;
             _block_num ++;
@@ -477,7 +494,6 @@ public:
         return true;
     }
     Block* FindBlock(int64_t block_id, bool create_if_missing, int64_t* sync_time = NULL) {
-        bool new_create = false;
         Block* block = NULL;
         {
             MutexLock lock(&_mu, "BlockManger::Find", 1000);
@@ -486,22 +502,23 @@ public:
             if (it != _block_map.end()) {
                 block = it->second;
             } else if (create_if_missing) {
-                ///TODO: LRU block map
                 BlockMeta meta;
                 meta.block_id = block_id;
-                block = new Block(meta, _store_path, _thread_pool);
-                new_create = true;
+                meta.version = 0;
+                block = new Block(meta, GetStorePath(block_id), _thread_pool);
                 // for block_map
                 block->AddRef();
                 _block_map[block_id] = block;
+                // Unlock for write meta & sync
+                _mu.Unlock();
+                if (SyncBlockMeta(meta, sync_time)) {
+                    delete block;
+                    block = NULL;
+                }
+                _mu.Lock();
             } else {
                 // not found
             }
-        }
-        // Write meta & sync
-        if (new_create && !SyncBlockMeta(block->GetMeta(), sync_time)) {
-            delete block;
-            block = NULL;
         }
         // for user
         if (block) {
@@ -563,7 +580,7 @@ public:
         char dir_name[5];
         snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
         // Rmdir, ignore error when not empty.
-        rmdir((_store_path + dir_name).c_str());
+        rmdir((GetStorePath(block_id) + dir_name).c_str());
         char idstr[14];
         snprintf(idstr, sizeof(idstr), "%13ld", block_id);
 
@@ -583,7 +600,7 @@ public:
     }
 private:
     ThreadPool* _thread_pool;
-    std::string _store_path;
+    std::vector<std::string> _store_path_list;
     typedef std::map<int64_t, Block*> BlockMap;
     BlockMap  _block_map;
     leveldb::DB* _metadb;
