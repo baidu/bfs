@@ -872,10 +872,12 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         } else {
             response->set_status(next_response->status());
         }
+        delete next_response;
         done->Run();
         return;
     } else {
         LOG(INFO, "[Writeblock] send #%ld seq:%d to next done", block_id, packet_seq);
+        delete next_response;
     }
     
     boost::function<void ()> callback =
