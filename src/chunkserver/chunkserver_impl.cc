@@ -4,6 +4,8 @@
 //
 // Author: yanshiguang02@baidu.com
 
+#include "chunkserver_impl.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
@@ -15,9 +17,6 @@
 #include <leveldb/db.h>
 #include <leveldb/cache.h>
 
-#include "chunkserver_impl.h"
-#include "rpc/rpc_client.h"
-#include "proto/nameserver.pb.h"
 #include "common/mutex.h"
 #include "common/atomic.h"
 #include "common/counter.h"
@@ -25,8 +24,13 @@
 #include "common/util.h"
 #include "common/timer.h"
 #include "common/sliding_window.h"
-#include "common/logging.h"
 #include "common/string_util.h"
+#include "file_cache.h"
+#include "proto/nameserver.pb.h"
+#include "rpc/rpc_client.h"
+
+// Avoid conflict, we define LOG...
+#include "common/logging.h"
 
 DECLARE_string(block_store_path);
 DECLARE_string(nameserver);
@@ -39,6 +43,7 @@ DECLARE_int32(write_buf_size);
 DECLARE_int32(chunkserver_work_thread_num);
 DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
+DECLARE_int32(chunkserver_file_cache_size);
 
 namespace bfs {
 
@@ -80,12 +85,14 @@ struct BlockMeta {
 /// Data block
 class Block {
 public:
-    Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool) :
+    Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool,
+          FileCache* file_cache) :
       _thread_pool(thread_pool), _meta(meta),
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
       _bufdatalen(0), _disk_writing(false),
       _disk_file_size(meta.block_size), _file_desc(-1), _refs(0),
-      _recv_window(NULL), _finished(false), _deleted(false) {
+      _recv_window(NULL), _finished(false), _deleted(false),
+      _file_cache(file_cache) {
         assert(_meta.block_id < (1L<<40));
         char file_path[16];
         int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
@@ -189,21 +196,13 @@ public:
     bool IsComplete() {
         return (_slice_num == _last_seq + 1);
     }
-    /// Mark this block is finish, return iff the first.
-    bool MarkFinish() {
-        MutexLock lock(&_mu, "Block::MarkFinish", 1000);
-        if (_finished) {
-            return false;
-        }
-        _finished = true;
-        return true;
-    }
     /// Read operation.
     int32_t Read(char* buf, int32_t len, int64_t offset) {
         MutexLock lock(&_mu, "Block::Read", 1000);
         if (offset > _meta.block_size) {
             return -1;
         }
+        /*
         if (_disk_file_size && _file_desc == -1) {
             int fd  = open(_disk_file.c_str(), O_RDONLY);
             if (fd < 0) {
@@ -212,14 +211,17 @@ public:
                 return -2;
             }
             _file_desc = fd;
-        }
+        }*/
+
         /// Read from disk
         int readlen = 0;
         while (offset + readlen < _disk_file_size) {
             int pread_len = std::min(len - readlen,
                                      static_cast<int>(_disk_file_size - offset - readlen));
             _mu.Unlock();
-            int ret = pread(_file_desc, buf + readlen, pread_len, offset + readlen);
+            int ret = _file_cache->ReadFile(_disk_file, 
+                            buf + readlen, pread_len, offset + readlen);
+            //int ret = pread(_file_desc, buf + readlen, pread_len, offset + readlen);
             assert(ret == pread_len);
             readlen += ret;
             _mu.Lock("Block::Read relock", 1000);
@@ -281,9 +283,13 @@ public:
         return true;
     }
     /// Flush block to disk.
-    void Close() {
-        LOG(INFO, "Block #%ld Flush to %s", _meta.block_id, _disk_file.c_str());
+    bool Close() {
         MutexLock lock(&_mu, "Block::Close", 1000);
+        if (_finished) {
+            return false;
+        }
+
+        LOG(INFO, "Block #%ld Flush to %s", _meta.block_id, _disk_file.c_str());
         if (_bufdatalen) {
             _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
             this->AddRef();
@@ -291,16 +297,8 @@ public:
             _blockbuf = NULL;
             _bufdatalen = 0;
         }
-        /*
-        ///TODO: Error handling
-        int ret = close(_file_desc);
-        assert(ret == 0);
-        _file_desc = -1;
-        delete _blockbuf;
-        _blockbuf = NULL;
-        g_block_buffers.Dec();
-        LOG(INFO, "Block #%ld %s closed", _meta.block_id, _disk_file.c_str());
-        */
+        _finished = true;
+        return true;
     }
     void AddRef() {
         common::atomic_inc(&_refs);
@@ -404,6 +402,8 @@ private:
     common::SlidingWindow<Buffer>* _recv_window;
     bool        _finished;
     bool        _deleted;
+
+    FileCache*  _file_cache;
 };
 
 class BlockManager {
@@ -412,6 +412,7 @@ public:
         :_thread_pool(thread_pool),
          _metadb(NULL), _block_num(0) {
          ParseStorePath(store_path);
+         _file_cache = new FileCache(FLAGS_chunkserver_file_cache_size);
     }
     ~BlockManager() {
         for (BlockMap::iterator it = _block_map.begin();
@@ -464,7 +465,7 @@ public:
             assert(it->value().size() == sizeof(meta));
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
-            Block* block = new Block(meta, GetStorePath(block_id), _thread_pool);
+            Block* block = new Block(meta, GetStorePath(block_id), _thread_pool, _file_cache);
             block->AddRef();
             _block_map[block_id] = block;
             _block_num ++;
@@ -505,7 +506,7 @@ public:
                 BlockMeta meta;
                 meta.block_id = block_id;
                 meta.version = 0;
-                block = new Block(meta, GetStorePath(block_id), _thread_pool);
+                block = new Block(meta, GetStorePath(block_id), _thread_pool, _file_cache);
                 // for block_map
                 block->AddRef();
                 _block_map[block_id] = block;
@@ -544,11 +545,9 @@ public:
         return true;
     }
     bool CloseBlock(Block* block) {
-        if (!block->MarkFinish()) {
+        if (!block->Close()) {
             return false;
         }
-        // Disk flush & sync
-        block->Close();
         
         // Update meta
         BlockMeta meta = block->GetMeta();
@@ -605,6 +604,7 @@ private:
     BlockMap  _block_map;
     leveldb::DB* _metadb;
     int64_t _block_num;
+    FileCache* _file_cache;
     Mutex   _mu;
 };
 

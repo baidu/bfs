@@ -27,6 +27,7 @@ DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
 DEFINE_int32(chunkserver_work_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_read_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_write_thread_num, 10, "Chunkserver work thread num");
+DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 
 // SDK
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
