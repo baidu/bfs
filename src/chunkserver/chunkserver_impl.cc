@@ -85,7 +85,8 @@ public:
       _last_seq(-1), _slice_num(-1), _blockbuf(NULL), _buflen(0),
       _bufdatalen(0), _disk_writing(false),
       _disk_file_size(meta.block_size), _file_desc(-1), _refs(0),
-      _recv_window(NULL), _finished(false), _deleted(false) {
+      _disk_writing_cond(&_mu),_recv_window(NULL),
+      _finished(false), _deleted(false) {
         assert(_meta.block_id < (1L<<40));
         char file_path[16];
         int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
@@ -288,6 +289,10 @@ public:
     void Close() {
         if (_finished) {
             if (_file_desc >= 0) {
+                MutexLock lock(&_mu, "Block::Close", 1000);
+                while (!_block_buf_list.empty() || _disk_writing) {
+                    _disk_writing_cond.Wait();
+                }
                 int ret = close(_file_desc);
                 assert(ret == 0);
                 _file_desc = -1;
@@ -360,6 +365,7 @@ private:
                 _block_buf_list.erase(_block_buf_list.begin());
             }
             _disk_writing = false;
+            _disk_writing_cond.Broadcast();
         }
         this->DecRef();
     }
@@ -413,6 +419,7 @@ private:
     int         _file_desc; ///< disk file fd
     volatile int _refs;
     Mutex       _mu;
+    CondVar     _disk_writing_cond;
     common::SlidingWindow<Buffer>* _recv_window;
     bool        _finished;
     int         _write_mode;
