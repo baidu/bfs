@@ -790,7 +790,6 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         response->set_sequence_id(request->sequence_id());
         LOG(DEBUG, "[WriteBlock] dispatch #%ld seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
-        response->add_desc("Recv");
         response->add_timestamp(common::timer::get_micros());
         boost::function<void ()> task =
             boost::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
@@ -798,7 +797,6 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         return;
     }
 
-    response->add_desc("Process");
     response->add_timestamp(common::timer::get_micros());
     LOG(INFO, "[WriteBlock] #%ld seq:%d, offset:%ld, len:%lu",
            block_id, packet_seq, offset, databuf.size());
@@ -806,6 +804,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     if (request->chunkservers_size()) {
         // New request for next chunkserver
         WriteBlockRequest* next_request = new WriteBlockRequest(*request);
+        WriteBlockResponse* next_response = new WriteBlockResponse();
         next_request->clear_chunkservers();
         for (int i = 1; i < request->chunkservers_size(); i++) {
             next_request->add_chunkservers(request->chunkservers(i));
@@ -813,10 +812,10 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         ChunkServer_Stub* stub = NULL;
         const std::string& next_server = request->chunkservers(0);
         _rpc_client->GetStub(next_server, &stub);
-        WriteNext(next_server, stub, next_request, request, response, done);
+        WriteNext(next_server, stub, next_request, next_response, request, response, done);
     } else {
         boost::function<void ()> callback =
-            boost::bind(&ChunkServerImpl::LocalWriteBlock, this, response, request, done);
+            boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
         _work_thread_pool->AddTask(callback);
     }
 }
@@ -824,32 +823,35 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 void ChunkServerImpl::WriteNext(const std::string& next_server,
                                 ChunkServer_Stub* stub,
                                 const WriteBlockRequest* next_request,
+                                WriteBlockResponse* next_response,
                                 const WriteBlockRequest* request,
                                 WriteBlockResponse* response,
                                 ::google::protobuf::Closure* done) {
     int64_t block_id = request->block_id();
     int32_t packet_seq = request->packet_seq();
-    LOG(INFO, "[Writeblock] send #%ld seq:%d] to next %s\n",
+    LOG(INFO, "[WriteBlock] send #%ld seq:%d to next %s\n",
         block_id, packet_seq, next_server.c_str());
     boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
         boost::bind(&ChunkServerImpl::WriteNextCallback,
-            this, _1, _2, _3, _4, next_server, request, done, stub);
+            this, _1, _2, _3, _4, next_server, std::make_pair(request, response), done, stub);
     _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
-        next_request, response, callback, 30, 3);
+        next_request, next_response, callback, 30, 3);
 }
 
 void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
-                        WriteBlockResponse* response,
+                        WriteBlockResponse* next_response,
                         bool failed, int error,
                         const std::string& next_server,
-                        const WriteBlockRequest* request,
+                        std::pair<const WriteBlockRequest*, WriteBlockResponse*> origin,
                         ::google::protobuf::Closure* done,
                         ChunkServer_Stub* stub) {
+    const WriteBlockRequest* request = origin.first;
+    WriteBlockResponse* response = origin.second;
     /// If RPC_ERROR_SEND_BUFFER_FULL retry send.
     if (failed && error == sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL) {
         boost::function<void ()> callback = 
             boost::bind(&ChunkServerImpl::WriteNext, this, next_server,
-                        stub, next_request, request, response, done);
+                        stub, next_request, next_response, request, response, done);
         _work_thread_pool->DelayTask(10, callback);
         return;
     }
@@ -860,30 +862,29 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
-    if (failed || response->status() != 0) {
-        if (!response->has_bad_chunkserver()) {
-            response->set_bad_chunkserver("self address");
-        }
+    if (failed || next_response->status() != 0) {
         LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu], "
                      "status= %d, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
-            response->status(), error);
-        if (response->status() == 0) {
-            response->set_status(error);
+            next_response->status(), error);
+        if (next_response->status() == 0) {
+            next_response->set_status(error);
+        } else {
+            response->set_status(next_response->status());
         }
         done->Run();
         return;
     } else {
-        LOG(INFO, "[Writeblock] send #%ld seq:%d] to next done", block_id, packet_seq);
+        LOG(INFO, "[Writeblock] send #%ld seq:%d to next done", block_id, packet_seq);
     }
     
     boost::function<void ()> callback =
-        boost::bind(&ChunkServerImpl::LocalWriteBlock, this, response, request, done);
+        boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
     _work_thread_pool->AddTask(callback);
 }
 
-void ChunkServerImpl::LocalWriteBlock(WriteBlockResponse* response,
-                        const WriteBlockRequest* request,
+void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
+                        WriteBlockResponse* response,
                         ::google::protobuf::Closure* done) {
     int64_t block_id = request->block_id();
     const std::string& databuf = request->databuf();

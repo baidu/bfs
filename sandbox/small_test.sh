@@ -49,7 +49,8 @@ diff ./empty_file1 ./empty_file2 > /dev/null
 
 rm -rf empty_file*
 
-kill -9 `cat chunkserver2/pid`
+kill -9 `cat chunkserver0/pid`
+kill -9 `cat chunkserver1/pid`
 
 ./bfs_client get /bin/bfs_client ./binary
 

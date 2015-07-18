@@ -44,18 +44,19 @@ private:
     void WriteNext(const std::string& next_server,
                    ChunkServer_Stub* stub,
                    const WriteBlockRequest* next_request,
+                   WriteBlockResponse* next_response,
                    const WriteBlockRequest* request,
                    WriteBlockResponse* response,
                    ::google::protobuf::Closure* done);
     void WriteNextCallback(const WriteBlockRequest* next_request,
-                           WriteBlockResponse* response,
-                           bool ret, int error,
+                           WriteBlockResponse* next_response,
+                           bool failed, int error,
                            const std::string& next_server,
-                           const WriteBlockRequest* request,
+                           std::pair<const WriteBlockRequest*, WriteBlockResponse*> origin,
                            ::google::protobuf::Closure* done,
                            ChunkServer_Stub* stub);
-    void LocalWriteBlock(WriteBlockResponse* response,
-                         const WriteBlockRequest* request,
+    void LocalWriteBlock(const WriteBlockRequest* request,
+                         WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
