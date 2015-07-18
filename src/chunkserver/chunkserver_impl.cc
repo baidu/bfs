@@ -516,6 +516,9 @@ public:
                     block = NULL;
                 }
                 _mu.Lock();
+                if (!block) {
+                    _block_map.erase(block_id);
+                }
             } else {
                 // not found
             }
@@ -860,19 +863,21 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
     if (failed || next_response->status() != 0) {
-        LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu], "
+        LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu, "
                      "status= %d, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
             next_response->status(), error);
         if (next_response->status() == 0) {
-            next_response->set_status(error);
+            response->set_status(error);
         } else {
             response->set_status(next_response->status());
         }
+        delete next_response;
         done->Run();
         return;
     } else {
         LOG(INFO, "[Writeblock] send #%ld seq:%d to next done", block_id, packet_seq);
+        delete next_response;
     }
     
     boost::function<void ()> callback =
@@ -945,7 +950,6 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     g_write_ops.Inc();
     done->Run();
     block->DecRef();
-    block = NULL;
 }
 
 void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
