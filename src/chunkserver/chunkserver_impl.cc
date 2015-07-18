@@ -950,7 +950,6 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     g_write_ops.Inc();
     done->Run();
     block->DecRef();
-    block = NULL;
 }
 
 void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
