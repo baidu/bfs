@@ -202,16 +202,6 @@ public:
         if (offset > _meta.block_size) {
             return -1;
         }
-        /*
-        if (_disk_file_size && _file_desc == -1) {
-            int fd  = open(_disk_file.c_str(), O_RDONLY);
-            if (fd < 0) {
-                fprintf(stderr, "Open block [%s] for read fail: %s\n",
-                    _disk_file.c_str(), strerror(errno));
-                return -2;
-            }
-            _file_desc = fd;
-        }*/
 
         /// Read from disk
         int readlen = 0;
@@ -221,7 +211,6 @@ public:
             _mu.Unlock();
             int ret = _file_cache->ReadFile(_disk_file, 
                             buf + readlen, pread_len, offset + readlen);
-            //int ret = pread(_file_desc, buf + readlen, pread_len, offset + readlen);
             assert(ret == pread_len);
             readlen += ret;
             _mu.Lock("Block::Read relock", 1000);
@@ -289,15 +278,18 @@ public:
             return false;
         }
 
-        LOG(INFO, "Block #%ld Flush to %s", _meta.block_id, _disk_file.c_str());
+        LOG(INFO, "Block #%ld flush to %s", _meta.block_id, _disk_file.c_str());
         if (_bufdatalen) {
             _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
-            this->AddRef();
-            _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
-            _blockbuf = NULL;
-            _bufdatalen = 0;
         }
         _finished = true;
+        // DiskWrite will close _file_desc asynchronously.
+        if (!_disk_writing) {
+            this->AddRef();
+            _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
+        }
+        _blockbuf = NULL;
+        _bufdatalen = 0;
         return true;
     }
     void AddRef() {
@@ -319,8 +311,8 @@ private:
         MutexLock lock(&_mu, "Block::DiskWrite", 1000);
         if (!_disk_writing && !_deleted) {
             _disk_writing = true;
-            if (!OpenForWrite())assert(0);
             while (!_block_buf_list.empty() && !_deleted) {
+                if (!OpenForWrite())assert(0);
                 const char* buf = _block_buf_list[0].first;
                 int len = _block_buf_list[0].second;
 
@@ -346,6 +338,14 @@ private:
                 _block_buf_list.erase(_block_buf_list.begin());
             }
             _disk_writing = false;
+        }
+        if (!_disk_writing && (_finished || _deleted)) {
+            if (_file_desc != -1) {
+                int ret = close(_file_desc);
+                LOG(INFO, "DiskWrite close file %s", _disk_file.c_str());
+                assert(ret == 0);
+            }
+            _file_desc = -1;
         }
         this->DecRef();
     }
