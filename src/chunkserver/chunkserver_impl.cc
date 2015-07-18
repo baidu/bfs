@@ -868,7 +868,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
             next_response->status(), error);
         if (next_response->status() == 0) {
-            next_response->set_status(error);
+            response->set_status(error);
         } else {
             response->set_status(next_response->status());
         }
