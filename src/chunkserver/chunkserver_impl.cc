@@ -863,7 +863,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
     if (failed || next_response->status() != 0) {
-        LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu], "
+        LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu, "
                      "status= %d, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
             next_response->status(), error);
