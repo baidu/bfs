@@ -516,6 +516,9 @@ public:
                     block = NULL;
                 }
                 _mu.Lock();
+                if (!block) {
+                    _block_map.erase(block_id);
+                }
             } else {
                 // not found
             }
