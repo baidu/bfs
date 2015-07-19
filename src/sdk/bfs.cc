@@ -493,6 +493,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     ChunkServer_Stub* chunk_server = NULL;
     std::string cs_addr;
 
+    int server_index = 0;
     {
         MutexLock lock(&_mu, "Pread GetStub", 1000);
         if (_located_blocks._blocks.empty()) {
@@ -503,7 +504,8 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             return -3;
         }
         lcblock.CopyFrom(_located_blocks._blocks[0]);
-        cs_addr = lcblock.chains(0).address();
+        server_index = rand() % lcblock.chains_size();
+        cs_addr = lcblock.chains(server_index).address();
         if (_chunkserver == NULL) {
             _fs->_rpc_client->GetStub(cs_addr, &_chunkserver);
         }
@@ -522,7 +524,6 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     }
     request.set_read_len(rlen);
     bool ret = false;
-    int next_server = 0;
 
     for (int retry_times = 0; retry_times < lcblock.chains_size() * 2; retry_times++) {
         LOG(DEBUG, "Start Pread: %s", cs_addr.c_str());
@@ -531,7 +532,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
 
         if (!ret || response.status() != 0) {
             ///TODO: Add to _bad_chunkservers
-            cs_addr = lcblock.chains((++next_server) % lcblock.chains_size()).address();
+            cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
             _fs->_rpc_client->GetStub(cs_addr, &chunk_server);
             {
