@@ -445,23 +445,31 @@ public:
             return false;
         }
         std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
-        std::vector<std::pair<int64_t, ChunkServerInfo*> > chunkserver_load;
+        std::vector<std::pair<int64_t, ChunkServerInfo*> > loads;
 
         for (; it != _heartbeat_list.end(); ++it) {
             std::set<ChunkServerInfo*>& set = it->second;
             for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
                  sit != set.end(); ++sit) {
                 ChunkServerInfo* cs = *sit;
-                chunkserver_load.push_back(
+                loads.push_back(
                     std::make_pair(cs->data_size(), cs));
             }
         }
-        std::sort(chunkserver_load.begin(), chunkserver_load.end());
+        std::sort(loads.begin(), loads.end());
+        // Add random factor
+        int scope = loads.size() - (loads.size() % num);
+        for (int32_t i = num; i < scope; i++) {
+            int round =  i / num + 1;
+            int64_t base_load = loads[i % num].first;
+            int ratio = (base_load + 1024) * 100 / (loads[i].first + 1024);
+            if (rand() % 100 < (ratio / round)) {
+                std::swap(loads[i % num], loads[i]);
+            }
+        }
 
-        std::vector<std::pair<int64_t, ChunkServerInfo*> >::iterator load_it;
-        load_it = chunkserver_load.begin();
-        for (int i = 0; i < num; ++i, ++load_it) {
-            ChunkServerInfo* cs = load_it->second;
+        for (int i = 0; i < num; ++i) {
+            ChunkServerInfo* cs = loads[i].second;
             chains->push_back(std::make_pair(cs->id(), cs->address()));
         }
         return true;

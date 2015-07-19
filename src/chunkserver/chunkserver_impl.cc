@@ -657,10 +657,10 @@ void ChunkServerImpl::LogStatus() {
         rpc_delay = g_rpc_delay.Clear() / rpc_count / 1000;
         delay_all = g_rpc_delay_all.Clear() / rpc_count / 1000;
     }
-    LOG(INFO, "[Status] blocks %ld buffers %ld data %.3f GB, "
+    LOG(INFO, "[Status] blocks %ld buffers %ld data %sB, "
               "find %ld read %ld write %ld %.2f MB, rpc_delay %ld %ld",
         g_blocks.Get(), g_block_buffers.Get(),
-        g_data_size.Get() / 1024.0 / 1024 / 1024,
+        common::HumanReadableString(g_data_size.Get()).c_str(),
         g_find_ops.Clear()/5, g_read_ops.Clear()/5,
         g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024 / 5.0,
         rpc_delay, delay_all);

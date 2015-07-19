@@ -73,7 +73,7 @@ static inline std::string NumToString(double num) {
 
 static inline std::string HumanReadableString(int64_t num) {
     static const int max_shift = 7;
-    static const char* const prefix[max_shift] = {"", " K", " M", " G", " T", " E", " Z"};
+    static const char* const prefix[max_shift] = {" ", " K", " M", " G", " T", " E", " Z"};
     int shift = 0;
     double v = num;
     while ((num>>=10) > 0 && shift < max_shift) {
