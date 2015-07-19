@@ -281,6 +281,8 @@ public:
         LOG(INFO, "Block #%ld flush to %s", _meta.block_id, _disk_file.c_str());
         if (_bufdatalen) {
             _block_buf_list.push_back(std::make_pair(_blockbuf, _bufdatalen));
+            _blockbuf = NULL;
+            _bufdatalen = 0;
         }
         _finished = true;
         // DiskWrite will close _file_desc asynchronously.
@@ -288,8 +290,6 @@ public:
             this->AddRef();
             _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
         }
-        _blockbuf = NULL;
-        _bufdatalen = 0;
         return true;
     }
     void AddRef() {
