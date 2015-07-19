@@ -141,7 +141,7 @@ public:
     void MarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
         _obsolete_blocks[block_id].insert(chunkserver_id);
-        LOG(INFO, "MarkObsoleteBlock #%ld on %d", block_id, chunkserver_id);
+        LOG(INFO, "MarkObsoleteBlock #%ld on chunkserver %d", block_id, chunkserver_id);
     }
     void UnmarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu);
@@ -422,12 +422,21 @@ public:
             _chunkservers[id] = info;
             ++_chunkserver_num;
         }
-
+        info->set_data_size(request->data_size());
+        info->set_block_num(request->block_num());
         int32_t now_time = common::timer::now_time();
         _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
     }
-    bool GetChunkServerChains(int num,
+    void ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers) {
+        MutexLock lock(&_mu, "ListChunkServers", 1000);
+        for (ServerMap::iterator it = _chunkservers.begin();
+                    it != _chunkservers.end(); ++it) {
+            ChunkServerInfo* chunkserver = chunkservers->Add();
+            chunkserver->CopyFrom(*(it->second));
+        }
+    }
+    bool GetChunkServerChains(int num, 
                               std::vector<std::pair<int32_t,std::string> >* chains) {
         MutexLock lock(&_mu);
         if (num > _chunkserver_num) {
@@ -477,26 +486,6 @@ public:
             return "";
         } else {
             return it->second->address();
-        }
-    }
-    bool SetChunkServerLoad(int32_t id, int64_t size, bool is_complete) {
-        MutexLock lock(&_mu);
-        ServerMap::iterator it = _chunkservers.find(id);
-        if(it == _chunkservers.end()) {
-            LOG(WARNING, "ChunkServer does not exist!, chunkserver id: %d\n", id);
-            assert(0);
-            return false;
-        } else {
-            int64_t cur_report_size = it->second->current_report_size();
-            cur_report_size += size;
-            if (!is_complete) {
-                it->second->set_current_report_size(cur_report_size);
-            } else {
-                it->second->set_data_size(cur_report_size);
-                it->second->set_current_report_size(0);
-            }
-            LOG(INFO, "Get Report of ChunkServerLoad, server id: %d, load: %ld\n", id, size);
-            return true;
         }
     }
     void AddBlock(int32_t id, int64_t block_id) {
@@ -572,7 +561,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         response->set_status(8882);
     } else {
         const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
-        int64_t size = 0;
         bool new_chunkserver = _chunkserver_manager->IsNewChunkserver(id);
         for (int i = 0; i < blocks.size(); i++) {
             const ReportBlockInfo& block =  blocks.Get(i);
@@ -598,7 +586,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 continue;
             }
 
-            size += cur_block_size;
             _chunkserver_manager->AddBlock(id, cur_block_id);
             if (more_replica_num != 0 && new_chunkserver) {
                 _block_manager->MarkBlockStable(cur_block_id);
@@ -638,7 +625,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                         it->first, id, it->second.c_str());
             }
         }
-        _chunkserver_manager->SetChunkServerLoad(id, size, request->is_complete());
     }
     done->Run();
 }
@@ -1237,6 +1223,17 @@ void NameServerImpl::RebuildBlockMap() {
         }
     }
 }
+
+void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
+                             const ::bfs::SysStatRequest* request,
+                             ::bfs::SysStatResponse* response,
+                             ::google::protobuf::Closure* done) {
+    LOG(INFO, "SysStat from ...");
+    _chunkserver_manager->ListChunkServers(response->mutable_chunkservers());
+    response->set_status(0);
+    done->Run();
+}
+
 }
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

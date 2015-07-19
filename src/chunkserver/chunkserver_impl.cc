@@ -59,6 +59,7 @@ common::Counter g_write_bytes;
 common::Counter g_rpc_delay;
 common::Counter g_rpc_delay_all;
 common::Counter g_rpc_count;
+common::Counter g_data_size;
 
 struct Buffer {
     const char* data_;
@@ -94,6 +95,7 @@ public:
       _recv_window(NULL), _finished(false), _deleted(false),
       _file_cache(file_cache) {
         assert(_meta.block_id < (1L<<40));
+        g_data_size.Add(meta.block_size);
         char file_path[16];
         int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
             _meta.block_id % 1000, _meta.block_id / 1000);
@@ -105,8 +107,10 @@ public:
     }
     ~Block() {
         if (_bufdatalen > 0) {
-            LOG(INFO, "Data lost, %d bytes in #%ld %s",
-                _bufdatalen, _meta.block_id, _disk_file.c_str());
+            if (!_deleted) {
+                LOG(WARNING, "Data lost, %d bytes in #%ld %s",
+                    _bufdatalen, _meta.block_id, _disk_file.c_str());
+            }
         }
         if (_blockbuf) {
             delete[] _blockbuf;
@@ -152,6 +156,7 @@ public:
         }
         LOG(INFO, "Block #%ld deleted\n", _meta.block_id);
         g_blocks.Dec();
+        g_data_size.Sub(_meta.block_size);
     }
     /// Getter
     int64_t Id() const {
@@ -165,6 +170,9 @@ public:
     }
     BlockMeta GetMeta() const {
         return _meta;
+    }
+    int64_t DiskUsed() {
+        return _disk_file_size;
     }
     void SetDeleted() {
         _deleted = true;
@@ -378,6 +386,7 @@ private:
             _bufdatalen += ap_len;
         }
         _meta.block_size += len;
+        g_data_size.Add(len);
         _last_seq = seq;
     }
 private:
@@ -410,7 +419,7 @@ class BlockManager {
 public:
     BlockManager(ThreadPool* thread_pool, const std::string& store_path)
         :_thread_pool(thread_pool),
-         _metadb(NULL), _block_num(0) {
+         _metadb(NULL) {
          ParseStorePath(store_path);
          _file_cache = new FileCache(FLAGS_chunkserver_file_cache_size);
     }
@@ -444,7 +453,6 @@ public:
         return _store_path_list[block_id % _store_path_list.size()];
     }
     bool LoadStorage() {
-        assert (_block_num == 0);
         MutexLock lock(&_mu);
         leveldb::Options options;
         options.create_if_missing = true;
@@ -453,6 +461,7 @@ public:
             LOG(WARNING, "Load blocks fail");
             return false;
         }
+        int block_num = 0;
         leveldb::Iterator* it = _metadb->NewIterator(leveldb::ReadOptions());
         for (it->SeekToFirst(); it->Valid(); it->Next()) {
             int64_t block_id = 0;
@@ -468,10 +477,10 @@ public:
             Block* block = new Block(meta, GetStorePath(block_id), _thread_pool, _file_cache);
             block->AddRef();
             _block_map[block_id] = block;
-            _block_num ++;
+            block_num ++;
         }
         delete it;
-        LOG(INFO, "Load %ld blocks\n", _block_num);
+        LOG(INFO, "Load %ld blocks\n", block_num);
         return true;
     }
     bool ListBlocks(std::vector<BlockMeta>* blocks) {
@@ -565,10 +574,11 @@ public:
             block = it->second;
         }
 
+        int64_t du = block->DiskUsed();
         block->SetDeleted();
         std::string file_path = block->GetFilePath();
         int ret = remove(file_path.c_str());
-        if (ret != 0) {
+        if (ret != 0 && (errno !=2 || du > 0)) {
             LOG(WARNING, "Remove #%ld disk file %s fails: %d (%s)\n",
                 block_id, file_path.c_str(), errno, strerror(errno));
         } else {
@@ -579,13 +589,13 @@ public:
         char dir_name[5];
         snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
         // Rmdir, ignore error when not empty.
-        rmdir((GetStorePath(block_id) + dir_name).c_str());
+        // rmdir((GetStorePath(block_id) + dir_name).c_str());
         char idstr[14];
         snprintf(idstr, sizeof(idstr), "%13ld", block_id);
 
         leveldb::Status s = _metadb->Delete(leveldb::WriteOptions(), idstr);
         if (s.ok()) {
-            LOG(INFO, "Remove #%ld meta info done: %s", block_id, idstr);
+            LOG(INFO, "Remove #%ld meta info done", block_id);
             {
                 MutexLock lock(&_mu, "BlockManager::RemoveBlock erase", 1000);
                 _block_map.erase(block_id);
@@ -593,7 +603,7 @@ public:
             block->DecRef();
             return true;
         } else {
-            LOG(WARNING, "Remove #%ld meta info fails: %ld\n", block_id, idstr);
+            LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
             return false;
         }
     }
@@ -603,7 +613,6 @@ private:
     typedef std::map<int64_t, Block*> BlockMap;
     BlockMap  _block_map;
     leveldb::DB* _metadb;
-    int64_t _block_num;
     FileCache* _file_cache;
     Mutex   _mu;
 };
@@ -648,10 +657,10 @@ void ChunkServerImpl::LogStatus() {
         rpc_delay = g_rpc_delay.Clear() / rpc_count / 1000;
         delay_all = g_rpc_delay_all.Clear() / rpc_count / 1000;
     }
-    LOG(INFO, "[Status] blocks %ld buffers %ld +%ld -%ld "
-              "find %ld read %ld write %ld %.2f MB, rpc_delay(ms) %ld %ld",
-        g_blocks.Get(), g_block_buffers.Get(), 
-        g_buffers_new.Clear() / 5, g_buffers_delete.Clear() / 5,
+    LOG(INFO, "[Status] blocks %ld buffers %ld data %.3f GB, "
+              "find %ld read %ld write %ld %.2f MB, rpc_delay %ld %ld",
+        g_blocks.Get(), g_block_buffers.Get(),
+        g_data_size.Get() / 1024.0 / 1024 / 1024,
         g_find_ops.Clear()/5, g_read_ops.Clear()/5,
         g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024 / 5.0,
         rpc_delay, delay_all);
@@ -675,6 +684,8 @@ void ChunkServerImpl::Routine() {
             request.set_chunkserver_id(_chunkserver_id);
             request.set_data_server_addr(_data_server_addr);
             request.set_namespace_version(_namespace_version);
+            request.set_block_num(g_blocks.Get());
+            request.set_data_size(g_data_size.Get());
             HeartBeatResponse response;
             if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
                     &request, &response, 15, 1)) {

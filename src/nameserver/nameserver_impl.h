@@ -76,6 +76,10 @@ public:
                        const ::bfs::PullBlockReportRequest* request,
                        ::bfs::PullBlockReportResponse* response,
                        ::google::protobuf::Closure* done);
+    void SysStat(::google::protobuf::RpcController* controller,
+                       const ::bfs::SysStatRequest* request,
+                       ::bfs::SysStatResponse* response,
+                       ::google::protobuf::Closure* done);
 private:
     int DeleteDirectoryRecursive(std::string& path, bool recursive);
     void RebuildBlockMap();

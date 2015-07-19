@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <list>
 #include <queue>
+#include <sstream>
 
 #include "proto/nameserver.pb.h"
 #include "proto/chunkserver.pb.h"
@@ -18,6 +19,9 @@
 #include "common/timer.h"
 #include "common/sliding_window.h"
 #include "common/logging.h"
+#include "common/string_util.h"
+#include "common/tprinter.h"
+
 #include "bfs.h"
 
 DECLARE_string(nameserver);
@@ -449,6 +453,35 @@ public:
                     file_name, replica_num, response.status());
             return false;
         }
+        return true;
+    }
+    bool SysStat(const std::string stat_name, std::string* result) {
+        SysStatRequest request;
+        SysStatResponse response;
+        bool ret = _rpc_client->SendRequest(_nameserver,
+                &NameServer_Stub::SysStat,
+                &request, &response, 15, 3);
+        if (!ret) {
+            LOG(WARNING, "SysStat fail %d", response.status());
+            return false;
+        }
+        common::TPrinter tp(5);
+        tp.AddRow(5, "", "id", "address", "data_size", "blocks");
+        for (int i = 0; i < response.chunkservers_size(); i++) {
+            const ChunkServerInfo& chunkserver = response.chunkservers(i);
+            std::vector<std::string> vs;
+            vs.push_back(common::NumToString(i + 1));
+            vs.push_back(common::NumToString(chunkserver.id()));
+            vs.push_back(chunkserver.address());
+            vs.push_back(common::HumanReadableString(chunkserver.data_size()) + "B");
+            vs.push_back(common::NumToString(chunkserver.block_num()));
+            tp.AddRow(vs);
+        }
+        std::ostringstream oss;
+        oss << "ChunkServer num: " << response.chunkservers_size() << std::endl
+            << "Block num: " << response.block_num() << std::endl;
+        result->assign(oss.str());
+        result->append(tp.ToString());
         return true;
     }
 private:

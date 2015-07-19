@@ -120,6 +120,8 @@ message HeartBeatRequest {
     optional string data_server_addr = 2;
     optional int32 chunkserver_id = 3;
     optional int64 namespace_version = 4;
+    optional int32 block_num = 5;
+    optional int64 data_size = 6;
 }
 message HeartBeatResponse {
     optional int64 sequence_id = 1;
@@ -160,6 +162,17 @@ message PullBlockReportResponse {
     optional int32 status = 2;
 }
 
+message SysStatRequest {
+    optional string stat_name = 2;
+}
+
+message SysStatResponse {
+    optional int32 status = 2;
+    repeated ChunkServerInfo chunkservers = 3;
+    optional int64 block_num = 4;
+    optional int64 data_size = 5;
+}
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
@@ -175,5 +188,7 @@ service NameServer {
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
     rpc BlockReport(BlockReportRequest) returns(BlockReportResponse);
     rpc PullBlockReport(PullBlockReportRequest) returns(PullBlockReportResponse);
+
+    rpc SysStat(SysStatRequest) returns(SysStatResponse);
 }
 

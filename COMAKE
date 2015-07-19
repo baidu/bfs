@@ -34,7 +34,7 @@ PROTOC('../../../third-64/protobuf/bin/protoc')
 nameserver_sources='src/nameserver/nameserver_main.cc src/nameserver/nameserver_impl.cc src/flags.cc src/common/logging.cc'
 chunkserver_sources='''src/chunkserver/chunkserver_main.cc src/chunkserver/chunkserver_impl.cc src/chunkserver/file_cache.cc src/flags.cc
                     src/common/logging.cc src/common/cache.cc src/common/hash.cc'''
-sdk_sources='src/sdk/bfs.cc src/flags.cc src/common/logging.cc'
+sdk_sources='src/sdk/bfs.cc src/flags.cc src/common/logging.cc src/common/tprinter.cc'
 sdk_headers='src/sdk/bfs.h'
 client_sources='src/client/bfs_client.cc'
 proto_sources='src/proto/nameserver.proto src/proto/file.proto src/proto/chunkserver.proto'

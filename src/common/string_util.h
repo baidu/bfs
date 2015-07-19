@@ -7,11 +7,15 @@
 #ifndef  COMMON_STRING_UTIL_H_
 #define  COMMON_STRING_UTIL_H_
 
+#include <stdint.h>
+#include <string>
+#include <vector>
+
 namespace common {
 
-void SplitString(const std::string& full,
-                 const std::string& delim,
-                 std::vector<std::string>* result) {
+static inline void SplitString(const std::string& full,
+                               const std::string& delim,
+                               std::vector<std::string>* result) {
     result->clear();
     if (full.empty()) {
         return;
@@ -38,7 +42,7 @@ void SplitString(const std::string& full,
     }
 }
 
-std::string TrimString(const std::string& str, const std::string& trim) {
+static inline std::string TrimString(const std::string& str, const std::string& trim) {
     std::string::size_type pos = str.find_first_not_of(trim);
     if (pos == std::string::npos) {
         return "";
@@ -48,6 +52,35 @@ std::string TrimString(const std::string& str, const std::string& trim) {
         return str.substr(pos, pos2 - pos + 1);
     }
     return str.substr(pos);
+}
+
+
+static inline std::string NumToString(int64_t num) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%ld", num);
+    return std::string(buf);
+}
+
+static inline std::string NumToString(int num) {
+    return NumToString(static_cast<int64_t>(num));
+}
+
+static inline std::string NumToString(double num) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.3f", num);
+    return std::string(buf);
+}
+
+static inline std::string HumanReadableString(int64_t num) {
+    static const int max_shift = 7;
+    static const char* const prefix[max_shift] = {"", " K", " M", " G", " T", " E", " Z"};
+    int shift = 0;
+    double v = num;
+    while ((num>>=10) > 0 && shift < max_shift) {
+        v /= 1024;
+        shift++;
+    }
+    return NumToString(v) + prefix[shift];
 }
 
 }
