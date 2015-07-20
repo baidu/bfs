@@ -303,15 +303,21 @@ public:
         delete it->second;
         _block_map.erase(it);
     }
-    void MarkPullBlock(int32_t dst_cs, int64_t block_id, const std::string& src_cs) {
+    bool MarkPullBlock(int32_t dst_cs, int64_t block_id, const std::string& src_cs) {
         MutexLock lock(&_mu);
         _blocks_to_replicate[dst_cs].insert(std::make_pair(block_id, src_cs));
         NSBlockMap::iterator it = _block_map.find(block_id);
         assert(it != _block_map.end());
+        bool ret = false;
         NSBlock* nsblock = it->second;
-        nsblock->pulling_chunkservers.insert(dst_cs);
-        LOG(INFO, "Add replicate info: dst cs: %d, block #%ld, src cs: %s\n",
-                dst_cs, block_id, src_cs.c_str());
+        if (nsblock->pulling_chunkservers.find(dst_cs) ==
+                nsblock->pulling_chunkservers.end()) {
+            nsblock->pulling_chunkservers.insert(dst_cs);
+            LOG(INFO, "Add replicate info: dst cs: %d, block #%ld, src cs: %s\n",
+                    dst_cs, block_id, src_cs.c_str());
+            ret = true;
+        }
+        return ret;
     }
     void UnmarkPullBlock(int64_t block_id, int32_t id) {
         MutexLock lock(&_mu);
@@ -322,8 +328,9 @@ public:
             nsblock->pulling_chunkservers.erase(id);
             if (nsblock->pulling_chunkservers.empty() && nsblock->pending_change) {
                 nsblock->pending_change = false;
-                LOG(INFO, "Block #%ld finish replicate\n", block_id);
+                LOG(INFO, "Block #%ld on cs %d finish replicate\n", block_id, id);
             }
+            nsblock->replica.insert(id);
         } else {
             LOG(WARNING, "Can't find block: #%ld ", block_id);
         }
@@ -609,9 +616,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                     for (num = 0; num < more_replica_num &&
                             chains_it != chains.end(); ++chains_it) {
                         if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                            _block_manager->MarkPullBlock(chains_it->first, cur_block_id,
+                            bool mark_pull = _block_manager->MarkPullBlock(chains_it->first, cur_block_id,
                                                           request->chunkserver_addr());
-                            num++;
+                            if (mark_pull) {
+                                num++;
+                            }
                         }
                     }
                     //no suitable chunkserver
