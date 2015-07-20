@@ -572,6 +572,7 @@ public:
                 return false;
             }
             block = it->second;
+            block->AddRef();
         }
 
         int64_t du = block->DiskUsed();
@@ -601,11 +602,13 @@ public:
                 _block_map.erase(block_id);
             }
             block->DecRef();
-            return true;
+            ret = true;
         } else {
             LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
-            return false;
+            ret = false;
         }
+        block->DecRef();
+        return ret;
     }
 private:
     ThreadPool* _thread_pool;
