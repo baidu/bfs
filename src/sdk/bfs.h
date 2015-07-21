@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <fcntl.h>
+#include <string>
 
 namespace bfs {
 
