@@ -827,7 +827,14 @@ void BfsFileImpl::OnWriteCommit(int32_t, int) {
 }
 
 bool BfsFileImpl::Flush() {
-    // Not impliment
+    common::timer::AutoTimer at(50, "Flush", _name.c_str());
+    if (_open_flags != O_WRONLY) {
+        return false;
+    }
+    MutexLock lock(&_mu, "Flush", 1000);
+    if (_write_buf && _write_buf->Size()) {
+        StartWrite(_write_buf);
+    }
     return true;
 }
 bool BfsFileImpl::Sync() {
