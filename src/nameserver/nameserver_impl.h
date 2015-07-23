@@ -83,6 +83,7 @@ public:
 private:
     int DeleteDirectoryRecursive(std::string& path, bool recursive);
     void RebuildBlockMap();
+    void LogStatus();
 
 private:
     /// Global thread pool

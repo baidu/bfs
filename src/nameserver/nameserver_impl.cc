@@ -17,6 +17,7 @@
 #include <leveldb/write_batch.h>
 #include <sofa/pbrpc/pbrpc.h>
 
+#include "common/counter.h"
 #include "common/logging.h"
 #include "common/mutex.h"
 #include "common/timer.h"
@@ -32,6 +33,14 @@ namespace bfs {
 
 const uint32_t MAX_PATH_LENGHT = 10240;
 const uint32_t MAX_PATH_DEPTH = 99;
+
+common::Counter g_get_location;
+common::Counter g_add_block;
+common::Counter g_heart_beat;
+common::Counter g_block_report;
+common::Counter g_unlink;
+common::Counter g_create_file;
+common::Counter g_list_dir;
 
 /// 构造标准化路径
 /// /home/work/file -> 00,01/home,02/home/work,03/home/work/file
@@ -542,14 +551,25 @@ NameServerImpl::NameServerImpl() {
     _block_manager = new BlockManager();
     _chunkserver_manager = new ChunkServerManager(&_thread_pool, _block_manager);
     RebuildBlockMap();
+    _thread_pool.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
 }
 NameServerImpl::~NameServerImpl() {
+}
+
+void NameServerImpl::LogStatus() {
+    LOG(INFO, "[Status] create %ld list %ld get_loc %ld add_block %ld "
+              "unlink %ld report %ld heartbeat %ld",
+        g_create_file.Clear(), g_list_dir.Clear(), g_get_location.Clear(),
+        g_add_block.Clear(), g_unlink.Clear(), g_block_report.Clear(),
+        g_heart_beat.Clear());
+    _thread_pool.DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
 }
 
 void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
                          const HeartBeatRequest* request,
                          HeartBeatResponse* response,
                          ::google::protobuf::Closure* done) {
+    g_heart_beat.Inc();
     // printf("Receive HeartBeat() from %s\n", request->data_server_addr().c_str());
     int32_t id = request->chunkserver_id();
     int64_t version = request->namespace_version();
@@ -568,6 +588,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    const BlockReportRequest* request,
                    BlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
+    g_block_report.Inc();
     int32_t id = request->chunkserver_id();
     int64_t version = request->namespace_version();
     LOG(INFO, "Report from %d, %s, %d blocks\n",
@@ -663,6 +684,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                         const CreateFileRequest* request,
                         CreateFileResponse* response,
                         ::google::protobuf::Closure* done) {
+    g_create_file.Inc();
     response->set_sequence_id(request->sequence_id());
     const std::string& file_name = request->file_name();
     int flags = request->flags();
@@ -735,6 +757,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                          const AddBlockRequest* request,
                          AddBlockResponse* response,
                          ::google::protobuf::Closure* done) {
+    g_add_block.Inc();
     response->set_sequence_id(request->sequence_id());
     const std::string path = request->file_name();
     std::vector<std::string> elements;
@@ -816,6 +839,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
         done->Run();
         return;
     }
+    g_get_location.Inc();
     const std::string& file_key = elements[elements.size()-1];
     // Get FileInfo
     std::string infobuf;
@@ -865,6 +889,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
                         const ListDirectoryRequest* request,
                         ListDirectoryResponse* response,
                         ::google::protobuf::Closure* done) {
+    g_list_dir.Inc();
     response->set_sequence_id(request->sequence_id());
     std::string path = request->path();
     std::vector<std::string> keys;
@@ -1015,6 +1040,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                             const ::bfs::UnlinkRequest* request,
                             ::bfs::UnlinkResponse* response,
                             ::google::protobuf::Closure* done) {
+    g_unlink.Inc();
     response->set_sequence_id(request->sequence_id());
     const std::string& path = request->path();
     LOG(INFO, "Unlink: %s\n", path.c_str());
