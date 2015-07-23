@@ -44,6 +44,7 @@ DECLARE_int32(chunkserver_work_thread_num);
 DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_file_cache_size);
+DECLARE_int32(chunkserver_max_pending_buffers);
 
 namespace bfs {
 
@@ -302,9 +303,11 @@ public:
     }
     void AddRef() {
         common::atomic_inc(&_refs);
+        assert (_refs > 0);
     }
     void DecRef() {
         if (common::atomic_add(&_refs, -1) == 1) {
+            assert(_refs == 0);
             delete this;
         }
     }
@@ -568,7 +571,7 @@ public:
             MutexLock lock(&_mu, "BlockManager::RemoveBlock", 1000);
             BlockMap::iterator it = _block_map.find(block_id);
             if (it == _block_map.end()) {
-                LOG(WARNING, "Try to remove block that does not exist: #%ld ", block_id);
+                LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
                 return false;
             }
             block = it->second;
@@ -580,8 +583,8 @@ public:
         std::string file_path = block->GetFilePath();
         int ret = remove(file_path.c_str());
         if (ret != 0 && (errno !=2 || du > 0)) {
-            LOG(WARNING, "Remove #%ld disk file %s fails: %d (%s)\n",
-                block_id, file_path.c_str(), errno, strerror(errno));
+            LOG(WARNING, "Remove #%ld disk file %s %ld bytes fails: %d (%s)",
+                block_id, file_path.c_str(), du, errno, strerror(errno));
         } else {
             LOG(INFO, "Remove #%ld disk file done: %s\n", 
                 block_id, file_path.c_str());
@@ -897,6 +900,13 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
 void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
                         WriteBlockResponse* response,
                         ::google::protobuf::Closure* done) {
+    /// Flow control
+    if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
+        _write_thread_pool->DelayTask(10,
+            boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done));
+        return;
+    }
+
     int64_t block_id = request->block_id();
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
@@ -1018,7 +1028,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
 void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
     for (size_t i = 0; i < blocks.size(); i++) {
         if (!_block_manager->RemoveBlock(blocks[i])) {
-            LOG(WARNING, "Remove block fail: #%ld ", blocks[i]);
+            LOG(INFO, "Remove block fail: #%ld ", blocks[i]);
         }
     }
 }
