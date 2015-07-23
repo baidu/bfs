@@ -389,7 +389,12 @@ public:
             std::set<ChunkServerInfo*>::iterator node = it->second.begin();
             while (node != it->second.end()) {
                 ChunkServerInfo* cs = *node;
+                cs->set_is_dead(true);
                 LOG(INFO, "[DeadCheck] Chunkserver %s dead", cs->address().c_str());
+                it->second.erase(node);
+                _chunkserver_num--;
+                node = it->second.begin();
+
                 int32_t id = cs->id();
                 std::set<int64_t> blocks = _chunkserver_block_map[id];
                 boost::function<void ()> task =
@@ -398,9 +403,6 @@ public:
                 _thread_pool->AddTask(task);
                 _chunkserver_block_map.erase(id);
 
-                it->second.erase(node);
-                _chunkserver_num--;
-                node = it->second.begin();
             }
             assert(it->second.empty());
             _heartbeat_list.erase(it);

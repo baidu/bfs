@@ -261,9 +261,13 @@ int BfsChangeReplicaNum(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsStat(bfs::FS* fs) {
+int BfsStat(bfs::FS* fs, int argc, char* argv[]) {
+    std::string stat_name("Stat");
+    if (argc && 0 == strcmp(argv[0], "-a")) {
+        stat_name = "StatAll";
+    }
     std::string result;
-    bool ret = fs->SysStat("Stat", &result);
+    bool ret = fs->SysStat(stat_name, &result);
     if (!ret) {
         fprintf(stderr, "SysStat fail\n");
         return 1;
@@ -275,7 +279,8 @@ int BfsStat(bfs::FS* fs) {
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
-    ::google::ParseCommandLineFlags(&argc, &argv, false);
+    int gflags_argc = 0;
+    ::google::ParseCommandLineFlags(&gflags_argc, &argv, false);
 
     if (argc < 2) {
         print_usage();
@@ -333,7 +338,7 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[1], "du") == 0) {
         ret = BfsDu(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "stat") == 0) {
-        ret = BfsStat(fs);
+        ret = BfsStat(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }

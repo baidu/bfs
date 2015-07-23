@@ -455,7 +455,7 @@ public:
         }
         return true;
     }
-    bool SysStat(const std::string stat_name, std::string* result) {
+    bool SysStat(const std::string& stat_name, std::string* result) {
         SysStatRequest request;
         SysStatResponse response;
         bool ret = _rpc_client->SendRequest(_nameserver,
@@ -465,22 +465,30 @@ public:
             LOG(WARNING, "SysStat fail %d", response.status());
             return false;
         }
-        common::TPrinter tp(5);
-        tp.AddRow(5, "", "id", "address", "data_size", "blocks");
+        bool stat_all = (stat_name == "StatAll");
+        common::TPrinter tp(7);
+        tp.AddRow(7, "", "id", "address", "data_size", "blocks", "alive", "last_check");
         for (int i = 0; i < response.chunkservers_size(); i++) {
             const ChunkServerInfo& chunkserver = response.chunkservers(i);
+            if (!stat_all && chunkserver.is_dead()) {
+                continue;
+            }
             std::vector<std::string> vs;
             vs.push_back(common::NumToString(i + 1));
             vs.push_back(common::NumToString(chunkserver.id()));
             vs.push_back(chunkserver.address());
             vs.push_back(common::HumanReadableString(chunkserver.data_size()) + "B");
             vs.push_back(common::NumToString(chunkserver.block_num()));
+            vs.push_back(chunkserver.is_dead() ? "dead" : "alive");
+            vs.push_back(common::NumToString(
+                            common::timer::now_time() - chunkserver.last_heartbeat()));
             tp.AddRow(vs);
         }
+        /*
         std::ostringstream oss;
         oss << "ChunkServer num: " << response.chunkservers_size() << std::endl
             << "Block num: " << response.block_num() << std::endl;
-        result->assign(oss.str());
+        result->assign(oss.str());*/
         result->append(tp.ToString());
         return true;
     }

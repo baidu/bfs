@@ -72,7 +72,7 @@ public:
     virtual bool ChangeReplicaNum(const char* file_name, int32_t replica_num) = 0;
 
     /// Show system status
-    virtual bool SysStat(const std::string stat_name, std::string* result) = 0;
+    virtual bool SysStat(const std::string& stat_name, std::string* result) = 0;
 private:
     // No copying allowed
     FS(const FS&);
