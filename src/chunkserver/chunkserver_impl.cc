@@ -62,30 +62,30 @@ common::Counter g_rpc_delay_all;
 common::Counter g_rpc_count;
 common::Counter g_data_size;
 
-struct Buffer {
-    const char* data_;
-    int32_t len_;
-    Buffer(const char* buff, int32_t len)
-      : data_(buff), len_(len) {}
-    Buffer()
-      : data_(NULL), len_(0) {}
-    Buffer(const Buffer& o)
-      : data_(o.data_), len_(o.len_) {}
-};
-
-/// Meta of a data block
-struct BlockMeta {
-    int64_t block_id;
-    int64_t block_size;
-    int64_t checksum;
-    int64_t version;
-    BlockMeta()
-      : block_id(0), block_size(0), checksum(0), version(-1) {
-    }
-};
-
 /// Data block
 class Block {
+private:
+    struct Buffer {
+        const char* data_;
+        int32_t len_;
+        Buffer(const char* buff, int32_t len)
+            : data_(buff), len_(len) {}
+        Buffer()
+            : data_(NULL), len_(0) {}
+        Buffer(const Buffer& o)
+            : data_(o.data_), len_(o.len_) {}
+    };
+public:
+    /// Meta of a data block
+    struct BlockMeta {
+        int64_t block_id;
+        int64_t block_size;
+        int64_t checksum;
+        int64_t version;
+        BlockMeta()
+            : block_id(0), block_size(0), checksum(0), version(-1) {
+            }
+    };
 public:
     Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool,
           FileCache* file_cache) :
@@ -473,7 +473,7 @@ public:
                 delete it;
                 return false;
             }
-            BlockMeta meta;
+            Block::BlockMeta meta;
             assert(it->value().size() == sizeof(meta));
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
@@ -486,7 +486,7 @@ public:
         LOG(INFO, "Load %ld blocks\n", block_num);
         return true;
     }
-    bool ListBlocks(std::vector<BlockMeta>* blocks) {
+    bool ListBlocks(std::vector<Block::BlockMeta>* blocks) {
         assert(_metadb);
         leveldb::Iterator* it = _metadb->NewIterator(leveldb::ReadOptions());
         for (it->SeekToFirst(); it->Valid(); it->Next()) {
@@ -496,7 +496,7 @@ public:
                 delete it;
                 return false;
             }
-            BlockMeta meta;
+            Block::BlockMeta meta;
             assert(it->value().size() == sizeof(meta));
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
@@ -515,7 +515,7 @@ public:
             if (it != _block_map.end()) {
                 block = it->second;
             } else if (create_if_missing) {
-                BlockMeta meta;
+                Block::BlockMeta meta;
                 meta.block_id = block_id;
                 meta.version = 0;
                 block = new Block(meta, GetStorePath(block_id), _thread_pool, _file_cache);
@@ -542,7 +542,7 @@ public:
         }
         return block;
     }
-    bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
+    bool SyncBlockMeta(const Block::BlockMeta& meta, int64_t* sync_time) {
         char idstr[64];
         snprintf(idstr, sizeof(idstr), "%13ld", meta.block_id);
 
@@ -565,7 +565,7 @@ public:
         }
         
         // Update meta
-        BlockMeta meta = block->GetMeta();
+        Block::BlockMeta meta = block->GetMeta();
         return SyncBlockMeta(meta, NULL);
     }
     bool RemoveBlock(int64_t block_id) {
@@ -685,7 +685,7 @@ void ChunkServerImpl::Routine() {
     static int64_t ticks = 0;
     int64_t next_report = -1;
     size_t next_report_offset = 0;
-    std::vector<BlockMeta> blocks;
+    std::vector<Block::BlockMeta> blocks;
     while (!_quit) {
         // heartbeat
         if (ticks % FLAGS_heartbeat_interval == 0) {
@@ -717,7 +717,7 @@ void ChunkServerImpl::Routine() {
             if (next_report_offset == 0) {
                 blocks.clear();
                 _block_manager->ListBlocks(&blocks);
-                std::vector<BlockMeta>(blocks).swap(blocks);
+                std::vector<Block::BlockMeta>(blocks).swap(blocks);
             }
             size_t blocks_num = blocks.size();
             size_t last_block = ticks ?
