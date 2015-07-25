@@ -374,9 +374,10 @@ private:
             int wlen = _buflen - _bufdatalen;
             memcpy(_blockbuf + _bufdatalen, buf, wlen);
             _block_buf_list.push_back(std::make_pair(_blockbuf, FLAGS_write_buf_size));
-            this->AddRef();
-            _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
-            
+            if (!_disk_writing && len == ap_len) {
+                this->AddRef();
+                _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
+            }
             _blockbuf = new char[_buflen];
             g_block_buffers.Inc();
             g_buffers_new.Inc();
