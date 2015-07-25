@@ -35,6 +35,7 @@ void print_usage() {
     printf("\t    rmr <path> : remove directory recursively\n");
     printf("\t    change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
     printf("\t    du <path> : count disk usage for path\n");
+    printf("\t    stat : list current stat of the file system\n");
 }
 
 int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
