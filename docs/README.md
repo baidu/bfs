@@ -1,12 +1,9 @@
 TODO
 ========
-* 多盘支持
 * chunkserver支持全异步写
-* 增量Report
 * 整理错误码
 * 目录移动（In progress）
 * 副本恢复
-* 自定义副本数
 * master主从同步
 * Docker image
 * 负载均衡
@@ -20,3 +17,6 @@ DONE
 * 定时器
 * Tera env
 * 目录删除
+* 增量Report
+* 自定义副本数
+* 多盘支持
