@@ -4,9 +4,6 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#ifndef  COMMON_LOGGING_H_
-#define  COMMON_LOGGING_H_
-
 #include "logging.h"
 
 #include <assert.h>
@@ -200,7 +197,5 @@ void Log(int level, const char* fmt, ...) {
 }
 
 } // namespace common
-
-#endif  // COMMON_LOGGING_H_
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
