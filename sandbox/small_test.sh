@@ -6,7 +6,7 @@ sh ./clear.sh
 sh ./deploy.sh
 sh ./start_bfs.sh
 
-sleep 3
+sleep 5
 
 # Test sl
 ./bfs_client ls /

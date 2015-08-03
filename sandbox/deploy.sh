@@ -8,6 +8,7 @@ echo '--default_replica_num=3' >> bfs.flag
 echo '--chunkserver_log_level=2' >> bfs.flag
 echo '--nameserver_log_level=2' >> bfs.flag
 echo '--block_store_path=./data1,./data2' >> bfs.flag
+echo '--cluster_members=127.0.0.1:8868,127.0.0.1:8869,127.0.0.1:8870,127.0.0.1:8871,127.0.0.1:8872' >> bfs.flag
 
 cp bfs.flag nameserver/
 
