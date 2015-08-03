@@ -16,6 +16,6 @@ install:
     - tar xf v2.1.2.tar.gz
     - ( cd gflags-2.1.2 && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
     - git clone https://github.com/fxsjy/ins.git ./thirdparty/ins
-    - ( cd thirdparty/ins && make -j4 && make install);
+    - ( cd thirdparty/ins && ln -s ../../thirdparty thirdparty && make -j4 && make install);
 
 script: make -j4 && make test
