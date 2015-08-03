@@ -14,6 +14,7 @@ DEFINE_string(nameserver_port, "8828", "Nameserver port");
 DEFINE_int32(keepalive_timeout, 60, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 2, "Nameserver log level");
+DEFINE_string(ins_address, "127.0.0.1:8868,127.0.0.1:8869,127.0.0.1:8870,127.0.0.1:8871,127.0.0.1:8872", "ins address");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
