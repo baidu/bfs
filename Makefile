@@ -102,5 +102,6 @@ install:
 
 .PHONY: test
 test:
+	cd thirdparty/ins/sandbox; sh start_all.sh
 	cd sandbox; sh small_test.sh
 
