@@ -97,7 +97,6 @@ private:
     /// Block map
     BlockManager* _block_manager;
     /// Namespace database
-    leveldb::DB* _db;    ///< 存储nameserver数据
     galaxy::ins::sdk::InsSDK* ins_db;
     int64_t _namespace_version;
 };
