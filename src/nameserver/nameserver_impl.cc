@@ -1011,7 +1011,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     bool success = false;
     bool locked = false;
     galaxy::ins::sdk::SDKError s;
-    ins_db->Lock(new_key, &s);
+    ins_db->TryLock(new_key, &s);
     // New file must be not found
     if (s == galaxy::ins::sdk::kOK) {
         locked = true;
@@ -1038,7 +1038,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
             LOG(WARNING, "Rename not found: %s\n", oldpath.c_str());
         }
     } else {
-        LOG(WARNING, "Rename target file %s is existent\n", newpath.c_str());
+        LOG(WARNING, "Lock new filename fail\n", newpath.c_str());
     }
     if (success) {
         response->set_status(0);
