@@ -718,15 +718,18 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                 return;
             }
         } else {
-            /// TODO: deal with ins cluster down
+            LOG(WARNING, "Create path fail: cant't read %s from ins_db\n", file_keys[i].c_str() + 2);
+            response->set_status(886);
+            done->Run();
+            return;
         }
     }
     
     const std::string& file_key = file_keys[depth-1];
     if ((flags & O_TRUNC) == 0) {
-        ins_db->Get(file_key, &info_value, &s);
-        if (s == galaxy::ins::sdk::kOK) {
-            LOG(WARNING, "CreateFile %s fail: already exist!\n", file_name.c_str());
+        ins_db->TryLock(file_key, &s);
+        if (s != galaxy::ins::sdk::kOK) {
+            LOG(WARNING, "Lock new filename fail\n", file_name.c_str());
             response->set_status(1);
             done->Run();
             return;
@@ -750,6 +753,11 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail", file_key.c_str());
         response->set_status(2);
+    }
+    ins_db->UnLock(file_key, &s);
+    if (s != galaxy::ins::sdk::kOK) {
+        LOG(WARNING, "Unlock new filename fail", file_key.c_str());
+        response->set_status(3);
     }
     done->Run();
 }
