@@ -1008,10 +1008,13 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     const std::string& old_key = oldkeys[oldkeys.size()-1];
     const std::string& new_key = newkeys[newkeys.size()-1];
     std::string value;
+    bool success = false;
+    bool locked = false;
     galaxy::ins::sdk::SDKError s;
-    ins_db->Get(new_key, &value, &s);
+    ins_db->Lock(new_key, &s);
     // New file must be not found
-    if (s == galaxy::ins::sdk::kNoSuchKey) {
+    if (s == galaxy::ins::sdk::kOK) {
+        locked = true;
         ins_db->Get(old_key, &value, &s);
         if (s == galaxy::ins::sdk::kOK) {
             FileInfo file_info;
@@ -1019,15 +1022,14 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
             assert(ret);
             // Directory rename is not impliment.
             if ((file_info.type() & (1<<9)) == 0) {
-                /// TODO: lock to guarantee atomic
                 ins_db->Put(new_key, value, &s);
-                ins_db->Delete(old_key, &s);
                 if (s == galaxy::ins::sdk::kOK) {
-                    response->set_status(0);
-                    done->Run();
-                    return;
+                    ins_db->Delete(old_key, &s);
+                    if (s == galaxy::ins::sdk::kOK) {
+                        success = true;
+                    }
                 } else {
-                    LOG(WARNING, "Rename write ins_db fail\n");
+                    LOG(WARNING, "Write new filename fail", new_key.c_str());
                 }
             } else {
                 LOG(WARNING, "Rename not support directory\n");
@@ -1038,7 +1040,15 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     } else {
         LOG(WARNING, "Rename target file %s is existent\n", newpath.c_str());
     }
-    response->set_status(886);
+    if (success) {
+        response->set_status(0);
+    } else {
+        response->set_status(886);
+    }
+    if (locked) {
+        ins_db->UnLock(new_key, &s);
+        assert(s == galaxy::ins::sdk::kOK);
+    }
     done->Run();
 }
 
