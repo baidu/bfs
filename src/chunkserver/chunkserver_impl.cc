@@ -45,6 +45,9 @@ DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_string(nexus_root_path);
+DECLARE_string(master_path);
+DECLARE_string(ins_address);
 
 namespace bfs {
 
@@ -626,6 +629,64 @@ private:
     Mutex   _mu;
 };
 
+
+static void OnMasterChange(const galaxy::ins::sdk::WatchParam& param,
+        galaxy::ins::sdk::SDKError error) {
+    ChunkServerImpl* cs = static_cast<ChunkServerImpl*>(param.context);
+    cs->HandleMasterChange(param.value);
+}
+
+void ChunkServerImpl::HandleMasterChange(const std::string& new_master_endpoint) {
+    MutexLock lock(&_master_mutex);
+    if (new_master_endpoint.empty()) {
+        LOG(WARNING, "master endpoint is deleted from nexus");
+    }
+    if (new_master_endpoint != _master) {
+        LOG(INFO, "master change to %s", new_master_endpoint.c_str());
+        _master = new_master_endpoint;
+        if (_nameserver) {
+            delete _nameserver;
+        }
+        if (!_rpc_client->GetStub(_master, &_nameserver)) {
+            LOG(WARNING, "connect master %s failed", _master.c_str());
+            return;
+        }
+    }
+    std::string master_path_key = FLAGS_nexus_root_path + FLAGS_master_path;
+    galaxy::ins::sdk::SDKError err;
+    bool ret = _nexus->Watch(master_path_key, &OnMasterChange, this, &err);
+    if (!ret) {
+        LOG(FATAL, "fail to watch again on nexus, err_code: %d", err);
+    } else {
+        LOG(INFO, "watch master again success");
+    }
+}
+
+bool ChunkServerImpl::RegistToMaster() {
+    MutexLock lock(&_master_mutex);
+    std::string master_path_key =  FLAGS_nexus_root_path + FLAGS_master_path;
+    galaxy::ins::sdk::SDKError err;
+    bool ret = _nexus->Get(master_path_key, &_master, &err);
+    if (ret) {
+        LOG(INFO, "master is: %s", _master.c_str());
+    } else {
+        LOG(FATAL, "fail to get master address from nexus, error_code: %d", err);
+        abort();
+    }
+    ret = _nexus->Watch(master_path_key, &OnMasterChange, this, &err);
+    if (ret) {
+        LOG(INFO, "watch master success");
+    } else {
+        LOG(FATAL, "fail to watch on nexus, err_code: %d", err);
+    }
+
+    if (!_rpc_client->GetStub(_master, &_nameserver)) {
+        LOG(WARNING, "connect master %s failed", _master.c_str());
+        return false;
+    }
+    return true;
+}
+
 ChunkServerImpl::ChunkServerImpl()
     : _quit(false), _chunkserver_id(0), _namespace_version(0) {
     _data_server_addr = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
@@ -636,16 +697,16 @@ ChunkServerImpl::ChunkServerImpl()
     bool s_ret = _block_manager->LoadStorage();
     assert(s_ret == true);
     _rpc_client = new RpcClient();
-    std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
-    if (!_rpc_client->GetStub(ns_address, &_nameserver)) {
-        assert(0);
-    }
+    _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_ins_address);
+    s_ret = RegistToMaster();
+    assert(s_ret);
     _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
 }
 
 ChunkServerImpl::~ChunkServerImpl() {
+    /// TODO: is destructor necessary?
     _quit = true;
     pthread_join(_routine_thread, NULL);
     _work_thread_pool->Stop(true);
@@ -656,6 +717,7 @@ ChunkServerImpl::~ChunkServerImpl() {
     delete _write_thread_pool;
     delete _block_manager;
     delete _rpc_client;
+    delete _nexus;
 }
 
 void ChunkServerImpl::LogStatus() {
@@ -682,6 +744,7 @@ void* ChunkServerImpl::RoutineWrapper(void* arg) {
 }
 
 void ChunkServerImpl::Routine() {
+    ///TODO hold _master_mutex here, but may have troubles
     static int64_t ticks = 0;
     int64_t next_report = -1;
     size_t next_report_offset = 0;
