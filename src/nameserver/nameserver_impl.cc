@@ -30,7 +30,11 @@ DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(default_replica_num);
+DECLARE_string(nameserver_port);
 DECLARE_string(ins_address);
+DECLARE_string(nexus_root_path);
+DECLARE_string(master_path);
+DECLARE_string(master_lock_path);
 
 namespace bfs {
 
@@ -543,16 +547,58 @@ private:
 };
 
 NameServerImpl::NameServerImpl() {
-    std::vector<std::string> ins_members;
-    common::SplitString(FLAGS_ins_address, ",", &ins_members);
-    ins_db = new galaxy::ins::sdk::InsSDK(ins_members);
+    ins_db = new galaxy::ins::sdk::InsSDK(FLAGS_ins_address);
+}
+
+NameServerImpl::~NameServerImpl() {
+}
+
+static void OnMasterLockChange(const galaxy::ins::sdk::WatchParam& param,
+                               galaxy::ins::sdk::SDKError error) {
+    NameServerImpl* ns = static_cast<NameServerImpl*>(param.context);
+    ns->OnLockChange(param.value);
+}
+
+static void OnMasterSessionTimeout(void* ctx) {
+    NameServerImpl* ns = static_cast<NameServerImpl*>(ctx);
+    ns->OnSessionTimeout();
+}
+
+void NameServerImpl::OnLockChange(std::string lock_session_id) {
+    std::string self_session_id = ins_db->GetSessionID();
+    if (self_session_id != lock_session_id) {
+        LOG(FATAL, "lost master lock");
+        abort();
+    }
+}
+
+void NameServerImpl::OnSessionTimeout() {
+    LOG(FATAL, "lost session with nexus");
+    abort();
+}
+
+void NameServerImpl::AcquireMasterLock() {
+    std::string master_lock = FLAGS_nexus_root_path + FLAGS_master_lock_path;
+    galaxy::ins::sdk::SDKError err;
+    ins_db->RegisterSessionTimeout(&OnMasterSessionTimeout, this);
+    bool ret = ins_db->Lock(master_lock, &err);
+    assert(ret && err == galaxy::ins::sdk::kOK);
+    std::string master_endpoint = common::util::GetLocalHostName() + ":" + FLAGS_nameserver_port;
+    std::string master_path_key = FLAGS_nexus_root_path + FLAGS_master_path;
+    ret = ins_db->Put(master_path_key, master_endpoint, &err);
+    assert(ret && err == galaxy::ins::sdk::kOK);
+    ret = ins_db->Watch(master_lock, &OnMasterLockChange, this, &err);
+    assert(ret && err == galaxy::ins::sdk::kOK);
+    LOG(INFO, "get master lock %s -> %s", master_path_key.c_str(), master_endpoint.c_str());
+}
+
+void NameServerImpl::Init() {
+    AcquireMasterLock();
     _namespace_version = common::timer::get_micros();
     _block_manager = new BlockManager();
     _chunkserver_manager = new ChunkServerManager(&_thread_pool, _block_manager);
     RebuildBlockMap();
     _thread_pool.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-}
-NameServerImpl::~NameServerImpl() {
 }
 
 void NameServerImpl::LogStatus() {
@@ -1280,7 +1326,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
 }
 void NameServerImpl::RebuildBlockMap() {
     MutexLock lock(&_mu);
-    galaxy::ins::sdk::ScanResult* it = ins_db->Scan("", "");
+    galaxy::ins::sdk::ScanResult* it = ins_db->Scan("00", "99");
     while (!it->Done()) {
         /// TODO: enable ScanResult to return ref of key & value
         std::string value(it->Value());

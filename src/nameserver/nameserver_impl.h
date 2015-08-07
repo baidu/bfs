@@ -82,7 +82,11 @@ public:
                        const ::bfs::SysStatRequest* request,
                        ::bfs::SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void OnSessionTimeout();
+    void OnLockChange(std::string lock_session_id);
+    void Init();
 private:
+    void AcquireMasterLock();
     int DeleteDirectoryRecursive(std::string& path, bool recursive);
     void RebuildBlockMap();
     void LogStatus();
