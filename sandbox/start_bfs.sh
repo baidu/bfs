@@ -3,6 +3,7 @@
 cd nameserver;
 ./bin/nameserver 1>nlog1 2>&1 &
 echo $! > pid
+sleep 3
 
 for i in `seq 0 3`;
 do
