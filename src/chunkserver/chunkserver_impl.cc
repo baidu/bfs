@@ -744,13 +744,14 @@ void* ChunkServerImpl::RoutineWrapper(void* arg) {
 }
 
 void ChunkServerImpl::Routine() {
-    ///TODO hold _master_mutex here, but may have troubles
     static int64_t ticks = 0;
     int64_t next_report = -1;
     size_t next_report_offset = 0;
     std::vector<BlockMeta> blocks;
     while (!_quit) {
         // heartbeat
+        // enlarge lock scope to make heartbeat & block report atomic
+        MutexLock lock(&_master_mutex);
         if (ticks % FLAGS_heartbeat_interval == 0) {
             HeartBeatRequest request;
             request.set_chunkserver_id(_chunkserver_id);
@@ -768,6 +769,7 @@ void ChunkServerImpl::Routine() {
                 _namespace_version = response.namespace_version();
                 _chunkserver_id = response.chunkserver_id();
                 next_report = ticks;
+                next_report_offset = 0;
             }
         }
         // block report
