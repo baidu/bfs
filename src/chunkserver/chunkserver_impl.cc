@@ -641,14 +641,14 @@ void ChunkServerImpl::HandleMasterChange(const std::string& new_master_endpoint)
     if (new_master_endpoint.empty()) {
         LOG(WARNING, "master endpoint is deleted from nexus");
     }
-    if (new_master_endpoint != _master) {
+    if (new_master_endpoint != _master_nameserver_addr) {
         LOG(INFO, "master change to %s", new_master_endpoint.c_str());
-        _master = new_master_endpoint;
+        _master_nameserver_addr = new_master_endpoint;
         if (_nameserver) {
             delete _nameserver;
         }
-        if (!_rpc_client->GetStub(_master, &_nameserver)) {
-            LOG(WARNING, "connect master %s failed", _master.c_str());
+        if (!_rpc_client->GetStub(_master_nameserver_addr, &_nameserver)) {
+            LOG(WARNING, "connect master %s failed", _master_nameserver_addr.c_str());
             return;
         }
     }
@@ -666,9 +666,9 @@ bool ChunkServerImpl::RegistToMaster() {
     MutexLock lock(&_master_mutex);
     std::string master_path_key =  FLAGS_nexus_root_path + FLAGS_master_path;
     galaxy::ins::sdk::SDKError err;
-    bool ret = _nexus->Get(master_path_key, &_master, &err);
+    bool ret = _nexus->Get(master_path_key, &_master_nameserver_addr, &err);
     if (ret) {
-        LOG(INFO, "master is: %s", _master.c_str());
+        LOG(INFO, "master is: %s", _master_nameserver_addr.c_str());
     } else {
         LOG(FATAL, "fail to get master address from nexus, error_code: %d", err);
         abort();
@@ -680,8 +680,8 @@ bool ChunkServerImpl::RegistToMaster() {
         LOG(FATAL, "fail to watch on nexus, err_code: %d", err);
     }
 
-    if (!_rpc_client->GetStub(_master, &_nameserver)) {
-        LOG(WARNING, "connect master %s failed", _master.c_str());
+    if (!_rpc_client->GetStub(_master_nameserver_addr, &_nameserver)) {
+        LOG(WARNING, "connect master %s failed", _master_nameserver_addr.c_str());
         return false;
     }
     return true;

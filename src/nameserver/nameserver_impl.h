@@ -101,7 +101,7 @@ private:
     /// Block map
     BlockManager* _block_manager;
     /// Namespace database
-    galaxy::ins::sdk::InsSDK* ins_db;
+    galaxy::ins::sdk::InsSDK* _nexus;
     int64_t _namespace_version;
 };
 

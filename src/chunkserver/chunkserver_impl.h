@@ -67,7 +67,7 @@ private:
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
-    std::string     _master;
+    std::string     _master_nameserver_addr;
     Mutex _master_mutex;
     galaxy::ins::sdk::InsSDK* _nexus;
     RpcClient*      _rpc_client;
