@@ -26,12 +26,10 @@
 #include "common/util.h"
 #include "common/string_util.h"
 
-DECLARE_string(namedb_path);
-DECLARE_int64(namedb_cache_size);
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(default_replica_num);
 DECLARE_string(nameserver_port);
-DECLARE_string(ins_address);
+DECLARE_string(nexus_servers);
 DECLARE_string(nexus_root_path);
 DECLARE_string(master_path);
 DECLARE_string(master_lock_path);
@@ -547,7 +545,7 @@ private:
 };
 
 NameServerImpl::NameServerImpl() {
-    _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_ins_address);
+    _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_nexus_servers);
 }
 
 NameServerImpl::~NameServerImpl() {

@@ -7,14 +7,12 @@
 #include <gflags/gflags.h>
 
 // nameserver
-DEFINE_string(namedb_path, "./db", "Namespace database");
-DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
 DEFINE_string(nameserver, "127.0.0.1", "Nameserver host");
 DEFINE_string(nameserver_port, "8828", "Nameserver port");
 DEFINE_int32(keepalive_timeout, 60, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 2, "Nameserver log level");
-DEFINE_string(ins_address, "127.0.0.1:8868,127.0.0.1:8869,127.0.0.1:8870,127.0.0.1:8871,127.0.0.1:8872", "ins address");
+DEFINE_string(nexus_servers, "127.0.0.1:8868,127.0.0.1:8869,127.0.0.1:8870,127.0.0.1:8871,127.0.0.1:8872", "nexus server address");
 DEFINE_string(nexus_root_path, "/dfs", "root path");
 DEFINE_string(master_path, "/master", "master path on nexus");
 DEFINE_string(master_lock_path, "/master_lock", "master lock name on nexus");

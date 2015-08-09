@@ -47,7 +47,7 @@ DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_string(nexus_root_path);
 DECLARE_string(master_path);
-DECLARE_string(ins_address);
+DECLARE_string(nexus_servers);
 
 namespace bfs {
 
@@ -697,7 +697,7 @@ ChunkServerImpl::ChunkServerImpl()
     bool s_ret = _block_manager->LoadStorage();
     assert(s_ret == true);
     _rpc_client = new RpcClient();
-    _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_ins_address);
+    _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_nexus_servers);
     s_ret = RegistToMaster();
     assert(s_ret);
     _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
