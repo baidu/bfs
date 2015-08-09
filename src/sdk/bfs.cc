@@ -21,11 +21,13 @@
 #include "common/logging.h"
 #include "common/string_util.h"
 #include "common/tprinter.h"
+#include "ins_sdk.h"
 
 #include "bfs.h"
 
-DECLARE_string(nameserver);
-DECLARE_string(nameserver_port);
+DECLARE_string(nexus_servers);
+DECLARE_string(nexus_root_path);
+DECLARE_string(master_path);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 
@@ -156,23 +158,36 @@ private:
     bool _bg_error;                     ///< background write error
 };
 
+static void OnMasterChange(const galaxy::ins::sdk::WatchParam&,
+                            galaxy::ins::sdk::SDKError);
+
 class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
     FSImpl() : _rpc_client(NULL), _nameserver(NULL) {
+        _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_nexus_servers);
+        assert(_nexus);
     }
     ~FSImpl() {
         delete _nameserver;
         delete _rpc_client;
     }
     bool ConnectNameServer(const char* nameserver) {
-        if (nameserver != NULL) {
-            _nameserver_address = nameserver;
-        } else {
-            _nameserver_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
+        MutexLock lock(&_master_mutex);
+        std::string master_path_key = FLAGS_nexus_root_path + FLAGS_master_path;
+        galaxy::ins::sdk::SDKError err;
+        _nexus->Get(master_path_key, &_master_nameserver_addr, &err);
+        if (err != galaxy::ins::sdk::kOK) {
+            LOG(WARNING, "Can't get nameserver address from nexus cluster, err_code: %d", err);
+            return false;
+        }
+        _nexus->Watch(master_path_key, &OnMasterChange, this, &err);
+        if (err != galaxy::ins::sdk::kOK) {
+            LOG(WARNING, "Fail to watch on nexus, err_code: %d", err);
+            return false;
         }
         _rpc_client = new RpcClient();
-        bool ret = _rpc_client->GetStub(_nameserver_address, &_nameserver);
+        bool ret = _rpc_client->GetStub(_master_nameserver_addr, &_nameserver);
         return ret;
     }
     bool CreateDirectory(const char* path) {
@@ -492,11 +507,44 @@ public:
         result->append(tp.ToString());
         return true;
     }
+    void HandleMasterChange(const std::string& new_master_endpoint) {
+        MutexLock lock(&_master_mutex);
+        if (new_master_endpoint.empty()) {
+            LOG(WARNING, "Master endpoint is deleted from nexus");
+        }
+        if (new_master_endpoint != _master_nameserver_addr) {
+            LOG(INFO, "Master change to %s", new_master_endpoint.c_str());
+            _master_nameserver_addr = new_master_endpoint;
+            if (_nameserver) {
+                delete _nameserver;
+            }
+            if (!_rpc_client->GetStub(_master_nameserver_addr, &_nameserver)) {
+                LOG(WARNING, "Connect to master %s failed", _master_nameserver_addr.c_str());
+                return;
+            }
+        }
+        std::string master_path_key = FLAGS_nexus_root_path + FLAGS_master_path;
+        galaxy::ins::sdk::SDKError err;
+        bool ret = _nexus->Watch(master_path_key, &OnMasterChange, this, &err);
+        if (!ret) {
+            LOG(WARNING, "Fail to watch again on nexus, err_code: %d", err);
+        } else {
+            LOG(INFO, "Watch master again success");
+        }
+    }
 private:
     RpcClient* _rpc_client;
     NameServer_Stub* _nameserver;
-    std::string _nameserver_address;
+    std::string _master_nameserver_addr;
+    Mutex _master_mutex;
+    galaxy::ins::sdk::InsSDK* _nexus;
 };
+
+static void OnMasterChange(const galaxy::ins::sdk::WatchParam& param,
+                           galaxy::ins::sdk::SDKError err) {
+    FSImpl* fs = static_cast<FSImpl*>(param.context);
+    fs->HandleMasterChange(param.value);
+}
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, 
                          const std::string name, int32_t flags)
