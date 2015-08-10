@@ -849,7 +849,12 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     info->set_block_size(block->Size());
     info->set_version(0);
     BlockReportResponse response;
-    if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::BlockReport,
+    NameServer_Stub* stub = NULL;
+    {
+        MutexLock lock(&_master_mutex);
+        _rpc_client->GetStub(_master_nameserver_addr, &stub);
+    }
+    if (!_rpc_client->SendRequest(stub, &NameServer_Stub::BlockReport,
             &request, &response, 20, 3)) {
         LOG(WARNING, "Reprot finish fail: %ld\n", block->Id());
         return false;
@@ -1167,7 +1172,12 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
     }
 
     PullBlockReportResponse report_response;
-    if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::PullBlockReport,
+    NameServer_Stub* stub = NULL;
+    {
+        MutexLock lock(&_master_mutex);
+        _rpc_client->GetStub(_master_nameserver_addr, &stub);
+    }
+    if (!_rpc_client->SendRequest(stub, &NameServer_Stub::PullBlockReport,
                 &report_request, &report_response, 15, 3)) {
         LOG(WARNING, "Report pull finish fail, chunkserver id: %d\n", _chunkserver_id);
     } else {
