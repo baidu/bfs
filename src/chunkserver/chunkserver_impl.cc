@@ -750,8 +750,6 @@ void ChunkServerImpl::Routine() {
     std::vector<BlockMeta> blocks;
     while (!_quit) {
         // heartbeat
-        // enlarge lock scope to make heartbeat & block report atomic
-        MutexLock lock(&_master_mutex);
         if (ticks % FLAGS_heartbeat_interval == 0) {
             HeartBeatRequest request;
             request.set_chunkserver_id(_chunkserver_id);
@@ -760,6 +758,11 @@ void ChunkServerImpl::Routine() {
             request.set_block_num(g_blocks.Get());
             request.set_data_size(g_data_size.Get());
             HeartBeatResponse response;
+            NameServer_Stub* stub = NULL;
+            {
+                MutexLock lock(&_master_mutex);
+                _rpc_client->GetStub(_master_nameserver_addr, &stub);
+            }
             if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
                     &request, &response, 15, 1)) {
                 LOG(WARNING, "Heat beat fail\n");
@@ -802,33 +805,43 @@ void ChunkServerImpl::Routine() {
                 request.set_is_complete(false);
             }
             BlockReportResponse response;
+            NameServer_Stub* stub = NULL;
+            {
+                MutexLock lock(&_master_mutex);
+                _rpc_client->GetStub(_master_nameserver_addr, &stub);
+            }
             if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::BlockReport,
                     &request, &response, 20, 3)) {
                 LOG(WARNING, "Block reprot fail\n");
                 next_report += 60;  // retry
             } else {
-                next_report += FLAGS_blockreport_interval;
-                //deal with obsolete blocks
-                std::vector<int64_t> obsolete_blocks;
-                for (int i = 0; i < response.obsolete_blocks_size(); i++) {
-                    obsolete_blocks.push_back(response.obsolete_blocks(i));
-                }
-                if (!obsolete_blocks.empty()) {
-                    boost::function<void ()> task =
-                        boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
+                if (_namespace_version != response.namespace_version()) {
+                    next_report_offset = 0;
+                    next_report = ticks + 1;
+                } else {
+                    next_report += FLAGS_blockreport_interval;
+                    //deal with obsolete blocks
+                    std::vector<int64_t> obsolete_blocks;
+                    for (int i = 0; i < response.obsolete_blocks_size(); i++) {
+                        obsolete_blocks.push_back(response.obsolete_blocks(i));
+                    }
+                    if (!obsolete_blocks.empty()) {
+                        boost::function<void ()> task =
+                            boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
                                     this, obsolete_blocks);
-                    _write_thread_pool->AddTask(task);
-                }
+                        _write_thread_pool->AddTask(task);
+                    }
 
-                std::vector<ReplicaInfo> new_replica_info;
-                for (int i = 0; i < response.new_replicas_size(); i++) {
-                    new_replica_info.push_back(response.new_replicas(i));
-                }
-                if (!new_replica_info.empty()) {
-                    boost::function<void ()> new_replica_task =
-                        boost::bind(&ChunkServerImpl::PullNewBlocks,
+                    std::vector<ReplicaInfo> new_replica_info;
+                    for (int i = 0; i < response.new_replicas_size(); i++) {
+                        new_replica_info.push_back(response.new_replicas(i));
+                    }
+                    if (!new_replica_info.empty()) {
+                        boost::function<void ()> new_replica_task =
+                            boost::bind(&ChunkServerImpl::PullNewBlocks,
                                     this, new_replica_info);
-                    _write_thread_pool->AddTask(new_replica_task);
+                        _write_thread_pool->AddTask(new_replica_task);
+                    }
                 }
             }
         }
