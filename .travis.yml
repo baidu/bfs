@@ -15,8 +15,8 @@ install:
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz
     - ( cd gflags-2.1.2 && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
-    - sudo apt-get install libleveldb-dev
+    - cd thirdparty/leveldb && make clean && make -j4 && cd -
     - git clone https://github.com/fxsjy/ins.git ./thirdparty/ins
-    - ( cd thirdparty/ins && ln -s ../../thirdparty thirdparty && make -j4);
+    - ( cd thirdparty/ins && ln -s ../../thirdparty thirdparty && sed -i "s/LEVELDB_PATH)\/lib/LEVELDB_PATH)/" Makefile && make -j4);
 
 script: make -j4 && make test
