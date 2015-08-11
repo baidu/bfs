@@ -909,6 +909,10 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
         _write_thread_pool->DelayTask(10,
             boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done));
+        if (g_writing_bytes.Get() > 10L * 1024 * 1024 * 1024) {
+            LOG(FATAL, "Too many pending write %ld",
+                _write_thread_pool->PendingNum());
+        }
         return;
     }
 

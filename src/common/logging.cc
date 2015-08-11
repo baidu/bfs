@@ -4,9 +4,6 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#ifndef  COMMON_LOGGING_H_
-#define  COMMON_LOGGING_H_
-
 #include "logging.h"
 
 #include <assert.h>
@@ -15,6 +12,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string>
 #include <syscall.h>
 #include <sys/time.h>
@@ -26,7 +24,7 @@
 
 namespace common {
 
-int g_log_level = 4;
+int g_log_level = INFO;
 FILE* g_log_file = stdout;
 FILE* g_warning_file = NULL;
 
@@ -37,7 +35,7 @@ void SetLogLevel(int level) {
 class AsyncLogger {
 public:
     AsyncLogger()
-      : jobs_(&mu_), stopped_(false) {
+      : jobs_(&mu_), done_(&mu_), stopped_(false) {
         thread_.Start(boost::bind(&AsyncLogger::AsyncWriter, this));
     }
     ~AsyncLogger() {
@@ -64,11 +62,13 @@ public:
                 std::string* str = buffer_queue_.front().second;
                 buffer_queue_.pop();
                 mu_.Unlock();
-                fwrite(str->data(), 1, str->size(), g_log_file);
-                loglen += str->size();
-                if (g_warning_file && log_level >= 8) {
-                    fwrite(str->data(), 1, str->size(), g_warning_file);
-                    wflen += str->size();
+                if (str && !str->empty()) {
+                    fwrite(str->data(), 1, str->size(), g_log_file);
+                    loglen += str->size();
+                    if (g_warning_file && log_level >= 8) {
+                        fwrite(str->data(), 1, str->size(), g_warning_file);
+                        wflen += str->size();
+                    }
                 }
                 delete str;
                 mu_.Lock();
@@ -78,12 +78,20 @@ public:
             if (stopped_) {
                 break;
             }
+            done_.Broadcast();
             jobs_.Wait();
         }
+    }
+    void Flush() {
+        MutexLock lock(&mu_);
+        buffer_queue_.push(std::make_pair(0, reinterpret_cast<std::string*>(NULL)));
+        jobs_.Signal();
+        done_.Wait();
     }
 private:
     Mutex mu_;
     CondVar jobs_;
+    CondVar done_;
     bool stopped_;
     Thread thread_;
     std::queue<std::pair<int, std::string*> > buffer_queue_;
@@ -182,6 +190,9 @@ void Logv(int log_level, const char* format, va_list ap) {
         //    fflush(g_warning_file);
         //}
         g_logger.WriteLog(log_level, base, p - base);
+        if (log_level == FATAL) {
+            g_logger.Flush();
+        }
         if (base != buffer) {
             delete[] base;
         }
@@ -197,10 +208,11 @@ void Log(int level, const char* fmt, ...) {
         Logv(level, fmt, ap);
     }
     va_end(ap);
+    if (level == FATAL) {
+        abort();
+    }
 }
 
 } // namespace common
-
-#endif  // COMMON_LOGGING_H_
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
