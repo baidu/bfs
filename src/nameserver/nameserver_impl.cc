@@ -636,8 +636,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     int64_t version = request->namespace_version();
     LOG(INFO, "Report from %d, %s, %d blocks\n",
         id, request->chunkserver_addr().c_str(), request->blocks_size());
+    response->set_namespace_version(_namespace_version);
     if (version != _namespace_version) {
-        response->set_namespace_version(_namespace_version);
         response->set_status(8882);
     } else {
         const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
