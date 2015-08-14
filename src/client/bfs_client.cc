@@ -17,8 +17,7 @@
 #include "sdk/bfs.h"
 
 DECLARE_string(flagfile);
-DECLARE_string(nameserver);
-DECLARE_string(nameserver_port);
+DECLARE_string(nexus_servers);
 
 void print_usage() {
     printf("Use:\nbfs_client <commond> path\n");
@@ -289,9 +288,8 @@ int main(int argc, char* argv[]) {
     }
     
     bfs::FS* fs;
-    std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
-    if (!bfs::FS::OpenFileSystem(ns_address.c_str(), &fs)) {
-        fprintf(stderr, "Open filesytem %s fail\n", ns_address.c_str());
+    if (!bfs::FS::OpenFileSystem(FLAGS_nexus_servers.c_str(), &fs)) {
+        fprintf(stderr, "Open filesytem %s fail\n", FLAGS_nexus_servers.c_str());
         return 1;
     }
 

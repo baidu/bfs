@@ -25,7 +25,6 @@
 
 #include "bfs.h"
 
-DECLARE_string(nexus_servers);
 DECLARE_string(nexus_root_path);
 DECLARE_string(master_path);
 DECLARE_int32(sdk_thread_num);
@@ -164,16 +163,17 @@ static void OnMasterChange(const galaxy::ins::sdk::WatchParam&,
 class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
-    FSImpl() : _rpc_client(NULL), _nameserver(NULL) {
-        _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_nexus_servers);
-        assert(_nexus);
+    FSImpl() : _rpc_client(NULL), _nameserver(NULL), _nexus(NULL) {
     }
     ~FSImpl() {
         delete _nameserver;
         delete _rpc_client;
+        delete _nexus;
     }
-    bool ConnectNameServer(const char* nameserver) {
+    bool ConnectNameServer(const char* nexus_servers) {
         MutexLock lock(&_master_mutex);
+        _nexus = new galaxy::ins::sdk::InsSDK(nexus_servers);
+        assert(_nexus);
         std::string master_path_key = FLAGS_nexus_root_path + FLAGS_master_path;
         galaxy::ins::sdk::SDKError err;
         _nexus->Get(master_path_key, &_master_nameserver_addr, &err);
@@ -937,9 +937,9 @@ bool BfsFileImpl::Close() {
     return !_bg_error;
 }
 
-bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
+bool FS::OpenFileSystem(const char* nexus_servers, FS** fs) {
     FSImpl* impl = new FSImpl;
-    if (!impl->ConnectNameServer(nameserver)) {
+    if (!impl->ConnectNameServer(nexus_servers)) {
         *fs = NULL;
         return false;
     }
