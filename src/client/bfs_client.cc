@@ -178,7 +178,10 @@ int64_t BfsDuRecursive(bfs::FS* fs, const std::string& path) {
     int64_t ret = 0;
     bfs::BfsFileInfo* files = NULL;
     int num = 0;
-    fs->ListDirectory(path.c_str(), &files, &num);
+    if (!fs->ListDirectory(path.c_str(), &files, &num)) {
+        fprintf(stderr, "List directory fail: %s\n", path.c_str());
+        return ret;
+    }
     for (int i = 0; i < num; i++) {
         int32_t type = files[i].mode;
         if (type & (1<<9)) {
@@ -212,7 +215,11 @@ int BfsList(bfs::FS* fs, int argc, char* argv[]) {
     }
     bfs::BfsFileInfo* files = NULL;
     int num;
-    fs->ListDirectory(path.c_str(), &files, &num);
+    bool ret = fs->ListDirectory(path.c_str(), &files, &num);
+    if (!ret) {
+        fprintf(stderr, "List dir %s fail\n", path.c_str());
+        return 1;
+    }
     printf("Found %d items\n", num);
     for (int i = 0; i < num; i++) {
         int32_t type = files[i].mode;
