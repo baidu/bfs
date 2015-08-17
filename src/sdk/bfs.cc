@@ -357,13 +357,13 @@ public:
                 *file = new BfsFileImpl(this, _rpc_client, path, flags);
             }
         } else if (flags == O_RDONLY) {
-            FileLocationRequest request;
-            FileLocationResponse response;
-            request.set_file_name(path);
-            request.set_sequence_id(0);
             std::vector<LocatedBlock> blocks;
             ret = _file_location_cache->GetFileLocation(path, &blocks);
             if (!ret) {
+                FileLocationRequest request;
+                FileLocationResponse response;
+                request.set_file_name(path);
+                request.set_sequence_id(0);
                 ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::GetFileLocation,
                         &request, &response, 15, 3);
                 if (ret && response.status() == 0) {
