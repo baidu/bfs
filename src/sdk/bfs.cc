@@ -10,10 +10,12 @@
 #include <list>
 #include <queue>
 #include <sstream>
+#include <vector>
 
 #include "proto/nameserver.pb.h"
 #include "proto/chunkserver.pb.h"
 #include "rpc/rpc_client.h"
+#include "file_location_cache.h"
 #include "common/atomic.h"
 #include "common/mutex.h"
 #include "common/timer.h"
@@ -28,6 +30,7 @@ DECLARE_string(nameserver);
 DECLARE_string(nameserver_port);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
+DECLARE_int32(file_location_cache_size);
 
 namespace bfs {
 
@@ -160,10 +163,12 @@ class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
     FSImpl() : _rpc_client(NULL), _nameserver(NULL) {
+        _file_location_cache = new FileLocationCache(FLAGS_file_location_cache_size);
     }
     ~FSImpl() {
         delete _nameserver;
         delete _rpc_client;
+        delete _file_location_cache;
     }
     bool ConnectNameServer(const char* nameserver) {
         if (nameserver != NULL) {
@@ -272,19 +277,31 @@ public:
         if (file_size == NULL) {
             return false;
         }
-        FileLocationRequest request;
-        FileLocationResponse response;
-        request.set_file_name(path);
-        request.set_sequence_id(0);
-        bool ret = _rpc_client->SendRequest(_nameserver, 
-            &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
-        if (!ret || response.status() != 0) {
-            LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
-            return false;
+        std::vector<LocatedBlock> blocks;
+        bool ret = _file_location_cache->GetFileLocation(path, &blocks);
+        if (!ret) {
+            FileLocationRequest request;
+            FileLocationResponse response;
+            request.set_file_name(path);
+            request.set_sequence_id(0);
+            ret = _rpc_client->SendRequest(_nameserver,
+                    &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
+            if (!ret || response.status() != 0) {
+                LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
+                return false;
+            }
+            const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >&
+                response_blocks = response.blocks();
+            for (int i = 0; i < response.blocks_size(); i++) {
+                blocks.push_back(response_blocks.Get(i));
+            }
+            //fill cache
+            _file_location_cache->FillCache(path, blocks);
         }
+
         *file_size = 0;
-        for (int i = 0; i < response.blocks_size(); i++) {
-            const LocatedBlock& block = response.blocks(i);
+        for (int i = 0; i < blocks.size(); i++) {
+            const LocatedBlock& block = blocks[i];
             ChunkServer_Stub* chunkserver = NULL;
             bool available = false;
             for (int j = 0; j < block.chains_size(); j++) {
@@ -344,17 +361,27 @@ public:
             FileLocationResponse response;
             request.set_file_name(path);
             request.set_sequence_id(0);
-            ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::GetFileLocation,
-                &request, &response, 15, 3);
-            if (ret && response.status() == 0) {
+            std::vector<LocatedBlock> blocks;
+            ret = _file_location_cache->GetFileLocation(path, &blocks);
+            if (!ret) {
+                ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::GetFileLocation,
+                        &request, &response, 15, 3);
+                if (ret && response.status() == 0) {
+                    const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >&
+                                            response_blocks = response.blocks();
+                    for (int i = 0; i < response.blocks_size(); i++) {
+                        blocks.push_back(response_blocks.Get(i));
+                    }
+                    //fill cache
+                    _file_location_cache->FillCache(path, blocks);
+                } else {
+                    fprintf(stderr, "OpenFile return %d\n", response.status());
+                }
+            }
+            if (ret) {
                 BfsFileImpl* f = new BfsFileImpl(this, _rpc_client, path, flags);
-                f->_located_blocks.CopyFrom(response.blocks());
+                f->_located_blocks._blocks = blocks;
                 *file = f;
-                //printf("OpenFile success: %s\n", path);
-            } else {
-                //printf("GetFileLocation return %d\n", response.blocks_size());
-                fprintf(stderr, "OpenFile return %d\n", response.status());
-                ret = false;
             }
         } else {
             LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY\n");
@@ -496,6 +523,7 @@ private:
     RpcClient* _rpc_client;
     NameServer_Stub* _nameserver;
     std::string _nameserver_address;
+    FileLocationCache* _file_location_cache;
 };
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, 
