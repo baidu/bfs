@@ -39,7 +39,6 @@ FileCache::~FileCache() {
 common::Cache::Handle* FileCache::FindFile(const std::string& file_path) {
     common::Slice key(file_path);
     common::Cache::Handle* handle = _cache->Lookup(key);
-    handle = _cache->Lookup(key);
     if (handle == NULL) {
         int fd = open(file_path.c_str(), O_RDONLY);
         if (fd < 0) {
