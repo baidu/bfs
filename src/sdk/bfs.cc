@@ -300,7 +300,7 @@ public:
         }
 
         *file_size = 0;
-        for (int i = 0; i < blocks.size(); i++) {
+        for (size_t i = 0; i < blocks.size(); i++) {
             const LocatedBlock& block = blocks[i];
             ChunkServer_Stub* chunkserver = NULL;
             bool available = false;
