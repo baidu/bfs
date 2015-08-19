@@ -285,6 +285,10 @@ public:
         *file_size = 0;
         for (int i = 0; i < response.blocks_size(); i++) {
             const LocatedBlock& block = response.blocks(i);
+            if (block.block_size()) {
+                *file_size += block.block_size();
+                continue;
+            }
             ChunkServer_Stub* chunkserver = NULL;
             bool available = false;
             for (int j = 0; j < block.chains_size(); j++) {
