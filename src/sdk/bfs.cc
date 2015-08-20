@@ -308,6 +308,7 @@ public:
                     if (!ret || gbi_response.status() != 0) {
                         LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail",
                             path, addr.c_str());
+                        delete chunkserver;
                         continue;
                     }
                     *file_size += gbi_response.block_size();
@@ -317,8 +318,10 @@ public:
             }
             if (!available) {
                 LOG(WARNING, "GetFileSize(%s) fail no available chunkserver", path);
+                delete chunkserver;
                 return false;
             }
+            delete chunkserver;
         }
         return true;
     }
