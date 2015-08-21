@@ -280,23 +280,11 @@ public:
         std::vector<LocatedBlock> blocks;
         bool ret = _file_location_cache->GetFileLocation(path, &blocks);
         if (!ret) {
-            FileLocationRequest request;
-            FileLocationResponse response;
-            request.set_file_name(path);
-            request.set_sequence_id(0);
-            ret = _rpc_client->SendRequest(_nameserver,
-                    &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
-            if (!ret || response.status() != 0) {
-                LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
+            ret = UpdateFileLocation(path, &blocks);
+            if (!ret) {
+                LOG(WARNING, "update file %s location fail", path);
                 return false;
             }
-            const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >&
-                response_blocks = response.blocks();
-            for (int i = 0; i < response.blocks_size(); i++) {
-                blocks.push_back(response_blocks.Get(i));
-            }
-            //fill cache
-            _file_location_cache->FillCache(path, blocks);
         }
 
         *file_size = 0;
@@ -360,29 +348,15 @@ public:
             std::vector<LocatedBlock> blocks;
             ret = _file_location_cache->GetFileLocation(path, &blocks);
             if (!ret) {
-                FileLocationRequest request;
-                FileLocationResponse response;
-                request.set_file_name(path);
-                request.set_sequence_id(0);
-                ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::GetFileLocation,
-                        &request, &response, 15, 3);
-                if (ret && response.status() == 0) {
-                    const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >&
-                                            response_blocks = response.blocks();
-                    for (int i = 0; i < response.blocks_size(); i++) {
-                        blocks.push_back(response_blocks.Get(i));
-                    }
-                    //fill cache
-                    _file_location_cache->FillCache(path, blocks);
-                } else {
-                    fprintf(stderr, "OpenFile return %d\n", response.status());
+                ret = UpdateFileLocation(path, &blocks);
+                if (!ret) {
+                    LOG(WARNING, "Update file %s location fail", path);
+                    return ret;
                 }
             }
-            if (ret) {
-                BfsFileImpl* f = new BfsFileImpl(this, _rpc_client, path, flags);
-                f->_located_blocks._blocks = blocks;
-                *file = f;
-            }
+            BfsFileImpl* f = new BfsFileImpl(this, _rpc_client, path, flags);
+            f->_located_blocks._blocks = blocks;
+            *file = f;
         } else {
             LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY\n");
             ret = false;
@@ -520,6 +494,27 @@ public:
         return true;
     }
 private:
+    bool UpdateFileLocation(const std::string& file_path, std::vector<LocatedBlock> *blocks) {
+        FileLocationRequest request;
+        FileLocationResponse response;
+        request.set_file_name(file_path);
+        request.set_sequence_id(0);
+        bool ret = _rpc_client->SendRequest(_nameserver,
+                &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
+        if (!ret || response.status() != 0) {
+            LOG(WARNING, "Update file location %s returns %d", file_path.c_str(), response.status());
+            return false;
+        }
+        const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >&
+            response_blocks = response.blocks();
+        for (int i = 0; i < response.blocks_size(); i++) {
+            blocks->push_back(response_blocks.Get(i));
+        }
+        //fill cache
+        _file_location_cache->FillCache(file_path, *blocks);
+        return true;
+    }
+private:
     RpcClient* _rpc_client;
     NameServer_Stub* _nameserver;
     std::string _nameserver_address;
@@ -599,25 +594,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         if (retry_times == lcblock.chains_size() && !update_location) {
             // update block location
             update_location = true;
-            FileLocationRequest location_request;
-            FileLocationResponse location_response;
-            location_request.set_file_name(_name);
-            location_request.set_sequence_id(0);
-            ret = _rpc_client->SendRequest(_fs->_nameserver, &NameServer_Stub::GetFileLocation,
-                    &location_request, &location_response, 15, 3);
-            if (!ret || location_response.status() != 0) {
-                LOG(WARNING, "Update file %s location fail: %d", _name.c_str(), location_response.status());
-                break;
-            }
-            std::vector<LocatedBlock> blocks;
-            const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >&
-                response_blocks = location_response.blocks();
-            for (int i = 0; i < location_response.blocks_size(); i++) {
-                 blocks.push_back(response_blocks.Get(i));
-            }
-            //fill cache
-            _fs->_file_location_cache->FillCache(_name, blocks);
-            _located_blocks._blocks = blocks;
+            _fs->UpdateFileLocation(_name, &_located_blocks._blocks);
             retry_times = lcblock.chains_size() - 1;
             server_index = rand() % lcblock.chains_size();
             cs_addr = lcblock.chains(server_index).address();
