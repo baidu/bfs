@@ -593,8 +593,42 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     }
     request.set_read_len(rlen);
     bool ret = false;
+    bool update_location = false;
 
     for (int retry_times = 0; retry_times < lcblock.chains_size() * 2; retry_times++) {
+        if (retry_times == lcblock.chains_size() && !update_location) {
+            // update block location
+            update_location = true;
+            FileLocationRequest location_request;
+            FileLocationResponse location_response;
+            location_request.set_file_name(_name);
+            location_request.set_sequence_id(0);
+            ret = _rpc_client->SendRequest(_fs->_nameserver, &NameServer_Stub::GetFileLocation,
+                    &location_request, &location_response, 15, 3);
+            if (!ret || location_response.status() != 0) {
+                LOG(WARNING, "Update file %s location fail: %d", _name.c_str(), location_response.status());
+                break;
+            }
+            std::vector<LocatedBlock> blocks;
+            const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >&
+                response_blocks = location_response.blocks();
+            for (int i = 0; i < location_response.blocks_size(); i++) {
+                 blocks.push_back(response_blocks.Get(i));
+            }
+            //fill cache
+            _fs->_file_location_cache->FillCache(_name, blocks);
+            _located_blocks._blocks = blocks;
+            retry_times = lcblock.chains_size() - 1;
+            server_index = rand() % lcblock.chains_size();
+            cs_addr = lcblock.chains(server_index).address();
+            {
+                MutexLock lock(&_mu, "Pread change _chunkserver", 1000);
+                delete _chunkserver;
+                _fs->_rpc_client->GetStub(cs_addr, &_chunkserver);
+            }
+            chunk_server = _chunkserver;
+            continue;
+        }
         LOG(DEBUG, "Start Pread: %s", cs_addr.c_str());
         ret = _fs->_rpc_client->SendRequest(chunk_server, &ChunkServer_Stub::ReadBlock,
                     &request, &response, 15, 3);
@@ -603,6 +637,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             ///TODO: Add to _bad_chunkservers
             cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
+            delete chunk_server;
             _fs->_rpc_client->GetStub(cs_addr, &chunk_server);
             {
                 MutexLock lock(&_mu, "Pread change _chunkserver", 1000);
