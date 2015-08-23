@@ -285,6 +285,10 @@ public:
         *file_size = 0;
         for (int i = 0; i < response.blocks_size(); i++) {
             const LocatedBlock& block = response.blocks(i);
+            if (block.block_size()) {
+                *file_size += block.block_size();
+                continue;
+            }
             ChunkServer_Stub* chunkserver = NULL;
             bool available = false;
             for (int j = 0; j < block.chains_size(); j++) {
@@ -304,6 +308,7 @@ public:
                     if (!ret || gbi_response.status() != 0) {
                         LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail",
                             path, addr.c_str());
+                        delete chunkserver;
                         continue;
                     }
                     *file_size += gbi_response.block_size();
@@ -313,8 +318,10 @@ public:
             }
             if (!available) {
                 LOG(WARNING, "GetFileSize(%s) fail no available chunkserver", path);
+                delete chunkserver;
                 return false;
             }
+            delete chunkserver;
         }
         return true;
     }
