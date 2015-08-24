@@ -60,5 +60,9 @@ int32_t FileCache::ReadFile(const std::string& file_path, char* buf,
     return ret;
 }
 
+void FileCache::EraseFileCache(const std::string& file_path) {
+    _cache->Erase(file_path);
+}
+
 } // namespace bfs
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
