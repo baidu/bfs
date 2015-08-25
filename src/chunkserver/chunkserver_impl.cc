@@ -585,6 +585,7 @@ public:
         int64_t du = block->DiskUsed();
         block->SetDeleted();
         std::string file_path = block->GetFilePath();
+        _file_cache->EraseFileCache(file_path);
         int ret = remove(file_path.c_str());
         if (ret != 0 && (errno !=2 || du > 0)) {
             LOG(WARNING, "Remove #%ld disk file %s %ld bytes fails: %d (%s)",

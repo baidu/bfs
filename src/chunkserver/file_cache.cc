@@ -39,7 +39,6 @@ FileCache::~FileCache() {
 common::Cache::Handle* FileCache::FindFile(const std::string& file_path) {
     common::Slice key(file_path);
     common::Cache::Handle* handle = _cache->Lookup(key);
-    handle = _cache->Lookup(key);
     if (handle == NULL) {
         int fd = open(file_path.c_str(), O_RDONLY);
         if (fd < 0) {
@@ -59,6 +58,10 @@ int32_t FileCache::ReadFile(const std::string& file_path, char* buf,
     int32_t ret = pread(fd, buf, len, offset);
     _cache->Release(handle);
     return ret;
+}
+
+void FileCache::EraseFileCache(const std::string& file_path) {
+    _cache->Erase(file_path);
 }
 
 } // namespace bfs
