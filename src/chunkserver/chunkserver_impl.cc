@@ -774,6 +774,7 @@ void ChunkServerImpl::Routine() {
                 next_report = ticks;
                 next_report_offset = 0;
             }
+            delete stub;
         }
         // block report
         if (ticks == next_report) {
@@ -844,6 +845,7 @@ void ChunkServerImpl::Routine() {
                     }
                 }
             }
+            delete stub;
         }
         ++ ticks;
         sleep(1);
@@ -870,9 +872,11 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     if (!_rpc_client->SendRequest(stub, &NameServer_Stub::BlockReport,
             &request, &response, 20, 3)) {
         LOG(WARNING, "Reprot finish fail: %ld\n", block->Id());
+        delete stub;
         return false;
     }
 
+    delete stub;
     LOG(INFO, "Reprot finish to nameserver done, block_id: %ld\n", block->Id());
     return true;
 }
@@ -1196,6 +1200,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
     } else {
         LOG(INFO, "Report pull finish dnne, chunkserver id: %d\n", _chunkserver_id);
     }
+    delete stub;
 }
 
 
