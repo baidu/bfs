@@ -646,9 +646,10 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
         MutexLock lock(&_mu, "Write", 1000);
         if (!(_open_flags & O_WRONLY)) {
             return -2;
-        }
-        if (_bg_error || _closed) {
+        } else if (_bg_error) {
             return -3;
+        } else if (_closed) {
+            return -4;
         }
         common::atomic_inc(&_back_writing);
     }
@@ -777,10 +778,11 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      int retry_times,
                                      WriteBuffer* buffer) {
     if (failed || response->status() != 0) {
-        if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error) {
+        if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
+                && response->status() != 500) {
             if (retry_times < 5) {
                 LOG(INFO, "BackgroundWrite failed %s"
-                    "[#%ld seq:%d, offset:%ld, len:%d]"
+                    " #%ld seq:%d, offset:%ld, len:%d"
                     " status: %d, retry_times: %d",
                     _name.c_str(),
                     buffer->block_id(), buffer->Sequence(),
