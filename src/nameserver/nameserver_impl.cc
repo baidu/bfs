@@ -1327,12 +1327,11 @@ void NameServerImpl::RebuildBlockMap() {
     MutexLock lock(&_mu);
     galaxy::ins::sdk::ScanResult* it = _nexus->Scan("00", "99");
     while (!it->Done()) {
-        /// TODO: enable ScanResult to return ref of key & value
-        std::string value(it->Value());
         FileInfo file_info;
-        bool ret = file_info.ParseFromArray(value.data(), value.size());
-        assert(ret);
-        if ((file_info.type() & (1 << 9)) == 0) {
+        bool ret = file_info.ParseFromString(it->Value());
+        if (!ret) {
+            LOG(WARNING, "parse file info fail: %s", it->Key().c_str());
+        } else if ((file_info.type() & (1 << 9)) == 0) {
             //a file
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 int64_t block_id = file_info.blocks(i);
