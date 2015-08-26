@@ -176,8 +176,9 @@ public:
     int64_t DiskUsed() {
         return _disk_file_size;
     }
-    void SetDeleted() {
-        _deleted = true;
+    bool SetDeleted() {
+        int deleted = common::atomic_swap(&_deleted, 1);
+        return (0 == deleted);
     }
     /// Open corresponding file for write.
     bool OpenForWrite() {
@@ -414,7 +415,7 @@ private:
     Mutex       _mu;
     common::SlidingWindow<Buffer>* _recv_window;
     bool        _finished;
-    bool        _deleted;
+    volatile int _deleted;
 
     FileCache*  _file_cache;
 };
@@ -579,11 +580,14 @@ public:
                 return false;
             }
             block = it->second;
+            if (!block->SetDeleted()) {
+                LOG(INFO, "Block #%ld deleted by other thread", block_id);
+                return false;
+            }
             block->AddRef();
         }
 
         int64_t du = block->DiskUsed();
-        block->SetDeleted();
         std::string file_path = block->GetFilePath();
         _file_cache->EraseFileCache(file_path);
         int ret = remove(file_path.c_str());
