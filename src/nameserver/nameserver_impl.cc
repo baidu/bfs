@@ -402,7 +402,7 @@ public:
                             _block_manager, id, blocks);
                 _thread_pool->AddTask(task);
                 _chunkserver_block_map.erase(id);
-
+                delete cs;
             }
             assert(it->second.empty());
             _heartbeat_list.erase(it);
