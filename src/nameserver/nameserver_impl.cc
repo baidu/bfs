@@ -1342,6 +1342,7 @@ void NameServerImpl::RebuildBlockMap() {
         }
         it->Next();
     }
+    delete it;
 }
 
 void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
