@@ -145,7 +145,6 @@ private:
     int32_t _open_flags;                ///< 打开使用的flag
 
     /// for write
-    ChunkServer_Stub* _chains_head;     ///< 对应的第一个chunkserver
     LocatedBlock* _block_for_write;     ///< 正在写的block
     WriteBuffer* _write_buf;            ///< 本地写缓冲
     int32_t _last_seq;                  ///< last sequence number
@@ -523,7 +522,7 @@ private:
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, 
                          const std::string name, int32_t flags)
   : _fs(fs), _rpc_client(rpc_client), _name(name),
-    _open_flags(flags), _chains_head(NULL), _block_for_write(NULL),
+    _open_flags(flags), _block_for_write(NULL),
     _write_buf(NULL), _last_seq(-1), _back_writing(0),
     _chunkserver(NULL), _read_offset(0), _reada_buffer(NULL),
     _reada_buf_len(0), _reada_base(0), _closed(false),
@@ -683,7 +682,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
     if (_open_flags & O_WRONLY) {
         MutexLock lock(&_mu, "Write AddBlock", 1000);
         // Add block
-        if (_chains_head == NULL) {
+        if (_chunkservers.empty()) {
             AddBlockRequest request;
             AddBlockResponse response;
             request.set_sequence_id(0);
@@ -696,11 +695,10 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
                 return -1;
             }
             _block_for_write = new LocatedBlock(response.block());
-            const std::string& addr = _block_for_write->chains(0).address();
-            //printf("response addr %s\n", response.block().chains(0).address().c_str());
-            //printf("_block_for_write addr %s\n", 
-            //        file->_block_for_write->chains(0).address().c_str());
-            _rpc_client->GetStub(addr, &_chains_head);
+            for (int i = 0; i < _block_for_write->chains_size(); i++) {
+                const std::string& addr = _block_for_write->chains(i).address();
+                _rpc_client->GetStub(addr, &_chunkservers[addr]);
+            }
         }
     }
 
@@ -773,16 +771,7 @@ void BfsFileImpl::BackgroundWrite() {
             //request->add_timestamp(common::timer::get_micros());
             request->add_chunkservers(cs_addr);
             const int max_retry_times = 5;
-            ChunkServer_Stub* stub = NULL;
-            {
-                MutexLock lock(&_mu);
-                if (_chunkservers.find(cs_addr) == _chunkservers.end()) {
-                    _rpc_client->GetStub(cs_addr, &stub);
-                    _chunkservers[cs_addr] = stub;
-                } else {
-                    stub = _chunkservers[cs_addr];
-                }
-            }
+            ChunkServer_Stub* stub = _chunkservers[cs_addr];
             boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
                 = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
                         max_retry_times, buffer, cs_addr);
@@ -808,11 +797,7 @@ void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer,
         = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
                       retry_times, buffer, cs_addr);
     common::atomic_inc(&_back_writing);
-    ChunkServer_Stub* stub = NULL;
-    {
-        MutexLock lock(&_mu);
-        stub = _chunkservers[cs_addr];
-    }
+    ChunkServer_Stub* stub = _chunkservers[cs_addr];
     _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
         request, response, callback, 60, 1);
 
