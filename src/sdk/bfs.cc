@@ -84,6 +84,9 @@ public:
     bool IsLast() const { return _is_last; }
     int64_t offset() const { return _offset; }
     int64_t block_id() const { return _block_id; }
+    void AddRefBy(int counter) {
+        common::atomic_add(&_refs, counter);
+    }
     void AddRef() {
         common::atomic_inc(&_refs);
         assert (_refs > 0);
@@ -139,6 +142,8 @@ public:
     };
     friend class FSImpl;
 private:
+    bool CheckWriteWindows();
+private:
     FSImpl* _fs;                        ///< 文件系统
     RpcClient* _rpc_client;             ///< RpcClient
     std::string _name;                  ///< 文件路径
@@ -148,8 +153,7 @@ private:
     LocatedBlock* _block_for_write;     ///< 正在写的block
     WriteBuffer* _write_buf;            ///< 本地写缓冲
     int32_t _last_seq;                  ///< last sequence number
-    common::SlidingWindow<int>* _write_window; ///< Send sliding window
-    //std::map<std::string, common::SlidingWindow<int>* > _write_window;
+    std::map<std::string, common::SlidingWindow<int>* > _write_windows;
     std::priority_queue<WriteBuffer*, std::vector<WriteBuffer*>, WriteBufferCmp>
         _write_queue;                   ///< Write buffer list
     volatile int _back_writing;         ///< Async write running backgroud
@@ -527,8 +531,6 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
     _chunkserver(NULL), _read_offset(0), _reada_buffer(NULL),
     _reada_buf_len(0), _reada_base(0), _closed(false),
     _sync_signal(&_mu), _bg_error(false) {
-    _write_window = new common::SlidingWindow<int>(100,
-                        boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
 }
 
 BfsFileImpl::~BfsFileImpl () {
@@ -537,8 +539,11 @@ BfsFileImpl::~BfsFileImpl () {
     }
     delete[] _reada_buffer;
     _reada_buffer = NULL;
-    delete _write_window;
-    _write_window = NULL;
+    std::map<std::string, common::SlidingWindow<int>* >::iterator w_it;
+    for (w_it = _write_windows.begin(); w_it != _write_windows.end(); ++w_it) {
+        delete w_it->second;
+        w_it->second = NULL;
+    }
     std::map<std::string, ChunkServer_Stub*>::iterator it;
     for (it = _chunkservers.begin(); it != _chunkservers.end(); ++it) {
         delete it->second;
@@ -698,6 +703,8 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             for (int i = 0; i < _block_for_write->chains_size(); i++) {
                 const std::string& addr = _block_for_write->chains(i).address();
                 _rpc_client->GetStub(addr, &_chunkservers[addr]);
+                _write_windows[addr] = new common::SlidingWindow<int>(100,
+                                       boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
             }
         }
     }
@@ -709,7 +716,6 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             _write_buf = new WriteBuffer(++_last_seq, 256*1024,
                                          _block_for_write->block_id(),
                                          _block_for_write->block_size());
-            _write_buf->AddRef();
         }
         if ( (len - w) < _write_buf->Available()) {
             _write_buf->Append(buf+w, len-w);
@@ -733,7 +739,6 @@ void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
     common::timer::AutoTimer at(5, "StartWrite", _name.c_str());
     _mu.AssertHeld();
     _write_queue.push(_write_buf);
-    _write_buf->AddRef();
     _block_for_write->set_block_size(_block_for_write->block_size() + _write_buf->Size());
     _write_buf = NULL;
     boost::function<void ()> task = 
@@ -744,23 +749,37 @@ void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
     _mu.Lock("StartWrite relock", 1000);
 }
 
+bool BfsFileImpl::CheckWriteWindows() {
+    _mu.AssertHeld();
+    std::map<std::string, common::SlidingWindow<int>* >::iterator it;
+    int count = 0;
+    for (it = _write_windows.begin(); it != _write_windows.end(); ++it) {
+        if (it->second->UpBound() > _write_queue.top()->Sequence()) {
+            count++;
+        }
+    }
+    return count >= _write_windows.size() - 1;
+}
+
 /// Send local buffer to chunkserver
 void BfsFileImpl::BackgroundWrite() {
     MutexLock lock(&_mu, "BackgroundWrite", 1000);
-    //while(!_write_queue.empty() && 
-    //     _write_window->UpBound() > _write_queue.top()->Sequence()) {
-    while(!_write_queue.empty()) {
+    while(!_write_queue.empty() && CheckWriteWindows()) {
         WriteBuffer* buffer = _write_queue.top();
         _write_queue.pop();
-        buffer->DecRef();
         _mu.Unlock();
 
+        buffer->AddRefBy(_block_for_write->chains_size());
         for (int i = 0; i < _block_for_write->chains_size(); i++) {
+            std::string cs_addr = _block_for_write->chains(i).address();
+            bool delay = false;
+            if (!(_write_windows[cs_addr]->UpBound() > _write_queue.top()->Sequence())) {
+                delay = true;
+            }
             WriteBlockRequest* request = new WriteBlockRequest;
             WriteBlockResponse* response = new WriteBlockResponse;
             int64_t offset = buffer->offset();
             int64_t seq = common::timer::get_micros();
-            std::string cs_addr = _block_for_write->chains(i).address();
             request->set_sequence_id(seq);
             request->set_block_id(buffer->block_id());
             request->set_databuf(buffer->Data(), buffer->Size());
@@ -779,11 +798,15 @@ void BfsFileImpl::BackgroundWrite() {
             LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
                     buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
             common::atomic_inc(&_back_writing);
-            buffer->AddRef();
-            _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
-                    request, response, callback, 60, 1);
+            if (delay) {
+                g_thread_pool.DelayTask(5,
+                        boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
+                            request, max_retry_times, cs_addr));
+            } else {
+                _rpc_client->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
+                        request, response, callback, 60, 1);
+            }
         }
-
         _mu.Lock("BackgroundWriteRelock", 1000);
     }
     common::atomic_dec(&_back_writing);    // for AddTask
@@ -833,7 +856,6 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                 ///TODO: SetFaild & handle it
                 ///TODO: Don't set _bg_error until enought chunkserver fails
                 _bg_error = true;
-                //delete buffer;
                 buffer->DecRef();
                 delete request;
             }
@@ -848,9 +870,8 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         LOG(DEBUG, "BackgroundWrite done bid:%ld, seq:%d, offset:%ld, len:%d, _back_writing:%d",
             buffer->block_id(), buffer->Sequence(), buffer->offset(), 
             buffer->Size(), _back_writing);
-        //int r = _write_window->Add(buffer->Sequence(), 0);
-        //assert(r == 0);
-        //delete buffer;
+        int r = _write_windows[cs_addr]->Add(buffer->Sequence(), 0);
+        assert(r == 0);
         buffer->DecRef();
         delete request;
     }
