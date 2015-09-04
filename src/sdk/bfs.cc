@@ -766,7 +766,7 @@ bool BfsFileImpl::CheckWriteWindows() {
             count++;
         }
     }
-    return count >= _write_windows.size() - 1;
+    return count >= (int)_write_windows.size() - 1;
 }
 
 /// Send local buffer to chunkserver
