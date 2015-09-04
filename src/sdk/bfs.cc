@@ -28,6 +28,7 @@ DECLARE_string(nameserver);
 DECLARE_string(nameserver_port);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
+DECLARE_string(sdk_write_mode);
 
 namespace bfs {
 
@@ -700,7 +701,9 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
                 return -1;
             }
             _block_for_write = new LocatedBlock(response.block());
-            for (int i = 0; i < _block_for_write->chains_size(); i++) {
+            int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 :
+                                                    _block_for_write->chains_size();
+            for (int i = 0; i < cs_size; i++) {
                 const std::string& addr = _block_for_write->chains(i).address();
                 _rpc_client->GetStub(addr, &_chunkservers[addr]);
                 _write_windows[addr] = new common::SlidingWindow<int>(100,
@@ -751,6 +754,10 @@ void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
 
 bool BfsFileImpl::CheckWriteWindows() {
     _mu.AssertHeld();
+    if (_chunkservers.size() == 1) {
+        // chains write mode
+        return _write_windows.begin()->second->UpBound() > _write_queue.top()->Sequence();
+    }
     std::map<std::string, common::SlidingWindow<int>* >::iterator it;
     int count = 0;
     for (it = _write_windows.begin(); it != _write_windows.end(); ++it) {
@@ -769,8 +776,8 @@ void BfsFileImpl::BackgroundWrite() {
         _write_queue.pop();
         _mu.Unlock();
 
-        buffer->AddRefBy(_block_for_write->chains_size());
-        for (int i = 0; i < _block_for_write->chains_size(); i++) {
+        buffer->AddRefBy(_chunkservers.size());
+        for (size_t i = 0; i < _write_windows.size(); i++) {
             std::string cs_addr = _block_for_write->chains(i).address();
             bool delay = false;
             if (!(_write_windows[cs_addr]->UpBound() > _write_queue.top()->Sequence())) {
@@ -788,7 +795,13 @@ void BfsFileImpl::BackgroundWrite() {
             request->set_packet_seq(buffer->Sequence());
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
-            request->add_chunkservers(cs_addr);
+            if (_chunkservers.size() == 1) {
+                // chains write mode
+                for (int i = 1; i < _block_for_write->chains_size(); i++) {
+                    std::string addr = _block_for_write->chains(i).address();
+                    request->add_chunkservers(addr);
+                }
+            }
             const int max_retry_times = 5;
             ChunkServer_Stub* stub = _chunkservers[cs_addr];
             boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
