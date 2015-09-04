@@ -172,7 +172,7 @@ private:
     Mutex   _mu;
     CondVar _sync_signal;               ///< _sync_var
     bool _bg_error;                     ///< background write error
-    std::map<std::string, bool> cs_status;        ///< background write error for each chunkserver
+    std::map<std::string, bool> cs_errors;        ///< background write error for each chunkserver
 };
 
 class FSImpl : public FS {
@@ -708,6 +708,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
                 _rpc_client->GetStub(addr, &_chunkservers[addr]);
                 _write_windows[addr] = new common::SlidingWindow<int>(100,
                                        boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
+                cs_errors[addr] = false;
             }
         }
     }
@@ -777,11 +778,20 @@ void BfsFileImpl::BackgroundWrite() {
         _mu.Unlock();
 
         buffer->AddRefBy(_chunkservers.size());
-        for (size_t i = 0; i < _write_windows.size(); i++) {
+        for (size_t i = 0; i < _chunkservers.size(); i++) {
             std::string cs_addr = _block_for_write->chains(i).address();
             bool delay = false;
             if (!(_write_windows[cs_addr]->UpBound() > _write_queue.top()->Sequence())) {
                 delay = true;
+            }
+            {
+                // skip bad chunkserver
+                ///TODO improve here?
+                MutexLock lock(&_mu);
+                if (cs_errors[cs_addr]) {
+                    buffer->DecRef();
+                    continue;
+                }
             }
             WriteBlockRequest* request = new WriteBlockRequest;
             WriteBlockResponse* response = new WriteBlockResponse;
@@ -867,8 +877,22 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                     buffer->offset(), buffer->Size(),
                     response->status(), retry_times);
                 ///TODO: SetFaild & handle it
-                ///TODO: Don't set _bg_error until enought chunkserver fails
-                _bg_error = true;
+                if (_chunkservers.size() == 1) {
+                    _bg_error = true;
+                } else {
+                    MutexLock lock(&_mu);
+                    cs_errors[cs_addr] = true;
+                    std::map<std::string, bool>::iterator it = cs_errors.begin();
+                    int count = 0;
+                    for (; it != cs_errors.end(); ++it) {
+                        if (it->second == true) {
+                            count++;
+                        }
+                    }
+                    if (count > 1) {
+                        _bg_error = true;
+                    }
+                }
                 buffer->DecRef();
                 delete request;
             }
