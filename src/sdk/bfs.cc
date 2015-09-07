@@ -755,8 +755,7 @@ void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
 
 bool BfsFileImpl::CheckWriteWindows() {
     _mu.AssertHeld();
-    if (_chunkservers.size() == 1) {
-        // chains write mode
+    if (FLAGS_sdk_write_mode == "chains") {
         return _write_windows.begin()->second->UpBound() > _write_queue.top()->Sequence();
     }
     std::map<std::string, common::SlidingWindow<int>* >::iterator it;
@@ -805,8 +804,7 @@ void BfsFileImpl::BackgroundWrite() {
             request->set_packet_seq(buffer->Sequence());
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
-            if (_chunkservers.size() == 1) {
-                // chains write mode
+            if (FLAGS_sdk_write_mode == "chains") {
                 for (int i = 1; i < _block_for_write->chains_size(); i++) {
                     std::string addr = _block_for_write->chains(i).address();
                     request->add_chunkservers(addr);
@@ -877,7 +875,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                     buffer->offset(), buffer->Size(),
                     response->status(), retry_times);
                 ///TODO: SetFaild & handle it
-                if (_chunkservers.size() == 1) {
+                if (FLAGS_sdk_write_mode == "chains") {
                     _bg_error = true;
                 } else {
                     MutexLock lock(&_mu);
