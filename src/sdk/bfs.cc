@@ -29,6 +29,7 @@ DECLARE_string(nameserver_port);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
+DECLARE_int32(default_replica_num);
 
 namespace bfs {
 
@@ -172,6 +173,7 @@ private:
     Mutex   _mu;
     CondVar _sync_signal;               ///< _sync_var
     bool _bg_error;                     ///< background write error
+    volatile int _last_write_complete;       ///< chunkserver num that have complete last write
     std::map<std::string, bool> cs_errors;        ///< background write error for each chunkserver
 };
 
@@ -531,7 +533,7 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
     _write_buf(NULL), _last_seq(-1), _back_writing(0),
     _chunkserver(NULL), _read_offset(0), _reada_buffer(NULL),
     _reada_buf_len(0), _reada_base(0), _closed(false),
-    _sync_signal(&_mu), _bg_error(false) {
+    _sync_signal(&_mu), _bg_error(false), _last_write_complete(0) {
 }
 
 BfsFileImpl::~BfsFileImpl () {
@@ -693,6 +695,10 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             AddBlockResponse response;
             request.set_sequence_id(0);
             request.set_file_name(_name);
+            if (FLAGS_sdk_write_mode == "fan-out") {
+                // get one more chunkserver
+                request.set_replica_num(FLAGS_default_replica_num + 1);
+            }
             bool ret = _rpc_client->SendRequest(_fs->_nameserver, &NameServer_Stub::AddBlock,
                 &request, &response, 15, 3);
             if (!ret || !response.has_block()) {
@@ -765,7 +771,7 @@ bool BfsFileImpl::CheckWriteWindows() {
             count++;
         }
     }
-    return count >= (int)_write_windows.size() - 1;
+    return count >= FLAGS_default_replica_num;
 }
 
 /// Send local buffer to chunkserver
@@ -908,6 +914,12 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         int r = _write_windows[cs_addr]->Add(buffer->Sequence(), 0);
         assert(r == 0);
         buffer->DecRef();
+        if (request->is_last()) {
+            common::atomic_inc(&_last_write_complete);
+            if (_last_write_complete >= FLAGS_default_replica_num) {
+                _sync_signal.Broadcast();
+            }
+        }
         delete request;
     }
     delete response;
@@ -969,11 +981,13 @@ bool BfsFileImpl::Close() {
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
         int wait_time = 0;
-        while (_back_writing) {
+        while (_back_writing || (FLAGS_sdk_write_mode == "fan-out" &&
+                                _last_write_complete < FLAGS_default_replica_num)) {
             bool finish = _sync_signal.TimeWait(1000, (_name + " Close wait").c_str());
             if (++wait_time >= 30 && (wait_time % 10 == 0)) {
-                LOG(WARNING, "Close timeout %d s, %s _back_writing= %d, finish= %d",
-                wait_time, _name.c_str(), _back_writing, finish);
+                LOG(WARNING, "Close timeout %d s, %s _back_writing= %d, finish= %d, \
+                        _last_write_complete = %d", wait_time, _name.c_str(),
+                        _back_writing, finish, _last_write_complete);
             }
         }
         delete _block_for_write;
