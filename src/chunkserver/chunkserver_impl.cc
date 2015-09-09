@@ -188,7 +188,7 @@ public:
         std::string dir = _disk_file.substr(0, _disk_file.rfind('/'));
         // Mkdir dir for data block, ignore error, may already exist.
         mkdir(dir.c_str(), 0755);
-        int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
+        int fd  = open(_disk_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
             LOG(WARNING, "Open block #%ld %s fail: %s",
                 _meta.block_id, _disk_file.c_str(), strerror(errno));
@@ -375,9 +375,10 @@ private:
             int wlen = _buflen - _bufdatalen;
             memcpy(_blockbuf + _bufdatalen, buf, wlen);
             _block_buf_list.push_back(std::make_pair(_blockbuf, FLAGS_write_buf_size));
-            this->AddRef();
-            _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
-            
+            if (!_disk_writing && len == ap_len) {
+                this->AddRef();
+                _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
+            }
             _blockbuf = new char[_buflen];
             g_block_buffers.Inc();
             g_buffers_new.Inc();
