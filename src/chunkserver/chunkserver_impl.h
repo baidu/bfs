@@ -11,6 +11,8 @@
 #include "proto/nameserver.pb.h"
 #include "common/thread_pool.h"
 
+#include "ins_sdk.h"
+
 namespace bfs {
 
 class BlockManager;
@@ -39,7 +41,9 @@ public:
                               const GetBlockInfoRequest* request,
                               GetBlockInfoResponse* response,
                               ::google::protobuf::Closure* done);
+    void HandleMasterChange(const std::string& new_master_endpoint);
 private:
+    bool RegistToMaster();
     void LogStatus();
     void WriteNext(const std::string& next_server,
                    ChunkServer_Stub* stub,
@@ -63,6 +67,9 @@ private:
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
+    std::string     _master_nameserver_addr;
+    Mutex _master_mutex;
+    galaxy::ins::sdk::InsSDK* _nexus;
     RpcClient*      _rpc_client;
     ThreadPool*     _work_thread_pool;
     ThreadPool*     _read_thread_pool;

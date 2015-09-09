@@ -45,6 +45,9 @@ DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_string(nexus_root_path);
+DECLARE_string(master_path);
+DECLARE_string(nexus_servers);
 
 namespace bfs {
 
@@ -628,6 +631,64 @@ private:
     Mutex   _mu;
 };
 
+
+static void OnMasterChange(const galaxy::ins::sdk::WatchParam& param,
+        galaxy::ins::sdk::SDKError error) {
+    ChunkServerImpl* cs = static_cast<ChunkServerImpl*>(param.context);
+    cs->HandleMasterChange(param.value);
+}
+
+void ChunkServerImpl::HandleMasterChange(const std::string& new_master_endpoint) {
+    MutexLock lock(&_master_mutex);
+    if (new_master_endpoint.empty()) {
+        LOG(WARNING, "master endpoint is deleted from nexus");
+    }
+    if (new_master_endpoint != _master_nameserver_addr) {
+        LOG(INFO, "master change to %s", new_master_endpoint.c_str());
+        _master_nameserver_addr = new_master_endpoint;
+        if (_nameserver) {
+            delete _nameserver;
+        }
+        if (!_rpc_client->GetStub(_master_nameserver_addr, &_nameserver)) {
+            LOG(WARNING, "connect master %s failed", _master_nameserver_addr.c_str());
+            return;
+        }
+    }
+    std::string master_path_key = FLAGS_nexus_root_path + FLAGS_master_path;
+    galaxy::ins::sdk::SDKError err;
+    bool ret = _nexus->Watch(master_path_key, &OnMasterChange, this, &err);
+    if (!ret) {
+        LOG(FATAL, "fail to watch again on nexus, err_code: %d", err);
+    } else {
+        LOG(INFO, "watch master again success");
+    }
+}
+
+bool ChunkServerImpl::RegistToMaster() {
+    MutexLock lock(&_master_mutex);
+    std::string master_path_key =  FLAGS_nexus_root_path + FLAGS_master_path;
+    galaxy::ins::sdk::SDKError err;
+    bool ret = _nexus->Get(master_path_key, &_master_nameserver_addr, &err);
+    if (ret) {
+        LOG(INFO, "master is: %s", _master_nameserver_addr.c_str());
+    } else {
+        LOG(FATAL, "fail to get master address from nexus, error_code: %d", err);
+        abort();
+    }
+    ret = _nexus->Watch(master_path_key, &OnMasterChange, this, &err);
+    if (ret) {
+        LOG(INFO, "watch master success");
+    } else {
+        LOG(FATAL, "fail to watch on nexus, err_code: %d", err);
+    }
+
+    if (!_rpc_client->GetStub(_master_nameserver_addr, &_nameserver)) {
+        LOG(WARNING, "connect master %s failed", _master_nameserver_addr.c_str());
+        return false;
+    }
+    return true;
+}
+
 ChunkServerImpl::ChunkServerImpl()
     : _quit(false), _chunkserver_id(0), _namespace_version(0) {
     _data_server_addr = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
@@ -638,16 +699,16 @@ ChunkServerImpl::ChunkServerImpl()
     bool s_ret = _block_manager->LoadStorage();
     assert(s_ret == true);
     _rpc_client = new RpcClient();
-    std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
-    if (!_rpc_client->GetStub(ns_address, &_nameserver)) {
-        assert(0);
-    }
+    _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_nexus_servers);
+    s_ret = RegistToMaster();
+    assert(s_ret);
     _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
     int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
     assert(ret == 0);
 }
 
 ChunkServerImpl::~ChunkServerImpl() {
+    /// TODO: is destructor necessary?
     _quit = true;
     pthread_join(_routine_thread, NULL);
     _work_thread_pool->Stop(true);
@@ -658,6 +719,7 @@ ChunkServerImpl::~ChunkServerImpl() {
     delete _write_thread_pool;
     delete _block_manager;
     delete _rpc_client;
+    delete _nexus;
 }
 
 void ChunkServerImpl::LogStatus() {
@@ -699,6 +761,11 @@ void ChunkServerImpl::Routine() {
             request.set_block_num(g_blocks.Get());
             request.set_data_size(g_data_size.Get());
             HeartBeatResponse response;
+            NameServer_Stub* stub = NULL;
+            {
+                MutexLock lock(&_master_mutex);
+                _rpc_client->GetStub(_master_nameserver_addr, &stub);
+            }
             if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
                     &request, &response, 15, 1)) {
                 LOG(WARNING, "Heat beat fail\n");
@@ -708,7 +775,9 @@ void ChunkServerImpl::Routine() {
                 _namespace_version = response.namespace_version();
                 _chunkserver_id = response.chunkserver_id();
                 next_report = ticks;
+                next_report_offset = 0;
             }
+            delete stub;
         }
         // block report
         if (ticks == next_report) {
@@ -740,35 +809,46 @@ void ChunkServerImpl::Routine() {
                 request.set_is_complete(false);
             }
             BlockReportResponse response;
+            NameServer_Stub* stub = NULL;
+            {
+                MutexLock lock(&_master_mutex);
+                _rpc_client->GetStub(_master_nameserver_addr, &stub);
+            }
             if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::BlockReport,
                     &request, &response, 20, 3)) {
                 LOG(WARNING, "Block reprot fail\n");
                 next_report += 60;  // retry
             } else {
-                next_report += FLAGS_blockreport_interval;
-                //deal with obsolete blocks
-                std::vector<int64_t> obsolete_blocks;
-                for (int i = 0; i < response.obsolete_blocks_size(); i++) {
-                    obsolete_blocks.push_back(response.obsolete_blocks(i));
-                }
-                if (!obsolete_blocks.empty()) {
-                    boost::function<void ()> task =
-                        boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
+                if (_namespace_version != response.namespace_version()) {
+                    next_report_offset = 0;
+                    next_report = ticks + 1;
+                } else {
+                    next_report += FLAGS_blockreport_interval;
+                    //deal with obsolete blocks
+                    std::vector<int64_t> obsolete_blocks;
+                    for (int i = 0; i < response.obsolete_blocks_size(); i++) {
+                        obsolete_blocks.push_back(response.obsolete_blocks(i));
+                    }
+                    if (!obsolete_blocks.empty()) {
+                        boost::function<void ()> task =
+                            boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
                                     this, obsolete_blocks);
-                    _write_thread_pool->AddTask(task);
-                }
+                        _write_thread_pool->AddTask(task);
+                    }
 
-                std::vector<ReplicaInfo> new_replica_info;
-                for (int i = 0; i < response.new_replicas_size(); i++) {
-                    new_replica_info.push_back(response.new_replicas(i));
-                }
-                if (!new_replica_info.empty()) {
-                    boost::function<void ()> new_replica_task =
-                        boost::bind(&ChunkServerImpl::PullNewBlocks,
+                    std::vector<ReplicaInfo> new_replica_info;
+                    for (int i = 0; i < response.new_replicas_size(); i++) {
+                        new_replica_info.push_back(response.new_replicas(i));
+                    }
+                    if (!new_replica_info.empty()) {
+                        boost::function<void ()> new_replica_task =
+                            boost::bind(&ChunkServerImpl::PullNewBlocks,
                                     this, new_replica_info);
-                    _write_thread_pool->AddTask(new_replica_task);
+                        _write_thread_pool->AddTask(new_replica_task);
+                    }
                 }
             }
+            delete stub;
         }
         ++ ticks;
         sleep(1);
@@ -787,12 +867,19 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     info->set_block_size(block->Size());
     info->set_version(0);
     BlockReportResponse response;
-    if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::BlockReport,
+    NameServer_Stub* stub = NULL;
+    {
+        MutexLock lock(&_master_mutex);
+        _rpc_client->GetStub(_master_nameserver_addr, &stub);
+    }
+    if (!_rpc_client->SendRequest(stub, &NameServer_Stub::BlockReport,
             &request, &response, 20, 3)) {
         LOG(WARNING, "Reprot finish fail: %ld\n", block->Id());
+        delete stub;
         return false;
     }
 
+    delete stub;
     LOG(INFO, "Reprot finish to nameserver done, block_id: %ld\n", block->Id());
     return true;
 }
@@ -1107,12 +1194,18 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
     }
 
     PullBlockReportResponse report_response;
-    if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::PullBlockReport,
+    NameServer_Stub* stub = NULL;
+    {
+        MutexLock lock(&_master_mutex);
+        _rpc_client->GetStub(_master_nameserver_addr, &stub);
+    }
+    if (!_rpc_client->SendRequest(stub, &NameServer_Stub::PullBlockReport,
                 &report_request, &report_response, 15, 3)) {
         LOG(WARNING, "Report pull finish fail, chunkserver id: %d\n", _chunkserver_id);
     } else {
         LOG(INFO, "Report pull finish dnne, chunkserver id: %d\n", _chunkserver_id);
     }
+    delete stub;
 }
 
 

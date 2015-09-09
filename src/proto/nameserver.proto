@@ -151,6 +151,7 @@ message BlockReportResponse {
     optional int32 status = 2;
     repeated int64 obsolete_blocks = 3;
     repeated ReplicaInfo new_replicas = 4;
+    optional int64 namespace_version = 5;
 }
 message PullBlockReportRequest {
     optional int64 sequence_id = 1;

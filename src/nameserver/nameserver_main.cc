@@ -27,7 +27,8 @@ int main(int argc, char* argv[])
     sofa::pbrpc::RpcServer rpc_server(options);
 
     // Service
-    bfs::NameServer* nameserver_service = new bfs::NameServerImpl();
+    bfs::NameServerImpl* nameserver_service = new bfs::NameServerImpl();
+    nameserver_service->Init();
 
     // Register
     if (!rpc_server.RegisterService(nameserver_service)) {

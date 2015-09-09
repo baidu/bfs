@@ -10,14 +10,17 @@ PROTOC_PATH=
 PROTOC=$(PROTOC_PATH)protoc
 PBRPC_PATH=./thirdparty/sofa-pbrpc/output/
 BOOST_PATH=../boost/
+INS_PATH=./thirdparty/ins/output
 
 INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I./thirdparty/leveldb/include \
                -I$(SNAPPY_PATH)/include \
-               -I$(BOOST_PATH)/include
+               -I$(BOOST_PATH)/include \
+			   -I$(INS_PATH)/include
 
-LDFLAGS = -L$(PROTOBUF_PATH)/lib -lprotobuf \
+LDFLAGS = -L$(INS_PATH)/lib -lins_sdk \
+          -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L./thirdparty/leveldb -lleveldb \
           -L$(SNAPPY_PATH)/lib -lsnappy \
@@ -99,5 +102,7 @@ install:
 
 .PHONY: test
 test:
+	cd thirdparty/ins/sandbox; sh start_all.sh
+	sleep 3
 	cd sandbox; sh small_test.sh
 

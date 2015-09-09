@@ -53,6 +53,7 @@ public:
                     const Request* request, Response* response,
                     int32_t rpc_timeout, int retry_times) {
         // 定义 controller 用于控制本次调用，并设定超时时间（也可以不设置，缺省为10s）
+        assert(stub);
         sofa::pbrpc::RpcController controller;
         controller.SetTimeout(rpc_timeout * 1000L);
         for (int32_t retry = 0; retry < retry_times; ++retry) {

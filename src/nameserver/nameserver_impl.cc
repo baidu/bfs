@@ -16,6 +16,7 @@
 #include <leveldb/cache.h>
 #include <leveldb/write_batch.h>
 #include <sofa/pbrpc/pbrpc.h>
+#include <ins_sdk.h>
 
 #include "common/counter.h"
 #include "common/logging.h"
@@ -23,11 +24,15 @@
 #include "common/timer.h"
 #include "common/thread_pool.h"
 #include "common/util.h"
+#include "common/string_util.h"
 
-DECLARE_string(namedb_path);
-DECLARE_int64(namedb_cache_size);
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(default_replica_num);
+DECLARE_string(nameserver_port);
+DECLARE_string(nexus_servers);
+DECLARE_string(nexus_root_path);
+DECLARE_string(master_path);
+DECLARE_string(master_lock_path);
 
 namespace bfs {
 
@@ -540,22 +545,58 @@ private:
 };
 
 NameServerImpl::NameServerImpl() {
-    leveldb::Options options;
-    options.create_if_missing = true;
-    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
-    leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &_db);
-    if (!s.ok()) {
-        _db = NULL;
-        LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
-        return;
+    _nexus = new galaxy::ins::sdk::InsSDK(FLAGS_nexus_servers);
+}
+
+NameServerImpl::~NameServerImpl() {
+}
+
+static void OnMasterLockChange(const galaxy::ins::sdk::WatchParam& param,
+                               galaxy::ins::sdk::SDKError error) {
+    NameServerImpl* ns = static_cast<NameServerImpl*>(param.context);
+    ns->OnLockChange(param.value);
+}
+
+static void OnMasterSessionTimeout(void* ctx) {
+    NameServerImpl* ns = static_cast<NameServerImpl*>(ctx);
+    ns->OnSessionTimeout();
+}
+
+void NameServerImpl::OnLockChange(std::string lock_session_id) {
+    std::string self_session_id = _nexus->GetSessionID();
+    if (self_session_id != lock_session_id) {
+        LOG(FATAL, "lost master lock");
+        abort();
     }
+}
+
+void NameServerImpl::OnSessionTimeout() {
+    LOG(FATAL, "lost session with nexus");
+    abort();
+}
+
+void NameServerImpl::AcquireMasterLock() {
+    std::string master_lock = FLAGS_nexus_root_path + FLAGS_master_lock_path;
+    galaxy::ins::sdk::SDKError err;
+    _nexus->RegisterSessionTimeout(&OnMasterSessionTimeout, this);
+    bool ret = _nexus->Lock(master_lock, &err);
+    assert(ret && err == galaxy::ins::sdk::kOK);
+    std::string master_endpoint = common::util::GetLocalHostName() + ":" + FLAGS_nameserver_port;
+    std::string master_path_key = FLAGS_nexus_root_path + FLAGS_master_path;
+    ret = _nexus->Put(master_path_key, master_endpoint, &err);
+    assert(ret && err == galaxy::ins::sdk::kOK);
+    ret = _nexus->Watch(master_lock, &OnMasterLockChange, this, &err);
+    assert(ret && err == galaxy::ins::sdk::kOK);
+    LOG(INFO, "get master lock %s -> %s", master_path_key.c_str(), master_endpoint.c_str());
+}
+
+void NameServerImpl::Init() {
+    AcquireMasterLock();
     _namespace_version = common::timer::get_micros();
     _block_manager = new BlockManager();
     _chunkserver_manager = new ChunkServerManager(&_thread_pool, _block_manager);
     RebuildBlockMap();
     _thread_pool.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-}
-NameServerImpl::~NameServerImpl() {
 }
 
 void NameServerImpl::LogStatus() {
@@ -595,6 +636,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     int64_t version = request->namespace_version();
     LOG(INFO, "Report from %d, %s, %d blocks\n",
         id, request->chunkserver_addr().c_str(), request->blocks_size());
+    response->set_namespace_version(_namespace_version);
     if (version != _namespace_version) {
         response->set_status(8882);
     } else {
@@ -701,17 +743,17 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     std::string info_value;
     int depth = file_keys.size();
-    leveldb::Status s;
+    galaxy::ins::sdk::SDKError s;
     for (int i=0; i < depth-1; ++i) {
-        s = _db->Get(leveldb::ReadOptions(), file_keys[i], &info_value);
-        if (s.IsNotFound()) {
+        _nexus->Get(file_keys[i], &info_value, &s);
+        if (s == galaxy::ins::sdk::kNoSuchKey) {
             file_info.set_type((1<<9)|0755);
             file_info.set_ctime(time(NULL));
             file_info.SerializeToString(&info_value);
-            s = _db->Put(leveldb::WriteOptions(), file_keys[i], info_value);
-            assert (s.ok());
+            _nexus->Put(file_keys[i], info_value, &s);
+            assert(s == galaxy::ins::sdk::kOK);
             LOG(INFO, "Create path recursively: %s\n",file_keys[i].c_str()+2);
-        } else {
+        } else if (s == galaxy::ins::sdk::kOK) {
             bool ret = file_info.ParseFromString(info_value);
             assert(ret);
             if ((file_info.type() & (1<<9)) == 0) {
@@ -720,14 +762,19 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                 done->Run();
                 return;
             }
+        } else {
+            LOG(WARNING, "Create path fail: cant't read %s from nexus\n", file_keys[i].c_str() + 2);
+            response->set_status(886);
+            done->Run();
+            return;
         }
     }
     
     const std::string& file_key = file_keys[depth-1];
     if ((flags & O_TRUNC) == 0) {
-        s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
-        if (s.ok()) {
-            LOG(WARNING, "CreateFile %s fail: already exist!\n", file_name.c_str());
+        _nexus->TryLock(file_key, &s);
+        if (s != galaxy::ins::sdk::kOK) {
+            LOG(WARNING, "Lock new filename fail\n", file_name.c_str());
             response->set_status(1);
             done->Run();
             return;
@@ -744,13 +791,18 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     file_info.set_replicas(FLAGS_default_replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
-    s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
-    if (s.ok()) {
+    _nexus->Put(file_key, info_value, &s);
+    if (s == galaxy::ins::sdk::kOK) {
         LOG(INFO, "CreateFile %s\n", file_key.c_str());
         response->set_status(0);
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail", file_key.c_str());
         response->set_status(2);
+    }
+    _nexus->UnLock(file_key, &s);
+    if (s != galaxy::ins::sdk::kOK) {
+        LOG(WARNING, "Unlock new filename fail", file_key.c_str());
+        response->set_status(3);
     }
     done->Run();
 }
@@ -772,8 +824,9 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
 
     // MutexLock lock(&_mu); todo: lock on file, instead of lock on nameserver
     std::string infobuf;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &infobuf);
-    if (!s.ok()) {
+    galaxy::ins::sdk::SDKError s;
+    _nexus->Get(file_key, &infobuf, &s);
+    if (s == galaxy::ins::sdk::kNoSuchKey) {
         LOG(WARNING, "AddBlock file not found: %s\n", path.c_str());
         response->set_status(2445);
         done->Run();        
@@ -803,8 +856,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         response->set_status(0);
         file_info.add_blocks(new_block_id);
         file_info.SerializeToString(&infobuf);
-        s = _db->Put(leveldb::WriteOptions(), file_key, infobuf);
-        assert(s.ok());
+        _nexus->Put(file_key, infobuf, &s);
+        assert(s == galaxy::ins::sdk::kOK);
     } else {
         LOG(INFO, "AddBlock for %s failed.", path.c_str());
         response->set_status(886);
@@ -845,8 +898,9 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
     const std::string& file_key = elements[elements.size()-1];
     // Get FileInfo
     std::string infobuf;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &infobuf);
-    if (!s.ok()) {
+    galaxy::ins::sdk::SDKError s;
+    _nexus->Get(file_key, &infobuf, &s);
+    if (s == galaxy::ins::sdk::kNoSuchKey) {
         // No this file
         LOG(INFO, "NameServerImpl::GetFileLocation: NotFound: %s\n", request->file_name().c_str());
         response->set_status(110);
@@ -922,17 +976,19 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
 
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
     //printf("List Directory: %s, return: ", file_start_key.c_str());
-    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
-    for (it->Seek(file_start_key); it->Valid(); it->Next()) {
-        leveldb::Slice key = it->key();
-        if (key.compare(file_end_key)>=0) {
+    galaxy::ins::sdk::ScanResult* it = _nexus->Scan(file_start_key, file_end_key);
+    while (!it->Done()) {
+        std::string key = it->Key();
+        if (key >= file_end_key) {
             break;
         }
+        std::string value = it->Value();
         FileInfo* file_info = response->add_files();
-        bool ret = file_info->ParseFromArray(it->value().data(), it->value().size());
+        bool ret = file_info->ParseFromArray(value.data(), value.size());
         assert(ret);
-        file_info->set_name(key.data()+2, it->key().size()-2);
+        file_info->set_name(key.data() + 2, key.size() - 2);
         //printf("%s, ", file_info->name().c_str());
+        it->Next();
     }
     //printf("\n");
     delete it;
@@ -959,8 +1015,9 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
 
     const std::string& file_key = keys[keys.size()-1];
     std::string value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &value);
-    if (s.ok()) {
+    galaxy::ins::sdk::SDKError s;
+    _nexus->Get(file_key, &value, &s);
+    if (s == galaxy::ins::sdk::kOK) {
         FileInfo* file_info = response->mutable_file_info();
         bool ret = file_info->ParseFromArray(value.data(), value.size());
         int64_t file_size = 0;
@@ -1004,26 +1061,28 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     const std::string& old_key = oldkeys[oldkeys.size()-1];
     const std::string& new_key = newkeys[newkeys.size()-1];
     std::string value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), new_key, &value);
+    bool success = false;
+    bool locked = false;
+    galaxy::ins::sdk::SDKError s;
+    _nexus->TryLock(new_key, &s);
     // New file must be not found
-    if (s.IsNotFound()) {
-        s = _db->Get(leveldb::ReadOptions(), old_key, &value);
-        if (s.ok()) {
+    if (s == galaxy::ins::sdk::kOK) {
+        locked = true;
+        _nexus->Get(old_key, &value, &s);
+        if (s == galaxy::ins::sdk::kOK) {
             FileInfo file_info;
             bool ret = file_info.ParseFromArray(value.data(), value.size());
             assert(ret);
             // Directory rename is not impliment.
             if ((file_info.type() & (1<<9)) == 0) {
-                leveldb::WriteBatch batch;
-                batch.Put(new_key, value);
-                batch.Delete(old_key);
-                s = _db->Write(leveldb::WriteOptions(), &batch);
-                if (s.ok()) {
-                    response->set_status(0);
-                    done->Run();
-                    return;
+                _nexus->Put(new_key, value, &s);
+                if (s == galaxy::ins::sdk::kOK) {
+                    _nexus->Delete(old_key, &s);
+                    if (s == galaxy::ins::sdk::kOK) {
+                        success = true;
+                    }
                 } else {
-                    LOG(WARNING, "Rename write leveldb fail\n");
+                    LOG(WARNING, "Write new filename fail", new_key.c_str());
                 }
             } else {
                 LOG(WARNING, "Rename not support directory\n");
@@ -1032,9 +1091,17 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
             LOG(WARNING, "Rename not found: %s\n", oldpath.c_str());
         }
     } else {
-        LOG(WARNING, "Rename target file %s is existent\n", newpath.c_str());
+        LOG(WARNING, "Lock new filename fail\n", newpath.c_str());
     }
-    response->set_status(886);
+    if (success) {
+        response->set_status(0);
+    } else {
+        response->set_status(886);
+    }
+    if (locked) {
+        _nexus->UnLock(new_key, &s);
+        assert(s == galaxy::ins::sdk::kOK);
+    }
     done->Run();
 }
 
@@ -1058,8 +1125,9 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
 
     const std::string& file_key = keys[keys.size()-1];
     std::string value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &value);
-    if (s.ok()) {
+    galaxy::ins::sdk::SDKError s;
+    _nexus->Get(file_key, &value, &s);
+    if (s == galaxy::ins::sdk::kOK) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(value.data(), value.size());
         assert(ret);
@@ -1076,8 +1144,8 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                 _block_manager->RemoveBlock(block_id);
                 LOG(INFO, "Unlink remove block #%ld", block_id);
             }
-            s = _db->Delete(leveldb::WriteOptions(), file_key);
-            if (s.ok()) {
+            _nexus->Delete(file_key, &s);
+            if (s == galaxy::ins::sdk::kOK) {
                 LOG(INFO, "Unlink done: %s\n", path.c_str());
                 ret_status = 0;
             } else {
@@ -1086,7 +1154,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
         } else {
             LOG(WARNING, "Unlink not support directory: %s\n", path.c_str());
         }
-    } else if (s.IsNotFound()) {
+    } else if (s == galaxy::ins::sdk::kNoSuchKey) {
         LOG(WARNING, "Unlink not found: %s\n", path.c_str());
         ret_status = 404;
     }
@@ -1125,8 +1193,9 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
     std::string dentry_key = keys[keys.size() - 1];
     {
         std::string value;
-        leveldb::Status s = _db->Get(leveldb::ReadOptions(), dentry_key, &value);
-        if (!s.ok()) {
+        galaxy::ins::sdk::SDKError s;
+        _nexus->Get(dentry_key, &value, &s);
+        if (s != galaxy::ins::sdk::kOK) {
             LOG(INFO, "Delete Directory, %s is not found.", dentry_key.data() + 2);
             return 404;
         }
@@ -1151,22 +1220,22 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
         file_end_key += '#';
     }
 
-    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
-    it->Seek(file_start_key);
-    if (it->Valid() && recursive == false) {
+    galaxy::ins::sdk::ScanResult* it = _nexus->Scan(file_start_key, file_end_key);
+    if (!it->Done() && recursive == false) {
         LOG(WARNING, "Try to delete an unempty directory unrecursively: %s\n", dentry_key.c_str());
         delete it;
         ret_status = 886;
         return ret_status;
     }
 
-    for (; it->Valid(); it->Next()) {
-        leveldb::Slice key = it->key();
-        if (key.compare(file_end_key) >= 0) {
+    while (!it->Done()) {
+        std::string key = it->Key();
+        if (key >= file_end_key) {
             break;
         }
+        std::string value = it->Value();
         FileInfo file_info;
-        bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
+        bool ret = file_info.ParseFromArray(value.data(), value.size());
         assert(ret);
         if ((file_info.type() & (1 << 9)) != 0) {
             std::string dir_path(std::string(key.data() + 2, key.size() - 2));
@@ -1184,8 +1253,9 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
                     _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
                 }
             }
-            leveldb::Status s = _db->Delete(leveldb::WriteOptions(), std::string(key.data(), key.size()));
-            if (s.ok()) {
+            galaxy::ins::sdk::SDKError s;
+            _nexus->Delete(key, &s);
+            if (s == galaxy::ins::sdk::kOK) {
                 LOG(INFO, "Unlink file done: %s\n", std::string(key.data() + 2, key.size() - 2).c_str());
             } else {
                 LOG(WARNING, "Unlink file fail: %s\n", std::string(key.data() + 2, key.size() - 2).c_str());
@@ -1193,11 +1263,13 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
                 break;
             }
         }
+        it->Next();
     }
 
     if (ret_status == 0) {
-        leveldb::Status s = _db->Delete(leveldb::WriteOptions(), dentry_key);
-        if (s.ok()) {
+        galaxy::ins::sdk::SDKError s;
+        _nexus->Delete(dentry_key, &s);
+        if (s == galaxy::ins::sdk::kOK) {
             LOG(INFO, "Unlink dentry done: %s\n", dentry_key.c_str() + 2);
         } else {
             LOG(INFO, "Unlink dentry fail: %s\n", dentry_key.c_str() + 2);
@@ -1227,15 +1299,16 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
 
     const std::string& file_key = keys[keys.size() - 1];
     std::string info_value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
-    if (s.ok()) {
+    galaxy::ins::sdk::SDKError s;
+    _nexus->Get(file_key, &info_value, &s);
+    if (s == galaxy::ins::sdk::kOK) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(info_value.data(), info_value.size());
         assert(ret);
         file_info.set_replicas(replica_num);
         file_info.SerializeToString(&info_value);
-        s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
-        assert(s.ok());
+        _nexus->Put(file_key, info_value, &s);
+        assert(s == galaxy::ins::sdk::kOK);
         int64_t block_id = file_info.blocks(0);
         if (_block_manager->ChangeReplicaNum(block_id, replica_num)) {
             LOG(INFO, "Change %s replica num to %d\n", file_name.c_str(), replica_num);
@@ -1243,7 +1316,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         } else {
             ret_status = 886;
         }
-    } else if (s.IsNotFound()) {
+    } else if (s == galaxy::ins::sdk::kNoSuchKey) {
         LOG(WARNING, "Change replica num not found: %s\n", file_name.c_str());
         ret_status = 404;
     }
@@ -1252,12 +1325,13 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
 }
 void NameServerImpl::RebuildBlockMap() {
     MutexLock lock(&_mu);
-    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
-    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+    galaxy::ins::sdk::ScanResult* it = _nexus->Scan("00", "99");
+    while (!it->Done()) {
         FileInfo file_info;
-        bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
-        assert(ret);
-        if ((file_info.type() & (1 << 9)) == 0) {
+        bool ret = file_info.ParseFromString(it->Value());
+        if (!ret) {
+            LOG(WARNING, "parse file info fail: %s", it->Key().c_str());
+        } else if ((file_info.type() & (1 << 9)) == 0) {
             //a file
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 int64_t block_id = file_info.blocks(i);
@@ -1266,7 +1340,9 @@ void NameServerImpl::RebuildBlockMap() {
                 _block_manager->MarkBlockStable(block_id);
             }
         }
+        it->Next();
     }
+    delete it;
 }
 
 void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,

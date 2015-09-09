@@ -7,6 +7,8 @@
 #ifndef  BFS_NAMESERVER_IMPL_H_
 #define  BFS_NAMESERVER_IMPL_H_
 
+#include <ins_sdk.h>
+
 #include "common/mutex.h"
 #include "common/thread_pool.h"
 #include "proto/nameserver.pb.h"
@@ -80,7 +82,11 @@ public:
                        const ::bfs::SysStatRequest* request,
                        ::bfs::SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void OnSessionTimeout();
+    void OnLockChange(std::string lock_session_id);
+    void Init();
 private:
+    void AcquireMasterLock();
     int DeleteDirectoryRecursive(std::string& path, bool recursive);
     void RebuildBlockMap();
     void LogStatus();
@@ -95,7 +101,7 @@ private:
     /// Block map
     BlockManager* _block_manager;
     /// Namespace database
-    leveldb::DB* _db;    ///< 存储nameserver数据
+    galaxy::ins::sdk::InsSDK* _nexus;
     int64_t _namespace_version;
 };
 

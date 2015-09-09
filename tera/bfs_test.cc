@@ -16,7 +16,7 @@
 
 const char* so_path = "./bfs_wrapper.so";
 //const char* dfs_conf = "yq01-tera60.yq01:8828";
-const char* dfs_conf = "127.0.0.1:8828";
+const char* dfs_conf = "127.0.0.1:8868,127.0.0.1:8869,127.0.0.1:8870,127.0.0.1:8871,127.0.0.1:8872";
 
 const std::string test_path("/test");
 
