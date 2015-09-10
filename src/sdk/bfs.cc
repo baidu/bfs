@@ -979,7 +979,9 @@ bool BfsFileImpl::Sync() {
         StartWrite(_write_buf);
     }
     int wait_time = 0;
-    while (_back_writing) {
+    while ((FLAGS_sdk_write_mode == "chains" && _back_writing) ||
+            (FLAGS_sdk_write_mode == "fan-out" &&
+            BackgroundDoneChunkserverNum() < FLAGS_default_replica_num)) {
         bool finish = _sync_signal.TimeWait(1000, "Sync wait");
         if (++wait_time >= 30 && (wait_time % 10 == 0)) {
             LOG(WARNING, "Sync timeout %d s, %s _back_writing= %d, finish= %d",
