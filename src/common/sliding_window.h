@@ -65,6 +65,7 @@ public:
         notifying_ = false;
     }
     int32_t UpBound() const {
+        MutexLock lock(&mu_);
         return base_offset_ + size_ - 1;
     }
     /// Add a new item to slinding window.
