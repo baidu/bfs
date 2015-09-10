@@ -57,6 +57,7 @@ common::Counter g_find_ops;
 common::Counter g_read_ops;
 common::Counter g_write_ops;
 common::Counter g_write_bytes;
+common::Counter g_refuse_ops;
 common::Counter g_rpc_delay;
 common::Counter g_rpc_delay_all;
 common::Counter g_rpc_count;
@@ -668,11 +669,12 @@ void ChunkServerImpl::LogStatus() {
         delay_all = g_rpc_delay_all.Clear() / rpc_count / 1000;
     }
     LOG(INFO, "[Status] blocks %ld buffers %ld data %sB, "
-              "find %ld read %ld write %ld %.2f MB, rpc_delay %ld %ld",
+              "find %ld read %ld write %ld %ld %.2f MB, rpc_delay %ld %ld",
         g_blocks.Get(), g_block_buffers.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
-        g_find_ops.Clear()/5, g_read_ops.Clear()/5,
-        g_write_ops.Clear()/5, g_write_bytes.Clear() / 1024 / 1024 / 5.0,
+        g_find_ops.Clear() / 5, g_read_ops.Clear() / 5,
+        g_write_ops.Clear() / 5, g_refuse_ops.Clear() / 5,
+        g_write_bytes.Clear() / 1024 / 1024 / 5.0,
         rpc_delay, delay_all);
     _work_thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
@@ -806,6 +808,15 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
+        /// Flow control
+        if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
+            response->set_status(500);
+            LOG(WARNING, "[WriteBlock] refuse #%ld seq:%d, offset:%ld, len:%lu] %lu\n",
+                block_id, packet_seq, offset, databuf.size(), request->sequence_id());
+            done->Run();
+            g_refuse_ops.Inc();
+            return;
+        }
         LOG(DEBUG, "[WriteBlock] dispatch #%ld seq:%d, offset:%ld, len:%lu] %lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
         response->add_timestamp(common::timer::get_micros());
@@ -906,17 +917,6 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
 void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
                         WriteBlockResponse* response,
                         ::google::protobuf::Closure* done) {
-    /// Flow control
-    if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
-        _write_thread_pool->DelayTask(10,
-            boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done));
-        if (g_writing_bytes.Get() > 10L * 1024 * 1024 * 1024) {
-            LOG(FATAL, "Too many pending write %ld",
-                _write_thread_pool->PendingNum());
-        }
-        return;
-    }
-
     int64_t block_id = request->block_id();
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
