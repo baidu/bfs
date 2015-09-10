@@ -103,7 +103,7 @@ private:
     int32_t base_offset_;
     int32_t ready_;
     bool notifying_;
-    Mutex mu_;
+    mutable Mutex mu_;
 };
 
 } // namespace common
