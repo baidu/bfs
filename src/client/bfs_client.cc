@@ -168,7 +168,7 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "close fail: %s\n", argv[3]);
         ret = 1;
     }
-    delete file;
+    //delete file;
     fclose(fp);
     printf("Put file to bfs %s %ld bytes\n", argv[3], len);
     return ret;

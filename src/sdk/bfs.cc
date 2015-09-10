@@ -145,6 +145,7 @@ public:
     friend class FSImpl;
 private:
     bool CheckWriteWindows();
+    int BackgroundDoneChunkserverNum();
 private:
     FSImpl* _fs;                        ///< 文件系统
     RpcClient* _rpc_client;             ///< RpcClient
@@ -173,7 +174,6 @@ private:
     Mutex   _mu;
     CondVar _sync_signal;               ///< _sync_var
     bool _bg_error;                     ///< background write error
-    volatile int _last_write_complete;       ///< chunkserver num that have complete last write
     std::map<std::string, bool> cs_errors;        ///< background write error for each chunkserver
 };
 
@@ -533,7 +533,7 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
     _write_buf(NULL), _last_seq(-1), _back_writing(0),
     _chunkserver(NULL), _read_offset(0), _reada_buffer(NULL),
     _reada_buf_len(0), _reada_base(0), _closed(false),
-    _sync_signal(&_mu), _bg_error(false), _last_write_complete(0) {
+    _sync_signal(&_mu), _bg_error(false) {
 }
 
 BfsFileImpl::~BfsFileImpl () {
@@ -759,6 +759,18 @@ void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
     _mu.Lock("StartWrite relock", 1000);
 }
 
+int BfsFileImpl::BackgroundDoneChunkserverNum() {
+    _mu.AssertHeld();
+    std::map<std::string, common::SlidingWindow<int>* >::iterator it;
+    int count = 0;
+    for (it = _write_windows.begin(); it != _write_windows.end(); ++it) {
+        if (it->second->GetBaseOffset() == _last_seq + 1)  {
+            count++;
+        }
+    }
+    return count;
+}
+
 bool BfsFileImpl::CheckWriteWindows() {
     _mu.AssertHeld();
     if (FLAGS_sdk_write_mode == "chains") {
@@ -860,6 +872,19 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      int retry_times,
                                      WriteBuffer* buffer,
                                      std::string cs_addr) {
+    /*
+    if (_closed || _bg_error) {
+        LOG(INFO, "BackgroundWrite been omitted bid:%ld, seq:%d",
+                    " offset:%ld, len:%d, _back_writing:%d",
+            buffer->block_id(), buffer->Sequence(),
+            buffer->offset(), buffer->Size(), _back_writing);
+        common::atomic_dec(&_back_writing);
+        buffer->DecRef();
+        delete request;
+        delete response;
+        return;
+    }
+    */
     if (failed || response->status() != 0) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
                 && response->status() != 500) {
@@ -914,11 +939,8 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         int r = _write_windows[cs_addr]->Add(buffer->Sequence(), 0);
         assert(r == 0);
         buffer->DecRef();
-        if (request->is_last()) {
-            common::atomic_inc(&_last_write_complete);
-            if (_last_write_complete >= FLAGS_default_replica_num) {
-                _sync_signal.Broadcast();
-            }
+        if (_write_windows[cs_addr]->GetBaseOffset() == _last_seq + 1) {
+            _sync_signal.Broadcast();
         }
         delete request;
     }
@@ -981,13 +1003,13 @@ bool BfsFileImpl::Close() {
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
         int wait_time = 0;
-        while (_back_writing || (FLAGS_sdk_write_mode == "fan-out" &&
-                                _last_write_complete < FLAGS_default_replica_num)) {
+        while ((FLAGS_sdk_write_mode == "chains" && _back_writing) ||
+                                (FLAGS_sdk_write_mode == "fan-out" &&
+                                BackgroundDoneChunkserverNum() < FLAGS_default_replica_num)) {
             bool finish = _sync_signal.TimeWait(1000, (_name + " Close wait").c_str());
             if (++wait_time >= 30 && (wait_time % 10 == 0)) {
-                LOG(WARNING, "Close timeout %d s, %s _back_writing= %d, finish= %d, \
-                        _last_write_complete = %d", wait_time, _name.c_str(),
-                        _back_writing, finish, _last_write_complete);
+                LOG(WARNING, "Close timeout %d s, %s _back_writing= %d, finish= %d",
+                        wait_time, _name.c_str(), _back_writing, finish);
             }
         }
         delete _block_for_write;
