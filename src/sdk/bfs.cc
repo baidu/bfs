@@ -133,6 +133,8 @@ public:
     /// When rpc buffer full deley send write reqeust
     void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
                          int retry_times, std::string cs_addr);
+    /// When file is closed, do cleanup work background
+    void CloseCleanup();
     bool Flush();
     bool Sync();
     bool Close();
@@ -992,6 +994,26 @@ bool BfsFileImpl::Sync() {
     return !_bg_error;
 }
 
+void BfsFileImpl::CloseCleanup() {
+    {
+        MutexLock lock(&_mu);
+        int wait_time = 0;
+        while (_back_writing) {
+            bool finish = _sync_signal.TimeWait(1000, "Close cleanup wait");
+            if (++wait_time >= 30 && (wait_time % 10 == 0)) {
+                LOG(WARNING, "Close cleanup timeout %d s,  _back_writing= %d, finish= %d",
+                        wait_time,  _back_writing, finish);
+            }
+        }
+
+        delete _block_for_write;
+        _block_for_write = NULL;
+        delete _chunkserver;
+        _chunkserver = NULL;
+    }
+    delete this;
+}
+
 bool BfsFileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", _name.c_str());
     MutexLock lock(&_mu, "Close", 1000);
@@ -1014,12 +1036,11 @@ bool BfsFileImpl::Close() {
                         wait_time, _name.c_str(), _back_writing, finish);
             }
         }
-        delete _block_for_write;
-        _block_for_write = NULL;
     }
-    delete _chunkserver;
-    _chunkserver = NULL;
     LOG(DEBUG, "File %s closed", _name.c_str());
+    boost::function<void ()> task =
+        boost::bind(&BfsFileImpl::CloseCleanup, this);
+    g_thread_pool.AddTask(task);
     _closed = true;
     return !_bg_error;
 }

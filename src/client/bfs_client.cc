@@ -90,7 +90,6 @@ int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
             bytes += len;
             write(1, buf, len);
         }
-        delete file;
     }
     return len;
 }
@@ -128,7 +127,6 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
         fwrite(buf, len, 1, fp);
     }
     printf("Read %ld bytes from %s\n", bytes, argv[1]);
-    delete file;
     fclose(fp);
     return len;
 }
@@ -168,7 +166,6 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "close fail: %s\n", argv[3]);
         ret = 1;
     }
-    //delete file;
     fclose(fp);
     printf("Put file to bfs %s %ld bytes\n", argv[3], len);
     return ret;
