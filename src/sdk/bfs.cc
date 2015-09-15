@@ -874,7 +874,6 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      int retry_times,
                                      WriteBuffer* buffer,
                                      std::string cs_addr) {
-    /*
     if (_closed || _bg_error) {
         LOG(INFO, "BackgroundWrite been omitted bid:%ld, seq:%d",
                     " offset:%ld, len:%d, _back_writing:%d",
@@ -886,7 +885,6 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         delete response;
         return;
     }
-    */
     if (failed || response->status() != 0) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
                 && response->status() != 500) {
@@ -1052,7 +1050,6 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
         return false;
     }
     *fs = impl;
-    g_thread_pool.Start();
     return true;
 }
 
