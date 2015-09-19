@@ -179,6 +179,9 @@ public:
     void SetDeleted() {
         _deleted = true;
     }
+    void SetVersion(int64_t version) {
+        _meta.version = version;
+    }
     /// Open corresponding file for write.
     bool OpenForWrite() {
         _mu.AssertHeld();
@@ -949,6 +952,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
+        block->SetVersion(packet_seq);
     }
 
     // If complete, close block, and report only once(close block return true).

@@ -359,6 +359,18 @@ public:
         }
         return ret;
     }
+    bool SetBlockVersion(int64_t block_id, int64_t version) {
+        bool ret = true;
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        if (it == _block_map.end()) {
+            LOG(WARNING, "Can't find block: #%ld ", block_id);
+            ret = false;
+        } else {
+            it->second->version = version;
+        }
+        return ret;
+    }
 
 private:
     Mutex _mu;
@@ -817,7 +829,13 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          FinishBlockResponse* response,
                          ::google::protobuf::Closure* done) {
     int64_t block_id = request->block_id();
+    int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
+    if (!_block_manager->SetBlockVersion(block_id, block_version)) {
+        response->set_status(886);
+        done->Run();
+        return;
+    }
     if (_block_manager->MarkBlockStable(block_id)) {
         response->set_status(0);
     } else {
@@ -1261,7 +1279,9 @@ void NameServerImpl::RebuildBlockMap() {
             //a file
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 int64_t block_id = file_info.blocks(i);
+                int64_t version = file_info.version();
                 _block_manager->AddNewBlock(block_id);
+                _block_manager->SetBlockVersion(block_id, version);
                 _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
                 _block_manager->MarkBlockStable(block_id);
             }
