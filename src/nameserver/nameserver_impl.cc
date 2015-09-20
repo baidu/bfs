@@ -269,7 +269,7 @@ public:
             return false;
         } else {
             nsblock = it->second;
-            if (nsblock->version > 0 && block_version == 0) {
+            if (nsblock->version >= 0 && block_version == 0) {
                 LOG(INFO, "block #%ld on slow chunkserver: %d, drop it", id, server_id);
                 return false;
             }
@@ -820,6 +820,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         block->set_block_id(new_block_id);
         response->set_status(0);
         file_info.add_blocks(new_block_id);
+        file_info.set_version(-1);
         file_info.SerializeToString(&infobuf);
         s = _db->Put(leveldb::WriteOptions(), file_key, infobuf);
         assert(s.ok());
