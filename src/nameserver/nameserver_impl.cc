@@ -93,7 +93,7 @@ public:
         bool pending_change;
         std::set<int32_t> pulling_chunkservers;
         NSBlock(int64_t block_id)
-         : id(block_id), version(0), block_size(0),
+         : id(block_id), version(-1), block_size(0),
            expect_replica_num(FLAGS_default_replica_num),
            pending_change(true) {
         }
@@ -260,7 +260,7 @@ public:
         }
     }
     bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                         int32_t* more_replica_num = NULL) {
+                         int64_t block_version, int32_t* more_replica_num = NULL) {
         MutexLock lock(&_mu);
         NSBlock* nsblock = NULL;
         NSBlockMap::iterator it = _block_map.find(id);
@@ -269,6 +269,10 @@ public:
             return false;
         } else {
             nsblock = it->second;
+            if (nsblock->version > 0 && block_version == 0) {
+                LOG(INFO, "block #%ld on slow chunkserver: %d, drop it", id, server_id);
+                return false;
+            }
             if (nsblock->block_size !=  block_size && block_size) {
                 if (nsblock->block_size) {
                     LOG(WARNING, "block #%ld size mismatch", id);
@@ -627,8 +631,10 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 continue;
             }
             int32_t more_replica_num = 0;
+            int64_t block_version = block.version();
             if (!_block_manager->UpdateBlockInfo(cur_block_id, id,
                                                  cur_block_size,
+                                                 block_version,
                                                  &more_replica_num)) {
                 response->add_obsolete_blocks(cur_block_id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
@@ -809,7 +815,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to response\n", chains[i].second.c_str());
-            _block_manager->UpdateBlockInfo(new_block_id, chains[i].first, 0);
+            _block_manager->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0);
         }
         block->set_block_id(new_block_id);
         response->set_status(0);

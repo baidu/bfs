@@ -733,7 +733,7 @@ void ChunkServerImpl::Routine() {
                 ReportBlockInfo* info = request.add_blocks();
                 info->set_block_id(blocks[i].block_id);
                 info->set_block_size(blocks[i].block_size);
-                info->set_version(0);
+                info->set_version(blocks[i].version);
             }
             next_report_offset = i;
             if (next_report_offset >= blocks_num) {
