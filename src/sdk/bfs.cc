@@ -414,6 +414,7 @@ public:
             FinishBlockResponse response;
             request.set_sequence_id(0);
             request.set_block_id(block_id);
+            request.set_block_version(bfs_file->_last_seq);
             bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::FinishBlock,
                     &request, &response, 15, 3);
 

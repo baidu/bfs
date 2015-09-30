@@ -93,7 +93,7 @@ public:
         bool pending_change;
         std::set<int32_t> pulling_chunkservers;
         NSBlock(int64_t block_id)
-         : id(block_id), version(0), block_size(0),
+         : id(block_id), version(-1), block_size(0),
            expect_replica_num(FLAGS_default_replica_num),
            pending_change(true) {
         }
@@ -260,7 +260,7 @@ public:
         }
     }
     bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                         int32_t* more_replica_num = NULL) {
+                         int64_t block_version, int32_t* more_replica_num = NULL) {
         MutexLock lock(&_mu);
         NSBlock* nsblock = NULL;
         NSBlockMap::iterator it = _block_map.find(id);
@@ -269,6 +269,10 @@ public:
             return false;
         } else {
             nsblock = it->second;
+            if (nsblock->version >= 0 && block_version == 0) {
+                LOG(INFO, "block #%ld on slow chunkserver: %d, drop it", id, server_id);
+                return false;
+            }
             if (nsblock->block_size !=  block_size && block_size) {
                 if (nsblock->block_size) {
                     LOG(WARNING, "block #%ld size mismatch", id);
@@ -356,6 +360,18 @@ public:
             }
             _blocks_to_replicate.erase(it);
             ret = true;
+        }
+        return ret;
+    }
+    bool SetBlockVersion(int64_t block_id, int64_t version) {
+        bool ret = true;
+        MutexLock lock(&_mu);
+        NSBlockMap::iterator it = _block_map.find(block_id);
+        if (it == _block_map.end()) {
+            LOG(WARNING, "Can't find block: #%ld ", block_id);
+            ret = false;
+        } else {
+            it->second->version = version;
         }
         return ret;
     }
@@ -615,8 +631,10 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 continue;
             }
             int32_t more_replica_num = 0;
+            int64_t block_version = block.version();
             if (!_block_manager->UpdateBlockInfo(cur_block_id, id,
                                                  cur_block_size,
+                                                 block_version,
                                                  &more_replica_num)) {
                 response->add_obsolete_blocks(cur_block_id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
@@ -797,11 +815,12 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to response\n", chains[i].second.c_str());
-            _block_manager->UpdateBlockInfo(new_block_id, chains[i].first, 0);
+            _block_manager->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0);
         }
         block->set_block_id(new_block_id);
         response->set_status(0);
         file_info.add_blocks(new_block_id);
+        file_info.set_version(-1);
         file_info.SerializeToString(&infobuf);
         s = _db->Put(leveldb::WriteOptions(), file_key, infobuf);
         assert(s.ok());
@@ -817,7 +836,13 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          FinishBlockResponse* response,
                          ::google::protobuf::Closure* done) {
     int64_t block_id = request->block_id();
+    int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
+    if (!_block_manager->SetBlockVersion(block_id, block_version)) {
+        response->set_status(886);
+        done->Run();
+        return;
+    }
     if (_block_manager->MarkBlockStable(block_id)) {
         response->set_status(0);
     } else {
@@ -1261,7 +1286,9 @@ void NameServerImpl::RebuildBlockMap() {
             //a file
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 int64_t block_id = file_info.blocks(i);
+                int64_t version = file_info.version();
                 _block_manager->AddNewBlock(block_id);
+                _block_manager->SetBlockVersion(block_id, version);
                 _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
                 _block_manager->MarkBlockStable(block_id);
             }

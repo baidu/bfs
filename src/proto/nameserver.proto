@@ -80,6 +80,7 @@ message AddBlockResponse {
 message FinishBlockRequest {
     optional int64 sequence_id = 1;
     optional int64 block_id = 2;
+    optional int64 block_version = 3;
 }
 message FinishBlockResponse {
     required int64 sequence_id = 1;
