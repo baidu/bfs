@@ -297,7 +297,6 @@ public:
                 if (!ret) {
                     LOG(INFO, "GetFileSize(%s) connect chunkserver fail %s",
                         path, addr.c_str());
-                    chunkserver = NULL;
                 } else {
                     GetBlockInfoRequest gbi_request;
                     gbi_request.set_block_id(block.block_id());
@@ -305,10 +304,10 @@ public:
                     GetBlockInfoResponse gbi_response;
                     ret = _rpc_client->SendRequest(chunkserver, 
                         &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
+                    delete chunkserver;
                     if (!ret || gbi_response.status() != 0) {
                         LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail",
                             path, addr.c_str());
-                        delete chunkserver;
                         continue;
                     }
                     *file_size += gbi_response.block_size();
@@ -318,10 +317,8 @@ public:
             }
             if (!available) {
                 LOG(WARNING, "GetFileSize(%s) fail no available chunkserver", path);
-                delete chunkserver;
                 return false;
             }
-            delete chunkserver;
         }
         return true;
     }
