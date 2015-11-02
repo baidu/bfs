@@ -488,13 +488,13 @@ public:
         LOG(INFO, "Load %ld blocks\n", block_num);
         return true;
     }
-    bool ListBlocks(std::vector<BlockMeta>* blocks) {
-        assert(_metadb);
+    bool ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
         leveldb::Iterator* it = _metadb->NewIterator(leveldb::ReadOptions());
-        for (it->SeekToFirst(); it->Valid(); it->Next()) {
+        for (it->Seek(BlockId2Str(offset)); it->Valid(); it->Next()) {
             int64_t block_id = 0;
             if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
-                LOG(WARNING, "Unknown key: %s\n", it->key().ToString().c_str());
+                LOG(WARNING, "[ListBlocks] Unknown meta key: %s\n",
+                    it->key().ToString().c_str());
                 delete it;
                 return false;
             }
@@ -502,8 +502,10 @@ public:
             assert(it->value().size() == sizeof(meta));
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
-
             blocks->push_back(meta);
+            if (--num <= 0) {
+                break;
+            }
         }
         delete it;
         return true;
@@ -544,10 +546,13 @@ public:
         }
         return block;
     }
-    bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
+    std::string BlockId2Str(int64_t block_id) {
         char idstr[64];
-        snprintf(idstr, sizeof(idstr), "%13ld", meta.block_id);
-
+        snprintf(idstr, sizeof(idstr), "%13ld", block_id);
+        return std::string(idstr);
+    }
+    bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
+        std::string idstr = BlockId2Str(meta.block_id);
         leveldb::WriteOptions options;
         // options.sync = true;
         int64_t time_start = common::timer::get_micros();
@@ -556,7 +561,7 @@ public:
         int64_t time_use = common::timer::get_micros() - time_start;
         if (sync_time) *sync_time = time_use;
         if (!s.ok()) {
-            Log(WARNING, "Write to meta fail:%s\n", idstr);
+            Log(WARNING, "Write to meta fail:%s", idstr.c_str());
             return false;
         }
         return true;
@@ -633,11 +638,12 @@ private:
 };
 
 ChunkServerImpl::ChunkServerImpl()
-    : _quit(false), _chunkserver_id(0), _namespace_version(0) {
+    : _chunkserver_id(0), _namespace_version(0) {
     _data_server_addr = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     _work_thread_pool = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     _read_thread_pool = new ThreadPool(FLAGS_chunkserver_read_thread_num);
     _write_thread_pool = new ThreadPool(FLAGS_chunkserver_write_thread_num);
+    _heartbeat_thread = new ThreadPool(1);
     _block_manager = new BlockManager(_write_thread_pool, FLAGS_block_store_path);
     bool s_ret = _block_manager->LoadStorage();
     assert(s_ret == true);
@@ -647,13 +653,11 @@ ChunkServerImpl::ChunkServerImpl()
         assert(0);
     }
     _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
-    int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
-    assert(ret == 0);
+    _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::SendBlockReport, this));
+    _heartbeat_thread->AddTask(boost::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
 
 ChunkServerImpl::~ChunkServerImpl() {
-    _quit = true;
-    pthread_join(_routine_thread, NULL);
     _work_thread_pool->Stop(true);
     _read_thread_pool->Stop(true);
     _write_thread_pool->Stop(true);
@@ -683,100 +687,87 @@ void ChunkServerImpl::LogStatus() {
     _work_thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
 }
 
-void* ChunkServerImpl::RoutineWrapper(void* arg) {
-    reinterpret_cast<ChunkServerImpl*>(arg)->Routine();
-    return NULL;
+void ChunkServerImpl::SendHeartbeat() {
+    HeartBeatRequest request;
+    request.set_chunkserver_id(_chunkserver_id);
+    request.set_data_server_addr(_data_server_addr);
+    request.set_namespace_version(_namespace_version);
+    request.set_block_num(g_blocks.Get());
+    request.set_data_size(g_data_size.Get());
+    HeartBeatResponse response;
+    if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
+            &request, &response, 15, 1)) {
+        LOG(WARNING, "Heat beat fail\n");
+    } else if (_namespace_version != response.namespace_version()) {
+        LOG(INFO, "Connect to nameserver, new chunkserver_id: %d\n",
+            response.chunkserver_id());
+        _namespace_version = response.namespace_version();
+        _chunkserver_id = response.chunkserver_id();
+    }
+    _heartbeat_thread->DelayTask(FLAGS_heartbeat_interval * 1000,
+        boost::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
 
-void ChunkServerImpl::Routine() {
-    static int64_t ticks = 0;
-    int64_t next_report = -1;
-    size_t next_report_offset = 0;
+void ChunkServerImpl::SendBlockReport() {
+    static int64_t last_report_blockid = -1;
+
+    BlockReportRequest request;
+    request.set_chunkserver_id(_chunkserver_id);
+    request.set_chunkserver_addr(_data_server_addr);
+    request.set_namespace_version(_namespace_version);
+
     std::vector<BlockMeta> blocks;
-    while (!_quit) {
-        // heartbeat
-        if (ticks % FLAGS_heartbeat_interval == 0) {
-            HeartBeatRequest request;
-            request.set_chunkserver_id(_chunkserver_id);
-            request.set_data_server_addr(_data_server_addr);
-            request.set_namespace_version(_namespace_version);
-            request.set_block_num(g_blocks.Get());
-            request.set_data_size(g_data_size.Get());
-            HeartBeatResponse response;
-            if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
-                    &request, &response, 15, 1)) {
-                LOG(WARNING, "Heat beat fail\n");
-            } else if (_namespace_version != response.namespace_version()) {
-                LOG(INFO, "Connect to nameserver, new chunkserver_id: %d\n",
-                    response.chunkserver_id());
-                _namespace_version = response.namespace_version();
-                _chunkserver_id = response.chunkserver_id();
-                next_report = ticks;
-            }
-        }
-        // block report
-        if (ticks == next_report) {
-            BlockReportRequest request;
-            request.set_chunkserver_id(_chunkserver_id);
-            request.set_chunkserver_addr(_data_server_addr);
-            request.set_namespace_version(_namespace_version);
+    _block_manager->ListBlocks(&blocks, last_report_blockid + 1, FLAGS_blockreport_size);
 
-            if (next_report_offset == 0) {
-                blocks.clear();
-                _block_manager->ListBlocks(&blocks);
-                std::vector<BlockMeta>(blocks).swap(blocks);
-            }
-            size_t blocks_num = blocks.size();
-            size_t last_block = ticks ?
-                next_report_offset + FLAGS_blockreport_size : blocks_num;
-            size_t i = next_report_offset;
-            for (; i < last_block && i < blocks_num; i++) {
-                ReportBlockInfo* info = request.add_blocks();
-                info->set_block_id(blocks[i].block_id);
-                info->set_block_size(blocks[i].block_size);
-                info->set_version(0);
-            }
-            next_report_offset = i;
-            if (next_report_offset >= blocks_num) {
-                next_report_offset = 0;
-                request.set_is_complete(true);
-            } else {
-                request.set_is_complete(false);
-            }
-            BlockReportResponse response;
-            if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::BlockReport,
-                    &request, &response, 20, 3)) {
-                LOG(WARNING, "Block reprot fail\n");
-                next_report += 60;  // retry
-            } else {
-                next_report += FLAGS_blockreport_interval;
-                //deal with obsolete blocks
-                std::vector<int64_t> obsolete_blocks;
-                for (int i = 0; i < response.obsolete_blocks_size(); i++) {
-                    obsolete_blocks.push_back(response.obsolete_blocks(i));
-                }
-                if (!obsolete_blocks.empty()) {
-                    boost::function<void ()> task =
-                        boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
-                                    this, obsolete_blocks);
-                    _write_thread_pool->AddTask(task);
-                }
-
-                std::vector<ReplicaInfo> new_replica_info;
-                for (int i = 0; i < response.new_replicas_size(); i++) {
-                    new_replica_info.push_back(response.new_replicas(i));
-                }
-                if (!new_replica_info.empty()) {
-                    boost::function<void ()> new_replica_task =
-                        boost::bind(&ChunkServerImpl::PullNewBlocks,
-                                    this, new_replica_info);
-                    _write_thread_pool->AddTask(new_replica_task);
-                }
-            }
-        }
-        ++ ticks;
-        sleep(1);
+    int64_t blocks_num = blocks.size();
+    for (int64_t i = 0; i < blocks_num; i++) {
+        ReportBlockInfo* info = request.add_blocks();
+        info->set_block_id(blocks[i].block_id);
+        info->set_block_size(blocks[i].block_size);
+        info->set_version(blocks[i].version);
     }
+
+    if (blocks_num < FLAGS_blockreport_size) {
+        last_report_blockid = -1;
+        request.set_is_complete(true);
+    } else {
+        request.set_is_complete(false);
+        if (blocks_num) {
+            last_report_blockid = blocks[blocks_num - 1].block_id;
+        }
+    }
+
+    BlockReportResponse response;
+    if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::BlockReport,
+            &request, &response, 20, 3)) {
+        LOG(WARNING, "Block reprot fail\n");
+    } else {
+        //deal with obsolete blocks
+        std::vector<int64_t> obsolete_blocks;
+        for (int i = 0; i < response.obsolete_blocks_size(); i++) {
+            obsolete_blocks.push_back(response.obsolete_blocks(i));
+        }
+        if (!obsolete_blocks.empty()) {
+            boost::function<void ()> task =
+                boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
+                            this, obsolete_blocks);
+            _write_thread_pool->AddTask(task);
+        }
+
+        std::vector<ReplicaInfo> new_replica_info;
+        for (int i = 0; i < response.new_replicas_size(); i++) {
+            new_replica_info.push_back(response.new_replicas(i));
+        }
+        LOG(INFO, "Block report done. %lu replica blocks", new_replica_info.size()); 
+        if (!new_replica_info.empty()) {
+            boost::function<void ()> new_replica_task =
+                boost::bind(&ChunkServerImpl::PullNewBlocks,
+                            this, new_replica_info);
+            _write_thread_pool->AddTask(new_replica_task);
+        }
+    }
+    _work_thread_pool->DelayTask(FLAGS_blockreport_interval* 1000,
+        boost::bind(&ChunkServerImpl::SendBlockReport, this));
 }
 
 bool ChunkServerImpl::ReportFinish(Block* block) {
@@ -1058,6 +1049,9 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             LOG(WARNING, "Cant't create block: #%ld ", block_id);
             //ignore this block
             continue;
+        } else {
+            LOG(INFO, "Start pull #%ld from %s",
+                block_id, new_replica_info[i].chunkserver_address(0).c_str());
         }
         if (!_rpc_client->GetStub(new_replica_info[i].chunkserver_address(0),
                     &chunkserver)) {
@@ -1115,7 +1109,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
                 &report_request, &report_response, 15, 3)) {
         LOG(WARNING, "Report pull finish fail, chunkserver id: %d\n", _chunkserver_id);
     } else {
-        LOG(INFO, "Report pull finish dnne, chunkserver id: %d\n", _chunkserver_id);
+        LOG(INFO, "Report pull finish dnne, %d blocks", report_request.blocks_size());
     }
 }
 

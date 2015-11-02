@@ -322,7 +322,7 @@ public:
         if (nsblock->pulling_chunkservers.find(dst_cs) ==
                 nsblock->pulling_chunkservers.end()) {
             nsblock->pulling_chunkservers.insert(dst_cs);
-            LOG(INFO, "Add replicate info: dst cs: %d, block #%ld, src cs: %s\n",
+            LOG(INFO, "Add replicate info dst cs: %d, block #%ld, src cs: %s\n",
                     dst_cs, block_id, src_cs.c_str());
             ret = true;
         }
@@ -522,10 +522,6 @@ public:
         MutexLock lock(&_mu);
         _chunkserver_block_map[id].erase(block_id);
     }
-    bool IsNewChunkserver(int32_t id) {
-        MutexLock lock(&_mu);
-        return _chunkserver_block_map.find(id) == _chunkserver_block_map.end();
-    }
 
 private:
     ThreadPool* _thread_pool;
@@ -599,7 +595,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         response->set_status(8882);
     } else {
         const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
-        bool new_chunkserver = _chunkserver_manager->IsNewChunkserver(id);
         for (int i = 0; i < blocks.size(); i++) {
             const ReportBlockInfo& block =  blocks.Get(i);
             int64_t cur_block_id = block.block_id();
@@ -625,9 +620,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             }
 
             _chunkserver_manager->AddBlock(id, cur_block_id);
-            if (more_replica_num != 0 && new_chunkserver) {
-                _block_manager->MarkBlockStable(cur_block_id);
-            } else if (more_replica_num != 0 && !new_chunkserver) {
+            if (more_replica_num != 0) {
                 std::vector<std::pair<int32_t, std::string> > chains;
                 ///TODO: Not get all chunkservers, but get more.
                 if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {

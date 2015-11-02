@@ -23,8 +23,8 @@ class ChunkServerImpl : public ChunkServer {
 public:
     ChunkServerImpl();
     virtual ~ChunkServerImpl();
-    static void* RoutineWrapper(void* arg);
-    void Routine();
+    void SendHeartbeat();
+    void SendBlockReport();
     bool ReportFinish(Block* block);
     
     virtual void WriteBlock(::google::protobuf::RpcController* controller,
@@ -67,9 +67,8 @@ private:
     ThreadPool*     _work_thread_pool;
     ThreadPool*     _read_thread_pool;
     ThreadPool*     _write_thread_pool;
+    ThreadPool*     _heartbeat_thread;
     NameServer_Stub* _nameserver;
-    pthread_t _routine_thread;
-    bool _quit;
     int32_t _chunkserver_id;
     int64_t _namespace_version;
 };
