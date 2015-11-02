@@ -140,6 +140,10 @@ int32_t BfsImpl::GetFileSize(const std::string& filename, uint64_t* size) {
     return 0;
 }
 int32_t BfsImpl::Rename(const std::string& from, const std::string& to) {
+    int ret = Delete(to);
+    if (ret) {
+        return ret;
+    }
     if (!_fs->Rename(from.c_str(), to.c_str())) {
         LOG(INFO, "Rename(%s, %s) fail", from.c_str(), to.c_str());
         return -1;
