@@ -20,7 +20,7 @@ DEFINE_string(block_store_path, "./data", "Data path");
 DEFINE_string(chunkserver_port, "8825", "Chunkserver port");
 DEFINE_int32(heartbeat_interval, 5, "Heartbeat interval");
 DEFINE_int32(blockreport_interval, 60, "blockreport_interval");
-DEFINE_int32(blockreport_size, 100, "blockreport_size");
+DEFINE_int32(blockreport_size, 10000, "blockreport_size");
 DEFINE_int32(chunkserver_log_level, 4, "Nameserver log level");
 DEFINE_string(chunkserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
@@ -33,5 +33,6 @@ DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 // SDK
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
+DEFINE_string(sdk_write_mode, "chains", "Sdk write mode: chains/fan-out");
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

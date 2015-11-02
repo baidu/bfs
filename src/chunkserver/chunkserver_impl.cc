@@ -180,6 +180,9 @@ public:
         int deleted = common::atomic_swap(&_deleted, 1);
         return (0 == deleted);
     }
+    void SetVersion(int64_t version) {
+        _meta.version = version;
+    }
     /// Open corresponding file for write.
     bool OpenForWrite() {
         _mu.AssertHeld();
@@ -189,7 +192,7 @@ public:
         std::string dir = _disk_file.substr(0, _disk_file.rfind('/'));
         // Mkdir dir for data block, ignore error, may already exist.
         mkdir(dir.c_str(), 0755);
-        int fd  = open(_disk_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR);
+        int fd  = open(_disk_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR);
         if (fd < 0) {
             LOG(WARNING, "Open block #%ld %s fail: %s",
                 _meta.block_id, _disk_file.c_str(), strerror(errno));
@@ -944,6 +947,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
+        block->SetVersion(packet_seq);
     }
 
     // If complete, close block, and report only once(close block return true).
