@@ -68,7 +68,6 @@ private:
     ThreadPool*     _read_thread_pool;
     ThreadPool*     _write_thread_pool;
     NameServer_Stub* _nameserver;
-    pthread_t _routine_thread;
     volatile bool _quit;
     int32_t _chunkserver_id;
     int64_t _namespace_version;
