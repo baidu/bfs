@@ -646,13 +646,11 @@ ChunkServerImpl::ChunkServerImpl()
         assert(0);
     }
     _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
-    int ret = pthread_create(&_routine_thread, NULL, RoutineWrapper, this);
-    assert(ret == 0);
+    _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::RoutineWrapper, this));
 }
 
 ChunkServerImpl::~ChunkServerImpl() {
     _quit = true;
-    pthread_join(_routine_thread, NULL);
     _work_thread_pool->Stop(true);
     _read_thread_pool->Stop(true);
     _write_thread_pool->Stop(true);
