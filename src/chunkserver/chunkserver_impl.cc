@@ -52,6 +52,7 @@ common::Counter g_block_buffers;
 common::Counter g_buffers_new;
 common::Counter g_buffers_delete;
 common::Counter g_blocks;
+common::Counter g_writing_blocks;
 common::Counter g_writing_bytes;
 common::Counter g_find_ops;
 common::Counter g_read_ops;
@@ -142,6 +143,7 @@ public:
 
         if (_file_desc >= 0) {
             close(_file_desc);
+            g_writing_blocks.Dec();
             _file_desc = -1;
         }
         if (_recv_window) {
@@ -199,6 +201,7 @@ public:
             return false;
         }
         _mu.Lock("Block::OpenForWrite");
+        g_writing_blocks.Inc();
         _file_desc = fd;
         return true;
     }
@@ -278,10 +281,13 @@ public:
             g_writing_bytes.Sub(len);
             if (ret < 0) {
                 LOG(WARNING, "Write block #%ld seq: %d, offset: %ld, block_size: %ld"
-                             " not in sliding window\n",
-                    _meta.block_id, seq, offset, _meta.block_size);
+                             " out of range %d",
+                    _meta.block_id, seq, offset, _meta.block_size, _recv_window->UpBound());
                 return false;
             }
+        }
+        if (ret >= 0) {
+            g_write_bytes.Add(len);
         }
         return true;
     }
@@ -345,21 +351,22 @@ private:
                     }
                     wlen += w;
                 }
+                // Re-Lock for commit
+                _mu.Lock("Block::DiskWrite ReLock", 1000);
+                _block_buf_list.erase(_block_buf_list.begin());
                 delete[] buf;
                 g_block_buffers.Dec();
                 g_buffers_delete.Inc();
-                // Re-Lock for commit
-                _mu.Lock("Block::DiskWrite ReLock", 1000);
                 _disk_file_size += len;
-                _block_buf_list.erase(_block_buf_list.begin());
             }
             _disk_writing = false;
         }
         if (!_disk_writing && (_finished || _deleted)) {
             if (_file_desc != -1) {
                 int ret = close(_file_desc);
-                LOG(INFO, "DiskWrite close file %s", _disk_file.c_str());
+                LOG(INFO, "[DiskWrite] close file %s", _disk_file.c_str());
                 assert(ret == 0);
+                g_writing_blocks.Dec();
             }
             _file_desc = -1;
         }
@@ -466,7 +473,7 @@ public:
         options.create_if_missing = true;
         leveldb::Status s = leveldb::DB::Open(options, _store_path_list[0] + "meta/", &_metadb);
         if (!s.ok()) {
-            LOG(WARNING, "Load blocks fail");
+            LOG(WARNING, "Load blocks fail: %s", s.ToString().c_str());
             return false;
         }
         int block_num = 0;
@@ -679,9 +686,9 @@ void ChunkServerImpl::LogStatus() {
         rpc_delay = g_rpc_delay.Clear() / rpc_count / 1000;
         delay_all = g_rpc_delay_all.Clear() / rpc_count / 1000;
     }
-    LOG(INFO, "[Status] blocks %ld buffers %ld data %sB, "
+    LOG(INFO, "[Status] blocks %ld %ld buffers %ld data %sB, "
               "find %ld read %ld write %ld %ld %.2f MB, rpc_delay %ld %ld",
-        g_blocks.Get(), g_block_buffers.Get(),
+        g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
         g_find_ops.Clear() / 5, g_read_ops.Clear() / 5,
         g_write_ops.Clear() / 5, g_refuse_ops.Clear() / 5,
@@ -809,7 +816,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         /// Flow control
         if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
             response->set_status(500);
-            LOG(WARNING, "[WriteBlock] refuse #%ld seq:%d, offset:%ld, len:%lu] %lu\n",
+            LOG(WARNING, "[WriteBlock] pending reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
             done->Run();
             g_refuse_ops.Inc();
@@ -943,7 +950,6 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
         done->Run();
         return;
     }
-    g_write_bytes.Add(databuf.size());
     int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);

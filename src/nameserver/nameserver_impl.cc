@@ -406,7 +406,8 @@ public:
             while (node != it->second.end()) {
                 ChunkServerInfo* cs = *node;
                 cs->set_is_dead(true);
-                LOG(INFO, "[DeadCheck] Chunkserver %s dead", cs->address().c_str());
+                LOG(INFO, "[DeadCheck] Chunkserver[%d] %s dead",
+                    cs->id(), cs->address().c_str());
                 it->second.erase(node);
                 _chunkserver_num--;
                 node = it->second.begin();
@@ -418,7 +419,6 @@ public:
                             _block_manager, id, blocks);
                 _thread_pool->AddTask(task);
                 _chunkserver_block_map.erase(id);
-                delete cs;
             }
             assert(it->second.empty());
             _heartbeat_list.erase(it);
@@ -442,17 +442,21 @@ public:
         ServerMap::iterator it = _chunkservers.find(id);
         ChunkServerInfo* info = NULL;
         if (it != _chunkservers.end()) {
-           info = it->second;
+            info = it->second;
             assert(info);
-            _heartbeat_list[info->last_heartbeat()].erase(info);
-            if (_heartbeat_list[info->last_heartbeat()].empty()) {
-                _heartbeat_list.erase(info->last_heartbeat());
+            if (!info->is_dead()) {
+                assert(_heartbeat_list.find(info->last_heartbeat()) != _heartbeat_list.end());
+                _heartbeat_list[info->last_heartbeat()].erase(info);
+                if (_heartbeat_list[info->last_heartbeat()].empty()) {
+                    _heartbeat_list.erase(info->last_heartbeat());
+                }
             }
         } else {
             //reconnect after DeadCheck()
             info = new ChunkServerInfo;
             info->set_id(id);
             info->set_address(request->data_server_addr());
+            LOG(INFO, "New ChunkServerInfo[%id] %p ", id, info);
             _chunkservers[id] = info;
             ++_chunkserver_num;
         }
@@ -466,8 +470,9 @@ public:
         MutexLock lock(&_mu, "ListChunkServers", 1000);
         for (ServerMap::iterator it = _chunkservers.begin();
                     it != _chunkservers.end(); ++it) {
-            ChunkServerInfo* chunkserver = chunkservers->Add();
-            chunkserver->CopyFrom(*(it->second));
+            ChunkServerInfo* src = it->second;
+            ChunkServerInfo* dst = chunkservers->Add();
+            dst->CopyFrom(*src);
         }
     }
     bool GetChunkServerChains(int num, 
@@ -514,6 +519,7 @@ public:
         ChunkServerInfo* info = new ChunkServerInfo;
         info->set_id(id);
         info->set_address(address);
+        LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
         _chunkservers[id] = info;
         int32_t now_time = common::timer::now_time();
         _heartbeat_list[now_time].insert(info);
@@ -521,14 +527,16 @@ public:
         ++_chunkserver_num;
         return id;
     }
-    std::string GetChunkServer(int32_t id) {
+    std::string GetChunkServerAddr(int32_t id) {
         MutexLock lock(&_mu);
         ServerMap::iterator it = _chunkservers.find(id);
-        if (it == _chunkservers.end()) {
-            return "";
-        } else {
-            return it->second->address();
+        if (it != _chunkservers.end()) {
+            ChunkServerInfo* info = it->second;
+            if (!info->is_dead()) {
+                return info->address();
+            }
         }
+        return "";
     }
     void AddBlock(int32_t id, int64_t block_id) {
         MutexLock lock(&_mu);
@@ -890,15 +898,19 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                         LOG(INFO, "replica is under construction #%ld on %d", block_id, server_id);
                         continue;
                     }
-                    std::string addr = _chunkserver_manager->GetChunkServer(server_id);
-                    LOG(INFO, "return server %s for #%ld ", addr.c_str(), block_id);
+                    std::string addr = _chunkserver_manager->GetChunkServerAddr(server_id);
+                    if (addr == "") {
+                        LOG(INFO, "GetChunkServerAddr from id:%d fail.", server_id);
+                        continue;
+                    }
+                    LOG(INFO, "return server %d %s for #%ld ", server_id, addr.c_str(), block_id);
                     ChunkServerInfo* info = lcblock->add_chains();
                     info->set_address(addr);
                 }
             }
         }
         LOG(INFO, "NameServerImpl::GetFileLocation: %s return %d",
-            request->file_name().c_str(),info.blocks_size());
+            request->file_name().c_str(), info.blocks_size());
         // success if file exist
         response->set_status(0);
     }
@@ -1293,7 +1305,8 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
                              const ::bfs::SysStatRequest* request,
                              ::bfs::SysStatResponse* response,
                              ::google::protobuf::Closure* done) {
-    LOG(INFO, "SysStat from ...");
+    sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    LOG(INFO, "SysStat from %s", ctl->RemoteAddress().c_str());
     _chunkserver_manager->ListChunkServers(response->mutable_chunkservers());
     response->set_status(0);
     done->Run();
