@@ -671,9 +671,11 @@ ChunkServerImpl::~ChunkServerImpl() {
     _work_thread_pool->Stop(true);
     _read_thread_pool->Stop(true);
     _write_thread_pool->Stop(true);
+    _heartbeat_thread->Stop(true);
     delete _work_thread_pool;
     delete _read_thread_pool;
     delete _write_thread_pool;
+    delete _heartbeat_thread;
     delete _block_manager;
     delete _rpc_client;
 }
