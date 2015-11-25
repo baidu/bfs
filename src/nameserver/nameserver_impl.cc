@@ -204,11 +204,11 @@ public:
 
         return ret;
     }
-    void DealDeadBlocks(int32_t id, std::set<int64_t> blocks) {
-        LOG(INFO, "Replicate %d blocks of dead chunkserver: %d\n", blocks.size(), id);
+    void DealDeadBlocks(int32_t id, std::set<int64_t>* blocks) {
+        LOG(INFO, "Replicate %d blocks of dead chunkserver: %d\n", blocks->size(), id);
         MutexLock lock(&_mu);
-        std::set<int64_t>::iterator it = blocks.begin();
-        for (; it != blocks.end(); ++it) {
+        std::set<int64_t>::iterator it = blocks->begin();
+        for (; it != blocks->end(); ++it) {
             //have been unlinked?
             std::map<int64_t, std::set<int32_t> >::iterator obsolete_it
                 = _obsolete_blocks.find(*it);
@@ -234,6 +234,7 @@ public:
             }
         }
         _blocks_to_replicate.erase(id);
+        delete blocks;
     }
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
         MutexLock lock(&_mu);
@@ -413,7 +414,8 @@ public:
                 node = it->second.begin();
 
                 int32_t id = cs->id();
-                std::set<int64_t> blocks = _chunkserver_block_map[id];
+                std::set<int64_t>* blocks = new std::set<int64_t>;
+                blocks->swap(_chunkserver_block_map[id]);
                 boost::function<void ()> task =
                     boost::bind(&BlockManager::DealDeadBlocks,
                             _block_manager, id, blocks);
