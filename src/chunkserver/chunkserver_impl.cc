@@ -671,9 +671,11 @@ ChunkServerImpl::~ChunkServerImpl() {
     _work_thread_pool->Stop(true);
     _read_thread_pool->Stop(true);
     _write_thread_pool->Stop(true);
+    _heartbeat_thread->Stop(true);
     delete _work_thread_pool;
     delete _read_thread_pool;
     delete _write_thread_pool;
+    delete _heartbeat_thread;
     delete _block_manager;
     delete _rpc_client;
 }
@@ -729,8 +731,8 @@ void ChunkServerImpl::SendBlockReport() {
     std::vector<BlockMeta> blocks;
     _block_manager->ListBlocks(&blocks, last_report_blockid + 1, FLAGS_blockreport_size);
 
-    int64_t blocks_num = blocks.size();
-    for (int64_t i = 0; i < blocks_num; i++) {
+    int32_t blocks_num = blocks.size();
+    for (int32_t i = 0; i < blocks_num; i++) {
         ReportBlockInfo* info = request.add_blocks();
         info->set_block_id(blocks[i].block_id);
         info->set_block_size(blocks[i].block_size);
