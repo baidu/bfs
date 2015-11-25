@@ -731,8 +731,8 @@ void ChunkServerImpl::SendBlockReport() {
     std::vector<BlockMeta> blocks;
     _block_manager->ListBlocks(&blocks, last_report_blockid + 1, FLAGS_blockreport_size);
 
-    int32_t blocks_num = blocks.size();
-    for (int32_t i = 0; i < blocks_num; i++) {
+    int64_t blocks_num = blocks.size();
+    for (int64_t i = 0; i < blocks_num; i++) {
         ReportBlockInfo* info = request.add_blocks();
         info->set_block_id(blocks[i].block_id);
         info->set_block_size(blocks[i].block_size);
