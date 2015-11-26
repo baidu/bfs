@@ -269,8 +269,11 @@ public:
             return false;
         } else {
             nsblock = it->second;
-            if (nsblock->version >= 0 && block_version == 0) {
-                LOG(INFO, "block #%ld on slow chunkserver: %d, drop it", id, server_id);
+            if (nsblock->version >= 0 && block_version >= 0 &&
+                    nsblock->version != block_version) {
+                LOG(INFO, "block #%ld on slow chunkserver: %d,"
+                        " NSB version: %ld, cs version: %ld, drop it",
+                        id, server_id, nsblock->version, block_version);
                 return false;
             }
             if (nsblock->block_size !=  block_size && block_size) {
