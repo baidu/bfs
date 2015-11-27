@@ -183,7 +183,10 @@ public:
         return (0 == deleted);
     }
     void SetVersion(int64_t version) {
-        _meta.version = version;
+        _meta.version = std::max(version, _meta.version);
+    }
+    int GetVersion() {
+        return _meta.version;
     }
     /// Open corresponding file for write.
     bool OpenForWrite() {
@@ -1020,6 +1023,9 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
+            if (request->require_block_version()) {
+                response->set_block_version(block->GetVersion());
+            }
             LOG(INFO, "ReadBlock #%ld offset: %ld len: %d return: %d "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
@@ -1085,6 +1091,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             request.set_block_id(block_id);
             request.set_offset(offset);
             request.set_read_len(256 * 1024);
+            request.set_require_block_version(true);
             bool ret = _rpc_client->SendRequest(chunkserver,
                                                 &ChunkServer_Stub::ReadBlock,
                                                 &request, &response, 15, 3);
@@ -1101,6 +1108,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
                 }
             } else {
                 block->SetSliceNum(seq);
+                block->SetVersion(response.block_version());
             }
             if (block->IsComplete() && _block_manager->CloseBlock(block)) {
                 LOG(INFO, "Pull block: #%ld finish\n", block_id);
