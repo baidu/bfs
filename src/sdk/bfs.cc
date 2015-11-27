@@ -10,10 +10,12 @@
 #include <list>
 #include <queue>
 #include <sstream>
+#include <vector>
 
 #include "proto/nameserver.pb.h"
 #include "proto/chunkserver.pb.h"
 #include "rpc/rpc_client.h"
+#include "file_location_cache.h"
 #include "common/atomic.h"
 #include "common/mutex.h"
 #include "common/timer.h"
@@ -28,6 +30,7 @@ DECLARE_string(nameserver);
 DECLARE_string(nameserver_port);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
+DECLARE_int32(file_location_cache_size);
 DECLARE_string(sdk_write_mode);
 
 namespace bfs {
@@ -179,10 +182,12 @@ class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
     FSImpl() : _rpc_client(NULL), _nameserver(NULL) {
+        _file_location_cache = new FileLocationCache(FLAGS_file_location_cache_size);
     }
     ~FSImpl() {
         delete _nameserver;
         delete _rpc_client;
+        delete _file_location_cache;
     }
     bool ConnectNameServer(const char* nameserver) {
         if (nameserver != NULL) {
@@ -291,19 +296,19 @@ public:
         if (file_size == NULL) {
             return false;
         }
-        FileLocationRequest request;
-        FileLocationResponse response;
-        request.set_file_name(path);
-        request.set_sequence_id(0);
-        bool ret = _rpc_client->SendRequest(_nameserver, 
-            &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
-        if (!ret || response.status() != 0) {
-            LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
-            return false;
+        std::vector<LocatedBlock> blocks;
+        bool ret = _file_location_cache->GetFileLocation(path, &blocks);
+        if (!ret) {
+            ret = UpdateFileLocation(path, &blocks);
+            if (!ret) {
+                LOG(WARNING, "update file %s location fail", path);
+                return false;
+            }
         }
+
         *file_size = 0;
-        for (int i = 0; i < response.blocks_size(); i++) {
-            const LocatedBlock& block = response.blocks(i);
+        for (size_t i = 0; i < blocks.size(); i++) {
+            const LocatedBlock& block = blocks[i];
             if (block.block_size()) {
                 *file_size += block.block_size();
                 continue;
@@ -363,22 +368,18 @@ public:
                 *file = new BfsFileImpl(this, _rpc_client, path, flags);
             }
         } else if (flags == O_RDONLY) {
-            FileLocationRequest request;
-            FileLocationResponse response;
-            request.set_file_name(path);
-            request.set_sequence_id(0);
-            ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::GetFileLocation,
-                &request, &response, 15, 3);
-            if (ret && response.status() == 0) {
-                BfsFileImpl* f = new BfsFileImpl(this, _rpc_client, path, flags);
-                f->_located_blocks.CopyFrom(response.blocks());
-                *file = f;
-                //printf("OpenFile success: %s\n", path);
-            } else {
-                //printf("GetFileLocation return %d\n", response.blocks_size());
-                fprintf(stderr, "OpenFile return %d\n", response.status());
-                ret = false;
+            std::vector<LocatedBlock> blocks;
+            ret = _file_location_cache->GetFileLocation(path, &blocks);
+            if (!ret) {
+                ret = UpdateFileLocation(path, &blocks);
+                if (!ret) {
+                    LOG(WARNING, "Update file %s location fail", path);
+                    return ret;
+                }
             }
+            BfsFileImpl* f = new BfsFileImpl(this, _rpc_client, path, flags);
+            f->_located_blocks._blocks = blocks;
+            *file = f;
         } else {
             LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY\n");
             ret = false;
@@ -517,9 +518,31 @@ public:
         return true;
     }
 private:
+    bool UpdateFileLocation(const std::string& file_path, std::vector<LocatedBlock> *blocks) {
+        FileLocationRequest request;
+        FileLocationResponse response;
+        request.set_file_name(file_path);
+        request.set_sequence_id(0);
+        bool ret = _rpc_client->SendRequest(_nameserver,
+                &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
+        if (!ret || response.status() != 0) {
+            LOG(WARNING, "Update file location %s returns %d", file_path.c_str(), response.status());
+            return false;
+        }
+        const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >&
+            response_blocks = response.blocks();
+        for (int i = 0; i < response.blocks_size(); i++) {
+            blocks->push_back(response_blocks.Get(i));
+        }
+        //fill cache
+        _file_location_cache->FillCache(file_path, *blocks);
+        return true;
+    }
+private:
     RpcClient* _rpc_client;
     NameServer_Stub* _nameserver;
     std::string _nameserver_address;
+    FileLocationCache* _file_location_cache;
 };
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, 
@@ -595,8 +618,24 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     }
     request.set_read_len(rlen);
     bool ret = false;
+    bool update_location = false;
 
     for (int retry_times = 0; retry_times < lcblock.chains_size() * 2; retry_times++) {
+        if (retry_times == lcblock.chains_size() && !update_location) {
+            // update block location
+            update_location = true;
+            _fs->UpdateFileLocation(_name, &_located_blocks._blocks);
+            retry_times = lcblock.chains_size() - 1;
+            server_index = rand() % lcblock.chains_size();
+            cs_addr = lcblock.chains(server_index).address();
+            {
+                MutexLock lock(&_mu, "Pread change _chunkserver", 1000);
+                delete _chunkserver;
+                _fs->_rpc_client->GetStub(cs_addr, &_chunkserver);
+            }
+            chunk_server = _chunkserver;
+            continue;
+        }
         LOG(DEBUG, "Start Pread: %s", cs_addr.c_str());
         ret = _fs->_rpc_client->SendRequest(chunk_server, &ChunkServer_Stub::ReadBlock,
                     &request, &response, 15, 3);
@@ -605,6 +644,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             ///TODO: Add to _bad_chunkservers
             cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
+            delete chunk_server;
             _fs->_rpc_client->GetStub(cs_addr, &chunk_server);
             {
                 MutexLock lock(&_mu, "Pread change _chunkserver", 1000);
