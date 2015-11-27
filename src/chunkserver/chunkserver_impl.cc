@@ -183,7 +183,10 @@ public:
         return (0 == deleted);
     }
     void SetVersion(int64_t version) {
-        _meta.version = version;
+        _meta.version = std::max(version, _meta.version);
+    }
+    int GetVersion() {
+        return _meta.version;
     }
     /// Open corresponding file for write.
     bool OpenForWrite() {
@@ -671,9 +674,11 @@ ChunkServerImpl::~ChunkServerImpl() {
     _work_thread_pool->Stop(true);
     _read_thread_pool->Stop(true);
     _write_thread_pool->Stop(true);
+    _heartbeat_thread->Stop(true);
     delete _work_thread_pool;
     delete _read_thread_pool;
     delete _write_thread_pool;
+    delete _heartbeat_thread;
     delete _block_manager;
     delete _rpc_client;
 }
@@ -1018,6 +1023,9 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
+            if (request->require_block_version()) {
+                response->set_block_version(block->GetVersion());
+            }
             LOG(INFO, "ReadBlock #%ld offset: %ld len: %d return: %d "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
@@ -1063,10 +1071,14 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             LOG(INFO, "Start pull #%ld from %s",
                 block_id, new_replica_info[i].chunkserver_address(0).c_str());
         }
-        if (!_rpc_client->GetStub(new_replica_info[i].chunkserver_address(0),
-                    &chunkserver)) {
-            LOG(WARNING, "Can't connect to chunkserver: %s\n",
-                    new_replica_info[i].chunkserver_address(0).c_str());
+        int init_index = 0;
+        for (; init_index < new_replica_info[i].chunkserver_address_size(); init_index++) {
+            if (_rpc_client->GetStub(new_replica_info[i].chunkserver_address(init_index), &chunkserver)) {
+                break;
+            }
+        }
+        if (init_index == new_replica_info[i].chunkserver_address_size()) {
+             LOG(WARNING, "Can't connect to any chunkservers for pull block #%ld\n", block_id);
             //remove this block
             block->DecRef();
             _block_manager->RemoveBlock(block_id);
@@ -1076,6 +1088,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
         int64_t seq = -1;
         int64_t offset = 0;
         bool success = true;
+        int pre_index = init_index;
         while (1) {
             ReadBlockRequest request;
             ReadBlockResponse response;
@@ -1083,12 +1096,25 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             request.set_block_id(block_id);
             request.set_offset(offset);
             request.set_read_len(256 * 1024);
+            request.set_require_block_version(true);
             bool ret = _rpc_client->SendRequest(chunkserver,
                                                 &ChunkServer_Stub::ReadBlock,
                                                 &request, &response, 15, 3);
             if (!ret || response.status() != 0) {
-                success = false;
-                break;
+                //try another chunkserver
+                //reset seq
+                --seq;
+                delete chunkserver;
+                pre_index = (pre_index + 1) % new_replica_info[i].chunkserver_address_size();
+                LOG(INFO, "Change src chunkserver to %s for pull block #%ld",
+                        new_replica_info[i].chunkserver_address(pre_index).c_str(), block_id);
+                if (pre_index == init_index) {
+                    success = false;
+                    break;
+                } else {
+                    _rpc_client->GetStub(new_replica_info[i].chunkserver_address(pre_index), &chunkserver);
+                    continue;
+                }
             }
             int32_t len = response.databuf().size();
             const char* buf = response.databuf().data();
@@ -1099,6 +1125,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
                 }
             } else {
                 block->SetSliceNum(seq);
+                block->SetVersion(response.block_version());
             }
             if (block->IsComplete() && _block_manager->CloseBlock(block)) {
                 LOG(INFO, "Pull block: #%ld finish\n", block_id);
