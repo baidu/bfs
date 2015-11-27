@@ -806,7 +806,12 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         assert(0);
     }
     /// replica num
-    int replica_num = file_info.replicas();
+    int replica_num;
+    if (request->has_replica_num()) {
+        replica_num = request->replica_num();
+    } else {
+        replica_num = file_info.replicas();
+    }
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {

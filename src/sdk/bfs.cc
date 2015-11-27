@@ -29,6 +29,7 @@ DECLARE_string(nameserver_port);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
+DECLARE_int32(default_replica_num);
 
 namespace bfs {
 
@@ -132,6 +133,8 @@ public:
     /// When rpc buffer full deley send write reqeust
     void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
                          int retry_times, std::string cs_addr);
+    /// When file is closed, do cleanup work background
+    void CloseCleanup();
     bool Flush();
     bool Sync();
     bool Close();
@@ -144,6 +147,7 @@ public:
     friend class FSImpl;
 private:
     bool CheckWriteWindows();
+    int BackgroundDoneChunkserverNum();
 private:
     FSImpl* _fs;                        ///< 文件系统
     RpcClient* _rpc_client;             ///< RpcClient
@@ -691,6 +695,10 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             AddBlockResponse response;
             request.set_sequence_id(0);
             request.set_file_name(_name);
+            if (FLAGS_sdk_write_mode == "fan-out") {
+                // get one more chunkserver
+                request.set_replica_num(FLAGS_default_replica_num + 1);
+            }
             bool ret = _rpc_client->SendRequest(_fs->_nameserver, &NameServer_Stub::AddBlock,
                 &request, &response, 15, 3);
             if (!ret || !response.has_block()) {
@@ -751,6 +759,18 @@ void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
     _mu.Lock("StartWrite relock", 1000);
 }
 
+int BfsFileImpl::BackgroundDoneChunkserverNum() {
+    _mu.AssertHeld();
+    std::map<std::string, common::SlidingWindow<int>* >::iterator it;
+    int count = 0;
+    for (it = _write_windows.begin(); it != _write_windows.end(); ++it) {
+        if (it->second->GetBaseOffset() == _last_seq + 1)  {
+            count++;
+        }
+    }
+    return count;
+}
+
 bool BfsFileImpl::CheckWriteWindows() {
     _mu.AssertHeld();
     if (FLAGS_sdk_write_mode == "chains") {
@@ -763,7 +783,7 @@ bool BfsFileImpl::CheckWriteWindows() {
             count++;
         }
     }
-    return count >= (int)_write_windows.size() - 1;
+    return count >= FLAGS_default_replica_num;
 }
 
 /// Send local buffer to chunkserver
@@ -852,6 +872,17 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      int retry_times,
                                      WriteBuffer* buffer,
                                      std::string cs_addr) {
+    if (_closed || _bg_error) {
+        LOG(INFO, "BackgroundWrite been omitted bid:%ld, seq:%d",
+                    " offset:%ld, len:%d, _back_writing:%d",
+            buffer->block_id(), buffer->Sequence(),
+            buffer->offset(), buffer->Size(), _back_writing);
+        common::atomic_dec(&_back_writing);
+        buffer->DecRef();
+        delete request;
+        delete response;
+        return;
+    }
     if (failed || response->status() != 0) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
                 && response->status() != 500) {
@@ -906,6 +937,9 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         int r = _write_windows[cs_addr]->Add(buffer->Sequence(), 0);
         assert(r == 0);
         buffer->DecRef();
+        if (_write_windows[cs_addr]->GetBaseOffset() == _last_seq + 1) {
+            _sync_signal.Broadcast();
+        }
         delete request;
     }
     delete response;
@@ -943,7 +977,9 @@ bool BfsFileImpl::Sync() {
         StartWrite(_write_buf);
     }
     int wait_time = 0;
-    while (_back_writing) {
+    while ((FLAGS_sdk_write_mode == "chains" && _back_writing) ||
+            (FLAGS_sdk_write_mode == "fan-out" &&
+            BackgroundDoneChunkserverNum() < FLAGS_default_replica_num)) {
         bool finish = _sync_signal.TimeWait(1000, "Sync wait");
         if (++wait_time >= 30 && (wait_time % 10 == 0)) {
             LOG(WARNING, "Sync timeout %d s, %s _back_writing= %d, finish= %d",
@@ -952,6 +988,26 @@ bool BfsFileImpl::Sync() {
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
     return !_bg_error;
+}
+
+void BfsFileImpl::CloseCleanup() {
+    {
+        MutexLock lock(&_mu);
+        int wait_time = 0;
+        while (_back_writing) {
+            bool finish = _sync_signal.TimeWait(1000, "Close cleanup wait");
+            if (++wait_time >= 30 && (wait_time % 10 == 0)) {
+                LOG(WARNING, "Close cleanup timeout %d s,  _back_writing= %d, finish= %d",
+                        wait_time,  _back_writing, finish);
+            }
+        }
+
+        delete _block_for_write;
+        _block_for_write = NULL;
+        delete _chunkserver;
+        _chunkserver = NULL;
+    }
+    delete this;
 }
 
 bool BfsFileImpl::Close() {
@@ -967,19 +1023,20 @@ bool BfsFileImpl::Close() {
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
         int wait_time = 0;
-        while (_back_writing) {
+        while ((FLAGS_sdk_write_mode == "chains" && _back_writing) ||
+                                (FLAGS_sdk_write_mode == "fan-out" &&
+                                BackgroundDoneChunkserverNum() < FLAGS_default_replica_num)) {
             bool finish = _sync_signal.TimeWait(1000, (_name + " Close wait").c_str());
             if (++wait_time >= 30 && (wait_time % 10 == 0)) {
                 LOG(WARNING, "Close timeout %d s, %s _back_writing= %d, finish= %d",
-                wait_time, _name.c_str(), _back_writing, finish);
+                        wait_time, _name.c_str(), _back_writing, finish);
             }
         }
-        delete _block_for_write;
-        _block_for_write = NULL;
     }
-    delete _chunkserver;
-    _chunkserver = NULL;
     LOG(DEBUG, "File %s closed", _name.c_str());
+    boost::function<void ()> task =
+        boost::bind(&BfsFileImpl::CloseCleanup, this);
+    g_thread_pool.AddTask(task);
     _closed = true;
     return !_bg_error;
 }
@@ -991,7 +1048,6 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
         return false;
     }
     *fs = impl;
-    g_thread_pool.Start();
     return true;
 }
 

@@ -24,9 +24,9 @@
 
 namespace common {
 
-int g_log_level = INFO;
-FILE* g_log_file = stdout;
-FILE* g_warning_file = NULL;
+int g_log_level;
+FILE* g_log_file;
+FILE* g_warning_file;
 
 void SetLogLevel(int level) {
     g_log_level = level;
@@ -36,6 +36,9 @@ class AsyncLogger {
 public:
     AsyncLogger()
       : jobs_(&mu_), done_(&mu_), stopped_(false) {
+        g_log_level = INFO;
+        g_log_file = stdout;
+        g_warning_file = NULL;
         thread_.Start(boost::bind(&AsyncLogger::AsyncWriter, this));
     }
     ~AsyncLogger() {
@@ -97,8 +100,6 @@ private:
     std::queue<std::pair<int, std::string*> > buffer_queue_;
 };
 
-AsyncLogger g_logger;
-
 bool SetWarningFile(const char* path, bool append) {
     const char* mode = append ? "ab" : "wb";
     FILE* fp = fopen(path, mode);
@@ -127,6 +128,7 @@ bool SetLogFile(const char* path, bool append) {
 }
 
 void Logv(int log_level, const char* format, va_list ap) {
+    static AsyncLogger g_logger;
     const uint64_t thread_id = syscall(__NR_gettid);
 
     // We try twice: the first time with a fixed-size stack allocated buffer,

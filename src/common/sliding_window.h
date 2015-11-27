@@ -36,6 +36,9 @@ public:
     int32_t Size() const {
         return item_count_;
     }
+    int32_t GetBaseOffset() const {
+        return base_offset_;
+    }
     void GetFragments(std::vector<std::pair<int32_t, Item> >* fragments) {
         MutexLock lock(&mu_);
         for (int i = 0; i < size_; i++) {
@@ -62,6 +65,7 @@ public:
         notifying_ = false;
     }
     int32_t UpBound() const {
+        MutexLock lock(&mu_);
         return base_offset_ + size_ - 1;
     }
     /// Add a new item to slinding window.
@@ -99,7 +103,7 @@ private:
     int32_t base_offset_;
     int32_t ready_;
     bool notifying_;
-    Mutex mu_;
+    mutable Mutex mu_;
 };
 
 } // namespace common

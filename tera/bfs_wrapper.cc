@@ -81,7 +81,6 @@ int32_t BfsFile::CloseFile() {
     LOG(INFO, "CloseFile(%s)", _name.c_str());
     common::timer::AutoTimer ac(1, "CloseFile", _name.c_str());
     bool ret = _file->Close();
-    delete _file;
     _file = NULL;
     if (!ret) {
         LOG(INFO, "CloseFile(%s) fail", _name.c_str());
