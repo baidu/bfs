@@ -1071,10 +1071,14 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             LOG(INFO, "Start pull #%ld from %s",
                 block_id, new_replica_info[i].chunkserver_address(0).c_str());
         }
-        if (!_rpc_client->GetStub(new_replica_info[i].chunkserver_address(0),
-                    &chunkserver)) {
-            LOG(WARNING, "Can't connect to chunkserver: %s\n",
-                    new_replica_info[i].chunkserver_address(0).c_str());
+        int init_index = 0;
+        for (; init_index < new_replica_info[i].chunkserver_address_size(); init_index++) {
+            if (_rpc_client->GetStub(new_replica_info[i].chunkserver_address(init_index), &chunkserver)) {
+                break;
+            }
+        }
+        if (init_index == new_replica_info[i].chunkserver_address_size()) {
+             LOG(WARNING, "Can't connect to any chunkservers for pull block #%ld\n", block_id);
             //remove this block
             block->DecRef();
             _block_manager->RemoveBlock(block_id);
@@ -1084,6 +1088,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
         int64_t seq = -1;
         int64_t offset = 0;
         bool success = true;
+        int pre_index = init_index;
         while (1) {
             ReadBlockRequest request;
             ReadBlockResponse response;
@@ -1096,8 +1101,20 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
                                                 &ChunkServer_Stub::ReadBlock,
                                                 &request, &response, 15, 3);
             if (!ret || response.status() != 0) {
-                success = false;
-                break;
+                //try another chunkserver
+                //reset seq
+                --seq;
+                delete chunkserver;
+                pre_index = (pre_index + 1) % new_replica_info[i].chunkserver_address_size();
+                LOG(INFO, "Change src chunkserver to %s for pull block #%ld",
+                        new_replica_info[i].chunkserver_address(pre_index).c_str(), block_id);
+                if (pre_index == init_index) {
+                    success = false;
+                    break;
+                } else {
+                    _rpc_client->GetStub(new_replica_info[i].chunkserver_address(pre_index), &chunkserver);
+                    continue;
+                }
             }
             int32_t len = response.databuf().size();
             const char* buf = response.databuf().data();
