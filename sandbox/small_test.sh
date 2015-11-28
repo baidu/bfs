@@ -23,6 +23,10 @@ sleep 3
 # Test move
 ./bfs_client mv /bfs_client /bin/bfs_client
 
+echo Test atomic rename
+./bfs_client put ./bfs_client /bfs_client
+./bfs_client mv /bfs_client /bin/bfs_client
+
 # Test get
 ./bfs_client get /bin/bfs_client ./binary
 
