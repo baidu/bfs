@@ -118,7 +118,7 @@ public:
     int32_t Read(char* buf, int32_t read_size);
     int32_t Write(const char* buf, int32_t write_size);
     /// Add buffer to  async write list
-    void StartWrite(WriteBuffer *buffer);
+    void StartWrite();
     /// Send local buffer to chunkserver
     void BackgroundWrite();
     /// Callback for sliding window
@@ -732,7 +732,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             w += n;
         }
         if (_write_buf->Available() == 0) {
-            StartWrite(_write_buf);
+            StartWrite();
         }
     }
     // printf("Write return %d, buf_size=%d\n", w, file->_write_buf->Size());
@@ -740,7 +740,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
     return w;
 }
 
-void BfsFileImpl::StartWrite(WriteBuffer *buffer) {
+void BfsFileImpl::StartWrite() {
     common::timer::AutoTimer at(5, "StartWrite", _name.c_str());
     _mu.AssertHeld();
     _write_queue.push(_write_buf);
@@ -943,7 +943,7 @@ bool BfsFileImpl::Sync() {
     }
     MutexLock lock(&_mu, "Sync", 1000);
     if (_write_buf && _write_buf->Size()) {
-        StartWrite(_write_buf);
+        StartWrite();
     }
     int wait_time = 0;
     while (_back_writing) {
@@ -966,7 +966,7 @@ bool BfsFileImpl::Close() {
                                          _block_for_write->block_size());
         }
         _write_buf->SetLast();
-        StartWrite(_write_buf);
+        StartWrite();
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
         int wait_time = 0;
