@@ -11,14 +11,11 @@
 #include "common/thread_pool.h"
 #include "proto/nameserver.pb.h"
 
-namespace leveldb {
-class DB;
-}
 namespace bfs {
 
+class NameSpace;
 class ChunkServerManager;
 class BlockManager;
-
 
 class NameServerImpl : public NameServer {
 public:
@@ -81,7 +78,6 @@ public:
                        ::bfs::SysStatResponse* response,
                        ::google::protobuf::Closure* done);
 private:
-    int DeleteDirectoryRecursive(std::string& path, bool recursive);
     void RebuildBlockMap();
     void LogStatus();
 
@@ -94,8 +90,8 @@ private:
     ChunkServerManager* _chunkserver_manager;
     /// Block map
     BlockManager* _block_manager;
-    /// Namespace database
-    leveldb::DB* _db;    ///< 存储nameserver数据
+    /// Namespace
+    NameSpace* _namespace;
     int64_t _namespace_version;
 };
 

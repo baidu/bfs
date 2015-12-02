@@ -26,7 +26,7 @@ DEFINE_string(chunkserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
 DEFINE_int32(chunkserver_max_pending_buffers, 10240, "Buffer num wait flush to disk");
 DEFINE_int32(chunkserver_work_thread_num, 10, "Chunkserver work thread num");
-DEFINE_int32(chunkserver_read_thread_num, 10, "Chunkserver work thread num");
+DEFINE_int32(chunkserver_read_thread_num, 20, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_write_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 
