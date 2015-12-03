@@ -270,8 +270,11 @@ public:
             return false;
         } else {
             nsblock = it->second;
-            if (nsblock->version >= 0 && block_version == 0) {
-                LOG(INFO, "block #%ld on slow chunkserver: %d, drop it", id, server_id);
+            if (nsblock->version >= 0 && block_version >= 0 &&
+                    nsblock->version != block_version) {
+                LOG(INFO, "block #%ld on slow chunkserver: %d,"
+                        " NSB version: %ld, cs version: %ld, drop it",
+                        id, server_id, nsblock->version, block_version);
                 return false;
             }
             if (nsblock->block_size !=  block_size && block_size) {
@@ -311,15 +314,27 @@ public:
         }
         return true;
     }
+    void RemoveBlocksForFile(const FileInfo& file_info) {
+        for (int i = 0; i < file_info.blocks_size(); i++) {
+            int64_t block_id = file_info.blocks(i);
+            std::set<int32_t> chunkservers;
+            GetReplicaLocation(block_id, &chunkservers);
+            std::set<int32_t>::iterator it = chunkservers.begin();
+            for (; it != chunkservers.end(); ++it) {
+                MarkObsoleteBlock(block_id, *it);
+            }
+            RemoveBlock(block_id);
+            LOG(INFO, "Remove block #%ld for %s", block_id, file_info.name().c_str());
+        }
+    }
     void RemoveBlock(int64_t block_id) {
         MutexLock lock(&_mu);
         NSBlockMap::iterator it = _block_map.find(block_id);
         delete it->second;
         _block_map.erase(it);
     }
-    bool MarkPullBlock(int32_t dst_cs, int64_t block_id, const std::string& src_cs) {
+    bool MarkPullBlock(int32_t dst_cs, int64_t block_id) {
         MutexLock lock(&_mu);
-        _blocks_to_replicate[dst_cs].insert(std::make_pair(block_id, src_cs));
         NSBlockMap::iterator it = _block_map.find(block_id);
         assert(it != _block_map.end());
         bool ret = false;
@@ -327,37 +342,37 @@ public:
         if (nsblock->pulling_chunkservers.find(dst_cs) ==
                 nsblock->pulling_chunkservers.end()) {
             nsblock->pulling_chunkservers.insert(dst_cs);
-            LOG(INFO, "Add replicate info dst cs: %d, block #%ld, src cs: %s\n",
-                    dst_cs, block_id, src_cs.c_str());
+            _blocks_to_replicate[dst_cs].insert(block_id);
+            LOG(INFO, "Add replicate info dst cs: %d, block #%ld",
+                    dst_cs, block_id);
             ret = true;
         }
         return ret;
     }
-    void UnmarkPullBlock(int64_t block_id, int32_t id) {
+    void UnmarkPullBlock(int32_t cs_id, int64_t block_id) {
         MutexLock lock(&_mu);
         NSBlockMap::iterator it = _block_map.find(block_id);
         if (it != _block_map.end()) {
             NSBlock* nsblock = it->second;
             assert(nsblock);
-            nsblock->pulling_chunkservers.erase(id);
+            nsblock->pulling_chunkservers.erase(cs_id);
             if (nsblock->pulling_chunkservers.empty() && nsblock->pending_change) {
                 nsblock->pending_change = false;
-                LOG(INFO, "Block #%ld on cs %d finish replicate\n", block_id, id);
+                LOG(INFO, "Block #%ld on cs %d finish replicate\n", block_id, cs_id);
             }
-            nsblock->replica.insert(id);
+            nsblock->replica.insert(cs_id);
         } else {
             LOG(WARNING, "Can't find block: #%ld ", block_id);
         }
     }
-    bool GetPullBlocks(int32_t id, std::set<std::pair<int64_t, std::string> >* blocks) {
+    bool GetPullBlocks(int32_t id, std::vector<std::pair<int64_t, std::set<int32_t> > >* blocks) {
         MutexLock lock(&_mu);
         bool ret = false;
-        std::map<int32_t, std::set<std::pair<int64_t, std::string> > >::iterator
-            it = _blocks_to_replicate.find(id);
+        std::map<int32_t, std::set<int64_t> >::iterator it = _blocks_to_replicate.find(id);
         if (it != _blocks_to_replicate.end()) {
-            std::set<std::pair<int64_t, std::string> >::iterator block_it = it->second.begin();
+            std::set<int64_t>::iterator block_it = it->second.begin();
             for (; block_it != it->second.end(); ++block_it) {
-                blocks->insert(std::make_pair(block_it->first, block_it->second));
+                blocks->push_back(std::make_pair(*block_it, _block_map[*block_it]->replica));
             }
             _blocks_to_replicate.erase(it);
             ret = true;
@@ -383,7 +398,7 @@ private:
     NSBlockMap _block_map;
     int64_t _next_block_id;
     std::map<int64_t, std::set<int32_t> > _obsolete_blocks;
-    std::map<int32_t, std::set<std::pair<int64_t, std::string> > > _blocks_to_replicate;
+    std::map<int32_t, std::set<int64_t> > _blocks_to_replicate;
 };
 
 class ChunkServerManager {
@@ -660,8 +675,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                     for (num = 0; num < more_replica_num &&
                             chains_it != chains.end(); ++chains_it) {
                         if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                            bool mark_pull = _block_manager->MarkPullBlock(chains_it->first, cur_block_id,
-                                                          request->chunkserver_addr());
+                            bool mark_pull = _block_manager->MarkPullBlock(chains_it->first, cur_block_id);
                             if (mark_pull) {
                                 num++;
                             }
@@ -674,16 +688,18 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 }
             }
         }
-        std::set<std::pair<int64_t, std::string> > pull_blocks;
+        std::vector<std::pair<int64_t, std::set<int32_t> > > pull_blocks;
         if (_block_manager->GetPullBlocks(id, &pull_blocks)) {
             ReplicaInfo* info = NULL;
-            std::set<std::pair<int64_t, std::string> >::iterator it = pull_blocks.begin();
-            for (; it != pull_blocks.end(); ++it) {
+            for (size_t i = 0; i < pull_blocks.size(); i++) {
                 info = response->add_new_replicas();
-                info->set_block_id(it->first);
-                info->add_chunkserver_address(it->second);
-                LOG(INFO, "Add pull block: #%ld dst cs: %d, src cs: %s\n",
-                        it->first, id, it->second.c_str());
+                info->set_block_id(pull_blocks[i].first);
+                std::set<int32_t>::iterator it = pull_blocks[i].second.begin();
+                for (; it != pull_blocks[i].second.end(); ++it) {
+                    std::string cs_addr = _chunkserver_manager->GetChunkServerAddr(*it);
+                    info->add_chunkserver_address(cs_addr);
+                }
+                LOG(INFO, "Add pull block: #%ld dst cs: %d", pull_blocks[i].first, id);
             }
         }
     }
@@ -698,7 +714,7 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
     response->set_status(0);
     int32_t chunkserver_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        _block_manager->UnmarkPullBlock(request->blocks(i), chunkserver_id);
+        _block_manager->UnmarkPullBlock(chunkserver_id, request->blocks(i));
     }
     done->Run();
 }
@@ -1037,36 +1053,46 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     const std::string& new_key = newkeys[newkeys.size()-1];
     std::string value;
     leveldb::Status s = _db->Get(leveldb::ReadOptions(), new_key, &value);
-    // New file must be not found
-    if (s.IsNotFound()) {
-        s = _db->Get(leveldb::ReadOptions(), old_key, &value);
-        if (s.ok()) {
-            FileInfo file_info;
-            bool ret = file_info.ParseFromArray(value.data(), value.size());
-            assert(ret);
-            // Directory rename is not impliment.
-            if ((file_info.type() & (1<<9)) == 0) {
-                leveldb::WriteBatch batch;
-                batch.Put(new_key, value);
-                batch.Delete(old_key);
-                s = _db->Write(leveldb::WriteOptions(), &batch);
-                if (s.ok()) {
-                    response->set_status(0);
-                    done->Run();
-                    return;
-                } else {
-                    LOG(WARNING, "Rename write leveldb fail\n");
-                }
+
+    assert(s.IsNotFound() || s.ok());
+
+    bool need_unlink = s.ok();
+    FileInfo file_info;
+    if (need_unlink) {
+        bool ret = file_info.ParseFromArray(value.data(), value.size());
+        assert(ret);
+    }
+    s = _db->Get(leveldb::ReadOptions(), old_key, &value);
+    if (s.ok()) {
+        FileInfo file_info;
+        bool ret = file_info.ParseFromArray(value.data(), value.size());
+        assert(ret);
+        // Directory rename is not impliment.
+        if ((file_info.type() & (1<<9)) == 0) {
+            leveldb::WriteBatch batch;
+            batch.Put(new_key, value);
+            batch.Delete(old_key);
+            s = _db->Write(leveldb::WriteOptions(), &batch);
+            if (s.ok()) {
+                response->set_status(0);
+                done->Run();
+                return;
             } else {
-                LOG(WARNING, "Rename not support directory\n");
+                LOG(WARNING, "Rename write leveldb fail\n");
             }
         } else {
-            LOG(WARNING, "Rename not found: %s\n", oldpath.c_str());
+            LOG(WARNING, "Rename not support directory\n");
         }
     } else {
-        LOG(WARNING, "Rename target file %s is existent\n", newpath.c_str());
+        LOG(WARNING, "Rename not found: %s\n", oldpath.c_str());
+        response->set_status(404);
+        done->Run();
+        return;
     }
-    response->set_status(886);
+
+    if (need_unlink) {
+        _block_manager->RemoveBlocksForFile(file_info);
+    }
     done->Run();
 }
 
@@ -1097,21 +1123,11 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
         assert(ret);
         // Only support file
         if ((file_info.type() & (1<<9)) == 0) {
-            for (int i = 0; i < file_info.blocks_size(); i++) {
-                int64_t block_id = file_info.blocks(i);
-                std::set<int32_t> chunkservers;
-                _block_manager->GetReplicaLocation(block_id, &chunkservers);
-                std::set<int32_t>::iterator it = chunkservers.begin();
-                for (; it != chunkservers.end(); ++it) {
-                    _block_manager->MarkObsoleteBlock(block_id, *it);
-                }
-                _block_manager->RemoveBlock(block_id);
-                LOG(INFO, "Unlink remove block #%ld", block_id);
-            }
             s = _db->Delete(leveldb::WriteOptions(), file_key);
             if (s.ok()) {
                 LOG(INFO, "Unlink done: %s\n", path.c_str());
                 ret_status = 0;
+                _block_manager->RemoveBlocksForFile(file_info);
             } else {
                 LOG(WARNING, "Unlink write meta fail: %s\n", path.c_str());
             }
@@ -1208,19 +1224,16 @@ int NameServerImpl::DeleteDirectoryRecursive(std::string& path, bool recursive) 
                 break;
             }
         } else {
-            for (int i = 0; i < file_info.blocks_size(); i++) {
-                std::set<int32_t> chunkservers;
-                _block_manager->GetReplicaLocation(file_info.blocks(i), &chunkservers);
-                std::set<int32_t>::iterator it = chunkservers.begin();
-                for (; it!= chunkservers.end(); ++it) {
-                    _block_manager->MarkObsoleteBlock(file_info.blocks(i), *it);
-                }
-            }
-            leveldb::Status s = _db->Delete(leveldb::WriteOptions(), std::string(key.data(), key.size()));
+            leveldb::Status s = _db->Delete(leveldb::WriteOptions(),
+                                            std::string(key.data(),
+                                            key.size()));
             if (s.ok()) {
-                LOG(INFO, "Unlink file done: %s\n", std::string(key.data() + 2, key.size() - 2).c_str());
+                _block_manager->RemoveBlocksForFile(file_info);
+                LOG(INFO, "Unlink file done: %s",
+                    std::string(key.data() + 2, key.size() - 2).c_str());
             } else {
-                LOG(WARNING, "Unlink file fail: %s\n", std::string(key.data() + 2, key.size() - 2).c_str());
+                LOG(WARNING, "Unlink file fail: %s",
+                    std::string(key.data() + 2, key.size() - 2).c_str());
                 ret_status = 886;
                 break;
             }

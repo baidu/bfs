@@ -167,6 +167,8 @@ private:
     char* _reada_buffer;                ///< Read ahead buffer
     int32_t _reada_buf_len;             ///< Read ahead buffer length
     int64_t _reada_base;                ///< Read ahead base offset
+    int32_t _sequential_ratio;          ///< Sequential read ratio
+    int64_t _last_read_offset;
 
     bool _closed;                       ///< 是否关闭
     Mutex   _mu;
@@ -528,7 +530,8 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
     _open_flags(flags), _block_for_write(NULL),
     _write_buf(NULL), _last_seq(-1), _back_writing(0),
     _chunkserver(NULL), _read_offset(0), _reada_buffer(NULL),
-    _reada_buf_len(0), _reada_base(0), _closed(false),
+    _reada_buf_len(0), _reada_base(0), _sequential_ratio(0),
+    _last_read_offset(-1), _closed(false),
     _sync_signal(&_mu), _bg_error(false) {
 }
 
@@ -553,6 +556,15 @@ BfsFileImpl::~BfsFileImpl () {
 int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada) {
     {
         MutexLock lock(&_mu, "Pread read buffer", 1000);
+        if (_last_read_offset == -1
+            || _last_read_offset != offset) {
+            _sequential_ratio /= 2;
+            LOG(DEBUG, "Pread(%s, %ld, %d) missing last_offset %ld",
+                _name.c_str(), offset, read_len, _last_read_offset);
+        } else {
+            _sequential_ratio++;
+        }
+        _last_read_offset = offset + read_len;
         if (_reada_buffer && _reada_base <= offset &&
                 _reada_base + _reada_buf_len >= offset + read_len) {
             memcpy(buf, _reada_buffer + (offset - _reada_base), read_len);
@@ -590,8 +602,12 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     request.set_block_id(block_id);
     request.set_offset(offset);
     int32_t rlen = read_len;
-    if (reada && read_len < FLAGS_sdk_file_reada_len) {
-        rlen = FLAGS_sdk_file_reada_len;
+    if (_sequential_ratio > 2 
+        && reada 
+        && read_len < FLAGS_sdk_file_reada_len) {
+        rlen = std::min(FLAGS_sdk_file_reada_len, _sequential_ratio * read_len);
+        LOG(DEBUG, "Pread(%s, %ld, %d) _sequential_ratio: %d, readahead to %d",
+            _name.c_str(), offset, read_len, _sequential_ratio, rlen);
     }
     request.set_read_len(rlen);
     bool ret = false;

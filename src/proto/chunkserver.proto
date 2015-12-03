@@ -28,12 +28,14 @@ message ReadBlockRequest {
     optional int64 block_id = 2;
     optional int64 offset = 3;
     optional int32 read_len = 4;
+    optional bool require_block_version = 5 [default = false];
 }
 message ReadBlockResponse {
     optional int64 sequence_id = 1;
     optional int32 status = 2;
     optional bytes databuf = 3;
     repeated int64 timestamp = 9;
+    optional int32 block_version = 4;
 }
 
 message GetBlockInfoRequest {
