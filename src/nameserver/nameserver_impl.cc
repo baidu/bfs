@@ -23,6 +23,7 @@
 
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(default_replica_num);
+DECLARE_int32(nameserver_safemode_time);
 
 namespace bfs {
 
@@ -526,16 +527,23 @@ private:
     int32_t _next_chunkserver_id;
 };
 
-NameServerImpl::NameServerImpl() {
+NameServerImpl::NameServerImpl() : _safe_mode(true) {
     _namespace_version = common::timer::get_micros();
     _namespace = new NameSpace(_namespace_version);
     _block_manager = new BlockManager();
     _chunkserver_manager = new ChunkServerManager(&_thread_pool, _block_manager);
     RebuildBlockMap();
     _thread_pool.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
+    _thread_pool.DelayTask(FLAGS_nameserver_safemode_time * 1000,
+        boost::bind(&NameServerImpl::LeaveSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
+}
+
+void NameServerImpl::LeaveSafemode() {
+    LOG(INFO, "Nameserver leave safemode");
+    _safe_mode = false;
 }
 
 void NameServerImpl::LogStatus() {
@@ -606,7 +614,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             }
 
             _chunkserver_manager->AddBlock(id, cur_block_id);
-            if (more_replica_num != 0) {
+            if (!_safe_mode && more_replica_num != 0) {
                 std::vector<std::pair<int32_t, std::string> > chains;
                 ///TODO: Not get all chunkservers, but get more.
                 if (_chunkserver_manager->GetChunkServerChains(more_replica_num, &chains)) {

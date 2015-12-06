@@ -80,7 +80,7 @@ public:
 private:
     void RebuildBlockMap();
     void LogStatus();
-
+    void LeaveSafemode();
 private:
     /// Global thread pool
     ThreadPool _thread_pool;
@@ -90,6 +90,7 @@ private:
     ChunkServerManager* _chunkserver_manager;
     /// Block map
     BlockManager* _block_manager;
+    bool _safe_mode;
     /// Namespace
     NameSpace* _namespace;
     int64_t _namespace_version;
