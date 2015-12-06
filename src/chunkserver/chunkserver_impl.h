@@ -18,6 +18,7 @@ class RpcClient;
 class NameServer_Stub;
 class ChunkServer_Stub;
 class Block;
+class CounterManager;
 
 class ChunkServerImpl : public ChunkServer {
 public:
@@ -60,6 +61,7 @@ private:
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
+    void GatherCounter();
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
@@ -71,6 +73,7 @@ private:
     NameServer_Stub* _nameserver;
     int32_t _chunkserver_id;
     int64_t _namespace_version;
+    CounterManager* _counter_manager;
 };
 
 } // namespace bfs

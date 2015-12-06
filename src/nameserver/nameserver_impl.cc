@@ -206,7 +206,7 @@ public:
         assert(it == _block_map.end());
         nsblock = new NSBlock(block_id);
         _block_map[block_id] = nsblock;
-        LOG(INFO, "Init block info: #%ld ", block_id);
+        LOG(DEBUG, "Init block info: #%ld ", block_id);
         if (_next_block_id <= block_id) {
             _next_block_id = block_id + 1;
         }
@@ -698,7 +698,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::vector<std::pair<int32_t, std::string> > chains;
     if (_chunkserver_manager->GetChunkServerChains(replica_num, &chains)) {
         int64_t new_block_id = _block_manager->NewBlockID();
-        LOG(DEBUG, "[AddBlock] new block for %s id= #%ld ",
+        LOG(INFO, "[AddBlock] new block for %s id= #%ld ",
             path.c_str(), new_block_id);
         LocatedBlock* block = response->mutable_block();
         _block_manager->AddNewBlock(new_block_id);
