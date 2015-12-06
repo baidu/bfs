@@ -669,7 +669,7 @@ ChunkServerImpl::ChunkServerImpl()
         assert(0);
     }
     _counter_manager = new CounterManager;
-    _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
+    _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this, true));
     _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::SendBlockReport, this));
     _heartbeat_thread->AddTask(boost::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
@@ -686,9 +686,10 @@ ChunkServerImpl::~ChunkServerImpl() {
     delete _block_manager;
     delete _rpc_client;
     delete _counter_manager;
+    LogStatus(false);
 }
 
-void ChunkServerImpl::LogStatus() {
+void ChunkServerImpl::LogStatus(bool routine) {
     _counter_manager->GatherCounters();
     CounterManager::Counters counters = _counter_manager->GetCounters();
 
@@ -700,7 +701,10 @@ void ChunkServerImpl::LogStatus() {
         counters.write_ops, counters.refuse_ops,
         counters.write_bytes / 1024.0 / 1024,
         counters.rpc_delay, counters.delay_all);
-    _work_thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
+    if (routine) {
+        _work_thread_pool->DelayTask(5000,
+            boost::bind(&ChunkServerImpl::LogStatus, this, true));
+    }
 }
 
 void ChunkServerImpl::SendHeartbeat() {

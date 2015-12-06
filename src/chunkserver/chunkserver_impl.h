@@ -41,7 +41,7 @@ public:
                               GetBlockInfoResponse* response,
                               ::google::protobuf::Closure* done);
 private:
-    void LogStatus();
+    void LogStatus(bool routine);
     void WriteNext(const std::string& next_server,
                    ChunkServer_Stub* stub,
                    const WriteBlockRequest* next_request,
