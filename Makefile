@@ -3,13 +3,7 @@
 OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 
-# Thirdparty
-SNAPPY_PATH=./thirdparty/snappy/
-PROTOBUF_PATH=./thirdparty/protobuf/
-PROTOC_PATH=
-PROTOC=$(PROTOC_PATH)protoc
-PBRPC_PATH=./thirdparty/sofa-pbrpc/output/
-BOOST_PATH=../boost/
+include depends.mk
 
 INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
