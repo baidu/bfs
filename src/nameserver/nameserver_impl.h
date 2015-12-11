@@ -11,6 +11,13 @@
 #include "common/thread_pool.h"
 #include "proto/nameserver.pb.h"
 
+namespace sofa {
+namespace pbrpc {
+class HTTPRequest;
+class HTTPResponse;
+}
+}
+
 namespace bfs {
 
 class NameSpace;
@@ -77,6 +84,7 @@ public:
                        const ::bfs::SysStatRequest* request,
                        ::bfs::SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
     void RebuildBlockMap();
     void LogStatus();

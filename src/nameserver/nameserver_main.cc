@@ -22,12 +22,16 @@ int main(int argc, char* argv[])
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     common::SetLogLevel(FLAGS_nameserver_log_level);
 
-    // rpc_server
-    sofa::pbrpc::RpcServerOptions options;
-    sofa::pbrpc::RpcServer rpc_server(options);
+
 
     // Service
-    bfs::NameServer* nameserver_service = new bfs::NameServerImpl();
+    bfs::NameServerImpl* nameserver_service = new bfs::NameServerImpl();
+
+    // rpc_server
+    sofa::pbrpc::RpcServerOptions options;
+    options.web_service_method = 
+        sofa::pbrpc::NewPermanentExtClosure(nameserver_service, &bfs::NameServerImpl::WebService);
+    sofa::pbrpc::RpcServer rpc_server(options);
 
     // Register
     if (!rpc_server.RegisterService(nameserver_service)) {
@@ -42,6 +46,7 @@ int main(int argc, char* argv[])
 
     rpc_server.Run();
 
+    delete options.web_service_method;
     return EXIT_SUCCESS;
 }
 

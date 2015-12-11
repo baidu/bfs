@@ -287,7 +287,7 @@ int BfsStat(bfs::FS* fs, int argc, char* argv[]) {
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
-    int gflags_argc = 0;
+    int gflags_argc = 1;
     ::google::ParseCommandLineFlags(&gflags_argc, &argv, false);
 
     if (argc < 2) {

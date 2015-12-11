@@ -18,6 +18,7 @@
 #include "common/mutex.h"
 #include "common/timer.h"
 #include "common/thread_pool.h"
+#include "common/string_util.h"
 
 #include "nameserver/namespace.h"
 
@@ -969,6 +970,47 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     _chunkserver_manager->ListChunkServers(response->mutable_chunkservers());
     response->set_status(0);
     done->Run();
+}
+
+bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
+                                sofa::pbrpc::HTTPResponse& response) {
+    ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
+        = new ::google::protobuf::RepeatedPtrField<ChunkServerInfo>;
+    _chunkserver_manager->ListChunkServers(chunkservers);
+
+    std::string str = "<script>setInterval('window.location.reload()', 1000);</script>";
+    str += "<link rel=\"stylesheet\" type=\"text/css\" "
+           "href=\"http://www.w3school.com.cn/c5.css\"/>";
+    str += "<style> body { background: #f9f9f9;}"
+           "</style>";
+    str +=
+        "<table class=dataintable>"
+        "<tr style=\"background-color: #317ef3\">"
+        "<td></td><td>id</td><td>address</td><td>data_size</td>"
+        "<td>blocks</td><td>alive</td><td>last_check</td><tr>";
+    for (int i = 0; i < chunkservers->size(); i++) {
+        const ChunkServerInfo& chunkserver = chunkservers->Get(i);
+        str += "<tr><td>";
+        str += common::NumToString(i + 1);
+        str += "</td><td>";
+        str += common::NumToString(chunkserver.id());
+        str += "</td><td>";
+        str += chunkserver.address();
+        str += "</td><td>";
+        str += common::HumanReadableString(chunkserver.data_size()) + "B";
+        str += "</td><td>";
+        str += common::NumToString(chunkserver.block_num());
+        str += "</td><td>";
+        str += chunkserver.is_dead() ? "dead" : "alive";
+        str += "</td><td>";
+        str += common::NumToString(
+                        common::timer::now_time() - chunkserver.last_heartbeat());
+        str += "</td></tr>";
+    }
+    str += "</table>";
+    delete chunkservers;
+    response.html = str;
+    return true;
 }
 
 }

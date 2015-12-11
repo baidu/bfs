@@ -11,11 +11,11 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(SNAPPY_PATH)/include \
                -I$(BOOST_PATH)/include
 
-LDFLAGS = -L$(PROTOBUF_PATH)/lib -lprotobuf \
-          -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
+LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
+          -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -L./thirdparty/leveldb -lleveldb \
           -L$(SNAPPY_PATH)/lib -lsnappy \
-          -lgflags -lpthread -lz
+          -lgflags -lpthread -lz -lrt
 
 CXXFLAGS = -Wall -fPIC $(OPT)
 
