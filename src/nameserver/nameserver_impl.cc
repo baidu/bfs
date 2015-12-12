@@ -978,7 +978,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         = new ::google::protobuf::RepeatedPtrField<ChunkServerInfo>;
     _chunkserver_manager->ListChunkServers(chunkservers);
 
-    std::string str = "<script>setInterval('window.location.reload()', 1000);</script>";
+    std::string str = "<html><head><title>BFS console</title><body>";
+    str += "<script>setInterval('window.location.reload()', 3000);</script>";
     str += "<link rel=\"stylesheet\" type=\"text/css\" "
            "href=\"http://www.w3school.com.cn/c5.css\"/>";
     str += "<style> body { background: #f9f9f9;}"
@@ -995,7 +996,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         str += "</td><td>";
         str += common::NumToString(chunkserver.id());
         str += "</td><td>";
-        str += chunkserver.address();
+        str += "<a href=\"http://" + chunkserver.address() + "\">" + chunkserver.address() + "</a>";
         str += "</td><td>";
         str += common::HumanReadableString(chunkserver.data_size()) + "B";
         str += "</td><td>";
@@ -1008,8 +1009,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         str += "</td></tr>";
     }
     str += "</table>";
+    str += "<body>";
     delete chunkservers;
-    response.html = str;
+    response.content = str;
     return true;
 }
 
