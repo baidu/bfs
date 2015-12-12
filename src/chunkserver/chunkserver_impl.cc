@@ -1196,6 +1196,43 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
 
 }
 
+bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
+                                sofa::pbrpc::HTTPResponse& response) {
+    CounterManager::Counters counters = _counter_manager->GetCounters();
+    std::string str =
+            "<html><head><title>BFS console</title>"
+            "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />"
+            "<link rel=\"stylesheet\" type=\"text/css\" "
+                "href=\"http://www.w3school.com.cn/c5.css\"/>"
+            "<style> body { background: #f9f9f9;}"
+            "</style>"
+            "</head>";
+    str += "<body> <h1>分布式文件系统控制台 - ChunkServer</h1>";
+    str += "<table class=dataintable>";
+    str += "<tr><td>Block number</td><td>Data size</td>"
+           "<td>Write(QPS)</td><td>Write(Speed)<td>Read(QPS)</td><td>Buffers</td><tr>";
+    str += "<tr><td>" + common::NumToString(g_blocks.Get()) + "</td>";
+    str += "<td>" + common::HumanReadableString(g_data_size.Get()) + "</td>";
+    str += "<td>" + common::NumToString(counters.write_ops) + "</td>";
+    str += "<td>" + common::HumanReadableString(counters.write_bytes) + "/S</td>";
+    str += "<td>" + common::NumToString(counters.read_ops) + "</td>";
+    str += "<td>" + common::NumToString(g_block_buffers.Get()) + "</td>";
+    str += "</tr>";
+    str += "</table>";
+    str += "<script> var int = setInterval('window.location.reload()', 1000);"
+           "function check(box) {"
+           "if(box.checked) {"
+           "    int = setInterval('window.location.reload()', 1000);"
+           "} else {"
+           "    clearInterval(int);"
+           "}"
+           "}</script>"
+           "<input onclick=\"javascript:check(this)\" "
+           "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
+    str += "</body></html>";
+    response.content = str;
+    return true;
+}
 } // namespace bfs
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

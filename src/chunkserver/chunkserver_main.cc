@@ -41,6 +41,9 @@ int main(int argc, char* argv[])
     if (!rpc_server.RegisterService(chunkserver_service)) {
             return EXIT_FAILURE;
     }
+    sofa::pbrpc::Servlet webservice =
+        sofa::pbrpc::NewPermanentExtClosure(chunkserver_service, &bfs::ChunkServerImpl::WebService);
+    rpc_server.RegisterWebServlet("/dfs", webservice);
 
     std::string server_host = std::string("0.0.0.0:") + FLAGS_chunkserver_port;
     if (!rpc_server.Start(server_host)) {

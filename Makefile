@@ -83,6 +83,7 @@ clean:
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 
 install:
+	rm -rf output
 	mkdir -p output/include
 	mkdir -p output/lib
 	mkdir -p output/bin

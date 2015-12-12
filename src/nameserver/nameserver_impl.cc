@@ -978,15 +978,20 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         = new ::google::protobuf::RepeatedPtrField<ChunkServerInfo>;
     _chunkserver_manager->ListChunkServers(chunkservers);
 
-    std::string str = "<html><head><title>BFS console</title><body>";
-    str += "<script>setInterval('window.location.reload()', 3000);</script>";
-    str += "<link rel=\"stylesheet\" type=\"text/css\" "
-           "href=\"http://www.w3school.com.cn/c5.css\"/>";
-    str += "<style> body { background: #f9f9f9;}"
-           "</style>";
+    std::string str = 
+            "<html><head><title>BFS console</title>\n"
+            "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
+            "<link rel=\"stylesheet\" type=\"text/css\" "
+                "href=\"http://www.w3school.com.cn/c5.css\"/>\n"
+            "<style> body { background: #f9f9f9;}"
+            "a:link,a:visited{color:#4078c0;} a:link{text-decoration:none;}"
+            "</style>\n"
+            "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
+            "</head>\n";
+    str += "<body>";
+    str += "<h1>分布式文件系统控制台 - NameServer</h1>";
     str +=
         "<table class=dataintable>"
-        "<tr style=\"background-color: #317ef3\">"
         "<td></td><td>id</td><td>address</td><td>data_size</td>"
         "<td>blocks</td><td>alive</td><td>last_check</td><tr>";
     for (int i = 0; i < chunkservers->size(); i++) {
@@ -996,7 +1001,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         str += "</td><td>";
         str += common::NumToString(chunkserver.id());
         str += "</td><td>";
-        str += "<a href=\"http://" + chunkserver.address() + "\">" + chunkserver.address() + "</a>";
+        str += "<a href=\"http://" + chunkserver.address() + "/dfs\">"
+               + chunkserver.address() + "</a>";
         str += "</td><td>";
         str += common::HumanReadableString(chunkserver.data_size()) + "B";
         str += "</td><td>";
@@ -1009,7 +1015,17 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         str += "</td></tr>";
     }
     str += "</table>";
-    str += "<body>";
+    str += "<script> var int = setInterval('window.location.reload()', 1000);"
+           "function check(box) {"
+           "if(box.checked) {"
+           "    int = setInterval('window.location.reload()', 1000);"
+           "} else {"
+           "    clearInterval(int);"
+           "}"
+           "}</script>"
+           "<input onclick=\"javascript:check(this)\" "
+           "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
+    str += "</body></html>";
     delete chunkservers;
     response.content = str;
     return true;

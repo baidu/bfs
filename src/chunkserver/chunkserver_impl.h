@@ -11,6 +11,12 @@
 #include "proto/nameserver.pb.h"
 #include "common/thread_pool.h"
 
+namespace sofa {
+namespace pbrpc {
+class HTTPRequest;
+class HTTPResponse;
+}
+}
 namespace bfs {
 
 class BlockManager;
@@ -40,6 +46,8 @@ public:
                               const GetBlockInfoRequest* request,
                               GetBlockInfoResponse* response,
                               ::google::protobuf::Closure* done);
+    bool WebService(const sofa::pbrpc::HTTPRequest& request,
+                    sofa::pbrpc::HTTPResponse& response);
 private:
     void LogStatus(bool routine);
     void WriteNext(const std::string& next_server,
