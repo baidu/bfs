@@ -58,8 +58,8 @@ private:
     void LocalWriteBlock(const WriteBlockRequest* request,
                          WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
-    void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
-    void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
+    void RemoveObsoleteBlocks(std::vector<int64_t>* blocks);
+    void PullNewBlocks(std::vector<ReplicaInfo>* new_replica_info);
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
