@@ -35,6 +35,7 @@ common::Counter g_block_report;
 common::Counter g_unlink;
 common::Counter g_create_file;
 common::Counter g_list_dir;
+common::Counter g_report_blocks;
 
 class BlockManager {
 public:
@@ -57,6 +58,7 @@ public:
         MutexLock lock(&_mu, "BlockManager::NewBlockID", 1000);
         return _next_block_id++;
     }
+    /*
     bool RemoveReplicaBlock(int64_t block_id, int32_t chunkserver_id) {
         MutexLock lock(&_mu, "BlockManager::RemoveReplicaBlock", 1000);
         NSBlockMap::iterator it = _block_map.find(block_id);
@@ -76,7 +78,7 @@ public:
             // not report yet ?
             return false;
         }
-    }
+    }*/
     bool GetBlock(int64_t block_id, NSBlock* block) {
         MutexLock lock(&_mu, "BlockManager::GetBlock", 1000);
         NSBlockMap::iterator it = _block_map.find(block_id);
@@ -220,6 +222,7 @@ public:
         NSBlockMap::iterator it = _block_map.find(id);
         if (it == _block_map.end()) {
             //have been removed
+            LOG(DEBUG, "UpdateBlockInfo(%ld) has been removed", id); 
             return false;
         } else {
             nsblock = it->second;
@@ -231,15 +234,19 @@ public:
                 return false;
             }
             if (nsblock->block_size !=  block_size && block_size) {
+                // update
                 if (nsblock->block_size) {
                     LOG(WARNING, "block #%ld size mismatch", id);
                     assert(0);
                     return false;
                 } else {
-                    LOG(DEBUG, "block #%ld size update, %ld to %ld",
+                    LOG(INFO, "block #%ld size update, %ld to %ld",
                         id, nsblock->block_size, block_size);
                     nsblock->block_size = block_size;
                 }
+            } else {
+                //LOG(DEBUG, "UpdateBlockInfo(%ld) ignored, from %ld to %ld",
+                //    id, nsblock->block_size, block_size);
             }
         }
         /// 增加一个副本, 无论之前已经有几个了, 多余的通过gc处理
@@ -283,6 +290,9 @@ public:
     void RemoveBlock(int64_t block_id) {
         MutexLock lock(&_mu);
         NSBlockMap::iterator it = _block_map.find(block_id);
+        if (it == _block_map.end()) {
+            LOG(FATAL, "RemoveBlock(%ld) not found", block_id);
+        }
         delete it->second;
         _block_map.erase(it);
     }
@@ -549,10 +559,10 @@ void NameServerImpl::LeaveSafemode() {
 
 void NameServerImpl::LogStatus() {
     LOG(INFO, "[Status] create %ld list %ld get_loc %ld add_block %ld "
-              "unlink %ld report %ld heartbeat %ld",
+              "unlink %ld report %ld %ld heartbeat %ld",
         g_create_file.Clear(), g_list_dir.Clear(), g_get_location.Clear(),
         g_add_block.Clear(), g_unlink.Clear(), g_block_report.Clear(),
-        g_heart_beat.Clear());
+        g_report_blocks.Clear(), g_heart_beat.Clear());
     _thread_pool.DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
 }
 
@@ -589,6 +599,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     } else {
         const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
         for (int i = 0; i < blocks.size(); i++) {
+            g_report_blocks.Inc();
             const ReportBlockInfo& block =  blocks.Get(i);
             int64_t cur_block_id = block.block_id();
             int64_t cur_block_size = block.block_size();
@@ -596,7 +607,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             if (_block_manager->CheckObsoleteBlock(cur_block_id, id)) {
                 //add to response
                 response->add_obsolete_blocks(cur_block_id);
-                _block_manager->RemoveReplicaBlock(cur_block_id, id);
+                //_block_manager->RemoveReplicaBlock(cur_block_id, id);
                 _chunkserver_manager->RemoveBlock(id, cur_block_id);
                 _block_manager->UnmarkObsoleteBlock(cur_block_id, id);
                 LOG(INFO, "obsolete_block: #%ld in _obsolete_blocks", cur_block_id);
@@ -714,7 +725,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         for (int i =0; i<replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
-            LOG(INFO, "Add %s to response\n", chains[i].second.c_str());
+            LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
             _block_manager->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0);
         }
         block->set_block_id(new_block_id);
@@ -990,6 +1001,17 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             "</head>\n";
     str += "<body>";
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
+    str += "<h2 align=left>Nameserver status</h2>";
+    str += "<p align=left>Pending tasks: "
+        + common::NumToString(_thread_pool.PendingNum()) + "</p>";
+    str += "<p align=left><a href=\"/service?name=bfs.NameServer\">Rpc status</a></p>";
+    str += "<h2 align=left>Chunkserver status</h2>";
+    str += "<p align=left>Total: " + common::NumToString(chunkservers->size())+"</p>";
+    int dead_num = 0;
+    for (int i = 0; i < chunkservers->size(); i++) {
+        if (chunkservers->Get(i).is_dead()) dead_num++;
+    }
+    str += "<p align=left>Dead: " + common::NumToString(dead_num)+"</p>";
     str +=
         "<table class=dataintable>"
         "<td></td><td>id</td><td>address</td><td>data_size</td>"
