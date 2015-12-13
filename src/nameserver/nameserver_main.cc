@@ -49,6 +49,7 @@ int main(int argc, char* argv[])
     rpc_server.Run();
 
     delete webservice;
+    LOG(WARNING, "Nameserver exit");
     return EXIT_SUCCESS;
 }
 
