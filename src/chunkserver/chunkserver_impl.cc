@@ -130,8 +130,8 @@ public:
         LOG(INFO, "Release #%ld _block_buf_list size= %lu",
             _meta.block_id, _block_buf_list.size());
         for (uint32_t i = 0; i < _block_buf_list.size(); i++) {
-            const char* buf = _block_buf_list[0].first;
-            int len = _block_buf_list[0].second;
+            const char* buf = _block_buf_list[i].first;
+            int len = _block_buf_list[i].second;
             if (!_deleted) {
                 LOG(WARNING, "Data lost, %d bytes in %s, #%ld _block_buf_list",
                     len, _disk_file.c_str(), _meta.block_id);
