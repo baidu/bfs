@@ -67,6 +67,8 @@ extern common::Counter g_rpc_delay_all;
 extern common::Counter g_rpc_count;
 extern common::Counter g_data_size;
 
+const int kUnknownChunkServerId = -1;
+
 struct Buffer {
     const char* data_;
     int32_t len_;
@@ -440,7 +442,8 @@ class BlockManager {
 public:
     BlockManager(ThreadPool* thread_pool, const std::string& store_path)
         :_thread_pool(thread_pool),
-         _metadb(NULL) {
+         _metadb(NULL),
+         _namespace_version(0) {
          ParseStorePath(store_path);
          _file_cache = new FileCache(FLAGS_chunkserver_file_cache_size);
     }
@@ -473,6 +476,7 @@ public:
     const std::string& GetStorePath(int64_t block_id) {
         return _store_path_list[block_id % _store_path_list.size()];
     }
+    /// Load meta from disk
     bool LoadStorage() {
         MutexLock lock(&_mu);
         leveldb::Options options;
@@ -482,9 +486,18 @@ public:
             LOG(WARNING, "Load blocks fail: %s", s.ToString().c_str());
             return false;
         }
+
+        std::string version_key(8, '\0');
+        version_key.append("version");
+        std::string version_str;
+        s = _metadb->Get(leveldb::ReadOptions(), version_key, &version_str);
+        if (s.ok() && version_str.size() == 8) {
+            _namespace_version = *(reinterpret_cast<int64_t*>(&version_str[0]));
+            LOG(INFO, "Load namespace %ld", _namespace_version);
+        }
         int block_num = 0;
         leveldb::Iterator* it = _metadb->NewIterator(leveldb::ReadOptions());
-        for (it->SeekToFirst(); it->Valid(); it->Next()) {
+        for (it->Seek(version_key+'\0'); it->Valid(); it->Next()) {
             int64_t block_id = 0;
             if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
                 LOG(WARNING, "Unknown key: %s\n", it->key().ToString().c_str());
@@ -501,7 +514,28 @@ public:
             block_num ++;
         }
         delete it;
-        LOG(INFO, "Load %ld blocks\n", block_num);
+        LOG(INFO, "Load %ld blocks, namespace version: %ld", block_num, _namespace_version);
+        if (_namespace_version == 0 && block_num > 0) {
+            LOG(WARNING, "Namespace version lost!");
+        }
+        return true;
+    }
+    int64_t NameSpaceVersion() const {
+        return _namespace_version;
+    }
+    bool SetNameSpaceVersion(int64_t version) {
+        MutexLock lock(&_mu);
+        std::string version_key(8, '\0');
+        version_key.append("version");
+        std::string version_str(8, '\0');
+        *(reinterpret_cast<int64_t*>(&version_str[0])) = version;
+        leveldb::Status s = _metadb->Put(leveldb::WriteOptions(), version_key, version_str);
+        if (!s.ok()) {
+            LOG(WARNING, "SetNameSpaceVersion fail: %s", s.ToString().c_str());
+            return false;
+        }
+        _namespace_version = version;
+        LOG(INFO, "Set namespace version: %ld", _namespace_version);
         return true;
     }
     bool ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
@@ -519,6 +553,7 @@ public:
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
             blocks->push_back(meta);
+            LOG(DEBUG, "List block %ld", block_id);
             if (--num <= 0) {
                 break;
             }
@@ -651,10 +686,11 @@ private:
     leveldb::DB* _metadb;
     FileCache* _file_cache;
     Mutex   _mu;
+    int64_t _namespace_version;
 };
 
 ChunkServerImpl::ChunkServerImpl()
-    : _chunkserver_id(0), _namespace_version(0) {
+    : _chunkserver_id(kUnknownChunkServerId) {
     _data_server_addr = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     _work_thread_pool = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     _read_thread_pool = new ThreadPool(FLAGS_chunkserver_read_thread_num);
@@ -710,19 +746,16 @@ void ChunkServerImpl::LogStatus(bool routine) {
 void ChunkServerImpl::SendHeartbeat() {
     HeartBeatRequest request;
     request.set_chunkserver_id(_chunkserver_id);
-    request.set_data_server_addr(_data_server_addr);
-    request.set_namespace_version(_namespace_version);
+    request.set_namespace_version(_block_manager->NameSpaceVersion());
     request.set_block_num(g_blocks.Get());
     request.set_data_size(g_data_size.Get());
     HeartBeatResponse response;
     if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
             &request, &response, 15, 1)) {
         LOG(WARNING, "Heat beat fail\n");
-    } else if (_namespace_version != response.namespace_version()) {
-        LOG(INFO, "Connect to nameserver, new chunkserver_id: %d\n",
-            response.chunkserver_id());
-        _namespace_version = response.namespace_version();
-        _chunkserver_id = response.chunkserver_id();
+    } else if (_block_manager->NameSpaceVersion() != response.namespace_version()) {
+        LOG(INFO, "Namespace version mismatch self:%ld ns:%ld",
+            _block_manager->NameSpaceVersion(), response.namespace_version());
     }
     _heartbeat_thread->DelayTask(FLAGS_heartbeat_interval * 1000,
         boost::bind(&ChunkServerImpl::SendHeartbeat, this));
@@ -734,7 +767,7 @@ void ChunkServerImpl::SendBlockReport() {
     BlockReportRequest request;
     request.set_chunkserver_id(_chunkserver_id);
     request.set_chunkserver_addr(_data_server_addr);
-    request.set_namespace_version(_namespace_version);
+    request.set_namespace_version(_block_manager->NameSpaceVersion());
 
     std::vector<BlockMeta> blocks;
     _block_manager->ListBlocks(&blocks, last_report_blockid + 1, FLAGS_blockreport_size);
@@ -762,6 +795,23 @@ void ChunkServerImpl::SendBlockReport() {
             &request, &response, 20, 3)) {
         LOG(WARNING, "Block reprot fail\n");
     } else {
+        int64_t new_version = response.namespace_version();
+        if (_block_manager->NameSpaceVersion() != new_version) {
+            LOG(INFO, "New namespace version: %ld chunkserver id: %d",
+                new_version, response.chunkserver_id());
+            if (!_block_manager->SetNameSpaceVersion(new_version)) {
+                LOG(FATAL, "Can not change namespace version");
+            }
+            _chunkserver_id = response.chunkserver_id();
+        } else if (_chunkserver_id == kUnknownChunkServerId
+                   && response.chunkserver_id() != kUnknownChunkServerId) {
+            _chunkserver_id = response.chunkserver_id();
+            LOG(INFO, "Reconnect to nameserver version= %ld, new cs_id = %d",
+                _block_manager->NameSpaceVersion(), _chunkserver_id);
+        } else if (response.chunkserver_id() == kUnknownChunkServerId) {
+            LOG(INFO, "Unknown chunkserver, namespace version: %ld, old_id: %d",
+                _block_manager->NameSpaceVersion(), _chunkserver_id);
+        }
         //deal with obsolete blocks
         std::vector<int64_t> obsolete_blocks;
         for (int i = 0; i < response.obsolete_blocks_size(); i++) {
@@ -794,7 +844,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     BlockReportRequest request;
     request.set_chunkserver_id(_chunkserver_id);
     request.set_chunkserver_addr(_data_server_addr);
-    request.set_namespace_version(_namespace_version);
+    request.set_namespace_version(_block_manager->NameSpaceVersion());
     request.set_is_complete(false);
 
     ReportBlockInfo* info = request.add_blocks();

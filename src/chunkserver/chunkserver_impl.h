@@ -80,7 +80,6 @@ private:
     ThreadPool*     _heartbeat_thread;
     NameServer_Stub* _nameserver;
     int32_t _chunkserver_id;
-    int64_t _namespace_version;
     CounterManager* _counter_manager;
 };
 

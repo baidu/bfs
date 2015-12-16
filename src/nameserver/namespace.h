@@ -18,7 +18,7 @@ namespace bfs {
 
 class NameSpace {
 public:
-    NameSpace(int64_t namespace_version);
+    NameSpace();
     /// List a directory
     int ListDirectory(const std::string& path,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
@@ -44,8 +44,11 @@ public:
     bool UpdateFileInfo(const std::string& file_key, FileInfo& file_info);
     /// Delete file
     bool DeleteFileInfo(const std::string file_key);
+    /// Namespace version
+    int64_t Version() const;
 private:
     leveldb::DB* _db;
+    int64_t _version;   /// Namespace version.
 };
 
 }

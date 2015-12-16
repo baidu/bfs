@@ -118,7 +118,6 @@ message ChangeReplicaNumResponse {
 
 message HeartBeatRequest {
     optional int64 sequence_id = 1;
-    optional string data_server_addr = 2;
     optional int32 chunkserver_id = 3;
     optional int64 namespace_version = 4;
     optional int32 block_num = 5;
@@ -126,7 +125,6 @@ message HeartBeatRequest {
 }
 message HeartBeatResponse {
     optional int64 sequence_id = 1;
-    optional int32 chunkserver_id = 2;
     optional int64 namespace_version = 3;
 }
 
@@ -152,6 +150,8 @@ message BlockReportResponse {
     optional int32 status = 2;
     repeated int64 obsolete_blocks = 3;
     repeated ReplicaInfo new_replicas = 4;
+    optional int32 chunkserver_id = 5;      // for register
+    optional int64 namespace_version = 6;   // for register
 }
 message PullBlockReportRequest {
     optional int64 sequence_id = 1;
