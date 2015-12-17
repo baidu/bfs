@@ -899,9 +899,11 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         /// Flow control
-        if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
+        if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers
+            || _work_thread_pool->PendingNum() > FLAGS_chunkserver_max_pending_buffers) {
             response->set_status(500);
-            LOG(WARNING, "[WriteBlock] pending reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
+            LOG(WARNING, "[WriteBlock] pending buf[%ld] req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
+                g_block_buffers.Get(), _work_thread_pool->PendingNum(),
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
             done->Run();
             g_refuse_ops.Inc();
