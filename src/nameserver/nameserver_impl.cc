@@ -1018,6 +1018,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         = new ::google::protobuf::RepeatedPtrField<ChunkServerInfo>;
     _chunkserver_manager->ListChunkServers(chunkservers);
 
+    std::string table_str;
     std::string str = 
             "<html><head><title>BFS console</title>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
@@ -1030,51 +1031,61 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" rel=\"stylesheet\">\n"
             "</head>\n";
     str += "<body><div class=\"col-sm-12  col-md-12\">";
+
+    table_str +=
+        "<table class=\"table\">"
+        "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
+        "<td>Disk quota</td><td>Disk used</td>"
+        "<td>alive</td><td>last_check</td><tr>";
+    int dead_num = 0;
+    int64_t total_quota = 0;
+    int64_t total_data = 0;
+    for (int i = 0; i < chunkservers->size(); i++) {
+        const ChunkServerInfo& chunkserver = chunkservers->Get(i);
+        if (chunkservers->Get(i).is_dead()) {
+            dead_num++;
+        } else {
+            total_quota += chunkserver.disk_quota();
+            total_data += chunkserver.data_size();
+        }
+
+        table_str += "</td><td>";
+        table_str += common::NumToString(chunkserver.id());
+        table_str += "</td><td>";
+        table_str += "<a href=\"http://" + chunkserver.address() + "/dfs\">"
+               + chunkserver.address() + "</a>";
+        table_str += "</td><td>";
+        table_str += common::NumToString(chunkserver.block_num());
+        table_str += "</td><td>";
+        table_str += common::HumanReadableString(chunkserver.data_size()) + "B";
+        table_str += "</td><td>";
+        table_str += common::HumanReadableString(chunkserver.disk_quota()) + "B";
+        std::string ratio = common::NumToString(
+            chunkserver.data_size() * 100 / chunkserver.disk_quota());
+        table_str += "</td><td><div class=\"progress\" style=\"margin-bottom:0\">"
+               "<div class=\"progress-bar\" "
+                    "role=\"progressbar\" aria-valuenow=\""+ ratio + "\" aria-valuemin=\"0\" "
+                    "aria-valuemax=\"100\" style=\"width: "+ ratio + "%\">" + ratio + "%"
+               "</div></div>";
+        table_str += "</td><td>";
+        table_str += chunkserver.is_dead() ? "dead" : "alive";
+        table_str += "</td><td>";
+        table_str += common::NumToString(
+                        common::timer::now_time() - chunkserver.last_heartbeat());
+        table_str += "</td></tr>";
+    }
+    table_str += "</table>";
+
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
     str += "<h2 align=left>Nameserver status</h2>";
+    str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</p>";
+    str += "<p align=left>Used: " + common::HumanReadableString(total_data) + "B</p>";
     str += "<p align=left>Pending tasks: "
         + common::NumToString(_thread_pool.PendingNum()) + "</p>";
     str += "<p align=left><a href=\"/service?name=bfs.NameServer\">Rpc status</a></p>";
     str += "<h2 align=left>Chunkserver status</h2>";
     str += "<p align=left>Total: " + common::NumToString(chunkservers->size())+"</p>";
-    int dead_num = 0;
-    for (int i = 0; i < chunkservers->size(); i++) {
-        if (chunkservers->Get(i).is_dead()) dead_num++;
-    }
     str += "<p align=left>Dead: " + common::NumToString(dead_num)+"</p>";
-    str +=
-        "<table class=\"table table-hover\">"
-        "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
-        "<td>Disk quota</td><td>Disk used</td>"
-        "<td>alive</td><td>last_check</td><tr>";
-    for (int i = 0; i < chunkservers->size(); i++) {
-        const ChunkServerInfo& chunkserver = chunkservers->Get(i);
-        str += "</td><td>";
-        str += common::NumToString(chunkserver.id());
-        str += "</td><td>";
-        str += "<a href=\"http://" + chunkserver.address() + "/dfs\">"
-               + chunkserver.address() + "</a>";
-        str += "</td><td>";
-        str += common::NumToString(chunkserver.block_num());
-        str += "</td><td>";
-        str += common::HumanReadableString(chunkserver.data_size()) + "B";
-        str += "</td><td>";
-        str += common::HumanReadableString(chunkserver.disk_quota()) + "B";
-        std::string ratio = common::NumToString(
-            chunkserver.data_size() * 100 / chunkserver.disk_quota());
-        str += "</td><td><div class=\"progress\" style=\"margin-bottom:0\">"
-               "<div class=\"progress-bar\" "
-                    "role=\"progressbar\" aria-valuenow=\""+ ratio + "\" aria-valuemin=\"0\" "
-                    "aria-valuemax=\"100\" style=\"width: "+ ratio + "%\">" + ratio + "%"
-               "</div></div>";
-        str += "</td><td>";
-        str += chunkserver.is_dead() ? "dead" : "alive";
-        str += "</td><td>";
-        str += common::NumToString(
-                        common::timer::now_time() - chunkserver.last_heartbeat());
-        str += "</td></tr>";
-    }
-    str += "</table>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"
@@ -1085,6 +1096,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
            "}</script>"
            "<input onclick=\"javascript:check(this)\" "
            "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
+    str += table_str;
     str += "</div></body></html>";
     delete chunkservers;
     response.content = str;
