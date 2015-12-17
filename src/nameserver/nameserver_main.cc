@@ -22,17 +22,23 @@ int main(int argc, char* argv[])
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     common::SetLogLevel(FLAGS_nameserver_log_level);
 
-    // rpc_server
-    sofa::pbrpc::RpcServerOptions options;
-    sofa::pbrpc::RpcServer rpc_server(options);
+
 
     // Service
-    bfs::NameServer* nameserver_service = new bfs::NameServerImpl();
+    bfs::NameServerImpl* nameserver_service = new bfs::NameServerImpl();
+
+    // rpc_server
+    sofa::pbrpc::RpcServerOptions options;
+        
+    sofa::pbrpc::RpcServer rpc_server(options);
 
     // Register
     if (!rpc_server.RegisterService(nameserver_service)) {
             return EXIT_FAILURE;
     }
+    sofa::pbrpc::Servlet webservice =
+        sofa::pbrpc::NewPermanentExtClosure(nameserver_service, &bfs::NameServerImpl::WebService);
+    rpc_server.RegisterWebServlet("/dfs", webservice);
 
     // Start
     std::string server_host = std::string("0.0.0.0:") + FLAGS_nameserver_port;
@@ -42,6 +48,8 @@ int main(int argc, char* argv[])
 
     rpc_server.Run();
 
+    delete webservice;
+    LOG(WARNING, "Nameserver exit");
     return EXIT_SUCCESS;
 }
 

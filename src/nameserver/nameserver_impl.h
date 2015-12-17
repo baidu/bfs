@@ -11,14 +11,18 @@
 #include "common/thread_pool.h"
 #include "proto/nameserver.pb.h"
 
-namespace leveldb {
-class DB;
+namespace sofa {
+namespace pbrpc {
+class HTTPRequest;
+class HTTPResponse;
 }
+}
+
 namespace bfs {
 
+class NameSpace;
 class ChunkServerManager;
 class BlockManager;
-
 
 class NameServerImpl : public NameServer {
 public:
@@ -80,11 +84,11 @@ public:
                        const ::bfs::SysStatRequest* request,
                        ::bfs::SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
-    int DeleteDirectoryRecursive(std::string& path, bool recursive);
     void RebuildBlockMap();
     void LogStatus();
-
+    void LeaveSafemode();
 private:
     /// Global thread pool
     ThreadPool _thread_pool;
@@ -94,8 +98,9 @@ private:
     ChunkServerManager* _chunkserver_manager;
     /// Block map
     BlockManager* _block_manager;
-    /// Namespace database
-    leveldb::DB* _db;    ///< 存储nameserver数据
+    bool _safe_mode;
+    /// Namespace
+    NameSpace* _namespace;
     int64_t _namespace_version;
 };
 

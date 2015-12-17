@@ -11,6 +11,12 @@
 #include "proto/nameserver.pb.h"
 #include "common/thread_pool.h"
 
+namespace sofa {
+namespace pbrpc {
+class HTTPRequest;
+class HTTPResponse;
+}
+}
 namespace bfs {
 
 class BlockManager;
@@ -18,6 +24,7 @@ class RpcClient;
 class NameServer_Stub;
 class ChunkServer_Stub;
 class Block;
+class CounterManager;
 
 class ChunkServerImpl : public ChunkServer {
 public:
@@ -39,8 +46,10 @@ public:
                               const GetBlockInfoRequest* request,
                               GetBlockInfoResponse* response,
                               ::google::protobuf::Closure* done);
+    bool WebService(const sofa::pbrpc::HTTPRequest& request,
+                    sofa::pbrpc::HTTPResponse& response);
 private:
-    void LogStatus();
+    void LogStatus(bool routine);
     void WriteNext(const std::string& next_server,
                    ChunkServer_Stub* stub,
                    const WriteBlockRequest* next_request,
@@ -60,6 +69,7 @@ private:
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
+    void GatherCounter();
 private:
     BlockManager*   _block_manager;
     std::string     _data_server_addr;
@@ -71,6 +81,7 @@ private:
     NameServer_Stub* _nameserver;
     int32_t _chunkserver_id;
     int64_t _namespace_version;
+    CounterManager* _counter_manager;
 };
 
 } // namespace bfs

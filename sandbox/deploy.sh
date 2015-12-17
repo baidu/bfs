@@ -1,5 +1,7 @@
 #! /bin/sh
 
+./clear.sh
+
 mkdir -p nameserver/bin
 
 echo '--nameserver=127.0.0.1' > bfs.flag

@@ -14,6 +14,7 @@ DEFINE_string(nameserver_port, "8828", "Nameserver port");
 DEFINE_int32(keepalive_timeout, 60, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 2, "Nameserver log level");
+DEFINE_int32(nameserver_safemode_time, 30, "Nameserver leave safemode time in ms");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
@@ -26,7 +27,7 @@ DEFINE_string(chunkserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
 DEFINE_int32(chunkserver_max_pending_buffers, 10240, "Buffer num wait flush to disk");
 DEFINE_int32(chunkserver_work_thread_num, 10, "Chunkserver work thread num");
-DEFINE_int32(chunkserver_read_thread_num, 10, "Chunkserver work thread num");
+DEFINE_int32(chunkserver_read_thread_num, 20, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_write_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 

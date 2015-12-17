@@ -11,7 +11,7 @@ install:
     - git clone https://github.com/google/snappy
     - ( cd snappy && sh ./autogen.sh && ./configure && make -j2 && sudo make install && sudo ldconfig )
     - sudo apt-get install zlib1g-dev
-    - git clone https://github.com/bluebore/sofa-pbrpc ./thirdparty/sofa-pbrpc
+    - git clone https://github.com/cyshi/sofa-pbrpc ./thirdparty/sofa-pbrpc
     - ( cd thirdparty/sofa-pbrpc && make -j4 && make install);
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz

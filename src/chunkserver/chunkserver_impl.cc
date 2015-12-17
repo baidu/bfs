@@ -21,6 +21,7 @@
 #include "common/atomic.h"
 #include "common/counter.h"
 #include "common/mutex.h"
+#include "common/thread_pool.h"
 #include "common/util.h"
 #include "common/timer.h"
 #include "common/sliding_window.h"
@@ -28,6 +29,8 @@
 #include "file_cache.h"
 #include "proto/nameserver.pb.h"
 #include "rpc/rpc_client.h"
+
+#include "chunkserver/counter_manager.h"
 
 // Avoid conflict, we define LOG...
 #include "common/logging.h"
@@ -48,21 +51,21 @@ DECLARE_int32(chunkserver_max_pending_buffers);
 
 namespace bfs {
 
-common::Counter g_block_buffers;
-common::Counter g_buffers_new;
-common::Counter g_buffers_delete;
-common::Counter g_blocks;
-common::Counter g_writing_blocks;
-common::Counter g_writing_bytes;
-common::Counter g_find_ops;
-common::Counter g_read_ops;
-common::Counter g_write_ops;
-common::Counter g_write_bytes;
-common::Counter g_refuse_ops;
-common::Counter g_rpc_delay;
-common::Counter g_rpc_delay_all;
-common::Counter g_rpc_count;
-common::Counter g_data_size;
+extern common::Counter g_block_buffers;
+extern common::Counter g_buffers_new;
+extern common::Counter g_buffers_delete;
+extern common::Counter g_blocks;
+extern common::Counter g_writing_blocks;
+extern common::Counter g_writing_bytes;
+extern common::Counter g_find_ops;
+extern common::Counter g_read_ops;
+extern common::Counter g_write_ops;
+extern common::Counter g_write_bytes;
+extern common::Counter g_refuse_ops;
+extern common::Counter g_rpc_delay;
+extern common::Counter g_rpc_delay_all;
+extern common::Counter g_rpc_count;
+extern common::Counter g_data_size;
 
 struct Buffer {
     const char* data_;
@@ -127,8 +130,8 @@ public:
         LOG(INFO, "Release #%ld _block_buf_list size= %lu",
             _meta.block_id, _block_buf_list.size());
         for (uint32_t i = 0; i < _block_buf_list.size(); i++) {
-            const char* buf = _block_buf_list[0].first;
-            int len = _block_buf_list[0].second;
+            const char* buf = _block_buf_list[i].first;
+            int len = _block_buf_list[i].second;
             if (!_deleted) {
                 LOG(WARNING, "Data lost, %d bytes in %s, #%ld _block_buf_list",
                     len, _disk_file.c_str(), _meta.block_id);
@@ -665,7 +668,8 @@ ChunkServerImpl::ChunkServerImpl()
     if (!_rpc_client->GetStub(ns_address, &_nameserver)) {
         assert(0);
     }
-    _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this));
+    _counter_manager = new CounterManager;
+    _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this, true));
     _work_thread_pool->AddTask(boost::bind(&ChunkServerImpl::SendBlockReport, this));
     _heartbeat_thread->AddTask(boost::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
@@ -681,25 +685,26 @@ ChunkServerImpl::~ChunkServerImpl() {
     delete _heartbeat_thread;
     delete _block_manager;
     delete _rpc_client;
+    delete _counter_manager;
+    LogStatus(false);
 }
 
-void ChunkServerImpl::LogStatus() {
-    int64_t rpc_count = g_rpc_count.Clear();
-    int64_t rpc_delay = 0;
-    int64_t delay_all = 0;
-    if (rpc_count) {
-        rpc_delay = g_rpc_delay.Clear() / rpc_count / 1000;
-        delay_all = g_rpc_delay_all.Clear() / rpc_count / 1000;
-    }
+void ChunkServerImpl::LogStatus(bool routine) {
+    _counter_manager->GatherCounters();
+    CounterManager::Counters counters = _counter_manager->GetCounters();
+
     LOG(INFO, "[Status] blocks %ld %ld buffers %ld data %sB, "
               "find %ld read %ld write %ld %ld %.2f MB, rpc_delay %ld %ld",
         g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
-        g_find_ops.Clear() / 5, g_read_ops.Clear() / 5,
-        g_write_ops.Clear() / 5, g_refuse_ops.Clear() / 5,
-        g_write_bytes.Clear() / 1024 / 1024 / 5.0,
-        rpc_delay, delay_all);
-    _work_thread_pool->DelayTask(5000, boost::bind(&ChunkServerImpl::LogStatus, this));
+        counters.find_ops, counters.read_ops,
+        counters.write_ops, counters.refuse_ops,
+        counters.write_bytes / 1024.0 / 1024,
+        counters.rpc_delay, counters.delay_all);
+    if (routine) {
+        _work_thread_pool->DelayTask(5000,
+            boost::bind(&ChunkServerImpl::LogStatus, this, true));
+    }
 }
 
 void ChunkServerImpl::SendHeartbeat() {
@@ -1191,6 +1196,43 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
 
 }
 
+bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
+                                sofa::pbrpc::HTTPResponse& response) {
+    CounterManager::Counters counters = _counter_manager->GetCounters();
+    std::string str =
+            "<html><head><title>BFS console</title>"
+            "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />"
+            "<link rel=\"stylesheet\" type=\"text/css\" "
+                "href=\"http://www.w3school.com.cn/c5.css\"/>"
+            "<style> body { background: #f9f9f9;}"
+            "</style>"
+            "</head>";
+    str += "<body> <h1>分布式文件系统控制台 - ChunkServer</h1>";
+    str += "<table class=dataintable>";
+    str += "<tr><td>Block number</td><td>Data size</td>"
+           "<td>Write(QPS)</td><td>Write(Speed)<td>Read(QPS)</td><td>Buffers</td><tr>";
+    str += "<tr><td>" + common::NumToString(g_blocks.Get()) + "</td>";
+    str += "<td>" + common::HumanReadableString(g_data_size.Get()) + "</td>";
+    str += "<td>" + common::NumToString(counters.write_ops) + "</td>";
+    str += "<td>" + common::HumanReadableString(counters.write_bytes) + "/S</td>";
+    str += "<td>" + common::NumToString(counters.read_ops) + "</td>";
+    str += "<td>" + common::NumToString(g_block_buffers.Get()) + "</td>";
+    str += "</tr>";
+    str += "</table>";
+    str += "<script> var int = setInterval('window.location.reload()', 1000);"
+           "function check(box) {"
+           "if(box.checked) {"
+           "    int = setInterval('window.location.reload()', 1000);"
+           "} else {"
+           "    clearInterval(int);"
+           "}"
+           "}</script>"
+           "<input onclick=\"javascript:check(this)\" "
+           "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
+    str += "</body></html>";
+    response.content = str;
+    return true;
+}
 } // namespace bfs
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
