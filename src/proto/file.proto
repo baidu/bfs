@@ -20,5 +20,14 @@ message ChunkServerInfo {
     optional int64 disk_size = 6;
     optional int32 block_num = 7;
     optional bool is_dead = 8;
+    optional int64 disk_quota = 9;
+    optional int32 ip = 10;
+    // running status
+    optional int32 w_qps = 21;
+    optional int64 w_speed = 22;
+    optional int32 r_qps = 23;
+    optional int64 r_speed = 24;
+    optional int64 writing_buffers = 25;
+    optional int64 active_blocks = 26;
 }
 

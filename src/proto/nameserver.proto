@@ -144,6 +144,7 @@ message BlockReportRequest {
     optional int64 namespace_version = 4;
     optional bool is_complete = 5;
     repeated ReportBlockInfo blocks = 6;
+    optional int64 disk_quota = 7;          // for register
 }
 message BlockReportResponse {
     optional int64 sequence_id = 1;

@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
@@ -443,8 +444,8 @@ public:
     BlockManager(ThreadPool* thread_pool, const std::string& store_path)
         :_thread_pool(thread_pool),
          _metadb(NULL),
-         _namespace_version(0) {
-         ParseStorePath(store_path);
+         _namespace_version(0), _disk_quota(0) {
+         CheckStorePath(store_path);
          _file_cache = new FileCache(FLAGS_chunkserver_file_cache_size);
     }
     ~BlockManager() {
@@ -456,22 +457,43 @@ public:
         delete _metadb;
         _metadb = NULL;
     }
-    void ParseStorePath(const std::string& store_path) {
-         common::SplitString(store_path, ",", &_store_path_list);
-         for (uint32_t i = 0 ;i < _store_path_list.size(); ++i) {
-            std::string& store_path = _store_path_list[i];
-            store_path = common::TrimString(store_path, " ");
-            if (store_path.empty() || store_path[store_path.size() - 1] != '/') {
-                store_path += "/";
-            }
-            LOG(INFO, "Use store path: %s", store_path.c_str());
-         }
-         std::sort(_store_path_list.begin(), _store_path_list.end());
-         std::vector<std::string>::iterator it
-            = std::unique(_store_path_list.begin(), _store_path_list.end());
-         _store_path_list.resize(std::distance(_store_path_list.begin(), it));
-         LOG(INFO, "%lu store path used.", _store_path_list.size());
-         assert(_store_path_list.size() > 0);
+    int64_t DiskQuota() {
+        return _disk_quota;
+    }
+    void CheckStorePath(const std::string& store_path) {
+        int64_t disk_quota = 0;
+        common::SplitString(store_path, ",", &_store_path_list);
+        for (uint32_t i = 0; i < _store_path_list.size(); ++i) {
+           std::string& disk_path = _store_path_list[i];
+           disk_path = common::TrimString(disk_path, " ");
+           if (disk_path.empty() || disk_path[disk_path.size() - 1] != '/') {
+               disk_path += "/";
+           }
+           struct statfs fs_info;
+           if (0 == statfs(disk_path.c_str(), &fs_info)) {
+               int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
+               int64_t user_quota = fs_info.f_bavail * fs_info.f_bsize;
+               int64_t super_quota = fs_info.f_bfree * fs_info.f_bsize;
+               LOG(INFO, "Use store path: %s block: %ld disk: %s available %s quota: %s",
+                   disk_path.c_str(), fs_info.f_bsize,
+                   common::HumanReadableString(disk_size).c_str(),
+                   common::HumanReadableString(super_quota).c_str(),
+                   common::HumanReadableString(user_quota).c_str());
+               disk_quota += user_quota;
+           } else {
+               LOG(WARNING, "Stat store_path %s fail, ignore it", disk_path.c_str());
+               _store_path_list[i] = _store_path_list[_store_path_list.size() - 1];
+               _store_path_list.resize(_store_path_list.size() - 1);
+               --i;
+           }
+        }
+        std::sort(_store_path_list.begin(), _store_path_list.end());
+        std::vector<std::string>::iterator it
+           = std::unique(_store_path_list.begin(), _store_path_list.end());
+        _store_path_list.resize(std::distance(_store_path_list.begin(), it));
+        LOG(INFO, "%lu store path used.", _store_path_list.size());
+        assert(_store_path_list.size() > 0);
+        _disk_quota = disk_quota;
     }
     const std::string& GetStorePath(int64_t block_id) {
         return _store_path_list[block_id % _store_path_list.size()];
@@ -518,6 +540,7 @@ public:
         if (_namespace_version == 0 && block_num > 0) {
             LOG(WARNING, "Namespace version lost!");
         }
+        _disk_quota += g_data_size.Get();
         return true;
     }
     int64_t NameSpaceVersion() const {
@@ -687,6 +710,7 @@ private:
     FileCache* _file_cache;
     Mutex   _mu;
     int64_t _namespace_version;
+    int64_t _disk_quota;
 };
 
 ChunkServerImpl::ChunkServerImpl()
@@ -767,6 +791,7 @@ void ChunkServerImpl::SendBlockReport() {
     BlockReportRequest request;
     request.set_chunkserver_id(_chunkserver_id);
     request.set_chunkserver_addr(_data_server_addr);
+    request.set_disk_quota(_block_manager->DiskQuota());
     request.set_namespace_version(_block_manager->NameSpaceVersion());
 
     std::vector<BlockMeta> blocks;
