@@ -576,7 +576,7 @@ public:
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
             blocks->push_back(meta);
-            LOG(DEBUG, "List block %ld", block_id);
+            // LOG(DEBUG, "List block %ld", block_id);
             if (--num <= 0) {
                 break;
             }
@@ -773,6 +773,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_namespace_version(_block_manager->NameSpaceVersion());
     request.set_block_num(g_blocks.Get());
     request.set_data_size(g_data_size.Get());
+    request.set_buffers(g_block_buffers.Get());
     HeartBeatResponse response;
     if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
             &request, &response, 15, 1)) {
@@ -820,8 +821,12 @@ void ChunkServerImpl::SendBlockReport() {
             &request, &response, 20, 3)) {
         LOG(WARNING, "Block reprot fail\n");
     } else {
+        if (response.status() != 0) {
+            LOG(FATAL, "Block report return %d", response.status());
+        }
         int64_t new_version = response.namespace_version();
         if (_block_manager->NameSpaceVersion() != new_version) {
+            // NameSpace change, chunkserver is empty.
             LOG(INFO, "New namespace version: %ld chunkserver id: %d",
                 new_version, response.chunkserver_id());
             if (!_block_manager->SetNameSpaceVersion(new_version)) {
@@ -830,13 +835,21 @@ void ChunkServerImpl::SendBlockReport() {
             _chunkserver_id = response.chunkserver_id();
         } else if (_chunkserver_id == kUnknownChunkServerId
                    && response.chunkserver_id() != kUnknownChunkServerId) {
+            // Chunkserver restart
             _chunkserver_id = response.chunkserver_id();
             LOG(INFO, "Reconnect to nameserver version= %ld, new cs_id = %d",
                 _block_manager->NameSpaceVersion(), _chunkserver_id);
         } else if (response.chunkserver_id() == kUnknownChunkServerId) {
-            LOG(INFO, "Unknown chunkserver, namespace version: %ld, old_id: %d",
+            // Namespace change, chunkserver has old blocks.
+            LOG(INFO, "Old chunkserver, namespace version: %ld, old_id: %d",
                 _block_manager->NameSpaceVersion(), _chunkserver_id);
+        } else if (_chunkserver_id != response.chunkserver_id()) {
+            // Nameserver restart, chunkserver id change.
+            LOG(INFO, "Chunkserver id change from %d to %d",
+                _chunkserver_id, response.chunkserver_id());
+            _chunkserver_id = response.chunkserver_id();
         }
+        LOG(INFO, "Report return old: %d new: %d", _chunkserver_id, response.chunkserver_id());
         //deal with obsolete blocks
         std::vector<int64_t> obsolete_blocks;
         for (int i = 0; i < response.obsolete_blocks_size(); i++) {
@@ -883,7 +896,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
         return false;
     }
 
-    LOG(INFO, "Reprot finish to nameserver done, block_id: %ld\n", block->Id());
+    LOG(INFO, "Report finish to nameserver done, block_id: %ld\n", block->Id());
     return true;
 }
 
@@ -1293,7 +1306,8 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<td>" + common::NumToString(counters.write_ops) + "</td>";
     str += "<td>" + common::HumanReadableString(counters.write_bytes) + "/S</td>";
     str += "<td>" + common::NumToString(counters.read_ops) + "</td>";
-    str += "<td>" + common::NumToString(g_block_buffers.Get()) + "</td>";
+    str += "<td>" + common::NumToString(g_block_buffers.Get())
+           + "(" + g_buffers_new + "/" + g_buffers_delete +")" + "</td>";
     str += "</tr>";
     str += "</table>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"

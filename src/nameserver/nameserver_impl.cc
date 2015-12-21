@@ -25,6 +25,7 @@
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(nameserver_safemode_time);
+DECLARE_int32(chunkserver_max_pending_buffers);
 
 namespace bfs {
 
@@ -448,6 +449,7 @@ public:
         }
         info->set_data_size(request->data_size());
         info->set_block_num(request->block_num());
+        info->set_buffers(request->buffers());
         int32_t now_time = common::timer::now_time();
         _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
@@ -477,9 +479,21 @@ public:
             for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
                  sit != set.end(); ++sit) {
                 ChunkServerInfo* cs = *sit;
-                loads.push_back(
-                    std::make_pair(cs->data_size(), cs));
+                if (cs->data_size() < cs->disk_quota()
+                    && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
+                    loads.push_back(
+                        std::make_pair(cs->data_size(), cs));
+                } else {
+                    LOG(INFO, "Alloc ignore: Chunkserver %s data %ld/%ld buffer %d",
+                        cs->address().c_str(), cs->data_size(),
+                        cs->disk_quota(), cs->buffers());
+                }
             }
+        }
+        if ((int)loads.size() < num) {
+            LOG(WARNING, "Only %ld chunkserver of %ld is not over overladen, GetChunkServerChains(%d) rturne false",
+                loads.size(), _chunkserver_num, num);
+            return false;
         }
         std::sort(loads.begin(), loads.end());
         // Add random factor
@@ -499,10 +513,10 @@ public:
         }
         return true;
     }
-    int64_t AddChunkServer(const std::string& address, int64_t quota) {
-        MutexLock lock(&_mu);
-        int32_t id = _next_chunkserver_id++;
+    int64_t AddChunkServer(const std::string& address, int64_t quota, int cs_id = -1) {
         ChunkServerInfo* info = new ChunkServerInfo;
+        MutexLock lock(&_mu);
+        int32_t id = cs_id==-1 ? _next_chunkserver_id++ : cs_id;
         info->set_id(id);
         info->set_address(address);
         info->set_disk_quota(quota);
@@ -622,9 +636,21 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 version, cs_id);
         }
     } else {
-        if (cs_id == -1) {
-            cs_id = _chunkserver_manager->GetChunkserverId(request->chunkserver_addr());
-            LOG(INFO, "Reconnect chunkserver %d", cs_id);
+        int old_id = _chunkserver_manager->GetChunkserverId(request->chunkserver_addr());
+        if (old_id == -1) {
+            cs_id = _chunkserver_manager->AddChunkServer(request->chunkserver_addr(),
+                                                         request->disk_quota(), -1);
+        } else if (cs_id == -1) {
+            cs_id = old_id;
+            LOG(INFO, "Reconnect chunkserver %d %s",
+                cs_id, request->chunkserver_addr().c_str());
+        } else if (cs_id != old_id) {
+            // bug...
+            LOG(WARNING, "Chunkserver %s id mismatch, old: %d new: %d",
+                request->chunkserver_addr().c_str(), old_id, cs_id);
+            response->set_status(-1);
+            done->Run();
+            return;
         }
         for (int i = 0; i < blocks.size(); i++) {
             g_report_blocks.Inc();
@@ -1035,11 +1061,12 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     table_str +=
         "<table class=\"table\">"
         "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
-        "<td>Disk quota</td><td>Disk used</td>"
+        "<td>Disk quota</td><td>Disk used</td><td>Writing buffers</td>"
         "<td>alive</td><td>last_check</td><tr>";
     int dead_num = 0;
     int64_t total_quota = 0;
     int64_t total_data = 0;
+    int overladen_num = 0;
     for (int i = 0; i < chunkservers->size(); i++) {
         const ChunkServerInfo& chunkserver = chunkservers->Get(i);
         if (chunkservers->Get(i).is_dead()) {
@@ -1047,6 +1074,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         } else {
             total_quota += chunkserver.disk_quota();
             total_data += chunkserver.data_size();
+            if (chunkserver.buffers() > FLAGS_chunkserver_max_pending_buffers * 0.8) {
+                overladen_num++;
+            }
         }
 
         table_str += "</td><td>";
@@ -1068,6 +1098,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     "aria-valuemax=\"100\" style=\"width: "+ ratio + "%\">" + ratio + "%"
                "</div></div>";
         table_str += "</td><td>";
+        table_str += common::NumToString(chunkserver.buffers());
+        table_str += "</td><td>";
         table_str += chunkserver.is_dead() ? "dead" : "alive";
         table_str += "</td><td>";
         table_str += common::NumToString(
@@ -1085,7 +1117,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<p align=left><a href=\"/service?name=bfs.NameServer\">Rpc status</a></p>";
     str += "<h2 align=left>Chunkserver status</h2>";
     str += "<p align=left>Total: " + common::NumToString(chunkservers->size())+"</p>";
+    str += "<p align=left>Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</p>";
     str += "<p align=left>Dead: " + common::NumToString(dead_num)+"</p>";
+    str += "<p align=left>Overload: " + common::NumToString(overladen_num)+"</p>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"

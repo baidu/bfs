@@ -122,6 +122,7 @@ message HeartBeatRequest {
     optional int64 namespace_version = 4;
     optional int32 block_num = 5;
     optional int64 data_size = 6;
+    optional int32 buffers = 7;
 }
 message HeartBeatResponse {
     optional int64 sequence_id = 1;
