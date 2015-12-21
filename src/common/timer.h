@@ -7,6 +7,7 @@
 #ifndef  COMMON_TIMER_H_
 #define  COMMON_TIMER_H_
 
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <time.h>

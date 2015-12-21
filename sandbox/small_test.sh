@@ -81,7 +81,15 @@ kill -9 `cat chunkserver0/pid`
 kill -9 `cat chunkserver1/pid`
 
 ./bfs_client get /bin/bfs_client ./binary
+rm -rf ./binary
 
+# Nameserver restart
+kill -9 `cat nameserver/pid`
+cd nameserver
+./bin/nameserver 1>nlog2 2>&1 &
+sleep 3
+cd -
+./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
 
 echo "Test done!"

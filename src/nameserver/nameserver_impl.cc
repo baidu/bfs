@@ -25,6 +25,7 @@
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(nameserver_safemode_time);
+DECLARE_int32(chunkserver_max_pending_buffers);
 
 namespace bfs {
 
@@ -429,18 +430,26 @@ public:
                 if (_heartbeat_list[info->last_heartbeat()].empty()) {
                     _heartbeat_list.erase(info->last_heartbeat());
                 }
+            } else {
+                assert(_heartbeat_list.find(info->last_heartbeat()) == _heartbeat_list.end());
+                info->set_is_dead(false);
             }
         } else {
             //reconnect after DeadCheck()
+            LOG(WARNING, "Unknown chunkserver %d with namespace version %ld",
+                id, request->namespace_version());
+            return;
+            /*
             info = new ChunkServerInfo;
             info->set_id(id);
             info->set_address(request->data_server_addr());
             LOG(INFO, "New ChunkServerInfo[%id] %p ", id, info);
             _chunkservers[id] = info;
-            ++_chunkserver_num;
+            ++_chunkserver_num;*/
         }
         info->set_data_size(request->data_size());
         info->set_block_num(request->block_num());
+        info->set_buffers(request->buffers());
         int32_t now_time = common::timer::now_time();
         _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
@@ -470,9 +479,21 @@ public:
             for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
                  sit != set.end(); ++sit) {
                 ChunkServerInfo* cs = *sit;
-                loads.push_back(
-                    std::make_pair(cs->data_size(), cs));
+                if (cs->data_size() < cs->disk_quota()
+                    && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
+                    loads.push_back(
+                        std::make_pair(cs->data_size(), cs));
+                } else {
+                    LOG(INFO, "Alloc ignore: Chunkserver %s data %ld/%ld buffer %d",
+                        cs->address().c_str(), cs->data_size(),
+                        cs->disk_quota(), cs->buffers());
+                }
             }
+        }
+        if ((int)loads.size() < num) {
+            LOG(WARNING, "Only %ld chunkserver of %ld is not over overladen, GetChunkServerChains(%d) rturne false",
+                loads.size(), _chunkserver_num, num);
+            return false;
         }
         std::sort(loads.begin(), loads.end());
         // Add random factor
@@ -492,14 +513,16 @@ public:
         }
         return true;
     }
-    int64_t AddChunkServer(const std::string& address) {
-        MutexLock lock(&_mu);
-        int32_t id = _next_chunkserver_id++;
+    int64_t AddChunkServer(const std::string& address, int64_t quota, int cs_id = -1) {
         ChunkServerInfo* info = new ChunkServerInfo;
+        MutexLock lock(&_mu);
+        int32_t id = cs_id==-1 ? _next_chunkserver_id++ : cs_id;
         info->set_id(id);
         info->set_address(address);
+        info->set_disk_quota(quota);
         LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
         _chunkservers[id] = info;
+        _address_map[address] = id;
         int32_t now_time = common::timer::now_time();
         _heartbeat_list[now_time].insert(info);
         info->set_last_heartbeat(now_time);
@@ -517,6 +540,14 @@ public:
         }
         return "";
     }
+    int32_t GetChunkserverId(const std::string& addr) {
+        MutexLock lock(&_mu);
+        std::map<std::string, int32_t>::iterator it = _address_map.find(addr);
+        if (it != _address_map.end()) {
+            return it->second;
+        }
+        return -1;
+    }
     void AddBlock(int32_t id, int64_t block_id) {
         MutexLock lock(&_mu);
         _chunkserver_block_map[id].insert(block_id);
@@ -532,6 +563,7 @@ private:
     Mutex _mu;      /// _chunkservers list mutext;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
     ServerMap _chunkservers;
+    std::map<std::string, int32_t> _address_map;
     std::map<int32_t, std::set<ChunkServerInfo*> > _heartbeat_list;
     std::map<int32_t, std::set<int64_t> > _chunkserver_block_map;
     int32_t _chunkserver_num;
@@ -539,8 +571,7 @@ private:
 };
 
 NameServerImpl::NameServerImpl() : _safe_mode(true) {
-    _namespace_version = common::timer::get_micros();
-    _namespace = new NameSpace(_namespace_version);
+    _namespace = new NameSpace();
     _block_manager = new BlockManager();
     _chunkserver_manager = new ChunkServerManager(&_thread_pool, _block_manager);
     RebuildBlockMap();
@@ -572,16 +603,11 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
                          ::google::protobuf::Closure* done) {
     g_heart_beat.Inc();
     // printf("Receive HeartBeat() from %s\n", request->data_server_addr().c_str());
-    int32_t id = request->chunkserver_id();
     int64_t version = request->namespace_version();
-
-    if (version != _namespace_version) {
-        id = _chunkserver_manager->AddChunkServer(request->data_server_addr());
-    } else {
+    if (version == _namespace->Version()) {
         _chunkserver_manager->HandleHeartBeat(request, response);
     }
-    response->set_chunkserver_id(id);
-    response->set_namespace_version(_namespace_version);
+    response->set_namespace_version(_namespace->Version());
     done->Run();
 }
 
@@ -590,42 +616,70 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    BlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
     g_block_report.Inc();
-    int32_t id = request->chunkserver_id();
+    int32_t cs_id = request->chunkserver_id();
     int64_t version = request->namespace_version();
     LOG(INFO, "Report from %d, %s, %d blocks\n",
-        id, request->chunkserver_addr().c_str(), request->blocks_size());
-    if (version != _namespace_version) {
-        response->set_status(8882);
+        cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
+    const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
+    response->set_namespace_version(version);
+    if (version != _namespace->Version()) {
+        if (blocks.size() == 0) {
+            cs_id = _chunkserver_manager->AddChunkServer(request->chunkserver_addr(),
+                                                         request->disk_quota());
+            response->set_namespace_version(_namespace->Version());
+        } else {
+            // Clean it~
+            for (int i = 0; i < blocks.size(); i++) {
+                response->add_obsolete_blocks(blocks.Get(i).block_id());
+            }
+            LOG(INFO, "Unknown chunkserver namespace version %ld id= %d",
+                version, cs_id);
+        }
     } else {
-        const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
+        int old_id = _chunkserver_manager->GetChunkserverId(request->chunkserver_addr());
+        if (old_id == -1) {
+            cs_id = _chunkserver_manager->AddChunkServer(request->chunkserver_addr(),
+                                                         request->disk_quota(), -1);
+        } else if (cs_id == -1) {
+            cs_id = old_id;
+            LOG(INFO, "Reconnect chunkserver %d %s",
+                cs_id, request->chunkserver_addr().c_str());
+        } else if (cs_id != old_id) {
+            // bug...
+            LOG(WARNING, "Chunkserver %s id mismatch, old: %d new: %d",
+                request->chunkserver_addr().c_str(), old_id, cs_id);
+            response->set_status(-1);
+            done->Run();
+            return;
+        }
         for (int i = 0; i < blocks.size(); i++) {
             g_report_blocks.Inc();
             const ReportBlockInfo& block =  blocks.Get(i);
             int64_t cur_block_id = block.block_id();
             int64_t cur_block_size = block.block_size();
 
-            if (_block_manager->CheckObsoleteBlock(cur_block_id, id)) {
+            if (_block_manager->CheckObsoleteBlock(cur_block_id, cs_id)) {
                 //add to response
                 response->add_obsolete_blocks(cur_block_id);
                 //_block_manager->RemoveReplicaBlock(cur_block_id, id);
-                _chunkserver_manager->RemoveBlock(id, cur_block_id);
-                _block_manager->UnmarkObsoleteBlock(cur_block_id, id);
+                _chunkserver_manager->RemoveBlock(cs_id, cur_block_id);
+                _block_manager->UnmarkObsoleteBlock(cur_block_id, cs_id);
                 LOG(INFO, "obsolete_block: #%ld in _obsolete_blocks", cur_block_id);
                 continue;
             }
             int32_t more_replica_num = 0;
             int64_t block_version = block.version();
-            if (!_block_manager->UpdateBlockInfo(cur_block_id, id,
+            if (!_block_manager->UpdateBlockInfo(cur_block_id, cs_id,
                                                  cur_block_size,
                                                  block_version,
                                                  &more_replica_num)) {
                 response->add_obsolete_blocks(cur_block_id);
-                _chunkserver_manager->RemoveBlock(id, cur_block_id);
+                _chunkserver_manager->RemoveBlock(cs_id, cur_block_id);
                 LOG(INFO, "obsolete_block: #%ld not in _block_map", cur_block_id);
                 continue;
             }
 
-            _chunkserver_manager->AddBlock(id, cur_block_id);
+            _chunkserver_manager->AddBlock(cs_id, cur_block_id);
             if (!_safe_mode && more_replica_num != 0) {
                 std::vector<std::pair<int32_t, std::string> > chains;
                 ///TODO: Not get all chunkservers, but get more.
@@ -652,7 +706,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             }
         }
         std::vector<std::pair<int64_t, std::set<int32_t> > > pull_blocks;
-        if (_block_manager->GetPullBlocks(id, &pull_blocks)) {
+        if (_block_manager->GetPullBlocks(cs_id, &pull_blocks)) {
             ReplicaInfo* info = NULL;
             for (size_t i = 0; i < pull_blocks.size(); i++) {
                 info = response->add_new_replicas();
@@ -662,10 +716,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                     std::string cs_addr = _chunkserver_manager->GetChunkServerAddr(*it);
                     info->add_chunkserver_address(cs_addr);
                 }
-                LOG(INFO, "Add pull block: #%ld dst cs: %d", pull_blocks[i].first, id);
+                LOG(INFO, "Add pull block: #%ld dst cs: %d", pull_blocks[i].first, cs_id);
             }
         }
     }
+    response->set_chunkserver_id(cs_id);
     done->Run();
 }
 
@@ -953,7 +1008,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
 void NameServerImpl::RebuildBlockMap() {
     MutexLock lock(&_mu);
     leveldb::Iterator* it = _namespace->NewIterator();
-    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+    for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
@@ -989,54 +1044,82 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         = new ::google::protobuf::RepeatedPtrField<ChunkServerInfo>;
     _chunkserver_manager->ListChunkServers(chunkservers);
 
+    std::string table_str;
     std::string str = 
             "<html><head><title>BFS console</title>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
-            "<link rel=\"stylesheet\" type=\"text/css\" "
-                "href=\"http://www.w3school.com.cn/c5.css\"/>\n"
-            "<style> body { background: #f9f9f9;}"
-            "a:link,a:visited{color:#4078c0;} a:link{text-decoration:none;}"
-            "</style>\n"
+            //"<link rel=\"stylesheet\" type=\"text/css\" "
+            //    "href=\"http://www.w3school.com.cn/c5.css\"/>\n"
+            //"<style> body { background: #f9f9f9;}"
+            //"a:link,a:visited{color:#4078c0;} a:link{text-decoration:none;}"
+            //"</style>\n"
             "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
+            "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" rel=\"stylesheet\">\n"
             "</head>\n";
-    str += "<body>";
+    str += "<body><div class=\"col-sm-12  col-md-12\">";
+
+    table_str +=
+        "<table class=\"table\">"
+        "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
+        "<td>Disk quota</td><td>Disk used</td><td>Writing buffers</td>"
+        "<td>alive</td><td>last_check</td><tr>";
+    int dead_num = 0;
+    int64_t total_quota = 0;
+    int64_t total_data = 0;
+    int overladen_num = 0;
+    for (int i = 0; i < chunkservers->size(); i++) {
+        const ChunkServerInfo& chunkserver = chunkservers->Get(i);
+        if (chunkservers->Get(i).is_dead()) {
+            dead_num++;
+        } else {
+            total_quota += chunkserver.disk_quota();
+            total_data += chunkserver.data_size();
+            if (chunkserver.buffers() > FLAGS_chunkserver_max_pending_buffers * 0.8) {
+                overladen_num++;
+            }
+        }
+
+        table_str += "</td><td>";
+        table_str += common::NumToString(chunkserver.id());
+        table_str += "</td><td>";
+        table_str += "<a href=\"http://" + chunkserver.address() + "/dfs\">"
+               + chunkserver.address() + "</a>";
+        table_str += "</td><td>";
+        table_str += common::NumToString(chunkserver.block_num());
+        table_str += "</td><td>";
+        table_str += common::HumanReadableString(chunkserver.data_size()) + "B";
+        table_str += "</td><td>";
+        table_str += common::HumanReadableString(chunkserver.disk_quota()) + "B";
+        std::string ratio = common::NumToString(
+            chunkserver.data_size() * 100 / chunkserver.disk_quota());
+        table_str += "</td><td><div class=\"progress\" style=\"margin-bottom:0\">"
+               "<div class=\"progress-bar\" "
+                    "role=\"progressbar\" aria-valuenow=\""+ ratio + "\" aria-valuemin=\"0\" "
+                    "aria-valuemax=\"100\" style=\"width: "+ ratio + "%\">" + ratio + "%"
+               "</div></div>";
+        table_str += "</td><td>";
+        table_str += common::NumToString(chunkserver.buffers());
+        table_str += "</td><td>";
+        table_str += chunkserver.is_dead() ? "dead" : "alive";
+        table_str += "</td><td>";
+        table_str += common::NumToString(
+                        common::timer::now_time() - chunkserver.last_heartbeat());
+        table_str += "</td></tr>";
+    }
+    table_str += "</table>";
+
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
     str += "<h2 align=left>Nameserver status</h2>";
+    str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</p>";
+    str += "<p align=left>Used: " + common::HumanReadableString(total_data) + "B</p>";
     str += "<p align=left>Pending tasks: "
         + common::NumToString(_thread_pool.PendingNum()) + "</p>";
     str += "<p align=left><a href=\"/service?name=bfs.NameServer\">Rpc status</a></p>";
     str += "<h2 align=left>Chunkserver status</h2>";
     str += "<p align=left>Total: " + common::NumToString(chunkservers->size())+"</p>";
-    int dead_num = 0;
-    for (int i = 0; i < chunkservers->size(); i++) {
-        if (chunkservers->Get(i).is_dead()) dead_num++;
-    }
+    str += "<p align=left>Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</p>";
     str += "<p align=left>Dead: " + common::NumToString(dead_num)+"</p>";
-    str +=
-        "<table class=dataintable>"
-        "<td></td><td>id</td><td>address</td><td>data_size</td>"
-        "<td>blocks</td><td>alive</td><td>last_check</td><tr>";
-    for (int i = 0; i < chunkservers->size(); i++) {
-        const ChunkServerInfo& chunkserver = chunkservers->Get(i);
-        str += "<tr><td>";
-        str += common::NumToString(i + 1);
-        str += "</td><td>";
-        str += common::NumToString(chunkserver.id());
-        str += "</td><td>";
-        str += "<a href=\"http://" + chunkserver.address() + "/dfs\">"
-               + chunkserver.address() + "</a>";
-        str += "</td><td>";
-        str += common::HumanReadableString(chunkserver.data_size()) + "B";
-        str += "</td><td>";
-        str += common::NumToString(chunkserver.block_num());
-        str += "</td><td>";
-        str += chunkserver.is_dead() ? "dead" : "alive";
-        str += "</td><td>";
-        str += common::NumToString(
-                        common::timer::now_time() - chunkserver.last_heartbeat());
-        str += "</td></tr>";
-    }
-    str += "</table>";
+    str += "<p align=left>Overload: " + common::NumToString(overladen_num)+"</p>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"
@@ -1047,7 +1130,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
            "}</script>"
            "<input onclick=\"javascript:check(this)\" "
            "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
-    str += "</body></html>";
+    str += table_str;
+    str += "</div></body></html>";
     delete chunkservers;
     response.content = str;
     return true;

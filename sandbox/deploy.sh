@@ -8,6 +8,7 @@ echo '--nameserver=127.0.0.1' > bfs.flag
 echo '--nameserver_port=8828' >> bfs.flag
 echo '--default_replica_num=3' >> bfs.flag
 echo '--chunkserver_log_level=2' >> bfs.flag
+echo '--blockreport_interval=2' >> bfs.flag
 echo '--nameserver_log_level=2' >> bfs.flag
 echo '--block_store_path=./data1,./data2' >> bfs.flag
 

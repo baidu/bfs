@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
@@ -66,6 +67,8 @@ extern common::Counter g_rpc_delay;
 extern common::Counter g_rpc_delay_all;
 extern common::Counter g_rpc_count;
 extern common::Counter g_data_size;
+
+const int kUnknownChunkServerId = -1;
 
 struct Buffer {
     const char* data_;
@@ -440,8 +443,9 @@ class BlockManager {
 public:
     BlockManager(ThreadPool* thread_pool, const std::string& store_path)
         :_thread_pool(thread_pool),
-         _metadb(NULL) {
-         ParseStorePath(store_path);
+         _metadb(NULL),
+         _namespace_version(0), _disk_quota(0) {
+         CheckStorePath(store_path);
          _file_cache = new FileCache(FLAGS_chunkserver_file_cache_size);
     }
     ~BlockManager() {
@@ -453,26 +457,48 @@ public:
         delete _metadb;
         _metadb = NULL;
     }
-    void ParseStorePath(const std::string& store_path) {
-         common::SplitString(store_path, ",", &_store_path_list);
-         for (uint32_t i = 0 ;i < _store_path_list.size(); ++i) {
-            std::string& store_path = _store_path_list[i];
-            store_path = common::TrimString(store_path, " ");
-            if (store_path.empty() || store_path[store_path.size() - 1] != '/') {
-                store_path += "/";
-            }
-            LOG(INFO, "Use store path: %s", store_path.c_str());
-         }
-         std::sort(_store_path_list.begin(), _store_path_list.end());
-         std::vector<std::string>::iterator it
-            = std::unique(_store_path_list.begin(), _store_path_list.end());
-         _store_path_list.resize(std::distance(_store_path_list.begin(), it));
-         LOG(INFO, "%lu store path used.", _store_path_list.size());
-         assert(_store_path_list.size() > 0);
+    int64_t DiskQuota() {
+        return _disk_quota;
+    }
+    void CheckStorePath(const std::string& store_path) {
+        int64_t disk_quota = 0;
+        common::SplitString(store_path, ",", &_store_path_list);
+        for (uint32_t i = 0; i < _store_path_list.size(); ++i) {
+           std::string& disk_path = _store_path_list[i];
+           disk_path = common::TrimString(disk_path, " ");
+           if (disk_path.empty() || disk_path[disk_path.size() - 1] != '/') {
+               disk_path += "/";
+           }
+           struct statfs fs_info;
+           if (0 == statfs(disk_path.c_str(), &fs_info)) {
+               int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
+               int64_t user_quota = fs_info.f_bavail * fs_info.f_bsize;
+               int64_t super_quota = fs_info.f_bfree * fs_info.f_bsize;
+               LOG(INFO, "Use store path: %s block: %ld disk: %s available %s quota: %s",
+                   disk_path.c_str(), fs_info.f_bsize,
+                   common::HumanReadableString(disk_size).c_str(),
+                   common::HumanReadableString(super_quota).c_str(),
+                   common::HumanReadableString(user_quota).c_str());
+               disk_quota += user_quota;
+           } else {
+               LOG(WARNING, "Stat store_path %s fail, ignore it", disk_path.c_str());
+               _store_path_list[i] = _store_path_list[_store_path_list.size() - 1];
+               _store_path_list.resize(_store_path_list.size() - 1);
+               --i;
+           }
+        }
+        std::sort(_store_path_list.begin(), _store_path_list.end());
+        std::vector<std::string>::iterator it
+           = std::unique(_store_path_list.begin(), _store_path_list.end());
+        _store_path_list.resize(std::distance(_store_path_list.begin(), it));
+        LOG(INFO, "%lu store path used.", _store_path_list.size());
+        assert(_store_path_list.size() > 0);
+        _disk_quota = disk_quota;
     }
     const std::string& GetStorePath(int64_t block_id) {
         return _store_path_list[block_id % _store_path_list.size()];
     }
+    /// Load meta from disk
     bool LoadStorage() {
         MutexLock lock(&_mu);
         leveldb::Options options;
@@ -482,9 +508,18 @@ public:
             LOG(WARNING, "Load blocks fail: %s", s.ToString().c_str());
             return false;
         }
+
+        std::string version_key(8, '\0');
+        version_key.append("version");
+        std::string version_str;
+        s = _metadb->Get(leveldb::ReadOptions(), version_key, &version_str);
+        if (s.ok() && version_str.size() == 8) {
+            _namespace_version = *(reinterpret_cast<int64_t*>(&version_str[0]));
+            LOG(INFO, "Load namespace %ld", _namespace_version);
+        }
         int block_num = 0;
         leveldb::Iterator* it = _metadb->NewIterator(leveldb::ReadOptions());
-        for (it->SeekToFirst(); it->Valid(); it->Next()) {
+        for (it->Seek(version_key+'\0'); it->Valid(); it->Next()) {
             int64_t block_id = 0;
             if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
                 LOG(WARNING, "Unknown key: %s\n", it->key().ToString().c_str());
@@ -501,7 +536,29 @@ public:
             block_num ++;
         }
         delete it;
-        LOG(INFO, "Load %ld blocks\n", block_num);
+        LOG(INFO, "Load %ld blocks, namespace version: %ld", block_num, _namespace_version);
+        if (_namespace_version == 0 && block_num > 0) {
+            LOG(WARNING, "Namespace version lost!");
+        }
+        _disk_quota += g_data_size.Get();
+        return true;
+    }
+    int64_t NameSpaceVersion() const {
+        return _namespace_version;
+    }
+    bool SetNameSpaceVersion(int64_t version) {
+        MutexLock lock(&_mu);
+        std::string version_key(8, '\0');
+        version_key.append("version");
+        std::string version_str(8, '\0');
+        *(reinterpret_cast<int64_t*>(&version_str[0])) = version;
+        leveldb::Status s = _metadb->Put(leveldb::WriteOptions(), version_key, version_str);
+        if (!s.ok()) {
+            LOG(WARNING, "SetNameSpaceVersion fail: %s", s.ToString().c_str());
+            return false;
+        }
+        _namespace_version = version;
+        LOG(INFO, "Set namespace version: %ld", _namespace_version);
         return true;
     }
     bool ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
@@ -519,6 +576,7 @@ public:
             memcpy(&meta, it->value().data(), sizeof(meta));
             assert(meta.block_id == block_id);
             blocks->push_back(meta);
+            // LOG(DEBUG, "List block %ld", block_id);
             if (--num <= 0) {
                 break;
             }
@@ -651,10 +709,12 @@ private:
     leveldb::DB* _metadb;
     FileCache* _file_cache;
     Mutex   _mu;
+    int64_t _namespace_version;
+    int64_t _disk_quota;
 };
 
 ChunkServerImpl::ChunkServerImpl()
-    : _chunkserver_id(0), _namespace_version(0) {
+    : _chunkserver_id(kUnknownChunkServerId) {
     _data_server_addr = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     _work_thread_pool = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     _read_thread_pool = new ThreadPool(FLAGS_chunkserver_read_thread_num);
@@ -702,7 +762,7 @@ void ChunkServerImpl::LogStatus(bool routine) {
         counters.write_bytes / 1024.0 / 1024,
         counters.rpc_delay, counters.delay_all);
     if (routine) {
-        _work_thread_pool->DelayTask(5000,
+        _work_thread_pool->DelayTask(1000,
             boost::bind(&ChunkServerImpl::LogStatus, this, true));
     }
 }
@@ -710,19 +770,17 @@ void ChunkServerImpl::LogStatus(bool routine) {
 void ChunkServerImpl::SendHeartbeat() {
     HeartBeatRequest request;
     request.set_chunkserver_id(_chunkserver_id);
-    request.set_data_server_addr(_data_server_addr);
-    request.set_namespace_version(_namespace_version);
+    request.set_namespace_version(_block_manager->NameSpaceVersion());
     request.set_block_num(g_blocks.Get());
     request.set_data_size(g_data_size.Get());
+    request.set_buffers(g_block_buffers.Get());
     HeartBeatResponse response;
     if (!_rpc_client->SendRequest(_nameserver, &NameServer_Stub::HeartBeat,
             &request, &response, 15, 1)) {
         LOG(WARNING, "Heat beat fail\n");
-    } else if (_namespace_version != response.namespace_version()) {
-        LOG(INFO, "Connect to nameserver, new chunkserver_id: %d\n",
-            response.chunkserver_id());
-        _namespace_version = response.namespace_version();
-        _chunkserver_id = response.chunkserver_id();
+    } else if (_block_manager->NameSpaceVersion() != response.namespace_version()) {
+        LOG(INFO, "Namespace version mismatch self:%ld ns:%ld",
+            _block_manager->NameSpaceVersion(), response.namespace_version());
     }
     _heartbeat_thread->DelayTask(FLAGS_heartbeat_interval * 1000,
         boost::bind(&ChunkServerImpl::SendHeartbeat, this));
@@ -734,7 +792,8 @@ void ChunkServerImpl::SendBlockReport() {
     BlockReportRequest request;
     request.set_chunkserver_id(_chunkserver_id);
     request.set_chunkserver_addr(_data_server_addr);
-    request.set_namespace_version(_namespace_version);
+    request.set_disk_quota(_block_manager->DiskQuota());
+    request.set_namespace_version(_block_manager->NameSpaceVersion());
 
     std::vector<BlockMeta> blocks;
     _block_manager->ListBlocks(&blocks, last_report_blockid + 1, FLAGS_blockreport_size);
@@ -762,6 +821,35 @@ void ChunkServerImpl::SendBlockReport() {
             &request, &response, 20, 3)) {
         LOG(WARNING, "Block reprot fail\n");
     } else {
+        if (response.status() != 0) {
+            LOG(FATAL, "Block report return %d", response.status());
+        }
+        int64_t new_version = response.namespace_version();
+        if (_block_manager->NameSpaceVersion() != new_version) {
+            // NameSpace change, chunkserver is empty.
+            LOG(INFO, "New namespace version: %ld chunkserver id: %d",
+                new_version, response.chunkserver_id());
+            if (!_block_manager->SetNameSpaceVersion(new_version)) {
+                LOG(FATAL, "Can not change namespace version");
+            }
+            _chunkserver_id = response.chunkserver_id();
+        } else if (_chunkserver_id == kUnknownChunkServerId
+                   && response.chunkserver_id() != kUnknownChunkServerId) {
+            // Chunkserver restart
+            _chunkserver_id = response.chunkserver_id();
+            LOG(INFO, "Reconnect to nameserver version= %ld, new cs_id = %d",
+                _block_manager->NameSpaceVersion(), _chunkserver_id);
+        } else if (response.chunkserver_id() == kUnknownChunkServerId) {
+            // Namespace change, chunkserver has old blocks.
+            LOG(INFO, "Old chunkserver, namespace version: %ld, old_id: %d",
+                _block_manager->NameSpaceVersion(), _chunkserver_id);
+        } else if (_chunkserver_id != response.chunkserver_id()) {
+            // Nameserver restart, chunkserver id change.
+            LOG(INFO, "Chunkserver id change from %d to %d",
+                _chunkserver_id, response.chunkserver_id());
+            _chunkserver_id = response.chunkserver_id();
+        }
+        LOG(INFO, "Report return old: %d new: %d", _chunkserver_id, response.chunkserver_id());
         //deal with obsolete blocks
         std::vector<int64_t> obsolete_blocks;
         for (int i = 0; i < response.obsolete_blocks_size(); i++) {
@@ -794,7 +882,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     BlockReportRequest request;
     request.set_chunkserver_id(_chunkserver_id);
     request.set_chunkserver_addr(_data_server_addr);
-    request.set_namespace_version(_namespace_version);
+    request.set_namespace_version(_block_manager->NameSpaceVersion());
     request.set_is_complete(false);
 
     ReportBlockInfo* info = request.add_blocks();
@@ -808,7 +896,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
         return false;
     }
 
-    LOG(INFO, "Reprot finish to nameserver done, block_id: %ld\n", block->Id());
+    LOG(INFO, "Report finish to nameserver done, block_id: %ld\n", block->Id());
     return true;
 }
 
@@ -824,9 +912,11 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         /// Flow control
-        if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
+        if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers
+            || _work_thread_pool->PendingNum() > FLAGS_chunkserver_max_pending_buffers) {
             response->set_status(500);
-            LOG(WARNING, "[WriteBlock] pending reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
+            LOG(WARNING, "[WriteBlock] pending buf[%ld] req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
+                g_block_buffers.Get(), _work_thread_pool->PendingNum(),
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
             done->Run();
             g_refuse_ops.Inc();
@@ -1210,13 +1300,15 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<body> <h1>分布式文件系统控制台 - ChunkServer</h1>";
     str += "<table class=dataintable>";
     str += "<tr><td>Block number</td><td>Data size</td>"
-           "<td>Write(QPS)</td><td>Write(Speed)<td>Read(QPS)</td><td>Buffers</td><tr>";
+           "<td>Write(QPS)</td><td>Write(Speed)<td>Read(QPS)</td><td>Buffers(new/delete)</td><tr>";
     str += "<tr><td>" + common::NumToString(g_blocks.Get()) + "</td>";
     str += "<td>" + common::HumanReadableString(g_data_size.Get()) + "</td>";
     str += "<td>" + common::NumToString(counters.write_ops) + "</td>";
     str += "<td>" + common::HumanReadableString(counters.write_bytes) + "/S</td>";
     str += "<td>" + common::NumToString(counters.read_ops) + "</td>";
-    str += "<td>" + common::NumToString(g_block_buffers.Get()) + "</td>";
+    str += "<td>" + common::NumToString(g_block_buffers.Get())
+           + "(" + common::NumToString(counters.buffers_new) + "/"
+           + common::NumToString(counters.buffers_delete) +")" + "</td>";
     str += "</tr>";
     str += "</table>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"

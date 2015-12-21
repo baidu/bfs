@@ -65,7 +65,7 @@ bool SplitPath(const std::string& path, std::vector<std::string>* element) {
     return true;
 }
 
-NameSpace::NameSpace(int64_t) {
+NameSpace::NameSpace() {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -74,6 +74,30 @@ NameSpace::NameSpace(int64_t) {
         _db = NULL;
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
     }
+    std::string version_key(8, '\0');
+    version_key.append("version");
+    std::string version_str;
+    s = _db->Get(leveldb::ReadOptions(), version_key, &version_str);
+    if (s.ok()) {
+        if (version_str.size() != sizeof(int64_t)) {
+            LOG(FATAL, "Bad namespace version len= %lu.", version_str.size());
+        }
+        _version = *(reinterpret_cast<int64_t*>(&version_str[0]));
+        LOG(INFO, "Load namespace version: %ld", _version);
+    } else {
+        _version = common::timer::get_micros();
+        version_str.resize(8);
+        *(reinterpret_cast<int64_t*>(&version_str[0])) = _version;
+        s = _db->Put(leveldb::WriteOptions(), version_key, version_str);
+        if (!s.ok()) {
+            LOG(FATAL, "Write namespace version to db fail: %s", s.ToString().c_str());
+        }
+        LOG(INFO, "Create new namespace version: %ld", _version);
+    }
+}
+
+int64_t NameSpace::Version() const {
+    return _version;
 }
 
 bool NameSpace::DeleteFileInfo(const std::string file_key) {
