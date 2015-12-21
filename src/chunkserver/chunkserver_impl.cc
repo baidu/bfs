@@ -762,7 +762,7 @@ void ChunkServerImpl::LogStatus(bool routine) {
         counters.write_bytes / 1024.0 / 1024,
         counters.rpc_delay, counters.delay_all);
     if (routine) {
-        _work_thread_pool->DelayTask(5000,
+        _work_thread_pool->DelayTask(1000,
             boost::bind(&ChunkServerImpl::LogStatus, this, true));
     }
 }
@@ -1300,14 +1300,15 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<body> <h1>分布式文件系统控制台 - ChunkServer</h1>";
     str += "<table class=dataintable>";
     str += "<tr><td>Block number</td><td>Data size</td>"
-           "<td>Write(QPS)</td><td>Write(Speed)<td>Read(QPS)</td><td>Buffers</td><tr>";
+           "<td>Write(QPS)</td><td>Write(Speed)<td>Read(QPS)</td><td>Buffers(new/delete)</td><tr>";
     str += "<tr><td>" + common::NumToString(g_blocks.Get()) + "</td>";
     str += "<td>" + common::HumanReadableString(g_data_size.Get()) + "</td>";
     str += "<td>" + common::NumToString(counters.write_ops) + "</td>";
     str += "<td>" + common::HumanReadableString(counters.write_bytes) + "/S</td>";
     str += "<td>" + common::NumToString(counters.read_ops) + "</td>";
     str += "<td>" + common::NumToString(g_block_buffers.Get())
-           + "(" + g_buffers_new + "/" + g_buffers_delete +")" + "</td>";
+           + "(" + common::NumToString(counters.buffers_new) + "/"
+           + common::NumToString(counters.buffers_delete) +")" + "</td>";
     str += "</tr>";
     str += "</table>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
