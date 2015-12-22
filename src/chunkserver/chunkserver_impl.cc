@@ -849,7 +849,7 @@ void ChunkServerImpl::SendBlockReport() {
                 _chunkserver_id, response.chunkserver_id());
             _chunkserver_id = response.chunkserver_id();
         }
-        LOG(INFO, "Report return old: %d new: %d", _chunkserver_id, response.chunkserver_id());
+        //LOG(INFO, "Report return old: %d new: %d", _chunkserver_id, response.chunkserver_id());
         //deal with obsolete blocks
         std::vector<int64_t> obsolete_blocks;
         for (int i = 0; i < response.obsolete_blocks_size(); i++) {
