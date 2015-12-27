@@ -138,6 +138,8 @@ TEST_F(NameSpaceTest, Rename) {
     /// dir -> existing dir
     ASSERT_NE(0, ns.Rename("/dir1/subdir2", "/dir1/subdir3", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
+    /// file -> not exist parent
+    ASSERT_NE(0, ns.Rename("/file1", "/dir1/subdir4/file1", &need_unlink, &remove_file));
     /// file -> existing dir
     ASSERT_NE(0, ns.Rename("/file1", "/dir1/subdir3", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
