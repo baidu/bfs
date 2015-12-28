@@ -86,7 +86,7 @@ public:
                        ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
-    void RebuildBlockMap();
+    void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
     void LeaveSafemode();
 private:

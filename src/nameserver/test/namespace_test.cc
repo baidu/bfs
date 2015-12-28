@@ -153,6 +153,16 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(0, ns.Rename("/dir1/subdir2/file5", "/dir1/subdir3/file1", &need_unlink, &remove_file));
     ASSERT_TRUE(need_unlink);
     ASSERT_EQ(remove_file.entry_id(), 2);
+
+    /// Root dir to root dir
+    ASSERT_NE(0, ns.Rename("/", "/dir2", &need_unlink, &remove_file));
+    ASSERT_EQ(0, ns.Rename("/dir1", "/dir2", &need_unlink, &remove_file));
+
+    /// Deep rename
+    ASSERT_EQ(0, ns.CreateFile("/tera/meta/0/00000001.dbtmp", 0, 0));
+    ASSERT_EQ(0, ns.Rename("/tera/meta/0/00000001.dbtmp", "/tera/meta/0/CURRENT", &need_unlink, &remove_file));
+    ASSERT_FALSE(need_unlink);
+    ASSERT_TRUE(ns.LookUp("/tera/meta/0/CURRENT", &remove_file));
 }
 
 TEST_F(NameSpaceTest, RemoveFile) {
