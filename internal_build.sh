@@ -161,12 +161,13 @@ cd ${WORK_DIR}
 ########################################
 
 sed -i 's/^PBRPC_PATH=.*/PBRPC_PATH=.\/thirdparty/' depends.mk
-sed -i 's/^PROTOBUF_DIR=.*/PROTOBUF_DIR=.\/thirdparty/' depends.mk
-sed -i 's/^SNAPPY_DIR=.*/SNAPPY_DIR=.\/thirdparty/' depends.mk
+sed -i 's/^PROTOBUF_PATH=.*/PROTOBUF_PATH=.\/thirdparty/' depends.mk
+sed -i 's/^PROTOC_PATH=.*/PROTOC_PATH=.\/thirdparty\/bin\//' depends.mk
+sed -i 's/^SNAPPY_PATH=.*/SNAPPY_PATH=.\/thirdparty/' depends.mk
 sed -i 's/^GFLAG_PATH=.*/GFLAG_PATH=.\/thirdparty/' depends.mk
 sed -i 's/^GLOG_PREFIX=.*/GLOG_PREFIX=.\/thirdparty/' depends.mk
 sed -i 's/^GPERFTOOLS_PREFIX=.*/GPERFTOOLS_PREFIX=.\/thirdparty/' depends.mk
-sed -i 's/^BOOST_HEADER_DIR=.*/BOOST_HEADER_DIR=.\/thirdparty\/boost_1_57_0/' depends.mk
+sed -i 's/^BOOST_PATH=.*/BOOST_PATH=.\/thirdparty\/boost_1_57_0/' depends.mk
 sed -i 's/^COMMON_PATH=.*/COMMON_PATH=.\/thirdparty/' depends.mk
 
 ########################################

@@ -16,4 +16,12 @@ install:
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz
     - ( cd gflags-2.1.2 && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
+    - git clone https://github.com/baidu/common
+    - ( cd common && make -j4 && make install)
+    - wget --no-check-certificate https://googletest.googlecode.com/files/gtest-1.7.0.zip
+    - unzip gtest-1.7.0.zip
+    - ( cd gtest-1.7.0 && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
+
+before_script:
+    - sed -i 's/^COMMON_PATH=.*/COMMON_PATH=.\/common\/output/' depends.mk
 script: make -j4 && make test

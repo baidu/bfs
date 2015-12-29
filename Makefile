@@ -5,18 +5,18 @@ OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
 
 include depends.mk
 
-INCLUDE_PATH = -I./src -I$(PROTOBUF_DIR)/include \
+INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I./thirdparty/leveldb/include \
-               -I$(SNAPPY_DIR)/include \
-               -I$(BOOST_HEADER_DIR)/include \
+               -I$(SNAPPY_PATH)/include \
+               -I$(BOOST_PATH)/include \
                -I$(GFLAG_PATH)/include \
                -I$(COMMON_PATH)/include
 
 LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
-          -L$(PROTOBUF_DIR)/lib -lprotobuf \
+          -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -L./thirdparty/leveldb -lleveldb \
-          -L$(SNAPPY_DIR)/lib -lsnappy \
+          -L$(SNAPPY_PATH)/lib -lsnappy \
           -L$(GFLAG_PATH)/lib -lgflags \
           -L$(GTEST_PATH)/lib -lgtest \
           -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
