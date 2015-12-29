@@ -27,6 +27,7 @@ DECLARE_int32(default_replica_num);
 DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
 
+namespace baidu {
 namespace bfs {
 
 common::Counter g_get_location;
@@ -223,7 +224,7 @@ public:
         NSBlockMap::iterator it = _block_map.find(id);
         if (it == _block_map.end()) {
             //have been removed
-            LOG(DEBUG, "UpdateBlockInfo(%ld) has been removed", id); 
+            LOG(DEBUG, "UpdateBlockInfo(%ld) has been removed", id);
             return false;
         } else {
             nsblock = it->second;
@@ -463,7 +464,7 @@ public:
             dst->CopyFrom(*src);
         }
     }
-    bool GetChunkServerChains(int num, 
+    bool GetChunkServerChains(int num,
                               std::vector<std::pair<int32_t,std::string> >* chains) {
         MutexLock lock(&_mu);
         if (num > _chunkserver_num) {
@@ -763,7 +764,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     if (!_namespace->GetFileInfo(path, &file_info, &file_key)) {
         LOG(WARNING, "AddBlock file not found: %s", path.c_str());
         response->set_status(404);
-        done->Run(); 
+        done->Run();
         return;
     }
 
@@ -888,8 +889,8 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
 }
 
 void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
-                          const ::bfs::StatRequest* request,
-                          ::bfs::StatResponse* response,
+                          const StatRequest* request,
+                          StatResponse* response,
                           ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     std::string path = request->path();
@@ -920,8 +921,8 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
 }
 
 void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
-                            const ::bfs::RenameRequest* request,
-                            ::bfs::RenameResponse* response,
+                            const RenameRequest* request,
+                            RenameResponse* response,
                             ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     const std::string& oldpath = request->oldpath();
@@ -938,8 +939,8 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
 }
 
 void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
-                            const ::bfs::UnlinkRequest* request,
-                            ::bfs::UnlinkResponse* response,
+                            const UnlinkRequest* request,
+                            UnlinkResponse* response,
                             ::google::protobuf::Closure* done) {
     g_unlink.Inc();
     response->set_sequence_id(request->sequence_id());
@@ -956,8 +957,8 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
 }
 
 void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controller,
-                                     const ::bfs::DeleteDirectoryRequest* request,
-                                     ::bfs::DeleteDirectoryResponse* response,
+                                     const DeleteDirectoryRequest* request,
+                                     DeleteDirectoryResponse* response,
                                      ::google::protobuf::Closure* done)  {
     response->set_sequence_id(request->sequence_id());
     std::string path = request->path();
@@ -976,8 +977,8 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
 }
 
 void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,
-                                      const ::bfs::ChangeReplicaNumRequest* request,
-                                      ::bfs::ChangeReplicaNumResponse* response,
+                                      const ChangeReplicaNumRequest* request,
+                                      ChangeReplicaNumResponse* response,
                                       ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     std::string file_name = request->file_name();
@@ -1028,8 +1029,8 @@ void NameServerImpl::RebuildBlockMap() {
 }
 
 void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
-                             const ::bfs::SysStatRequest* request,
-                             ::bfs::SysStatResponse* response,
+                             const SysStatRequest* request,
+                             SysStatResponse* response,
                              ::google::protobuf::Closure* done) {
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "SysStat from %s", ctl->RemoteAddress().c_str());
@@ -1045,7 +1046,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     _chunkserver_manager->ListChunkServers(chunkservers);
 
     std::string table_str;
-    std::string str = 
+    std::string str =
             "<html><head><title>BFS console</title>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
             //"<link rel=\"stylesheet\" type=\"text/css\" "
@@ -1137,6 +1138,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     return true;
 }
 
-}
+} // namespace bfs
+} // namespace baidu
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

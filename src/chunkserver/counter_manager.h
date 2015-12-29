@@ -12,6 +12,7 @@
 
 #include <common/mutex.h>
 
+namespace baidu {
 namespace bfs {
 
 class CounterManager {
@@ -40,7 +41,8 @@ private:
     int64_t _last_gather_time;
 };
 
-}
+} // namespace bfs
+} // namespace baidu
 
 #endif  // BFS_COUNTER_MANAGER_H_
 

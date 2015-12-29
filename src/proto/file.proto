@@ -1,5 +1,5 @@
 
-package bfs;
+package baidu.bfs;
 
 message FileInfo {
     optional int64 id = 1;

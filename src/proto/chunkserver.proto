@@ -1,5 +1,5 @@
 
-package bfs;
+package baidu.bfs;
 
 option cc_generic_services = true;
 

@@ -9,6 +9,7 @@
 
 #include <common/cache.h>
 
+namespace baidu {
 namespace bfs {
 
 class FileCache {
@@ -24,6 +25,7 @@ private:
 };
 
 } // namespace bfs
+} //namespace baidu
 
 #endif  // BFS_FILE_CACHE_H_
 

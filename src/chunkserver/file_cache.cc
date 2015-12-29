@@ -14,6 +14,7 @@
 
 #include "common/logging.h"
 
+namespace baidu {
 namespace bfs {
 
 struct FileEntity {
@@ -65,4 +66,5 @@ void FileCache::EraseFileCache(const std::string& file_path) {
 }
 
 } // namespace bfs
+} //namespace baidu
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

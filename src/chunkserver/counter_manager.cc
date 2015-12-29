@@ -9,6 +9,7 @@
 #include <common/counter.h>
 #include <common/timer.h>
 
+namespace baidu {
 namespace bfs {
 
 common::Counter g_block_buffers;
@@ -62,6 +63,7 @@ CounterManager::Counters CounterManager::GetCounters() {
     return _counters;
 }
 
-}
+} // namespace bfs
+} // namespace baidu
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
