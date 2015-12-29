@@ -1,7 +1,9 @@
 ToyDFS
 ======
 
-[![Build Status](https://travis-ci.org/bluebore/dfs.svg)](https://travis-ci.org/bluebore/dfs)
+Travis [![Build Status](https://travis-ci.org/bluebore/dfs.svg)](https://travis-ci.org/bluebore/dfs)
+
+Jenkins [![Build Status](http://220.181.7.231/buildStatus/icon?job=bfs_build)](http://220.181.7.231/view/bfs/job/bfs_build/)
 
 突然想写个分布式文件系统~
   1. 支持表格系统的持久化数据存储
