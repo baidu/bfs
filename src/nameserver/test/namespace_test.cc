@@ -15,7 +15,9 @@
 
 DECLARE_string(namedb_path);
 
+namespace baidu {
 namespace bfs {
+
 class NameSpaceTest : public ::testing::Test {
 public:
     NameSpaceTest() {}
@@ -214,6 +216,7 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     ASSERT_EQ(files_removed[1].entry_id(), 7); 
     ASSERT_NE(0, ns.ListDirectory("/dir1/subdir1", &outputs));
     ASSERT_NE(0, ns.ListDirectory("/dir1", &outputs));
+}
 }
 }
 
