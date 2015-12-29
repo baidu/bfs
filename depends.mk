@@ -1,8 +1,9 @@
 # Thirdparty
-SNAPPY_PATH=./thirdparty/snappy/
-PROTOBUF_PATH=./thirdparty/protobuf/
-PROTOC_PATH=
-PROTOC=$(PROTOC_PATH)protoc
-PBRPC_PATH=./thirdparty/sofa-pbrpc/output/
-BOOST_PATH=../boost/
-
+SNAPPY_DIR=./thirdparty
+PROTOBUF_DIR=./thirdparty
+PROTOC = $(PROTOBUF_DIR)/bin/protoc
+BOOST_HEADER_DIR=./thirdparty/boost_1_57_0
+GFLAG_PATH=./thirdparty
+PBRPC_PATH=./thirdparty
+GTEST_PATH=./thirdparty
+COMMON_PATH=./thirdparty
