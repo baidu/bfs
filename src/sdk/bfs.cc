@@ -30,6 +30,7 @@ DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
 
+namespace baidu {
 namespace bfs {
 
 ThreadPool g_thread_pool(FLAGS_sdk_thread_num);
@@ -37,7 +38,7 @@ ThreadPool g_thread_pool(FLAGS_sdk_thread_num);
 struct LocatedBlocks {
     int64_t _file_length;
     std::vector<LocatedBlock> _blocks;
-    void CopyFrom(const ::google::protobuf::RepeatedPtrField< ::bfs::LocatedBlock >& blocks) {
+    void CopyFrom(const ::google::protobuf::RepeatedPtrField< baidu::bfs::LocatedBlock >& blocks) {
         for (int i = 0; i < blocks.size(); i++) {
             _blocks.push_back(blocks.Get(i));
         }
@@ -162,7 +163,7 @@ private:
     /// for read
     LocatedBlocks _located_blocks;      ///< block meta for read
     ChunkServer_Stub* _chunkserver;     ///< located chunkserver
-    std::map<string, ChunkServer_Stub*> _chunkservers; ///< located chunkservers
+    std::map<std::string, ChunkServer_Stub*> _chunkservers; ///< located chunkservers
     int64_t _read_offset;               ///< 读取的偏移
     char* _reada_buffer;                ///< Read ahead buffer
     int32_t _reada_buf_len;             ///< Read ahead buffer length
@@ -297,7 +298,7 @@ public:
         FileLocationResponse response;
         request.set_file_name(path);
         request.set_sequence_id(0);
-        bool ret = _rpc_client->SendRequest(_nameserver, 
+        bool ret = _rpc_client->SendRequest(_nameserver,
             &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
         if (!ret || response.status() != 0) {
             LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
@@ -323,7 +324,7 @@ public:
                     gbi_request.set_block_id(block.block_id());
                     gbi_request.set_sequence_id(common::timer::get_micros());
                     GetBlockInfoResponse gbi_response;
-                    ret = _rpc_client->SendRequest(chunkserver, 
+                    ret = _rpc_client->SendRequest(chunkserver,
                         &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
                     delete chunkserver;
                     if (!ret || gbi_response.status() != 0) {
@@ -524,7 +525,7 @@ private:
     std::string _nameserver_address;
 };
 
-BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, 
+BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
                          const std::string name, int32_t flags)
   : _fs(fs), _rpc_client(rpc_client), _name(name),
     _open_flags(flags), _block_for_write(NULL),
@@ -602,8 +603,8 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     request.set_block_id(block_id);
     request.set_offset(offset);
     int32_t rlen = read_len;
-    if (_sequential_ratio > 2 
-        && reada 
+    if (_sequential_ratio > 2
+        && reada
         && read_len < FLAGS_sdk_file_reada_len) {
         rlen = std::min(FLAGS_sdk_file_reada_len, _sequential_ratio * read_len);
         LOG(DEBUG, "Pread(%s, %ld, %d) _sequential_ratio: %d, readahead to %d",
@@ -711,7 +712,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
                 &request, &response, 15, 3);
             if (!ret || !response.has_block()) {
                 LOG(WARNING, "AddBlock fail for %s\n", _name.c_str());
-                common::atomic_dec(&_back_writing); 
+                common::atomic_dec(&_back_writing);
                 return -1;
             }
             _block_for_write = new LocatedBlock(response.block());
@@ -749,7 +750,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
         }
     }
     // printf("Write return %d, buf_size=%d\n", w, file->_write_buf->Size());
-    common::atomic_dec(&_back_writing); 
+    common::atomic_dec(&_back_writing);
     return w;
 }
 
@@ -759,7 +760,7 @@ void BfsFileImpl::StartWrite() {
     _write_queue.push(_write_buf);
     _block_for_write->set_block_size(_block_for_write->block_size() + _write_buf->Size());
     _write_buf = NULL;
-    boost::function<void ()> task = 
+    boost::function<void ()> task =
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
     common::atomic_inc(&_back_writing);
     _mu.Unlock();
@@ -917,7 +918,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         }
     } else {
         LOG(DEBUG, "BackgroundWrite done bid:%ld, seq:%d, offset:%ld, len:%d, _back_writing:%d",
-            buffer->block_id(), buffer->Sequence(), buffer->offset(), 
+            buffer->block_id(), buffer->Sequence(), buffer->offset(),
             buffer->Size(), _back_writing);
         int r = _write_windows[cs_addr]->Add(buffer->Sequence(), 0);
         assert(r == 0);
@@ -1011,6 +1012,7 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
     return true;
 }
 
-}
+} // namespace bfs
+} // namespace baidu
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

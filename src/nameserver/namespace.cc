@@ -24,6 +24,7 @@ DECLARE_int32(default_replica_num);
 
 const int64_t kRootEntryid = 1;
 
+namespace baidu {
 namespace bfs {
 
 NameSpace::NameSpace(): _last_entry_id(1) {
@@ -454,5 +455,6 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
     return true;
 }
 
-}
+} // namespace bfs
+} // namespace baidu
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

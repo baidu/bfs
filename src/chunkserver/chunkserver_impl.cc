@@ -50,6 +50,7 @@ DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_max_pending_buffers);
 
+namespace baidu {
 namespace bfs {
 
 extern common::Counter g_block_buffers;
@@ -154,7 +155,7 @@ public:
         }
         if (_recv_window) {
             if (_recv_window->Size()) {
-                LOG(INFO, "#%ld recv_window fragments: %d\n",  
+                LOG(INFO, "#%ld recv_window fragments: %d\n",
                     _meta.block_id, _recv_window->Size());
                 std::vector<std::pair<int32_t,Buffer> > frags;
                 _recv_window->GetFragments(&frags);
@@ -218,7 +219,7 @@ public:
     void SetSliceNum(int32_t num) {
         _slice_num = num;
     }
-    /// Is all slice is arrival(Notify by the sliding window) 
+    /// Is all slice is arrival(Notify by the sliding window)
     bool IsComplete() {
         return (_slice_num == _last_seq + 1);
     }
@@ -235,7 +236,7 @@ public:
             int pread_len = std::min(len - readlen,
                                      static_cast<int>(_disk_file_size - offset - readlen));
             _mu.Unlock();
-            int ret = _file_cache->ReadFile(_disk_file, 
+            int ret = _file_cache->ReadFile(_disk_file,
                             buf + readlen, pread_len, offset + readlen);
             assert(ret == pread_len);
             readlen += ret;
@@ -397,7 +398,7 @@ private:
             _block_buf_list.push_back(std::make_pair(_blockbuf, FLAGS_write_buf_size));
             this->AddRef();
             _thread_pool->AddTask(boost::bind(&Block::DiskWrite, this));
-            
+
             _blockbuf = new char[_buflen];
             g_block_buffers.Inc();
             g_buffers_new.Inc();
@@ -644,7 +645,7 @@ public:
         if (!block->Close()) {
             return false;
         }
-        
+
         // Update meta
         BlockMeta meta = block->GetMeta();
         return SyncBlockMeta(meta, NULL);
@@ -674,7 +675,7 @@ public:
             LOG(WARNING, "Remove #%ld disk file %s %ld bytes fails: %d (%s)",
                 block_id, file_path.c_str(), du, errno, strerror(errno));
         } else {
-            LOG(INFO, "Remove #%ld disk file done: %s\n", 
+            LOG(INFO, "Remove #%ld disk file done: %s\n",
                 block_id, file_path.c_str());
         }
 
@@ -866,7 +867,7 @@ void ChunkServerImpl::SendBlockReport() {
         for (int i = 0; i < response.new_replicas_size(); i++) {
             new_replica_info.push_back(response.new_replicas(i));
         }
-        LOG(INFO, "Block report done. %lu replica blocks", new_replica_info.size()); 
+        LOG(INFO, "Block report done. %lu replica blocks", new_replica_info.size());
         if (!new_replica_info.empty()) {
             boost::function<void ()> new_replica_task =
                 boost::bind(&ChunkServerImpl::PullNewBlocks,
@@ -983,7 +984,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     WriteBlockResponse* response = origin.second;
     /// If RPC_ERROR_SEND_BUFFER_FULL retry send.
     if (failed && error == sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL) {
-        boost::function<void ()> callback = 
+        boost::function<void ()> callback =
             boost::bind(&ChunkServerImpl::WriteNext, this, next_server,
                         stub, next_request, next_response, request, response, done);
         _work_thread_pool->DelayTask(10, callback);
@@ -1013,7 +1014,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         LOG(INFO, "[Writeblock] send #%ld seq:%d to next done", block_id, packet_seq);
         delete next_response;
     }
-    
+
     boost::function<void ()> callback =
         boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
     _work_thread_pool->AddTask(callback);
@@ -1326,5 +1327,6 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     return true;
 }
 } // namespace bfs
+} //namespace baidu
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

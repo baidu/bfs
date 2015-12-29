@@ -18,6 +18,7 @@ class HTTPResponse;
 }
 }
 
+namespace baidu {
 namespace bfs {
 
 class NameSpace;
@@ -29,60 +30,60 @@ public:
     NameServerImpl();
     virtual ~NameServerImpl();
     void CreateFile(::google::protobuf::RpcController* controller,
-                       const ::bfs::CreateFileRequest* request,
-                       ::bfs::CreateFileResponse* response,
+                       const CreateFileRequest* request,
+                       CreateFileResponse* response,
                        ::google::protobuf::Closure* done);
     void AddBlock(::google::protobuf::RpcController* controller,
-                       const ::bfs::AddBlockRequest* request,
-                       ::bfs::AddBlockResponse* response,
+                       const AddBlockRequest* request,
+                       AddBlockResponse* response,
                        ::google::protobuf::Closure* done);
     void GetFileLocation(::google::protobuf::RpcController* controller,
-                       const ::bfs::FileLocationRequest* request,
-                       ::bfs::FileLocationResponse* response,
+                       const FileLocationRequest* request,
+                       FileLocationResponse* response,
                        ::google::protobuf::Closure* done);
     void ListDirectory(::google::protobuf::RpcController* controller,
-                       const ::bfs::ListDirectoryRequest* request,
-                       ::bfs::ListDirectoryResponse* response,
+                       const ListDirectoryRequest* request,
+                       ListDirectoryResponse* response,
                        ::google::protobuf::Closure* done);
     void Stat(::google::protobuf::RpcController* controller,
-                       const ::bfs::StatRequest* request,
-                       ::bfs::StatResponse* response,
+                       const StatRequest* request,
+                       StatResponse* response,
                        ::google::protobuf::Closure* done);
     void Rename(::google::protobuf::RpcController* controller,
-                       const ::bfs::RenameRequest* request,
-                       ::bfs::RenameResponse* response,
+                       const RenameRequest* request,
+                       RenameResponse* response,
                        ::google::protobuf::Closure* done);
     void Unlink(::google::protobuf::RpcController* controller,
-                       const ::bfs::UnlinkRequest* request,
-                       ::bfs::UnlinkResponse* response,
+                       const UnlinkRequest* request,
+                       UnlinkResponse* response,
                        ::google::protobuf::Closure* done);
     void DeleteDirectory(::google::protobuf::RpcController* controller,
-                         const ::bfs::DeleteDirectoryRequest* request,
-                         ::bfs::DeleteDirectoryResponse* response,
+                         const DeleteDirectoryRequest* request,
+                         DeleteDirectoryResponse* response,
                          ::google::protobuf::Closure* done);
     void FinishBlock(::google::protobuf::RpcController* controller,
-                       const ::bfs::FinishBlockRequest* request,
-                       ::bfs::FinishBlockResponse* response,
+                       const FinishBlockRequest* request,
+                       FinishBlockResponse* response,
                        ::google::protobuf::Closure* done);
     void ChangeReplicaNum(::google::protobuf::RpcController* controller,
-                       const ::bfs::ChangeReplicaNumRequest* request,
-                       ::bfs::ChangeReplicaNumResponse* response,
+                       const ChangeReplicaNumRequest* request,
+                       ChangeReplicaNumResponse* response,
                        ::google::protobuf::Closure* done);
     void HeartBeat(::google::protobuf::RpcController* controller,
-                       const ::bfs::HeartBeatRequest* request,
-                       ::bfs::HeartBeatResponse* response,
+                       const HeartBeatRequest* request,
+                       HeartBeatResponse* response,
                        ::google::protobuf::Closure* done);
     void BlockReport(::google::protobuf::RpcController* controller,
-                       const ::bfs::BlockReportRequest* request,
-                       ::bfs::BlockReportResponse* response,
+                       const BlockReportRequest* request,
+                       BlockReportResponse* response,
                        ::google::protobuf::Closure* done);
     void PullBlockReport(::google::protobuf::RpcController* controller,
-                       const ::bfs::PullBlockReportRequest* request,
-                       ::bfs::PullBlockReportResponse* response,
+                       const PullBlockReportRequest* request,
+                       PullBlockReportResponse* response,
                        ::google::protobuf::Closure* done);
     void SysStat(::google::protobuf::RpcController* controller,
-                       const ::bfs::SysStatRequest* request,
-                       ::bfs::SysStatResponse* response,
+                       const SysStatRequest* request,
+                       SysStatResponse* response,
                        ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
@@ -105,6 +106,7 @@ private:
 };
 
 } // namespace bfs
+} // namespace biadu
 
 #endif  //BFS_NAMESERVER_IMPL_H_
 

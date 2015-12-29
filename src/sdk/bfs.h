@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <string>
 
+namespace baidu {
 namespace bfs {
 
 enum Status {
@@ -79,7 +80,9 @@ private:
     void operator=(const FS&);
 };
 
-}
+} // namespace bfs
+} // namespace baidu
+
 #endif  // LIBBFS_BFS_H_
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

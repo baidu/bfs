@@ -15,6 +15,7 @@
 
 #include "proto/nameserver.pb.h"
 
+namespace baidu {
 namespace bfs {
 
 class NameSpace {
@@ -65,7 +66,8 @@ private:
     volatile int64_t _last_entry_id;
 };
 
-}
+} // namespace bfs
+} //namespace baidu
 
 #endif  // BFS_NAMESPACE_H_
 

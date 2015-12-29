@@ -20,16 +20,16 @@ int main(int argc, char* argv[])
 {
     FLAGS_flagfile = "./bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
-    common::SetLogLevel(FLAGS_nameserver_log_level);
+    baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
 
 
 
     // Service
-    bfs::NameServerImpl* nameserver_service = new bfs::NameServerImpl();
+    baidu::bfs::NameServerImpl* nameserver_service = new baidu::bfs::NameServerImpl();
 
     // rpc_server
     sofa::pbrpc::RpcServerOptions options;
-        
+
     sofa::pbrpc::RpcServer rpc_server(options);
 
     // Register
@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
     }
     sofa::pbrpc::Servlet webservice =
-        sofa::pbrpc::NewPermanentExtClosure(nameserver_service, &bfs::NameServerImpl::WebService);
+        sofa::pbrpc::NewPermanentExtClosure(nameserver_service, &baidu::bfs::NameServerImpl::WebService);
     rpc_server.RegisterWebServlet("/dfs", webservice);
 
     // Start
@@ -49,7 +49,7 @@ int main(int argc, char* argv[])
     rpc_server.Run();
 
     delete webservice;
-    LOG(WARNING, "Nameserver exit");
+    LOG(baidu::common::WARNING, "Nameserver exit");
     return EXIT_SUCCESS;
 }
 

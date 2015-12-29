@@ -15,8 +15,9 @@
 #include "common/thread_pool.h"
 #include "common/logging.h"
 
+namespace baidu {
 namespace bfs {
-    
+
 class RpcClient {
 public:
     RpcClient() {
@@ -80,7 +81,7 @@ public:
                     int32_t rpc_timeout, int retry_times) {
         sofa::pbrpc::RpcController* controller = new sofa::pbrpc::RpcController();
         controller->SetTimeout(rpc_timeout * 1000L);
-        google::protobuf::Closure* done = 
+        google::protobuf::Closure* done =
             sofa::pbrpc::NewClosure(&RpcClient::template RpcCallback<Request, Response, Callback>,
                                           controller, request, response, callback);
         (stub->*func)(controller, request, response, done);
@@ -112,6 +113,7 @@ private:
 };
 
 } // namespace bfs
+} // namespace baidu
 
 #endif  // BFS_RPC_CLIENT_H_
 

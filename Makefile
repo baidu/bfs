@@ -9,13 +9,17 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I./thirdparty/leveldb/include \
                -I$(SNAPPY_PATH)/include \
-               -I$(BOOST_PATH)/include
+               -I$(BOOST_PATH)/include \
+               -I$(GFLAG_PATH)/include \
+               -I$(COMMON_PATH)/include
 
 LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(PROTOBUF_PATH)/lib -lprotobuf \
           -L./thirdparty/leveldb -lleveldb \
           -L$(SNAPPY_PATH)/lib -lsnappy \
-          -lgflags -lpthread -lz -lrt
+          -L$(GFLAG_PATH)/lib -lgflags \
+          -L$(GTEST_PATH)/lib -lgtest \
+          -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
 CXXFLAGS = -Wall -fPIC $(OPT)
 
@@ -48,6 +52,7 @@ LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
 
 all: $(BIN)
+	@echo 'Done'
 
 # Depends
 $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)

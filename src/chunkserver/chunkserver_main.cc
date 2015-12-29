@@ -29,20 +29,20 @@ int main(int argc, char* argv[])
 {
     FLAGS_flagfile = "./bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
-    common::SetLogLevel(FLAGS_chunkserver_log_level);
-    common::SetWarningFile(FLAGS_chunkserver_warninglog.c_str());
+    baidu::common::SetLogLevel(FLAGS_chunkserver_log_level);
+    baidu::common::SetWarningFile(FLAGS_chunkserver_warninglog.c_str());
 
     sofa::pbrpc::RpcServerOptions options;
     options.work_thread_num = 8;
     sofa::pbrpc::RpcServer rpc_server(options);
 
-    bfs::ChunkServerImpl* chunkserver_service = new bfs::ChunkServerImpl();
+    baidu::bfs::ChunkServerImpl* chunkserver_service = new baidu::bfs::ChunkServerImpl();
 
     if (!rpc_server.RegisterService(chunkserver_service)) {
             return EXIT_FAILURE;
     }
     sofa::pbrpc::Servlet webservice =
-        sofa::pbrpc::NewPermanentExtClosure(chunkserver_service, &bfs::ChunkServerImpl::WebService);
+        sofa::pbrpc::NewPermanentExtClosure(chunkserver_service, &baidu::bfs::ChunkServerImpl::WebService);
     rpc_server.RegisterWebServlet("/dfs", webservice);
 
     std::string server_host = std::string("0.0.0.0:") + FLAGS_chunkserver_port;
@@ -54,7 +54,7 @@ int main(int argc, char* argv[])
     signal(SIGTERM, SignalIntHandler);
     while (!s_quit) {
         sleep(1);
-    }   
+    }
 
     return EXIT_SUCCESS;
 }
