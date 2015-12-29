@@ -14,6 +14,7 @@ ToyDFS
 yanshiguang~  
 yuanyi~  
 yuyangquan~  
+leiliyuan~
 
 ## 构建
 参考.travis.yml，至少在ubuntu上是这么构建的。
