@@ -38,7 +38,7 @@ void print_usage() {
     printf("\t    stat : list current stat of the file system\n");
 }
 
-int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
+int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc < 1) {
         print_usage();
         return 1;
@@ -51,7 +51,7 @@ int BfsMkdir(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsRename(bfs::FS* fs, int argc, char* argv[]) {
+int BfsRename(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc < 2) {
         print_usage();
         return 1;
@@ -64,7 +64,7 @@ int BfsRename(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
+int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc < 1) {
         print_usage();
         return 1;
@@ -72,7 +72,7 @@ int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
     int64_t bytes = 0;
     int32_t len;
     for (int i = 0; i < argc; i++) {
-        bfs::File* file;
+        baidu::bfs::File* file;
         if (!fs->OpenFile(argv[i], O_RDONLY, &file)) {
             fprintf(stderr, "Can't Open bfs file %s\n", argv[0]);
             return 1;
@@ -95,18 +95,18 @@ int BfsCat(bfs::FS* fs, int argc, char* argv[]) {
     return len;
 }
 
-int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
+int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc < 2) {
         print_usage();
         return 1;
     }
-    common::timer::AutoTimer at(0, "BfsGet", argv[0]);
-    bfs::File* file;
+    baidu::common::timer::AutoTimer at(0, "BfsGet", argv[0]);
+    baidu::bfs::File* file;
     if (!fs->OpenFile(argv[0], O_RDONLY, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", argv[0]);
         return 1;
     }
-    
+
     FILE* fp = fopen(argv[1], "wb");
     if (fp == NULL) {
         fprintf(stderr, "Open local file %s fail\n", argv[1]);
@@ -133,21 +133,21 @@ int BfsGet(bfs::FS* fs, int argc, char* argv[]) {
     return len;
 }
 
-int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
+int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc != 4) {
         print_usage();
         return 0;
     }
 
     int ret = 0;
-    common::timer::AutoTimer at(0, "BfsPut", argv[3]);
+    baidu::common::timer::AutoTimer at(0, "BfsPut", argv[3]);
     FILE* fp = fopen(argv[2], "rb");
     if (fp == NULL) {
         fprintf(stderr, "Can't open local file %s\n", argv[2]);
         return 1;
     }
-    
-    bfs::File* file;
+
+    baidu::bfs::File* file;
     if (!fs->OpenFile(argv[3], O_WRONLY | O_TRUNC, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", argv[3]);
         fclose(fp);
@@ -174,9 +174,9 @@ int BfsPut(bfs::FS* fs, int argc, char* argv[]) {
     return ret;
 }
 
-int64_t BfsDuRecursive(bfs::FS* fs, const std::string& path) {
+int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
     int64_t ret = 0;
-    bfs::BfsFileInfo* files = NULL;
+    baidu::bfs::BfsFileInfo* files = NULL;
     int num = 0;
     if (!fs->ListDirectory(path.c_str(), &files, &num)) {
         fprintf(stderr, "List directory fail: %s\n", path.c_str());
@@ -188,7 +188,7 @@ int64_t BfsDuRecursive(bfs::FS* fs, const std::string& path) {
             ret += BfsDuRecursive(fs, files[i].name);
             continue;
         }
-        bfs::BfsFileInfo fileinfo;
+        baidu::bfs::BfsFileInfo fileinfo;
         if (fs->Stat(files[i].name, &fileinfo)) {
             ret += fileinfo.size;
             printf("%s\t %ld\n", files[i].name, fileinfo.size);
@@ -198,7 +198,7 @@ int64_t BfsDuRecursive(bfs::FS* fs, const std::string& path) {
     return ret;
 }
 
-int BfsDu(bfs::FS* fs, int argc, char* argv[]) {
+int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc != 1) {
         print_usage();
         return 1;
@@ -208,12 +208,12 @@ int BfsDu(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsList(bfs::FS* fs, int argc, char* argv[]) {
+int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::string path("/");
     if (argc == 3) {
         path = argv[2];
     }
-    bfs::BfsFileInfo* files = NULL;
+    baidu::bfs::BfsFileInfo* files = NULL;
     int num;
     bool ret = fs->ListDirectory(path.c_str(), &files, &num);
     if (!ret) {
@@ -241,7 +241,7 @@ int BfsList(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsRmdir(bfs::FS* fs, int argc, char* argv[], bool recursive) {
+int BfsRmdir(baidu::bfs::FS* fs, int argc, char* argv[], bool recursive) {
     if (argc < 1) {
         print_usage();
         return 1;
@@ -254,7 +254,7 @@ int BfsRmdir(bfs::FS* fs, int argc, char* argv[], bool recursive) {
     return 0;
 }
 
-int BfsChangeReplicaNum(bfs::FS* fs, int argc, char* argv[]) {
+int BfsChangeReplicaNum(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc < 2) {
         print_usage();
         return 1;
@@ -269,7 +269,7 @@ int BfsChangeReplicaNum(bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsStat(bfs::FS* fs, int argc, char* argv[]) {
+int BfsStat(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::string stat_name("Stat");
     if (argc && 0 == strcmp(argv[0], "-a")) {
         stat_name = "StatAll";
@@ -294,10 +294,10 @@ int main(int argc, char* argv[]) {
         print_usage();
         return 0;
     }
-    
-    bfs::FS* fs;
+
+    baidu::bfs::FS* fs;
     std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
-    if (!bfs::FS::OpenFileSystem(ns_address.c_str(), &fs)) {
+    if (!baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &fs)) {
         fprintf(stderr, "Open filesytem %s fail\n", ns_address.c_str());
         return 1;
     }
@@ -308,7 +308,7 @@ int main(int argc, char* argv[]) {
             print_usage();
             return ret;
         }
-        bfs::File* file;
+        baidu::bfs::File* file;
         if (!fs->OpenFile(argv[2], O_WRONLY, &file)) {
             fprintf(stderr, "Open %s fail\n", argv[2]);
         } else {

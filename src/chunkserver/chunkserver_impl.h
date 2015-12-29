@@ -17,6 +17,8 @@ class HTTPRequest;
 class HTTPResponse;
 }
 }
+
+namespace baidu {
 namespace bfs {
 
 class BlockManager;
@@ -33,7 +35,7 @@ public:
     void SendHeartbeat();
     void SendBlockReport();
     bool ReportFinish(Block* block);
-    
+
     virtual void WriteBlock(::google::protobuf::RpcController* controller,
                             const WriteBlockRequest* request,
                             WriteBlockResponse* response,
@@ -84,6 +86,7 @@ private:
 };
 
 } // namespace bfs
+} // namespace baidu
 
 #endif  //__TRUNKSERVER_IMPL_H_
 

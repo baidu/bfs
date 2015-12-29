@@ -23,6 +23,7 @@ DECLARE_int32(default_replica_num);
 const uint32_t MAX_PATH_LENGHT = 10240;
 const uint32_t MAX_PATH_DEPTH = 99;
 
+namespace baidu {
 namespace bfs {
 
 /// 构造标准化路径
@@ -125,7 +126,7 @@ bool NameSpace::GetFileInfo(const std::string& path,
     if (!s.ok()) {
         return false;
     }
-    
+
     bool ret = file_info->ParseFromString(infobuf);
     assert(ret);
     return file_info;
@@ -178,7 +179,7 @@ int NameSpace::CreateFile(const std::string& file_name, int flags, int mode) {
             }
         }
     }
-    
+
     const std::string& file_key = file_keys[depth-1];
     if ((flags & O_TRUNC) == 0) {
         s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
@@ -330,7 +331,7 @@ int NameSpace::DeleteDirectory(std::string& path, bool recursive,
             return 404;
         }
     }
-    
+
     keys.clear();
     if (path[path.size() - 1] != '/') {
         path += '/';
@@ -407,5 +408,6 @@ leveldb::Iterator* NameSpace::NewIterator() {
     return _db->NewIterator(leveldb::ReadOptions());
 }
 
-}
+} // namespace bfs
+} // namespace baidu
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
