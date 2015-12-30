@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#include "common/util.h"
 #include "common/timer.h"
 #include "sdk/bfs.h"
 
@@ -96,20 +97,38 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
 }
 
 int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
-    if (argc < 2) {
+    if (argc < 1) {
         print_usage();
         return 1;
     }
-    baidu::common::timer::AutoTimer at(0, "BfsGet", argv[0]);
-    baidu::bfs::File* file;
-    if (!fs->OpenFile(argv[0], O_RDONLY, &file)) {
-        fprintf(stderr, "Can't Open bfs file %s\n", argv[0]);
+
+    std::string source = argv[0];
+    std::string target;
+    if (argc >= 2) {
+        target = argv[1];
+    }
+    std::vector<std::string> src_elements;
+    bool src_isdir = false;
+    if (!baidu::common::util::SplitPath(source, &src_elements, &src_isdir)
+        || src_isdir || src_elements.empty()) {
+        fprintf(stderr, "Bad file path %s\n", source.c_str());
         return 1;
     }
+    std::string src_file_name = src_elements[src_elements.size() - 1];
+    if (target.empty() || target[target.size() - 1] == '/') {
+        target += src_file_name;
+    }
 
-    FILE* fp = fopen(argv[1], "wb");
+    baidu::common::timer::AutoTimer at(0, "BfsGet", argv[0]);
+    baidu::bfs::File* file;
+    if (!fs->OpenFile(source.c_str(), O_RDONLY, &file)) {
+        fprintf(stderr, "Can't Open bfs file %s\n", source.c_str());
+        return 1;
+    }
+    
+    FILE* fp = fopen(target.c_str(), "wb");
     if (fp == NULL) {
-        fprintf(stderr, "Open local file %s fail\n", argv[1]);
+        fprintf(stderr, "Open local file %s fail\n", target.c_str());
         delete file;
         return -1;
     }
@@ -120,14 +139,14 @@ int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
         len = file->Read(buf, sizeof(buf));
         if (len <= 0) {
             if (len < 0) {
-                fprintf(stderr, "Read from %s fail.\n", argv[0]);
+                fprintf(stderr, "Read from %s fail.\n", source.c_str());
             }
             break;
         }
         bytes += len;
         fwrite(buf, len, 1, fp);
     }
-    printf("Read %ld bytes from %s\n", bytes, argv[1]);
+    printf("Read %ld bytes from %s\n", bytes, source.c_str());
     delete file;
     fclose(fp);
     return len;
@@ -139,17 +158,34 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         return 0;
     }
 
+    std::string source = argv[2];
+    std::string target = argv[3];
+    if (source.empty() || source[source.size() - 1] == '/' || target.empty()) {
+        fprintf(stderr, "Bad file path: %s or %s\n", source.c_str(), target.c_str());
+        return 1;
+    }
+    std::string src_file_name;
+    size_t pos = source.rfind('/');
+    if (pos == std::string::npos) {
+        src_file_name = source;
+    } else {
+        src_file_name = source.substr(pos+1);
+    }
+    if (target[target.size() - 1] == '/') {
+        target += src_file_name;
+    }
+
     int ret = 0;
-    baidu::common::timer::AutoTimer at(0, "BfsPut", argv[3]);
-    FILE* fp = fopen(argv[2], "rb");
+    baidu::common::timer::AutoTimer at(0, "BfsPut", target.c_str());
+    FILE* fp = fopen(source.c_str(), "rb");
     if (fp == NULL) {
         fprintf(stderr, "Can't open local file %s\n", argv[2]);
         return 1;
     }
-
+    
     baidu::bfs::File* file;
-    if (!fs->OpenFile(argv[3], O_WRONLY | O_TRUNC, &file)) {
-        fprintf(stderr, "Can't Open bfs file %s\n", argv[3]);
+    if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, &file)) {
+        fprintf(stderr, "Can't Open bfs file %s\n", target.c_str());
         fclose(fp);
         return 1;
     }
@@ -159,23 +195,27 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
     while ( (bytes = fread(buf, 1, sizeof(buf), fp)) > 0) {
         int32_t write_bytes = file->Write(buf, bytes);
         if (write_bytes < bytes) {
-            fprintf(stderr, "Write fail: [%s:%ld]\n", argv[3], len);
+            fprintf(stderr, "Write fail: [%s:%ld]\n", target.c_str(), len);
             return 1;
         }
         len += bytes;
     }
     if (!file->Close()) {
-        fprintf(stderr, "close fail: %s\n", argv[3]);
+        fprintf(stderr, "close fail: %s\n", target.c_str());
         ret = 1;
     }
     delete file;
     fclose(fp);
-    printf("Put file to bfs %s %ld bytes\n", argv[3], len);
+    printf("Put file to bfs %s %ld bytes\n", target.c_str(), len);
     return ret;
 }
 
 int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
     int64_t ret = 0;
+    std::string pad;
+    if (path[path.size() - 1] != '/') {
+        pad = "/";
+    }
     baidu::bfs::BfsFileInfo* files = NULL;
     int num = 0;
     if (!fs->ListDirectory(path.c_str(), &files, &num)) {
@@ -183,15 +223,16 @@ int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
         return ret;
     }
     for (int i = 0; i < num; i++) {
+        std::string file_path = path + pad + files[i].name;
         int32_t type = files[i].mode;
         if (type & (1<<9)) {
-            ret += BfsDuRecursive(fs, files[i].name);
+            ret += BfsDuRecursive(fs, file_path);
             continue;
         }
         baidu::bfs::BfsFileInfo fileinfo;
-        if (fs->Stat(files[i].name, &fileinfo)) {
+        if (fs->Stat(file_path.c_str(), &fileinfo)) {
             ret += fileinfo.size;
-            printf("%s\t %ld\n", files[i].name, fileinfo.size);
+            printf("%s\t %ld\n", file_path.c_str(), fileinfo.size);
         }
     }
     delete files;
@@ -212,6 +253,9 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::string path("/");
     if (argc == 3) {
         path = argv[2];
+        if (path.size() && path[path.size()-1] != '/') {
+            path.append("/");
+        }
     }
     baidu::bfs::BfsFileInfo* files = NULL;
     int num;
@@ -235,7 +279,7 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         localtime_r(&ctime, &stm);
         snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
-        printf("%s\t%s  %s\n", statbuf, timestr, files[i].name);
+        printf("%s\t%s  %s%s\n", statbuf, timestr, path.c_str(), files[i].name);
     }
     delete files;
     return 0;
