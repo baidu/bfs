@@ -575,7 +575,7 @@ NameServerImpl::NameServerImpl() : _safe_mode(true) {
     _namespace = new NameSpace();
     _block_manager = new BlockManager();
     _chunkserver_manager = new ChunkServerManager(&_thread_pool, _block_manager);
-    RebuildBlockMap();
+    _namespace->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
     _thread_pool.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
     _thread_pool.DelayTask(FLAGS_nameserver_safemode_time * 1000,
         boost::bind(&NameServerImpl::LeaveSafemode, this));
@@ -760,8 +760,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     response->set_sequence_id(request->sequence_id());
     const std::string& path = request->file_name();
     FileInfo file_info;
-    std::string file_key;
-    if (!_namespace->GetFileInfo(path, &file_info, &file_key)) {
+    if (!_namespace->GetFileInfo(path, &file_info)) {
         LOG(WARNING, "AddBlock file not found: %s", path.c_str());
         response->set_status(404);
         done->Run();
@@ -788,7 +787,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         response->set_status(0);
         file_info.add_blocks(new_block_id);
         file_info.set_version(-1);
-        if (!_namespace->UpdateFileInfo(file_key, file_info)) {
+        ///TODO: Lost update? Get&Update not atomic.
+        if (!_namespace->UpdateFileInfo(file_info)) {
             LOG(WARNING, "Update file info fail: %s", path.c_str());
             response->set_status(826);
         }
@@ -830,8 +830,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
     g_get_location.Inc();
 
     FileInfo info;
-    std::string file_key;
-    if (!_namespace->GetFileInfo(path, &info, &file_key)) {
+    if (!_namespace->GetFileInfo(path, &info)) {
         // No this file
         LOG(INFO, "NameServerImpl::GetFileLocation: NotFound: %s",
             request->file_name().c_str());
@@ -897,8 +896,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
     LOG(INFO, "Stat: %s\n", path.c_str());
 
     FileInfo info;
-    std::string file_key;
-    if (_namespace->GetFileInfo(path, &info, &file_key)) {
+    if (_namespace->GetFileInfo(path, &info)) {
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
         int64_t file_size = 0;
@@ -987,12 +985,11 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     int ret_status = 886;
 
     FileInfo file_info;
-    std::string file_key;
-    if (_namespace->GetFileInfo(file_name, &file_info, &file_key)) {
+    if (_namespace->GetFileInfo(file_name, &file_info)) {
         file_info.set_replicas(replica_num);
-        bool ret = _namespace->UpdateFileInfo(file_key, file_info);
+        bool ret = _namespace->UpdateFileInfo(file_info);
         assert(ret);
-        if (_block_manager->ChangeReplicaNum(file_info.id(), replica_num)) {
+        if (_block_manager->ChangeReplicaNum(file_info.entry_id(), replica_num)) {
             LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
             ret_status = 0;
         } else {
@@ -1006,26 +1003,15 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     done->Run();
 }
 
-void NameServerImpl::RebuildBlockMap() {
-    MutexLock lock(&_mu);
-    leveldb::Iterator* it = _namespace->NewIterator();
-    for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
-        FileInfo file_info;
-        bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
-        assert(ret);
-        if ((file_info.type() & (1 << 9)) == 0) {
-            //a file
-            for (int i = 0; i < file_info.blocks_size(); i++) {
-                int64_t block_id = file_info.blocks(i);
-                int64_t version = file_info.version();
-                _block_manager->AddNewBlock(block_id);
-                _block_manager->SetBlockVersion(block_id, version);
-                _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
-                _block_manager->MarkBlockStable(block_id);
-            }
-        }
+void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
+    for (int i = 0; i < file_info.blocks_size(); i++) {
+        int64_t block_id = file_info.blocks(i);
+        int64_t version = file_info.version();
+        _block_manager->AddNewBlock(block_id);
+        _block_manager->SetBlockVersion(block_id, version);
+        _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
+        _block_manager->MarkBlockStable(block_id);
     }
-    delete it;
 }
 
 void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,

@@ -10,7 +10,7 @@
 #include <string.h>
 #include <string>
 
-#include <common/test_utils.h>
+#include <gtest/gtest.h>
 
 #include "dfs.h"
 
@@ -20,25 +20,15 @@ const char* dfs_conf = "127.0.0.1:8828";
 
 const std::string test_path("/test");
 
-int main(int argc, char* argv[]) {
-    if (argc > 1) {
-        dfs_conf = argv[1];
-    }
-
+TEST(TERA_SO_TEST, TERA_SO) {
     dlerror();
     void* handle = dlopen(so_path, RTLD_LAZY | RTLD_DEEPBIND | RTLD_LOCAL);
     const char* err = dlerror();
-    if (handle == NULL) {
-        fprintf(stderr, "Open %s fail: %s\n", so_path, err);
-        return 1;
-    }
+    ASSERT_TRUE(handle != NULL);
 
     leveldb::DfsCreator creator = (leveldb::DfsCreator)dlsym(handle, "NewDfs");
     err = dlerror();
-    if (err != NULL) {
-        fprintf(stderr, "Load NewDfs from %s fail: %s\n", so_path, err);
-        return 1;
-    }
+    ASSERT_TRUE(err == NULL);
 
     leveldb::Dfs* dfs = (*creator)(dfs_conf);
     
@@ -145,8 +135,15 @@ int main(int argc, char* argv[]) {
     /// Delete directory
     result.clear();
     ASSERT_TRUE(0 == dfs->DeleteDirectory(test_path));
-    ASSERT_TRUE(0 == dfs->ListDirectory(test_path, &result));
-    ASSERT_TRUE(0 == result.size());
+    ASSERT_TRUE(0 != dfs->ListDirectory(test_path, &result));
+}
+
+int main(int argc, char* argv[]) {
+    testing::InitGoogleTest(&argc, argv);
+    if (argc > 1) {
+        dfs_conf = argv[1];
+    }
+    return RUN_ALL_TESTS();
 }
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

@@ -13,6 +13,7 @@
 #include "common/logging.h"
 #include "common/timer.h"
 
+namespace baidu {
 namespace bfs {
 
 int32_t BfsFile::Write(const char* buf, int32_t len) {
@@ -50,8 +51,8 @@ int32_t BfsFile::Read(char* buf, int32_t len) {
     int32_t ret = _file->Read(buf, len);
     LOG(INFO, "Read(%s, len: %d) return %d", _name.c_str(), len, ret);
     if (ret != len) {
-        LOG(INFO, "Read(%s, len: %d) return %d",
-            _name.c_str(), len, ret);
+        //LOG(INFO, "Read(%s, len: %d) return %d",
+        //    _name.c_str(), len, ret);
     }
     return ret;
 }
@@ -168,7 +169,10 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
     for (int i = 0; i < num; i++) {
         char* pathname = files[i].name;
         char* filename = rindex(pathname, '/');
-        if (filename != NULL && filename[0] != '\0') {
+        if (pathname[0] == '\0') continue;
+        if (filename == NULL) {
+            result->push_back(pathname);
+        } else if (filename[0] != '\0' && filename[1] != '\0') {
             result->push_back(filename + 1);
         }
     }
@@ -192,14 +196,15 @@ leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) 
     return new BfsFile(filename, file);
 }
 
+}
 } // namespace
 
 extern "C" {
 
 leveldb::Dfs* NewDfs(const char* conf) {
-    common::SetLogFile("./bfslog");
-    common::SetWarningFile("./bfswf");
-    return new bfs::BfsImpl(conf);
+    baidu::common::SetLogFile("./bfslog");
+    baidu::common::SetWarningFile("./bfswf");
+    return new baidu::bfs::BfsImpl(conf);
 }
 
 }
