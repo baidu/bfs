@@ -389,39 +389,7 @@ public:
         return ret;
     }
     bool CloseFile(File* file) {
-        int64_t block_id = -1;
-        int open_flags = -1;
-        bool empty_file = false;
-        BfsFileImpl* bfs_file = dynamic_cast<BfsFileImpl*>(file);
-        if (bfs_file) {
-            open_flags = bfs_file->_open_flags;
-            if (!bfs_file->_block_for_write) {
-                empty_file = true;
-            }
-            if (!empty_file && (open_flags & O_WRONLY)) {
-                block_id = bfs_file->_block_for_write->block_id();
-            }
-        } else {
-            LOG(WARNING, "Not a BfsFileImpl object?\n");
-            return false;
-        }
-        if (!file->Close()) {
-            LOG(WARNING, "Close file fail\n");
-            return false;
-        }
-        if (!empty_file && (open_flags & O_WRONLY)) {
-            FinishBlockRequest request;
-            FinishBlockResponse response;
-            request.set_sequence_id(0);
-            request.set_block_id(block_id);
-            request.set_block_version(bfs_file->_last_seq);
-            bool ret = _rpc_client->SendRequest(_nameserver, &NameServer_Stub::FinishBlock,
-                    &request, &response, 15, 3);
-
-            return ret && response.status() == 0;
-        } else {
-            return true;
-        }
+        return file->Close();
     }
     bool DeleteFile(const char* path) {
         UnlinkRequest request;
@@ -538,7 +506,7 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
 
 BfsFileImpl::~BfsFileImpl () {
     if (!_closed) {
-        _fs->CloseFile(this);
+        Close();
     }
     delete[] _reada_buffer;
     _reada_buffer = NULL;
@@ -974,9 +942,13 @@ bool BfsFileImpl::Sync() {
 bool BfsFileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", _name.c_str());
     MutexLock lock(&_mu, "Close", 1000);
+    bool need_report_finish = false;
+    int64_t block_id = -1;
     if (_block_for_write && (_open_flags & O_WRONLY)) {
+        need_report_finish = true;
+        block_id = _block_for_write->block_id();
         if (!_write_buf) {
-            _write_buf = new WriteBuffer(++_last_seq, 32, _block_for_write->block_id(),
+            _write_buf = new WriteBuffer(++_last_seq, 32, block_id,
                                          _block_for_write->block_size());
         }
         _write_buf->SetLast();
@@ -998,7 +970,23 @@ bool BfsFileImpl::Close() {
     _chunkserver = NULL;
     LOG(DEBUG, "File %s closed", _name.c_str());
     _closed = true;
-    return !_bg_error;
+    if (need_report_finish) {
+        NameServer_Stub* nameserver = _fs->_nameserver;
+        FinishBlockRequest request;
+        FinishBlockResponse response;
+        request.set_sequence_id(0);
+        request.set_block_id(block_id);
+        request.set_block_version(_last_seq);
+        bool ret = _rpc_client->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
+                &request, &response, 15, 3);
+        if (!(ret && response.status() == 0 && (!_bg_error)))  {
+            LOG(WARNING, "Close file fail");
+            return false;
+        }
+        return true;
+    } else {
+        return !_bg_error;
+    }
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
