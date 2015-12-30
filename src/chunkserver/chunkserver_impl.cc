@@ -56,7 +56,6 @@ extern common::Counter g_buffers_delete;
 extern common::Counter g_blocks;
 extern common::Counter g_writing_blocks;
 extern common::Counter g_writing_bytes;
-extern common::Counter g_find_ops;
 extern common::Counter g_read_ops;
 extern common::Counter g_write_ops;
 extern common::Counter g_write_bytes;
