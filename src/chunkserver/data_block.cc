@@ -10,7 +10,6 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/vfs.h>
 
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
