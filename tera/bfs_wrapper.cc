@@ -50,8 +50,8 @@ int32_t BfsFile::Read(char* buf, int32_t len) {
     int32_t ret = _file->Read(buf, len);
     LOG(INFO, "Read(%s, len: %d) return %d", _name.c_str(), len, ret);
     if (ret != len) {
-        LOG(INFO, "Read(%s, len: %d) return %d",
-            _name.c_str(), len, ret);
+        //LOG(INFO, "Read(%s, len: %d) return %d",
+        //    _name.c_str(), len, ret);
     }
     return ret;
 }
@@ -168,7 +168,10 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
     for (int i = 0; i < num; i++) {
         char* pathname = files[i].name;
         char* filename = rindex(pathname, '/');
-        if (filename != NULL && filename[0] != '\0') {
+        if (pathname[0] == '\0') continue;
+        if (filename == NULL) {
+            result->push_back(pathname);
+        } else if (filename[0] != '\0' && filename[1] != '\0') {
             result->push_back(filename + 1);
         }
     }

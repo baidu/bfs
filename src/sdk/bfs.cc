@@ -379,7 +379,7 @@ public:
                 //printf("OpenFile success: %s\n", path);
             } else {
                 //printf("GetFileLocation return %d\n", response.blocks_size());
-                fprintf(stderr, "OpenFile return %d\n", response.status());
+                LOG(WARNING, "OpenFile return %d\n", response.status());
                 ret = false;
             }
         } else {

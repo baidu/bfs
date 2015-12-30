@@ -2,7 +2,7 @@
 package baidu.bfs;
 
 message FileInfo {
-    optional int64 id = 1;
+    optional int64 entry_id = 1;
     optional int64 version = 2;
     optional int32 type = 3 [default = 0755];
     repeated int64 blocks = 4;
@@ -10,6 +10,7 @@ message FileInfo {
     optional string name = 6;
     optional int64 size = 7;
     optional int32 replicas = 8;
+    optional int64 parent_entry_id = 9;
 }
 
 message ChunkServerInfo {

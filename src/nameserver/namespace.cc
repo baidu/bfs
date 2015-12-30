@@ -15,58 +15,19 @@
 
 #include "common/timer.h"
 #include "common/util.h"
+#include "common/atomic.h"
+#include "common/string_util.h"
 
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
 
-const uint32_t MAX_PATH_LENGHT = 10240;
-const uint32_t MAX_PATH_DEPTH = 99;
+const int64_t kRootEntryid = 1;
 
 namespace baidu {
 namespace bfs {
 
-/// 构造标准化路径
-/// /home/work/file -> 00,01/home,02/home/work,03/home/work/file
-bool SplitPath(const std::string& path, std::vector<std::string>* element) {
-    if (path.empty() || path[0] != '/' || path.size() > MAX_PATH_LENGHT) {
-        return false;
-    }
-    int keylen = 2;
-    char keybuf[MAX_PATH_LENGHT];
-    uint32_t path_depth = 0;
-    int last_pos = 0;
-    bool valid = true;
-    for (size_t i = 0; i <= path.size(); i++) {
-        if (i == path.size() || path[i] == '/') {
-            if (valid) {
-                if (path_depth > MAX_PATH_DEPTH) {
-                    return false;
-                }
-                keybuf[0] = '0' + (path_depth / 10);
-                keybuf[1] = '0' + (path_depth % 10);
-                memcpy(keybuf + keylen, path.data() + last_pos, i - last_pos);
-                keylen += i - last_pos;
-                element->push_back(std::string(keybuf, keylen));
-                ++path_depth;
-            }
-            last_pos = i;
-            valid = false;
-        } else {
-            valid = true;
-        }
-    }
-#if 0
-    printf("SplitPath return: ");
-    for (uint32_t i=0; i < element->size(); i++) {
-        printf("\"%s\",", (*element)[i].c_str());
-    }
-    printf("\n");
-#endif
-    return true;
-}
-
-NameSpace::NameSpace() {
+NameSpace::NameSpace(): _last_entry_id(1) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -75,7 +36,7 @@ NameSpace::NameSpace() {
         _db = NULL;
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
     }
-    std::string version_key(8, '\0');
+    std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
     s = _db->Get(leveldb::ReadOptions(), version_key, &version_str);
@@ -97,155 +58,198 @@ NameSpace::NameSpace() {
     }
 }
 
+NameSpace::~NameSpace() {
+    delete _db;
+    _db = NULL;
+}
+
 int64_t NameSpace::Version() const {
     return _version;
+}
+
+bool NameSpace::IsDir(int type) {
+    return (type & (1<<9));
+}
+
+void NameSpace::EncodingStoreKey(int64_t entry_id,
+                                 const std::string& path,
+                                 std::string* key_str) {
+    key_str->resize(8);
+    common::util::EncodeBigEndian(&(*key_str)[0], entry_id);
+    key_str->append(path);
+}
+
+bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
+    std::string value;
+    leveldb::Status s = _db->Get(leveldb::ReadOptions(), key, &value);
+    if (!s.ok()) {
+        LOG(DEBUG, "GetFromStore get fail %s", key.substr(8).c_str());
+        return false;
+    }
+    if (!info->ParseFromString(value)) {
+        LOG(WARNING, "GetFromStore parse fail %s", key.substr(8).c_str());
+        return false;
+    }
+    return true;
+}
+/// New SplitPath
+/// /home/dirx/filex
+///       diry/filey
+/// /tmp/filez
+/// 1home -> 2
+/// 1tmp -> 3
+/// 2dirx -> 4
+/// 2diry -> 5
+/// 3filez -> 6
+/// 4filex -> 7
+/// 5filey -> 8
+bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
+    std::vector<std::string> paths;
+    if (!common::util::SplitPath(path, &paths) || paths.empty()) {
+        return false;
+    }
+    int64_t parent_id = kRootEntryid;
+    int64_t entry_id = kRootEntryid;
+    for (size_t i = 0; i < paths.size(); i++) {
+        if (!LookUp(entry_id, paths[i], info)) {
+            return false;
+        }
+        parent_id = entry_id;
+        entry_id = info->entry_id();
+        LOG(INFO, "LookUp %s entry_id= %ld", paths[i].c_str(), entry_id);
+    }
+    info->set_name(paths[paths.size()-1]);
+    info->set_parent_entry_id(parent_id);
+    LOG(INFO, "LookUp %s return %s", path.c_str(), info->name().c_str());
+    return true;
+}
+
+bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* info) {
+    std::string key_str;
+    EncodingStoreKey(parent_id, name, &key_str);
+    if (!GetFromStore(key_str, info)) {
+        LOG(INFO, "LookUp %ld %s return false", parent_id, name.c_str());
+        return false;
+    }
+    LOG(INFO, "LookUp %ld %s return true", parent_id, name.c_str());
+    return true;
 }
 
 bool NameSpace::DeleteFileInfo(const std::string file_key) {
     leveldb::Status s = _db->Delete(leveldb::WriteOptions(), file_key);
     return s.ok();
 }
-bool NameSpace::UpdateFileInfo(const std::string& file_key, FileInfo& file_info) {
+bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
+    std::string file_key;
+    EncodingStoreKey(file_info.parent_entry_id(), file_info.name(), &file_key);
     std::string infobuf;
     file_info.SerializeToString(&infobuf);
     leveldb::Status s = _db->Put(leveldb::WriteOptions(), file_key, infobuf);
     return s.ok();
 };
 
-bool NameSpace::GetFileInfo(const std::string& path,
-                            FileInfo* file_info,
-                            std::string* file_key) {
-    std::vector<std::string> keys;
-    if (!SplitPath(path, &keys)) {
-        LOG(WARNING, "Unlink SplitPath fail: %s\n", path.c_str());
-        return false;
-    }
-    std::string infobuf;
-    *file_key = *keys.rbegin();
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), *file_key, &infobuf);
-    if (!s.ok()) {
-        return false;
-    }
-
-    bool ret = file_info->ParseFromString(infobuf);
-    assert(ret);
-    return file_info;
-    /*
-    int64_t parent_id = 1;
-    FileInfo info;
-    for (uint32_t i = 0; i < keys.size(); i++) {
-        std::string db_key(4, 0);
-        *reinterpret_cast<int*>(&db_key[i]) = 1;
-        db_key.append(keys[i]);
-        std::string value;
-        leveldb::Status s = _db.Get(db_key, &value);
-        if (!s.ok()) {
-            return NULL;
-        }
-        if (!info.ParseFromString(value)) {
-            return NULL;
-        }
-        parent_id = info.id();
-    }
-    return new FileInfo(info);*/
+bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
+    return LookUp(path, file_info);
 }
 
-int NameSpace::CreateFile(const std::string& file_name, int flags, int mode) {
-    std::vector<std::string> file_keys;
-    if (!SplitPath(file_name, &file_keys)) {
+int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
+    std::vector<std::string> paths;
+    if (!common::util::SplitPath(path, &paths)) {
+        LOG(INFO, "CreateFile split fail %s", path.c_str());
         return 886;
     }
 
     /// Find parent directory, create if not exist.
     FileInfo file_info;
+    int64_t parent_id = kRootEntryid;
+    int depth = paths.size();
     std::string info_value;
-    int depth = file_keys.size();
-    leveldb::Status s;
     for (int i=0; i < depth-1; ++i) {
-        s = _db->Get(leveldb::ReadOptions(), file_keys[i], &info_value);
-        if (s.IsNotFound()) {
+        if (!LookUp(parent_id, paths[i], &file_info)) {
             file_info.set_type((1<<9)|0755);
             file_info.set_ctime(time(NULL));
+            file_info.set_entry_id(common::atomic_add64(&_last_entry_id, 1) + 1);
             file_info.SerializeToString(&info_value);
-            s = _db->Put(leveldb::WriteOptions(), file_keys[i], info_value);
+            std::string key_str;
+            EncodingStoreKey(parent_id, paths[i], &key_str);
+            leveldb::Status s = _db->Put(leveldb::WriteOptions(), key_str, info_value);
+            LOG(INFO, "Put %s", common::DebugString(key_str).c_str());
             assert (s.ok());
-            LOG(INFO, "Create path recursively: %s\n",file_keys[i].c_str()+2);
+            LOG(INFO, "Create path recursively: %s %ld", paths[i].c_str(), file_info.entry_id());
         } else {
-            bool ret = file_info.ParseFromString(info_value);
-            assert(ret);
-            if ((file_info.type() & (1<<9)) == 0) {
-                LOG(WARNING, "Create path fail: %s is not a directory\n", file_keys[i].c_str() + 2);
+            if (!IsDir(file_info.type())) {
+                LOG(WARNING, "Create path fail: %s is not a directory", paths[i].c_str());
                 return 886;
             }
         }
+        parent_id = file_info.entry_id();
     }
-
-    const std::string& file_key = file_keys[depth-1];
+    
+    const std::string& fname = paths[depth-1];
     if ((flags & O_TRUNC) == 0) {
-        s = _db->Get(leveldb::ReadOptions(), file_key, &info_value);
-        if (s.ok()) {
-            LOG(WARNING, "CreateFile %s fail: already exist!\n", file_name.c_str());
+        if (LookUp(parent_id, fname, &file_info)) {
+            LOG(WARNING, "CreateFile %s fail: already exist!\n", fname.c_str());
             return 1;
         }
     }
     if (mode) {
         file_info.set_type(((1 << 10) - 1) & mode);
     } else {
-        file_info.set_type(755);
+        file_info.set_type(0755);
     }
-    file_info.set_id(0);
+    file_info.set_entry_id(common::atomic_add64(&_last_entry_id, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(FLAGS_default_replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
-    s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
+    std::string file_key;
+    EncodingStoreKey(parent_id, fname, &file_key);
+    leveldb::Status s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
-        LOG(INFO, "CreateFile %s\n", file_key.c_str());
+        LOG(INFO, "CreateFile %s %ld", path.c_str(), file_info.entry_id());
         return 0;
     } else {
-        LOG(WARNING, "CreateFile %s fail: db put fail", file_key.c_str());
+        LOG(WARNING, "CreateFile %s fail: db put fail", path.c_str());
         return 2;
     }
 }
 
 int NameSpace::ListDirectory(const std::string& dir,
                              google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
-    std::string path = dir;
-    if (path.empty() || path[0] != '/') {
-        path = "/";
+    outputs->Clear();
+    std::string path = dir.empty() ? "/" : dir;
+    if (path[0] != '/') {
+        return 403;
     }
     if (path[path.size()-1] != '/') {
         path += '/';
     }
-    ///TODO: Check path existent
-
-    path += "#";
-    std::vector<std::string> keys;
-    if (!SplitPath(path, &keys)) {
-        LOG(WARNING, "SplitPath fail: %s\n", path.c_str());
-        return 886;
+    int64_t entry_id = kRootEntryid;
+    if (path != "/") {
+        FileInfo info;
+        if (!LookUp(path, &info)) {
+            return 404;
+        }
+        entry_id = info.entry_id();
     }
-
-    const std::string& file_start_key = keys[keys.size()-1];
-    std::string file_end_key = file_start_key;
-    if (file_end_key[file_end_key.size()-1] == '#') {
-        file_end_key[file_end_key.size()-1] = '\255';
-    } else {
-        file_end_key += "#";
-    }
-
+    LOG(INFO, "entry_id= %ld", entry_id);
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
-    //printf("List Directory: %s, return: ", file_start_key.c_str());
+    std::string key_start, key_end;
+    EncodingStoreKey(entry_id, "", &key_start);
+    EncodingStoreKey(entry_id + 1, "", &key_end);
     leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
-    for (it->Seek(file_start_key); it->Valid(); it->Next()) {
+    for (it->Seek(key_start); it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
-        if (key.compare(file_end_key)>=0) {
+        if (key.compare(key_end)>=0) {
             break;
         }
         FileInfo* file_info = outputs->Add();
         bool ret = file_info->ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
-        file_info->set_name(key.data()+2, it->key().size()-2);
+        file_info->set_name(std::string(key.data() + 8, key.size() - 8));
+        LOG(INFO, "List %s return %s[%s]",
+            path.c_str(), file_info->name().c_str(),
+            common::DebugString(key.ToString()).c_str());
     }
     delete it;
     return 0;
@@ -255,46 +259,84 @@ int NameSpace::Rename(const std::string& old_path,
                       const std::string& new_path,
                       bool* need_unlink,
                       FileInfo* remove_file) {
+    *need_unlink = false;
     FileInfo old_file;
-    std::string old_key;
-    if (!GetFileInfo(old_path, &old_file, &old_key)) {
+    if (!LookUp(old_path, &old_file)) {
         LOG(WARNING, "Rename not found: %s\n", old_path.c_str());
         return 404;
     }
 
-    FileInfo new_file;
-    std::string new_key;
-    *need_unlink = GetFileInfo(new_path, &new_file, &new_key);
-
-    // Directory rename is not impliment.
-    if ((old_file.type() & (1<<9)) == 0) {
-        leveldb::WriteBatch batch;
-        std::string value;
-        old_file.SerializeToString(&value);
-        batch.Put(new_key, value);
-        batch.Delete(old_key);
-        leveldb::Status s = _db->Write(leveldb::WriteOptions(), &batch);
-        if (s.ok()) {
-            LOG(INFO, "Rename %s to %s, replace: %d",
-                old_path.c_str(), new_path.c_str(), need_unlink);
-            return 0;
-        } else {
-            LOG(WARNING, "Rename write leveldb fail: %s", old_path.c_str());
-            return 1;
-        }
-    } else {
-        LOG(WARNING, "Rename not support directory: %s", old_path.c_str());
-        return 403;
+    std::vector<std::string> new_paths;
+    if (!common::util::SplitPath(new_path, &new_paths) || new_paths.empty()) {
+        LOG(INFO, "CreateFile split fail %s", new_path.c_str());
+        return 886;
     }
+
+    int64_t parent_id = kRootEntryid;
+    for (uint32_t i = 0; i < new_paths.size() - 1; i++) {
+        FileInfo path_file;
+        if (!LookUp(parent_id, new_paths[i], &path_file)) {
+            LOG(INFO, "Rename to %s which not exist", new_paths[i].c_str());
+            return 404;
+        }
+        if (!IsDir(path_file.type())) {
+            LOG(WARNING, "Rename %s to %s fail: %s is not a directory",
+                old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
+            return 886;
+        }
+        parent_id = path_file.entry_id();
+    }
+
+
+    const std::string& dst_name = new_paths[new_paths.size() - 1];
+    {
+        /// dst_file maybe not exist, don't use it elsewhere.
+        FileInfo dst_file;
+        if (LookUp(parent_id, dst_name, &dst_file)) {
+            if (IsDir(dst_file.type())) {
+                LOG(INFO, "Rename %s to %s, target %o is a exist directory",
+                    old_path.c_str(), new_path.c_str(), dst_file.type());
+                return 403;
+            }
+            *need_unlink = true;
+            remove_file->CopyFrom(dst_file);
+        }
+    }
+
+    std::string old_key;
+    EncodingStoreKey(old_file.parent_entry_id(), old_file.name(), &old_key);
+    std::string new_key;
+    EncodingStoreKey(parent_id, dst_name, &new_key);
+    std::string value;
+    old_file.clear_parent_entry_id();
+    old_file.clear_name();
+    old_file.SerializeToString(&value);
+
+    // Write to persistent storage
+    leveldb::WriteBatch batch;
+    batch.Put(new_key, value);
+    batch.Delete(old_key);
+    leveldb::Status s = _db->Write(leveldb::WriteOptions(), &batch);
+    if (s.ok()) {
+        LOG(INFO, "Rename %s to %s[%s], replace: %d",
+            old_path.c_str(), new_path.c_str(),
+            common::DebugString(new_key).c_str(), *need_unlink);
+        return 0;
+    } else {
+        LOG(WARNING, "Rename write leveldb fail: %s", old_path.c_str());
+        return 1;
+    }
+
     return 1;
 }
 
 int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
     int ret_status = 0;
-    std::string file_key;
-    if (GetFileInfo(path, file_removed, &file_key)) {
+    if (LookUp(path, file_removed)) {
         // Only support file
         if ((file_removed->type() & (1<<9)) == 0) {
+            std::string file_key;
+            EncodingStoreKey(file_removed->parent_entry_id(), file_removed->name(), &file_key);
             if (DeleteFileInfo(file_key)) {
                 LOG(INFO, "Unlink done: %s\n", path.c_str());
                 ret_status = 0;
@@ -313,99 +355,104 @@ int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
     return ret_status;
 }
 
-int NameSpace::DeleteDirectory(std::string& path, bool recursive,
+int NameSpace::DeleteDirectory(const std::string& path, bool recursive,
                                std::vector<FileInfo>* files_removed) {
-    int ret_status = 0;
+    files_removed->clear();
     std::vector<std::string> keys;
-
-    if (!SplitPath(path, &keys)) {
+    if (!common::util::SplitPath(path, &keys)) {
         LOG(WARNING, "Delete Directory SplitPath fail: %s\n", path.c_str());
         return 886;
     }
-    std::string dentry_key = keys[keys.size() - 1];
-    {
-        std::string value;
-        leveldb::Status s = _db->Get(leveldb::ReadOptions(), dentry_key, &value);
-        if (!s.ok()) {
-            LOG(INFO, "Delete Directory, %s is not found.", dentry_key.data() + 2);
-            return 404;
-        }
+    FileInfo info;
+    std::string store_key;
+    if (!LookUp(path, &info)) {
+       LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
+       return 404;
     }
+    return InternalDeleteDirectory(info, recursive, files_removed);
+}
 
-    keys.clear();
-    if (path[path.size() - 1] != '/') {
-        path += '/';
-    }
-    path += '#';
-
-    if (!SplitPath(path, &keys)) {
-        LOG(WARNING, "Delete Directory SplitPath fail: %s\n", path.c_str());
-        ret_status = 886;
-        return ret_status;
-    }
-    const std::string& file_start_key = keys[keys.size() - 1];
-    std::string file_end_key = file_start_key;
-    if (file_end_key[file_end_key.size() - 1] == '#') {
-        file_end_key[file_end_key.size() - 1] = '\255';
-    } else {
-        file_end_key += '#';
-    }
+int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
+                                       bool recursive,
+                                       std::vector<FileInfo>* files_removed) {
+    int entry_id = dir_info.entry_id();
+    std::string key_start, key_end;
+    EncodingStoreKey(entry_id, "", &key_start);
+    EncodingStoreKey(entry_id + 1, "", &key_end);
 
     leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
-    it->Seek(file_start_key);
-    if (it->Valid() && recursive == false) {
-        LOG(WARNING, "Try to delete an unempty directory unrecursively: %s\n", dentry_key.c_str());
+    it->Seek(key_start);
+    if (it->Valid() && it->key().compare(key_end) < 0 && recursive == false) {
+        LOG(WARNING, "Try to delete an unempty directory unrecursively: %s",
+            dir_info.name().c_str());
         delete it;
-        ret_status = 886;
-        return ret_status;
+        return 886;
+    } else {
+        LOG(INFO, "not dir %d %s %s",
+            it->Valid(), common::DebugString(it->key().ToString()).c_str(),
+            common::DebugString(key_end).c_str());
     }
 
+    int ret_status = 0;
+    leveldb::WriteBatch batch;
     for (; it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
-        if (key.compare(file_end_key) >= 0) {
+        if (key.compare(key_end) >= 0) {
             break;
         }
-        FileInfo file_info;
-        bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
+        std::string entry_name(key.data() + 8, key.size() - 8);
+        FileInfo child_info;
+        bool ret = child_info.ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
-        if ((file_info.type() & (1 << 9)) != 0) {
-            std::string dir_path(std::string(key.data() + 2, key.size() - 2));
-            LOG(INFO, "Recursive to path: %s\n", dir_path.c_str());
-            ret_status = DeleteDirectory(dir_path, recursive, files_removed);
+        if (IsDir(child_info.type())) {
+            LOG(INFO, "Recursive to path: %s", entry_name.c_str());
+            ret_status = InternalDeleteDirectory(child_info, true, files_removed);
             if (ret_status != 0) {
                 break;
             }
         } else {
-            leveldb::Status s = _db->Delete(leveldb::WriteOptions(),
-                                            std::string(key.data(),
-                                            key.size()));
-            if (s.ok()) {
-                files_removed->push_back(file_info);
-                LOG(INFO, "Unlink file done: %s",
-                    std::string(key.data() + 2, key.size() - 2).c_str());
-            } else {
-                LOG(WARNING, "Unlink file fail: %s",
-                    std::string(key.data() + 2, key.size() - 2).c_str());
-                ret_status = 886;
-                break;
-            }
-        }
-    }
-
-    if (ret_status == 0) {
-        leveldb::Status s = _db->Delete(leveldb::WriteOptions(), dentry_key);
-        if (s.ok()) {
-            LOG(INFO, "Unlink dentry done: %s\n", dentry_key.c_str() + 2);
-        } else {
-            LOG(INFO, "Unlink dentry fail: %s\n", dentry_key.c_str() + 2);
-            ret_status = 886;
+            batch.Delete(key);
+            child_info.set_name(entry_name);
+            LOG(INFO, "DeleteDirectory Remove push %s", child_info.name().c_str());
+            files_removed->push_back(child_info);
+            LOG(INFO, "Unlink file: %s",
+                std::string(key.data() + 2, key.size() - 2).c_str());
         }
     }
     delete it;
+
+    std::string store_key;
+    EncodingStoreKey(dir_info.parent_entry_id(), dir_info.name(), &store_key);
+    batch.Delete(store_key);
+    leveldb::Status s = _db->Write(leveldb::WriteOptions(), &batch);
+    if (s.ok()) {
+        LOG(INFO, "Unlink dentry done: %s[%s]",
+            dir_info.name().c_str(), common::DebugString(store_key).c_str());
+    } else {
+        LOG(FATAL, "Namespace write to storage fail!");
+        LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
+        ret_status = 886;
+    }
     return ret_status;
 }
-leveldb::Iterator* NameSpace::NewIterator() {
-    return _db->NewIterator(leveldb::ReadOptions());
+
+bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
+    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
+    for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
+        FileInfo file_info;
+        bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
+        if (_last_entry_id < file_info.entry_id()) {
+            _last_entry_id = file_info.entry_id();
+        }
+        assert(ret);
+        if (!IsDir(file_info.type())) {
+            //a file
+            callback(file_info);
+        }
+    }
+    delete it;
+    LOG(INFO, "RebuildBlockMap done. last_entry_id= E%ld", _last_entry_id);
+    return true;
 }
 
 } // namespace bfs
