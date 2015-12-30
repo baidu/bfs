@@ -14,15 +14,9 @@
 
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
-#include "common/mutex.h"
-#include "common/atomic.h"
 #include "common/counter.h"
-#include "common/mutex.h"
 #include "common/thread_pool.h"
-#include "common/util.h"
-#include "common/timer.h"
 #include "common/sliding_window.h"
-#include "common/string_util.h"
 
 #include "common/logging.h"
 
