@@ -379,7 +379,7 @@ public:
                 //printf("OpenFile success: %s\n", path);
             } else {
                 //printf("GetFileLocation return %d\n", response.blocks_size());
-                fprintf(stderr, "OpenFile return %d\n", response.status());
+                LOG(WARNING, "OpenFile return %d\n", response.status());
                 ret = false;
             }
         } else {
@@ -960,7 +960,7 @@ bool BfsFileImpl::Sync() {
         StartWrite();
     }
     int wait_time = 0;
-    while (_back_writing) {
+    while (_back_writing && !_bg_error) {
         bool finish = _sync_signal.TimeWait(1000, "Sync wait");
         if (++wait_time >= 30 && (wait_time % 10 == 0)) {
             LOG(WARNING, "Sync timeout %d s, %s _back_writing= %d, finish= %d",
