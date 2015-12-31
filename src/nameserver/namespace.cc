@@ -184,7 +184,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
         }
         parent_id = file_info.entry_id();
     }
-    
+
     const std::string& fname = paths[depth-1];
     if ((flags & O_TRUNC) == 0) {
         if (LookUp(parent_id, fname, &file_info)) {
