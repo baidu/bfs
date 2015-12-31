@@ -108,13 +108,13 @@ void ChunkServerImpl::LogStatus(bool routine) {
     CounterManager::Counters counters = _counter_manager->GetCounters();
 
     LOG(INFO, "[Status] blocks %ld %ld buffers %ld data %sB, "
-              "find %ld read %ld write %ld %ld %.2f MB, rpc_delay %ld %ld",
+              "find %ld read %ld write %ld %ld %.2f MB, rpc %ld %ld %ld",
         g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
         counters.find_ops, counters.read_ops,
         counters.write_ops, counters.refuse_ops,
         counters.write_bytes / 1024.0 / 1024,
-        counters.rpc_delay, counters.delay_all);
+        counters.rpc_delay, counters.delay_all, _work_thread_pool->PendingNum());
     if (routine) {
         _work_thread_pool->DelayTask(1000,
             boost::bind(&ChunkServerImpl::LogStatus, this, true));
