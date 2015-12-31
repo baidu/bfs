@@ -184,7 +184,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
         }
         parent_id = file_info.entry_id();
     }
-    
+
     const std::string& fname = paths[depth-1];
     if ((flags & O_TRUNC) == 0) {
         if (LookUp(parent_id, fname, &file_info)) {
@@ -368,6 +368,9 @@ int NameSpace::DeleteDirectory(const std::string& path, bool recursive,
     if (!LookUp(path, &info)) {
        LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
        return 404;
+    } else if (!IsDir(info.type())) {
+        LOG(INFO, "Delete Directory, %s is not a dir.", path.c_str());
+        return 886;
     }
     return InternalDeleteDirectory(info, recursive, files_removed);
 }
