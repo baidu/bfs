@@ -1101,7 +1101,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<p align=left>Used: " + common::HumanReadableString(total_data) + "B</p>";
     str += "<p align=left>Pending tasks: "
         + common::NumToString(_thread_pool.PendingNum()) + "</p>";
-    str += "<p align=left><a href=\"/service?name=bfs.NameServer\">Rpc status</a></p>";
+    str += "<p align=left><a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
     str += "<h2 align=left>Chunkserver status</h2>";
     str += "<p align=left>Total: " + common::NumToString(chunkservers->size())+"</p>";
     str += "<p align=left>Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</p>";
