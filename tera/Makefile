@@ -12,10 +12,10 @@ all: bfs_wrapper.so bfs_test
 bfs_wrapper.so: bfs_wrapper.cc bfs_wrapper.h ../output/lib/libbfs.a
 	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) -o $@ bfs_wrapper.cc \
 		-Xlinker "-(" ../libbfs.a \
-		../../tera/thirdparty/lib/libprotobuf.a \
-		../../tera/thirdparty/lib/libsofa-pbrpc.a \
-		../../tera/thirdparty/lib/libsnappy.a \
-		../../tera/thirdparty/lib/libgflags.a \
+		../thirdparty/lib/libprotobuf.a \
+		../thirdparty/lib/libsofa-pbrpc.a \
+		../thirdparty/lib/libsnappy.a \
+		../thirdparty/lib/libgflags.a \
 		../thirdparty/lib/libcommon.a \
 		-lpthread \
 		-Xlinker "-)"
