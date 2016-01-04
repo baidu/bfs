@@ -200,7 +200,7 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         }
         len += bytes;
     }
-    if (!fs->CloseFile(file)) {
+    if (!file->Close()) {
         fprintf(stderr, "close fail: %s\n", target.c_str());
         ret = 1;
     }
