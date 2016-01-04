@@ -368,6 +368,9 @@ int NameSpace::DeleteDirectory(const std::string& path, bool recursive,
     if (!LookUp(path, &info)) {
        LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
        return 404;
+    } else if (!IsDir(info.type())) {
+        LOG(INFO, "Delete Directory, %s is not a dir.", path.c_str());
+        return 886;
     }
     return InternalDeleteDirectory(info, recursive, files_removed);
 }

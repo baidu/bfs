@@ -200,8 +200,11 @@ public:
         }
         int32_t cur_replica_num = nsblock->replica.size();
         int32_t expect_replica_num = nsblock->expect_replica_num;
-        if (cur_replica_num >= expect_replica_num) { // delete current block on cs
+        if (cur_replica_num > expect_replica_num) { // delete current block on cs
+            LOG(INFO, "too much replica cur=%d expect=%d server=%d ", server_id, cur_replica_num, expect_replica_num);
             return false;
+        } else if (cur_replica_num == expect_replica_num) {
+            return true;
         } else if (cur_replica_num + 1 == expect_replica_num) { // add current block to cs
             nsblock->replica.insert(server_id);
         } else { // cur_replica_num +1 < expect_replica_num, need re-replica
@@ -601,7 +604,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                                  &more_replica_num)) {
                 response->add_obsolete_blocks(cur_block_id);
                 _chunkserver_manager->RemoveBlock(cs_id, cur_block_id);
-                LOG(INFO, "obsolete_block: #%ld not in _block_map", cur_block_id);
+                LOG(INFO, "obsolete_block: #%ld", cur_block_id);
                 continue;
             }
 
@@ -1029,7 +1032,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<p align=left>Used: " + common::HumanReadableString(total_data) + "B</p>";
     str += "<p align=left>Pending tasks: "
         + common::NumToString(_thread_pool.PendingNum()) + "</p>";
-    str += "<p align=left><a href=\"/service?name=bfs.NameServer\">Rpc status</a></p>";
+    str += "<p align=left><a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
     str += "<h2 align=left>Chunkserver status</h2>";
     str += "<p align=left>Total: " + common::NumToString(chunkservers->size())+"</p>";
     str += "<p align=left>Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</p>";

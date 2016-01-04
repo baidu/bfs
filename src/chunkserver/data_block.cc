@@ -184,7 +184,9 @@ int32_t Block::Read(char* buf, int32_t len, int64_t offset) {
         _mu.Unlock();
         int ret = _file_cache->ReadFile(_disk_file,
                         buf + readlen, pread_len, offset + readlen);
-        assert(ret == pread_len);
+        if (ret != pread_len) {
+            return -2;
+        }
         readlen += ret;
         _mu.Lock("Block::Read relock", 1000);
         if (readlen >= len) return readlen;
