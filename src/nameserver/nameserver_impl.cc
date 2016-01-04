@@ -387,10 +387,10 @@ public:
             while (node != it->second.end()) {
                 ChunkServerInfo* cs = *node;
                 cs->set_is_dead(true);
-                LOG(INFO, "[DeadCheck] Chunkserver[%d] %s dead",
-                    cs->id(), cs->address().c_str());
                 it->second.erase(node);
                 _chunkserver_num--;
+                LOG(INFO, "[DeadCheck] Chunkserver[%d] %s dead, cs_num=%d",
+                    cs->id(), cs->address().c_str(), _chunkserver_num);
                 node = it->second.begin();
 
                 int32_t id = cs->id();
@@ -416,7 +416,12 @@ public:
         _thread_pool->DelayTask(idle_time * 1000,
                                boost::bind(&ChunkServerManager::DeadCheck, this));
     }
-
+    void IncChunkServerNum() {
+        ++_chunkserver_num;
+    }
+    int32_t GetChunkServerNum() {
+        return _chunkserver_num;
+    }
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
         MutexLock lock(&_mu);
         int32_t id = request->chunkserver_id();
@@ -643,8 +648,9 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                                          request->disk_quota(), -1);
         } else if (cs_id == -1) {
             cs_id = old_id;
-            LOG(INFO, "Reconnect chunkserver %d %s",
-                cs_id, request->chunkserver_addr().c_str());
+            _chunkserver_manager->IncChunkServerNum();
+            LOG(INFO, "Reconnect chunkserver %d %s, cs_num=%d",
+                cs_id, request->chunkserver_addr().c_str(), _chunkserver_manager->GetChunkServerNum());
         } else if (cs_id != old_id) {
             // bug...
             LOG(WARNING, "Chunkserver %s id mismatch, old: %d new: %d",
