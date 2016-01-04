@@ -198,20 +198,25 @@ public:
                 //    id, nsblock->block_size, block_size);
             }
         }
+        std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
         int32_t cur_replica_num = nsblock->replica.size();
         int32_t expect_replica_num = nsblock->expect_replica_num;
-        if (cur_replica_num > expect_replica_num) { // delete current block on cs
-            LOG(INFO, "too much replica cur=%d expect=%d server=%d ", server_id, cur_replica_num, expect_replica_num);
-            return false;
-        } else if (cur_replica_num == expect_replica_num) {
-            return true;
-        } else if (cur_replica_num + 1 == expect_replica_num) { // add current block to cs
-            nsblock->replica.insert(server_id);
-        } else { // cur_replica_num +1 < expect_replica_num, need re-replica
-            nsblock->replica.insert(server_id);
-            if (more_replica_num) {
-                *more_replica_num = expect_replica_num - cur_replica_num + 1;
-                LOG(INFO, "Need to add %d new replica for #%ld ", *more_replica_num, id);
+        if (cur_replica_num != expect_replica_num) {
+            if (!nsblock->pending_change) {
+                nsblock->pending_change = true;
+                if (cur_replica_num > expect_replica_num) {
+                    LOG(INFO, "too much replica cur=%d expect=%d server=%d",
+                        server_id, cur_replica_num, expect_replica_num);
+                    nsblock->replica.erase(ret.first);
+                    return false;
+                } else {
+                    // add new replica
+                    if (more_replica_num) {
+                        *more_replica_num = expect_replica_num - cur_replica_num;
+                        LOG(INFO, "Need to add %d new replica for #%ld #%ld cur=%d expect=%d",
+                            *more_replica_num, id, cur_replica_num, expect_replica_num);
+                    }
+                }
             }
         }
         return true;
