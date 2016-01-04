@@ -970,23 +970,25 @@ bool BfsFileImpl::Close() {
     _chunkserver = NULL;
     LOG(DEBUG, "File %s closed", _name.c_str());
     _closed = true;
-    if (need_report_finish) {
+    bool ret = true;
+    if (_bg_error) {
+        LOG(WARNING, "Close file %s fail", _name.c_str());
+        ret = false;
+    } else if (need_report_finish) {
         NameServer_Stub* nameserver = _fs->_nameserver;
         FinishBlockRequest request;
         FinishBlockResponse response;
         request.set_sequence_id(0);
         request.set_block_id(block_id);
         request.set_block_version(_last_seq);
-        bool ret = _rpc_client->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
+        ret = _rpc_client->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
         if (!(ret && response.status() == 0 && (!_bg_error)))  {
             LOG(WARNING, "Close file fail");
-            return false;
+            ret = false;
         }
-        return true;
-    } else {
-        return !_bg_error;
     }
+    return ret;
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
