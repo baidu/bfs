@@ -213,7 +213,7 @@ public:
                     // add new replica
                     if (more_replica_num) {
                         *more_replica_num = expect_replica_num - cur_replica_num;
-                        LOG(INFO, "Need to add %d new replica for #%ld #%ld cur=%d expect=%d",
+                        LOG(INFO, "Need to add %d new replica for #%ld cur=%d expect=%d",
                             *more_replica_num, id, cur_replica_num, expect_replica_num);
                     }
                 }
