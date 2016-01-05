@@ -160,11 +160,10 @@ void ChunkServerImpl::SendBlockReport() {
         info->set_version(blocks[i].version);
     }
 
+    request.set_is_complete(true);
     if (blocks_num < FLAGS_blockreport_size) {
         last_report_blockid = -1;
-        request.set_is_complete(true);
     } else {
-        request.set_is_complete(false);
         if (blocks_num) {
             last_report_blockid = blocks[blocks_num - 1].block_id;
         }

@@ -984,7 +984,7 @@ bool BfsFileImpl::Close() {
         ret = _rpc_client->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
         if (!(ret && response.status() == 0))  {
-            LOG(WARNING, "Close file %s fail, finish report returns %ld",
+            LOG(WARNING, "Close file %s fail, finish report returns %d",
                     _name.c_str(), response.status());
             ret = false;
         }

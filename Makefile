@@ -52,6 +52,10 @@ OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
 
+TESTS = namespace_test file_cache_test
+TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o
+UNITTEST_OUTPUT = test/
+
 all: $(BIN)
 	@echo 'Done'
 
@@ -62,6 +66,18 @@ $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
 $(SDK_OBJ): $(SDK_HEADER)
 
 # Targets
+
+check: all $(TESTS)
+	mkdir -p $(UNITTEST_OUTPUT)
+	mv $(TESTS) $(UNITTEST_OUTPUT)
+	cd $(UNITTEST_OUTPUT); for t in $(TESTS); do echo "***** Running $$t"; ./$$t || exit 1; done
+
+namespace_test: src/nameserver/test/namespace_test.o
+	$(CXX) src/nameserver/namespace.o src/nameserver/test/namespace_test.o $(OBJS) -o $@ $(LDFLAGS)
+
+file_cache_test: src/chunkserver/test/file_cache_test.o
+	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
+
 nameserver: $(NAMESERVER_OBJ) $(OBJS) $(LEVELDB)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
@@ -85,8 +101,9 @@ $(LEVELDB):
 
 clean:
 	rm -rf $(BIN)
-	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS)
+	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
+	rm -rf $(UNITTEST_OUTPUT)
 
 install:
 	rm -rf output

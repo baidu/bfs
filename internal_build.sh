@@ -174,5 +174,6 @@ echo "COMMON_PATH=./thirdparty" >> depends.mk
 # build tera
 ########################################
 
+make clean
 make -j4
 
