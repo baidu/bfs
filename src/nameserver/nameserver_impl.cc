@@ -139,7 +139,7 @@ public:
         NSBlockMap::iterator it = _block_map.find(block_id);
         if (it != _block_map.end()) {
             nsblock = it->second;
-            assert(nsblock->pending_change == true);
+            //assert(nsblock->pending_change == true);
             nsblock->pending_change = false;
             return true;
         } else {
@@ -644,6 +644,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     } else {
         int old_id = _chunkserver_manager->GetChunkserverId(request->chunkserver_addr());
         if (old_id == -1) {
+            if (!request->is_complete()) {
+                response->set_status(403);
+                done->Run();
+                return;
+            }
             cs_id = _chunkserver_manager->AddChunkServer(request->chunkserver_addr(),
                                                          request->disk_quota(), -1);
         } else if (cs_id == -1) {
