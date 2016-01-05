@@ -272,20 +272,20 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     response->set_sequence_id(request->sequence_id());
     std::string file_name = request->file_name();
     FileInfo file_info;
-    if (!_namespace->GetFileInfo(file_name, &file_info)) {
+    if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(WARNING, "FinishBlock file not found: %s", file_name.c_str());
         response->set_status(404);
         done->Run();
         return;
     }
     file_info.set_version(block_version);
-    if (!_namespace->UpdateFileInfo(file_info)) {
+    if (!namespace_->UpdateFileInfo(file_info)) {
         LOG(WARNING, "Update file info fail: %s", file_name.c_str());
         response->set_status(886);
         done->Run();
         return;
     }
-    if (!_block_manager->SetBlockVersion(block_id, block_version)) {
+    if (!block_manager_->SetBlockVersion(block_id, block_version)) {
         LOG(WARNING, "Set block version fail: %s", file_name.c_str());
         response->set_status(886);
         done->Run();
@@ -487,11 +487,11 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
-        _block_manager->AddNewBlock(block_id);
-        _block_manager->ChangeReplicaNum(block_id, file_info.replicas());
+        block_manager_->AddNewBlock(block_id);
+        block_manager_->ChangeReplicaNum(block_id, file_info.replicas());
         if (version != -1) {
-            _block_manager->SetBlockVersion(block_id, version);
-            _block_manager->MarkBlockStable(block_id);
+            block_manager_->SetBlockVersion(block_id, version);
+            block_manager_->MarkBlockStable(block_id);
         }
     }
 }
