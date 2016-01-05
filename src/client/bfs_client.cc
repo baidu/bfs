@@ -13,8 +13,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include "common/util.h"
-#include "common/timer.h"
+#include <common/util.h>
+#include <common/timer.h>
 #include "sdk/bfs.h"
 
 DECLARE_string(flagfile);
@@ -125,7 +125,7 @@ int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "Can't Open bfs file %s\n", source.c_str());
         return 1;
     }
-    
+
     FILE* fp = fopen(target.c_str(), "wb");
     if (fp == NULL) {
         fprintf(stderr, "Open local file %s fail\n", target.c_str());
@@ -182,7 +182,7 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "Can't open local file %s\n", argv[2]);
         return 1;
     }
-    
+
     baidu::bfs::File* file;
     if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", target.c_str());

@@ -7,7 +7,7 @@
 #define private public
 #include "nameserver/namespace.h"
 
-#include "common/util.h"
+#include <common/util.h>
 #include <fcntl.h>
 
 #include <gflags/gflags.h>
@@ -70,7 +70,7 @@ TEST_F(NameSpaceTest, NameSpace) {
         FLAGS_namedb_path = "./db";
         system("rm -rf ./db");
         NameSpace init_ns;
-        leveldb::Iterator* it = init_ns._db->NewIterator(leveldb::ReadOptions());
+        leveldb::Iterator* it = init_ns.db_->NewIterator(leveldb::ReadOptions());
         it->SeekToFirst();
         ASSERT_TRUE(it->Valid());
         ASSERT_EQ(it->key().ToString(), std::string(8, 0) + "version");
@@ -81,7 +81,7 @@ TEST_F(NameSpaceTest, NameSpace) {
     // Load  namespace with old version
     NameSpace ns;
     CreateTree(&ns);
-    leveldb::Iterator* it = ns._db->NewIterator(leveldb::ReadOptions());
+    leveldb::Iterator* it = ns.db_->NewIterator(leveldb::ReadOptions());
     it->SeekToFirst();
     ASSERT_EQ(version, it->value().ToString());
 

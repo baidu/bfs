@@ -11,7 +11,7 @@
 #include <gflags/gflags.h>
 
 #include "chunkserver/chunkserver_impl.h"
-#include "common/logging.h"
+#include <common/logging.h>
 
 DECLARE_string(flagfile);
 DECLARE_string(chunkserver_port);
