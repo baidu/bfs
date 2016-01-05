@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "common/logging.h"
+#include <common/logging.h>
 
 namespace baidu {
 namespace bfs {
@@ -30,16 +30,16 @@ static void DeleteEntry(const common::Slice& key, void* value) {
 }
 
 FileCache::FileCache(int32_t cache_size)
-    : _cache(common::NewLRUCache(cache_size)) {
+    : cache_(common::NewLRUCache(cache_size)) {
 }
 
 FileCache::~FileCache() {
-    delete _cache;
+    delete cache_;
 }
 
 common::Cache::Handle* FileCache::FindFile(const std::string& file_path) {
     common::Slice key(file_path);
-    common::Cache::Handle* handle = _cache->Lookup(key);
+    common::Cache::Handle* handle = cache_->Lookup(key);
     if (handle == NULL) {
         int fd = open(file_path.c_str(), O_RDONLY);
         if (fd < 0) {
@@ -49,7 +49,7 @@ common::Cache::Handle* FileCache::FindFile(const std::string& file_path) {
         FileEntity* file = new FileEntity;
         file->fd = fd;
         file->file_name = file_path;
-        handle = _cache->Insert(key, file, 1, &DeleteEntry);
+        handle = cache_->Insert(key, file, 1, &DeleteEntry);
     }
     return handle;
 }
@@ -59,14 +59,14 @@ int32_t FileCache::ReadFile(const std::string& file_path, char* buf,
     if (handle == NULL) {
         return -1;
     }
-    int32_t fd = (reinterpret_cast<FileEntity*>(_cache->Value(handle)))->fd;
+    int32_t fd = (reinterpret_cast<FileEntity*>(cache_->Value(handle)))->fd;
     int32_t ret = pread(fd, buf, len, offset);
-    _cache->Release(handle);
+    cache_->Release(handle);
     return ret;
 }
 
 void FileCache::EraseFileCache(const std::string& file_path) {
-    _cache->Erase(file_path);
+    cache_->Erase(file_path);
 }
 
 } // namespace bfs

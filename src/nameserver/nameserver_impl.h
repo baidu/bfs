@@ -7,8 +7,10 @@
 #ifndef  BFS_NAMESERVER_IMPL_H_
 #define  BFS_NAMESERVER_IMPL_H_
 
-#include "common/mutex.h"
-#include "common/thread_pool.h"
+#include "chunckserver_manager.h"
+
+#include <common/mutex.h>
+
 #include "proto/nameserver.pb.h"
 
 namespace sofa {
@@ -23,7 +25,7 @@ namespace bfs {
 
 class NameSpace;
 class ChunkServerManager;
-class BlockManager;
+class BlockMapping;
 
 class NameServerImpl : public NameServer {
 public:
@@ -92,17 +94,17 @@ private:
     void LeaveSafemode();
 private:
     /// Global thread pool
-    ThreadPool _thread_pool;
+    ThreadPool thread_pool_;
     /// Global lock
-    Mutex _mu;
+    Mutex mu_;
     /// Chunkserver map
-    ChunkServerManager* _chunkserver_manager;
+    ChunkServerManager* chunkserver_manager_;
     /// Block map
-    BlockManager* _block_manager;
-    bool _safe_mode;
+    BlockMapping* block_manager_;
+    bool safe_mode_;
     /// Namespace
-    NameSpace* _namespace;
-    int64_t _namespace_version;
+    NameSpace* namespace_;
+    int64_t namespace_version_;
 };
 
 } // namespace bfs
