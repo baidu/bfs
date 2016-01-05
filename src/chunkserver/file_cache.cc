@@ -43,6 +43,7 @@ common::Cache::Handle* FileCache::FindFile(const std::string& file_path) {
     if (handle == NULL) {
         int fd = open(file_path.c_str(), O_RDONLY);
         if (fd < 0) {
+            LOG(WARNING, "File not found: %s", file_path.c_str());
             return NULL;
         }
         FileEntity* file = new FileEntity;
@@ -55,6 +56,9 @@ common::Cache::Handle* FileCache::FindFile(const std::string& file_path) {
 int32_t FileCache::ReadFile(const std::string& file_path, char* buf,
                             int32_t len, int64_t offset) {
     common::Cache::Handle* handle = FindFile(file_path);
+    if (handle == NULL) {
+        return -1;
+    }
     int32_t fd = (reinterpret_cast<FileEntity*>(_cache->Value(handle)))->fd;
     int32_t ret = pread(fd, buf, len, offset);
     _cache->Release(handle);

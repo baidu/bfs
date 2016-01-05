@@ -4,10 +4,10 @@ INCLUDE=-I../../ \
 		-I../../../thirdparty/leveldb/include \
 		-I../../../thirdparty/include
 #CXX=/opt/compiler/gcc-4.8.2/bin/g++
-namespace_test: namespace_test.cc ../namespace.cc ../../proto/file.pb.cc ../../flags.cc
+file_cache_test: file_cache_test.cc ../file_cache.cc
 	$(CXX) -g -o $@ $^ $(INCLUDE) -L./gtest/lib/ -lcommon -lgtest -lgflags -L../../../thirdparty/lib -lprotobuf -L../../../thirdparty/leveldb/ -lleveldb -lpthread -lz
 
 clean:
-	rm -rf namespace_test *.o
+	rm -rf file_cache_test *.o
 
 #-I./gtest/include \

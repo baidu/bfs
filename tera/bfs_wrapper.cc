@@ -13,6 +13,7 @@
 #include "common/logging.h"
 #include "common/timer.h"
 
+namespace baidu {
 namespace bfs {
 
 int32_t BfsFile::Write(const char* buf, int32_t len) {
@@ -195,14 +196,15 @@ leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) 
     return new BfsFile(filename, file);
 }
 
+}
 } // namespace
 
 extern "C" {
 
 leveldb::Dfs* NewDfs(const char* conf) {
-    common::SetLogFile("./bfslog");
-    common::SetWarningFile("./bfswf");
-    return new bfs::BfsImpl(conf);
+    baidu::common::SetLogFile("./bfslog");
+    baidu::common::SetWarningFile("./bfswf");
+    return new baidu::bfs::BfsImpl(conf);
 }
 
 }

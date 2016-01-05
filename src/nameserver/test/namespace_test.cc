@@ -15,7 +15,9 @@
 
 DECLARE_string(namedb_path);
 
+namespace baidu {
 namespace bfs {
+
 class NameSpaceTest : public ::testing::Test {
 public:
     NameSpaceTest() {}
@@ -50,7 +52,7 @@ TEST_F(NameSpaceTest, SplitPath) {
     ASSERT_TRUE(common::util::SplitPath("/", &element));
     ASSERT_EQ(0U, element.size());
     ASSERT_FALSE(common::util::SplitPath("", &element));
-    
+
 }
 
 bool CreateTree(NameSpace* ns) {
@@ -195,7 +197,7 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     // Delete subdir
     ASSERT_EQ(0, ns.DeleteDirectory("/dir1/subdir2", true, &files_removed));
     ASSERT_EQ(files_removed.size(), 1U);
-    ASSERT_EQ(files_removed[0].entry_id(), 9); 
+    ASSERT_EQ(files_removed[0].entry_id(), 9);
     // List after delete
     google::protobuf::RepeatedPtrField<FileInfo> outputs;
     ASSERT_EQ(0, ns.ListDirectory("/dir1", &outputs));
@@ -210,10 +212,14 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
 
     ASSERT_EQ(0, ns.DeleteDirectory("/dir1", true, &files_removed));
     ASSERT_EQ(files_removed.size(), 2U);
-    ASSERT_EQ(files_removed[0].entry_id(), 6); 
-    ASSERT_EQ(files_removed[1].entry_id(), 7); 
+    ASSERT_EQ(files_removed[0].entry_id(), 6);
+    ASSERT_EQ(files_removed[1].entry_id(), 7);
     ASSERT_NE(0, ns.ListDirectory("/dir1/subdir1", &outputs));
     ASSERT_NE(0, ns.ListDirectory("/dir1", &outputs));
+
+    // Use rmr to delete a file
+    ASSERT_EQ(886, ns.DeleteDirectory("/file1", true, &files_removed));
+}
 }
 }
 

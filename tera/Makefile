@@ -1,21 +1,22 @@
 
 OPT ?= -g2 -Wall
 
-INCLUDE_PATH= -I../output/include -I../src/
+INCLUDE_PATH= -I../output/include -I../src/ -I../thirdparty/include
 
 CXXFLAGS += $(OPT)
 
-TESTLDFLAGS = -rdynamic -lprotobuf -lpthread -lz -ldl -L../../../../third-64/protobuf/lib/
+TESTLDFLAGS = -rdynamic -lgtest -lcommon -lprotobuf -lpthread -lz -ldl -lrt -L../thirdparty/lib
 
 all: bfs_wrapper.so bfs_test
 
 bfs_wrapper.so: bfs_wrapper.cc bfs_wrapper.h ../output/lib/libbfs.a
-	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) -o $@ bfs_wrapper.cc ../src/common/logging.cc \
+	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) -o $@ bfs_wrapper.cc \
 		-Xlinker "-(" ../libbfs.a \
-		../../tera/thirdparty/lib/libprotobuf.a \
-		../../tera/thirdparty/lib/libsofa-pbrpc.a \
-		../../tera/thirdparty/lib/libsnappy.a \
-		../../tera/thirdparty/lib/libgflags.a \
+		../thirdparty/lib/libprotobuf.a \
+		../thirdparty/lib/libsofa-pbrpc.a \
+		../thirdparty/lib/libsnappy.a \
+		../thirdparty/lib/libgflags.a \
+		../thirdparty/lib/libcommon.a \
 		-lpthread \
 		-Xlinker "-)"
 
