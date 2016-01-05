@@ -553,6 +553,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
                 //reset seq
                 --seq;
                 delete chunkserver;
+                chunkserver = NULL;
                 pre_index = (pre_index + 1) % new_replica_info[i].chunkserver_address_size();
                 LOG(INFO, "Change src chunkserver to %s for pull block #%ld",
                         new_replica_info[i].chunkserver_address(pre_index).c_str(), block_id);
