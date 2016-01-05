@@ -22,6 +22,22 @@ install:
     - unzip gtest-1.7.0.zip
     - ( cd gtest-1.7.0 && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
 
+    - wget http://download.savannah.gnu.org/releases/libunwind/libunwind-0.99-beta.tar.gz
+    - tar zxvf libunwind-0.99-beta.tar.gz
+    - ( cd libunwind-0.99-beta && ./configure CFLAGS=-U_FORTIFY_SOURCE --with-pic && make -j4 && sudo make install )
+
+    - wget https://googledrive.com/host/0B6NtGsLhIcf7MWxMMF9JdTN3UVk/gperftools-2.2.1.tar.gz
+    - tar zxvf gperftools-2.2.1.tar.gz
+    - ( cd gperftools-2.2.1 && ./configure --with-pic && make -j4 && sudo make install && sudo ldconfig )
+
+
+
 before_script:
-    - sed -i 's/^COMMON_PATH=.*/COMMON_PATH=.\/common\/output/' depends.mk
+    - echo 'SNAPPY_PATH=./thirdparty/snappy' > depends.mk
+    - echo 'PROTOBUF_PATH=./thirdparty/protobuf' >> depends.mk
+    - echo 'PROTOC=protoc' >> depends.mk
+    - echo 'PBRPC_PATH=./thirdparty/sofa-pbrpc/output' >> depends.mk
+    - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
+    - echo 'COMMON_PATH=./common/output' >> depends.mk
+
 script: make -j4 && make test
