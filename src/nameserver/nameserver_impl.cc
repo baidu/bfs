@@ -87,51 +87,10 @@ public:
         if (it == _block_map.end()) {
             return false;
         }
-        *block = *(it->second);
+        if (block) {
+            *block = *(it->second);
+        }
         return true;
-    }
-    bool CheckObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
-        MutexLock lock(&_mu, "BlockManager::CheckObsoleteBlock", 1000);
-        std::map<int64_t, std::set<int32_t> >::iterator it
-            = _obsolete_blocks.find(block_id);
-        if (it == _obsolete_blocks.end()) {
-            return false;
-        } else {
-            std::set<int32_t>::iterator cs = it->second.find(chunkserver_id);
-            if (cs != it->second.end()) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-    }
-    void MarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
-        MutexLock lock(&_mu);
-        _obsolete_blocks[block_id].insert(chunkserver_id);
-        LOG(INFO, "MarkObsoleteBlock #%ld on chunkserver %d", block_id, chunkserver_id);
-    }
-    void UnmarkObsoleteBlock(int64_t block_id, int32_t chunkserver_id) {
-        MutexLock lock(&_mu);
-        std::map<int64_t, std::set<int32_t> >::iterator it = _obsolete_blocks.find(block_id);
-        if (it != _obsolete_blocks.end()) {
-            std::set<int32_t>::iterator cs = it->second.find(chunkserver_id);
-            if (cs != it->second.end()) {
-                it->second.erase(cs);
-                if (it->second.empty()) {
-                    // pending_change needs to change here
-                    NSBlockMap::iterator block_it = _block_map.find(block_id);
-                    if (block_it != _block_map.end()) {
-                        block_it->second->pending_change = false;
-                    }
-                    _obsolete_blocks.erase(it);
-                }
-            } else {
-                LOG(WARNING, "Block #%ld on chunkserver %d is not marked obsolete\n",
-                        block_id, chunkserver_id);
-            }
-        } else {
-            LOG(WARNING, "Block #%ld is not marked obsolete\n", block_id);
-        }
     }
     bool MarkBlockStable(int64_t block_id) {
         MutexLock lock(&_mu);
@@ -167,18 +126,6 @@ public:
         MutexLock lock(&_mu);
         std::set<int64_t>::iterator it = blocks.begin();
         for (; it != blocks.end(); ++it) {
-            //have been unlinked?
-            std::map<int64_t, std::set<int32_t> >::iterator obsolete_it
-                = _obsolete_blocks.find(*it);
-            if (obsolete_it != _obsolete_blocks.end()) {
-                std::set<int32_t>:: iterator cs = obsolete_it->second.find(id);
-                if (cs != obsolete_it->second.end()) {
-                    obsolete_it->second.erase(id);
-                    if (obsolete_it->second.empty()) {
-                        _obsolete_blocks.erase(obsolete_it);
-                    }
-                }
-            }
             //may have been unlinked, not in _block_map
             NSBlockMap::iterator nsb_it = _block_map.find(*it);
             if (nsb_it != _block_map.end()) {
@@ -251,25 +198,23 @@ public:
                 //    id, nsblock->block_size, block_size);
             }
         }
-        /// 增加一个副本, 无论之前已经有几个了, 多余的通过gc处理
-        nsblock->replica.insert(server_id);
+        std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
         int32_t cur_replica_num = nsblock->replica.size();
         int32_t expect_replica_num = nsblock->expect_replica_num;
         if (cur_replica_num != expect_replica_num) {
             if (!nsblock->pending_change) {
                 nsblock->pending_change = true;
                 if (cur_replica_num > expect_replica_num) {
-                    int32_t reduant_num = cur_replica_num - expect_replica_num;
-                    //TODO select chunkservers according to some strategies
-                    std::set<int32_t>::iterator nsit = nsblock->replica.begin();
-                    for (int i = 0; i < reduant_num; i++, ++nsit) {
-                        _obsolete_blocks[id].insert(*nsit);
-                    }
+                    LOG(INFO, "too much replica cur=%d expect=%d server=%d",
+                        server_id, cur_replica_num, expect_replica_num);
+                    nsblock->replica.erase(ret.first);
+                    return false;
                 } else {
                     // add new replica
                     if (more_replica_num) {
                         *more_replica_num = expect_replica_num - cur_replica_num;
-                        LOG(INFO, "Need to add %d new replica for #%ld ", *more_replica_num, id);
+                        LOG(INFO, "Need to add %d new replica for #%ld cur=%d expect=%d",
+                            *more_replica_num, id, cur_replica_num, expect_replica_num);
                     }
                 }
             }
@@ -281,10 +226,6 @@ public:
             int64_t block_id = file_info.blocks(i);
             std::set<int32_t> chunkservers;
             GetReplicaLocation(block_id, &chunkservers);
-            std::set<int32_t>::iterator it = chunkservers.begin();
-            for (; it != chunkservers.end(); ++it) {
-                MarkObsoleteBlock(block_id, *it);
-            }
             RemoveBlock(block_id);
             LOG(INFO, "Remove block #%ld for %s", block_id, file_info.name().c_str());
         }
@@ -293,7 +234,8 @@ public:
         MutexLock lock(&_mu);
         NSBlockMap::iterator it = _block_map.find(block_id);
         if (it == _block_map.end()) {
-            LOG(FATAL, "RemoveBlock(%ld) not found", block_id);
+            LOG(WARNING, "RemoveBlock(%ld) not found", block_id);
+            return;
         }
         delete it->second;
         _block_map.erase(it);
@@ -362,7 +304,6 @@ private:
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap _block_map;
     int64_t _next_block_id;
-    std::map<int64_t, std::set<int32_t> > _obsolete_blocks;
     std::map<int32_t, std::set<int64_t> > _blocks_to_replicate;
 };
 
@@ -670,15 +611,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             int64_t cur_block_id = block.block_id();
             int64_t cur_block_size = block.block_size();
 
-            if (_block_manager->CheckObsoleteBlock(cur_block_id, cs_id)) {
-                //add to response
-                response->add_obsolete_blocks(cur_block_id);
-                //_block_manager->RemoveReplicaBlock(cur_block_id, id);
-                _chunkserver_manager->RemoveBlock(cs_id, cur_block_id);
-                _block_manager->UnmarkObsoleteBlock(cur_block_id, cs_id);
-                LOG(INFO, "obsolete_block: #%ld in _obsolete_blocks", cur_block_id);
-                continue;
-            }
+            // update block -> cs
             int32_t more_replica_num = 0;
             int64_t block_version = block.version();
             if (!_block_manager->UpdateBlockInfo(cur_block_id, cs_id,
@@ -687,10 +620,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                                  &more_replica_num)) {
                 response->add_obsolete_blocks(cur_block_id);
                 _chunkserver_manager->RemoveBlock(cs_id, cur_block_id);
-                LOG(INFO, "obsolete_block: #%ld not in _block_map", cur_block_id);
+                LOG(INFO, "obsolete_block: #%ld", cur_block_id);
                 continue;
             }
 
+            // update cs -> block
             _chunkserver_manager->AddBlock(cs_id, cur_block_id);
             if (!_safe_mode && more_replica_num != 0) {
                 std::vector<std::pair<int32_t, std::string> > chains;
@@ -717,6 +651,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 }
             }
         }
+
+        // recover replica
         std::vector<std::pair<int64_t, std::set<int32_t> > > pull_blocks;
         if (_block_manager->GetPullBlocks(cs_id, &pull_blocks)) {
             ReplicaInfo* info = NULL;

@@ -94,7 +94,7 @@ private:
     /// Global thread pool
     ThreadPool _thread_pool;
     /// Global lock
-    Mutex        _mu;
+    Mutex _mu;
     /// Chunkserver map
     ChunkServerManager* _chunkserver_manager;
     /// Block map
