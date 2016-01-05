@@ -20,17 +20,17 @@ NSBlock::NSBlock(int64_t block_id)
    pending_change(true) {
 }
 
-BlockMapping::BlockMapping() :_next_block_id(1) {}
+BlockMapping::BlockMapping() : next_block_id_(1) {}
 
 int64_t BlockMapping::NewBlockID() {
-    MutexLock lock(&_mu, "BlockMapping::NewBlockID", 1000);
-    return _next_block_id++;
+    MutexLock lock(&mu_, "BlockMapping::NewBlockID", 1000);
+    return next_block_id_++;
 }
 
 bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
-    MutexLock lock(&_mu, "BlockMapping::GetBlock", 1000);
-    NSBlockMap::iterator it = _block_map.find(block_id);
-    if (it == _block_map.end()) {
+    MutexLock lock(&mu_, "BlockMapping::GetBlock", 1000);
+    NSBlockMap::iterator it = block_map_.find(block_id);
+    if (it == block_map_.end()) {
         return false;
     }
     if (block) {
@@ -40,10 +40,10 @@ bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
 }
 
 bool BlockMapping::MarkBlockStable(int64_t block_id) {
-    MutexLock lock(&_mu);
+    MutexLock lock(&mu_);
     NSBlock* nsblock = NULL;
-    NSBlockMap::iterator it = _block_map.find(block_id);
-    if (it != _block_map.end()) {
+    NSBlockMap::iterator it = block_map_.find(block_id);
+    if (it != block_map_.end()) {
         nsblock = it->second;
         //assert(nsblock->pending_change == true);
         nsblock->pending_change = false;
@@ -55,11 +55,11 @@ bool BlockMapping::MarkBlockStable(int64_t block_id) {
 }
 
 bool BlockMapping::GetReplicaLocation(int64_t id, std::set<int32_t>* chunkserver_id) {
-    MutexLock lock(&_mu);
+    MutexLock lock(&mu_);
     NSBlock* nsblock = NULL;
-    NSBlockMap::iterator it = _block_map.find(id);
+    NSBlockMap::iterator it = block_map_.find(id);
     bool ret = false;
-    if (it != _block_map.end()) {
+    if (it != block_map_.end()) {
         nsblock = it->second;
         *chunkserver_id = nsblock->replica;
         ret = true;
@@ -72,12 +72,12 @@ bool BlockMapping::GetReplicaLocation(int64_t id, std::set<int32_t>* chunkserver
 
 void BlockMapping::DealDeadBlocks(int32_t id, std::set<int64_t> blocks) {
     LOG(INFO, "Replicate %d blocks of dead chunkserver: %d\n", blocks.size(), id);
-    MutexLock lock(&_mu);
+    MutexLock lock(&mu_);
     std::set<int64_t>::iterator it = blocks.begin();
     for (; it != blocks.end(); ++it) {
-        //may have been unlinked, not in _block_map
-        NSBlockMap::iterator nsb_it = _block_map.find(*it);
-        if (nsb_it != _block_map.end()) {
+        //may have been unlinked, not in block_map_
+        NSBlockMap::iterator nsb_it = block_map_.find(*it);
+        if (nsb_it != block_map_.end()) {
             NSBlock* nsblock = nsb_it->second;
             nsblock->replica.erase(id);
             nsblock->pulling_chunkservers.erase(id);
@@ -87,13 +87,13 @@ void BlockMapping::DealDeadBlocks(int32_t id, std::set<int64_t> blocks) {
             }
         }
     }
-    _blocks_to_replicate.erase(id);
+    blocks_to_replicate_.erase(id);
 }
 
 bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
-    MutexLock lock(&_mu);
-    NSBlockMap::iterator it = _block_map.find(block_id);
-    if (it == _block_map.end()) {
+    MutexLock lock(&mu_);
+    NSBlockMap::iterator it = block_map_.find(block_id);
+    if (it == block_map_.end()) {
         assert(0);
     } else {
         NSBlock* nsblock = it->second;
@@ -103,25 +103,25 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
 }
 
 void BlockMapping::AddNewBlock(int64_t block_id) {
-    MutexLock lock(&_mu);
+    MutexLock lock(&mu_);
     NSBlock* nsblock = NULL;
-    NSBlockMap::iterator it = _block_map.find(block_id);
+    NSBlockMap::iterator it = block_map_.find(block_id);
     //Don't suppport soft link now
-    assert(it == _block_map.end());
+    assert(it == block_map_.end());
     nsblock = new NSBlock(block_id);
-    _block_map[block_id] = nsblock;
+    block_map_[block_id] = nsblock;
     LOG(DEBUG, "Init block info: #%ld ", block_id);
-    if (_next_block_id <= block_id) {
-        _next_block_id = block_id + 1;
+    if (next_block_id_ <= block_id) {
+        next_block_id_ = block_id + 1;
     }
 }
 
 bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
                      int64_t block_version, int32_t* more_replica_num) {
-    MutexLock lock(&_mu);
+    MutexLock lock(&mu_);
     NSBlock* nsblock = NULL;
-    NSBlockMap::iterator it = _block_map.find(id);
-    if (it == _block_map.end()) {
+    NSBlockMap::iterator it = block_map_.find(id);
+    if (it == block_map_.end()) {
         //have been removed
         LOG(DEBUG, "UpdateBlockInfo(%ld) has been removed", id);
         return false;
@@ -185,26 +185,26 @@ void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info) {
 }
 
 void BlockMapping::RemoveBlock(int64_t block_id) {
-    MutexLock lock(&_mu);
-    NSBlockMap::iterator it = _block_map.find(block_id);
-    if (it == _block_map.end()) {
+    MutexLock lock(&mu_);
+    NSBlockMap::iterator it = block_map_.find(block_id);
+    if (it == block_map_.end()) {
         LOG(WARNING, "RemoveBlock(%ld) not found", block_id);
         return;
     }
     delete it->second;
-    _block_map.erase(it);
+    block_map_.erase(it);
 }
 
 bool BlockMapping::MarkPullBlock(int32_t dst_cs, int64_t block_id) {
-    MutexLock lock(&_mu);
-    NSBlockMap::iterator it = _block_map.find(block_id);
-    assert(it != _block_map.end());
+    MutexLock lock(&mu_);
+    NSBlockMap::iterator it = block_map_.find(block_id);
+    assert(it != block_map_.end());
     bool ret = false;
     NSBlock* nsblock = it->second;
     if (nsblock->pulling_chunkservers.find(dst_cs) ==
             nsblock->pulling_chunkservers.end()) {
         nsblock->pulling_chunkservers.insert(dst_cs);
-        _blocks_to_replicate[dst_cs].insert(block_id);
+        blocks_to_replicate_[dst_cs].insert(block_id);
         LOG(INFO, "Add replicate info dst cs: %d, block #%ld",
                 dst_cs, block_id);
         ret = true;
@@ -213,9 +213,9 @@ bool BlockMapping::MarkPullBlock(int32_t dst_cs, int64_t block_id) {
 }
 
 void BlockMapping::UnmarkPullBlock(int32_t cs_id, int64_t block_id) {
-    MutexLock lock(&_mu);
-    NSBlockMap::iterator it = _block_map.find(block_id);
-    if (it != _block_map.end()) {
+    MutexLock lock(&mu_);
+    NSBlockMap::iterator it = block_map_.find(block_id);
+    if (it != block_map_.end()) {
         NSBlock* nsblock = it->second;
         assert(nsblock);
         nsblock->pulling_chunkservers.erase(cs_id);
@@ -230,15 +230,15 @@ void BlockMapping::UnmarkPullBlock(int32_t cs_id, int64_t block_id) {
 }
 
 bool BlockMapping::GetPullBlocks(int32_t id, std::vector<std::pair<int64_t, std::set<int32_t> > >* blocks) {
-    MutexLock lock(&_mu);
+    MutexLock lock(&mu_);
     bool ret = false;
-    std::map<int32_t, std::set<int64_t> >::iterator it = _blocks_to_replicate.find(id);
-    if (it != _blocks_to_replicate.end()) {
+    std::map<int32_t, std::set<int64_t> >::iterator it = blocks_to_replicate_.find(id);
+    if (it != blocks_to_replicate_.end()) {
         std::set<int64_t>::iterator block_it = it->second.begin();
         for (; block_it != it->second.end(); ++block_it) {
-            blocks->push_back(std::make_pair(*block_it, _block_map[*block_it]->replica));
+            blocks->push_back(std::make_pair(*block_it, block_map_[*block_it]->replica));
         }
-        _blocks_to_replicate.erase(it);
+        blocks_to_replicate_.erase(it);
         ret = true;
     }
     return ret;
@@ -246,9 +246,9 @@ bool BlockMapping::GetPullBlocks(int32_t id, std::vector<std::pair<int64_t, std:
 
 bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
     bool ret = true;
-    MutexLock lock(&_mu);
-    NSBlockMap::iterator it = _block_map.find(block_id);
-    if (it == _block_map.end()) {
+    MutexLock lock(&mu_);
+    NSBlockMap::iterator it = block_map_.find(block_id);
+    if (it == block_map_.end()) {
         LOG(WARNING, "Can't find block: #%ld ", block_id);
         ret = false;
     } else {

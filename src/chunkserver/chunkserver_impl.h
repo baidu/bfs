@@ -74,16 +74,16 @@ private:
     void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
     void GatherCounter();
 private:
-    BlockManager*   _block_manager;
-    std::string     _data_server_addr;
-    RpcClient*      _rpc_client;
-    ThreadPool*     _work_thread_pool;
-    ThreadPool*     _read_thread_pool;
-    ThreadPool*     _write_thread_pool;
-    ThreadPool*     _heartbeat_thread;
-    NameServer_Stub* _nameserver;
-    int32_t _chunkserver_id;
-    CounterManager* _counter_manager;
+    BlockManager*   block_manager_;
+    std::string     data_server_addr_;
+    RpcClient*      rpc_client_;
+    ThreadPool*     work_thread_pool_;
+    ThreadPool*     read_thread_pool_;
+    ThreadPool*     write_thread_pool_;
+    ThreadPool*     heartbeat_thread_;
+    NameServer_Stub* nameserver_;
+    int32_t chunkserver_id_;
+    CounterManager* counter_manager_;
 };
 
 } // namespace bfs

@@ -16,79 +16,79 @@ namespace baidu {
 namespace bfs {
 
 ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_manager)
-    : _thread_pool(thread_pool),
-      _block_manager(block_manager),
-      _chunkserver_num(0),
-      _next_chunkserver_id(1) {
-    _thread_pool->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
+    : thread_pool_(thread_pool),
+      block_manager_(block_manager),
+      chunkserver_num_(0),
+      next_chunkserver_id_(1) {
+    thread_pool_->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
 }
 
 void ChunkServerManager::DeadCheck() {
     int32_t now_time = common::timer::now_time();
 
-    MutexLock lock(&_mu);
-    std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
+    MutexLock lock(&mu_);
+    std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
 
-    while (it != _heartbeat_list.end()
+    while (it != heartbeat_list_.end()
            && it->first + FLAGS_keepalive_timeout <= now_time) {
         std::set<ChunkServerInfo*>::iterator node = it->second.begin();
         while (node != it->second.end()) {
             ChunkServerInfo* cs = *node;
             cs->set_is_dead(true);
             it->second.erase(node);
-            _chunkserver_num--;
+            chunkserver_num_--;
             LOG(INFO, "[DeadCheck] Chunkserver[%d] %s dead, cs_num=%d",
-                cs->id(), cs->address().c_str(), _chunkserver_num);
+                cs->id(), cs->address().c_str(), chunkserver_num_);
             node = it->second.begin();
 
             int32_t id = cs->id();
-            std::set<int64_t> blocks = _chunkserver_block_map[id];
+            std::set<int64_t> blocks = chunkserver_block_map_[id];
             boost::function<void ()> task =
                 boost::bind(&BlockMapping::DealDeadBlocks,
-                        _block_manager, id, blocks);
-            _thread_pool->AddTask(task);
-            _chunkserver_block_map.erase(id);
+                        block_manager_, id, blocks);
+            thread_pool_->AddTask(task);
+            chunkserver_block_map_.erase(id);
         }
         assert(it->second.empty());
-        _heartbeat_list.erase(it);
-        it = _heartbeat_list.begin();
+        heartbeat_list_.erase(it);
+        it = heartbeat_list_.begin();
     }
     int idle_time = 5;
-    if (it != _heartbeat_list.end()) {
+    if (it != heartbeat_list_.end()) {
         idle_time = it->first + FLAGS_keepalive_timeout - now_time;
         // LOG(INFO, "it->first= %d, now_time= %d\n", it->first, now_time);
         if (idle_time > 5) {
             idle_time = 5;
         }
     }
-    _thread_pool->DelayTask(idle_time * 1000,
+    thread_pool_->DelayTask(idle_time * 1000,
                            boost::bind(&ChunkServerManager::DeadCheck, this));
 }
 
 void ChunkServerManager::IncChunkServerNum() {
-    ++_chunkserver_num;
+    ++chunkserver_num_;
 }
 
 int32_t ChunkServerManager::GetChunkServerNum() {
-    return _chunkserver_num;
+    return chunkserver_num_;
 }
 
 void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
-    MutexLock lock(&_mu);
+    MutexLock lock(&mu_);
     int32_t id = request->chunkserver_id();
-    ServerMap::iterator it = _chunkservers.find(id);
+    ServerMap::iterator it = chunkservers_.find(id);
     ChunkServerInfo* info = NULL;
-    if (it != _chunkservers.end()) {
+    if (it != chunkservers_.end()) {
         info = it->second;
         assert(info);
         if (!info->is_dead()) {
-            assert(_heartbeat_list.find(info->last_heartbeat()) != _heartbeat_list.end());
-            _heartbeat_list[info->last_heartbeat()].erase(info);
-            if (_heartbeat_list[info->last_heartbeat()].empty()) {
-                _heartbeat_list.erase(info->last_heartbeat());
+            assert(heartbeat_list_.find(info->last_heartbeat()) != heartbeat_list_.end());
+            heartbeat_list_[info->last_heartbeat()].erase(info);
+            if (heartbeat_list_[info->last_heartbeat()].empty()) {
+                heartbeat_list_.erase(info->last_heartbeat());
             }
         } else {
-            assert(_heartbeat_list.find(info->last_heartbeat()) == _heartbeat_list.end());
+            assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
             info->set_is_dead(false);
         }
     } else {
@@ -101,21 +101,21 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
         info->set_id(id);
         info->set_address(request->data_server_addr());
         LOG(INFO, "New ChunkServerInfo[%id] %p ", id, info);
-        _chunkservers[id] = info;
+        chunkservers_[id] = info;
         ++_chunkserver_num;*/
     }
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
     int32_t now_time = common::timer::now_time();
-    _heartbeat_list[now_time].insert(info);
+    heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
 }
 
 void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers) {
-    MutexLock lock(&_mu, "ListChunkServers", 1000);
-    for (ServerMap::iterator it = _chunkservers.begin();
-                it != _chunkservers.end(); ++it) {
+    MutexLock lock(&mu_, "ListChunkServers", 1000);
+    for (ServerMap::iterator it = chunkservers_.begin();
+                it != chunkservers_.end(); ++it) {
         ChunkServerInfo* src = it->second;
         ChunkServerInfo* dst = chunkservers->Add();
         dst->CopyFrom(*src);
@@ -124,16 +124,16 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 
 bool ChunkServerManager::GetChunkServerChains(int num,
                           std::vector<std::pair<int32_t,std::string> >* chains) {
-    MutexLock lock(&_mu);
-    if (num > _chunkserver_num) {
+    MutexLock lock(&mu_);
+    if (num > chunkserver_num_) {
         LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
-            _chunkserver_num, num);
+            chunkserver_num_, num);
         return false;
     }
-    std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = _heartbeat_list.begin();
+    std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<int64_t, ChunkServerInfo*> > loads;
 
-    for (; it != _heartbeat_list.end(); ++it) {
+    for (; it != heartbeat_list_.end(); ++it) {
         std::set<ChunkServerInfo*>& set = it->second;
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
              sit != set.end(); ++sit) {
@@ -151,7 +151,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     }
     if ((int)loads.size() < num) {
         LOG(WARNING, "Only %ld chunkserver of %ld is not over overladen, GetChunkServerChains(%d) rturne false",
-            loads.size(), _chunkserver_num, num);
+            loads.size(), chunkserver_num_, num);
         return false;
     }
     std::sort(loads.begin(), loads.end());
@@ -175,25 +175,25 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 
 int64_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota, int cs_id) {
     ChunkServerInfo* info = new ChunkServerInfo;
-    MutexLock lock(&_mu);
-    int32_t id = cs_id==-1 ? _next_chunkserver_id++ : cs_id;
+    MutexLock lock(&mu_);
+    int32_t id = cs_id==-1 ? next_chunkserver_id_++ : cs_id;
     info->set_id(id);
     info->set_address(address);
     info->set_disk_quota(quota);
     LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
-    _chunkservers[id] = info;
-    _address_map[address] = id;
+    chunkservers_[id] = info;
+    address_map_[address] = id;
     int32_t now_time = common::timer::now_time();
-    _heartbeat_list[now_time].insert(info);
+    heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
-    ++_chunkserver_num;
+    ++chunkserver_num_;
     return id;
 }
 
 std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
-    MutexLock lock(&_mu);
-    ServerMap::iterator it = _chunkservers.find(id);
-    if (it != _chunkservers.end()) {
+    MutexLock lock(&mu_);
+    ServerMap::iterator it = chunkservers_.find(id);
+    if (it != chunkservers_.end()) {
         ChunkServerInfo* info = it->second;
         if (!info->is_dead()) {
             return info->address();
@@ -203,22 +203,22 @@ std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
 }
 
 int32_t ChunkServerManager::GetChunkserverId(const std::string& addr) {
-    MutexLock lock(&_mu);
-    std::map<std::string, int32_t>::iterator it = _address_map.find(addr);
-    if (it != _address_map.end()) {
+    MutexLock lock(&mu_);
+    std::map<std::string, int32_t>::iterator it = address_map_.find(addr);
+    if (it != address_map_.end()) {
         return it->second;
     }
     return -1;
 }
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
-    MutexLock lock(&_mu);
-    _chunkserver_block_map[id].insert(block_id);
+    MutexLock lock(&mu_);
+    chunkserver_block_map_[id].insert(block_id);
 }
 
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
-    MutexLock lock(&_mu);
-    _chunkserver_block_map[id].erase(block_id);
+    MutexLock lock(&mu_);
+    chunkserver_block_map_[id].erase(block_id);
 }
 
 } // namespace bfs

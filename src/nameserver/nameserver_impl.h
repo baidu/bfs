@@ -94,17 +94,17 @@ private:
     void LeaveSafemode();
 private:
     /// Global thread pool
-    ThreadPool _thread_pool;
+    ThreadPool thread_pool_;
     /// Global lock
-    Mutex _mu;
+    Mutex mu_;
     /// Chunkserver map
-    ChunkServerManager* _chunkserver_manager;
+    ChunkServerManager* chunkserver_manager_;
     /// Block map
-    BlockMapping* _block_manager;
-    bool _safe_mode;
+    BlockMapping* block_manager_;
+    bool safe_mode_;
     /// Namespace
-    NameSpace* _namespace;
-    int64_t _namespace_version;
+    NameSpace* namespace_;
+    int64_t namespace_version_;
 };
 
 } // namespace bfs

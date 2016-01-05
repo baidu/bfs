@@ -28,16 +28,16 @@ public:
     void RemoveBlock(int32_t id, int64_t block_id);
 
 private:
-    ThreadPool* _thread_pool;
-    BlockMapping* _block_manager;
-    Mutex _mu;      /// _chunkservers list mutext;
+    ThreadPool* thread_pool_;
+    BlockMapping* block_manager_;
+    Mutex mu_;      /// chunkserver_s list mutext;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
-    ServerMap _chunkservers;
-    std::map<std::string, int32_t> _address_map;
-    std::map<int32_t, std::set<ChunkServerInfo*> > _heartbeat_list;
-    std::map<int32_t, std::set<int64_t> > _chunkserver_block_map;
-    int32_t _chunkserver_num;
-    int32_t _next_chunkserver_id;
+    ServerMap chunkservers_;
+    std::map<std::string, int32_t> address_map_;
+    std::map<int32_t, std::set<ChunkServerInfo*> > heartbeat_list_;
+    std::map<int32_t, std::set<int64_t> > chunkserver_block_map_;
+    int32_t chunkserver_num_;
+    int32_t next_chunkserver_id_;
 };
 
 } // namespace bfs

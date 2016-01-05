@@ -43,15 +43,15 @@ public:
     bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);
 private:
-    ThreadPool* _thread_pool;
-    std::vector<std::string> _store_path_list;
+    ThreadPool* thread_pool_;
+    std::vector<std::string> store_path_list_;
     typedef std::map<int64_t, Block*> BlockMap;
-    BlockMap  _block_map;
-    leveldb::DB* _metadb;
-    FileCache* _file_cache;
-    Mutex   _mu;
-    int64_t _namespace_version;
-    int64_t _disk_quota;
+    BlockMap  block_map_;
+    leveldb::DB* metadb_;
+    FileCache* file_cache_;
+    Mutex   mu_;
+    int64_t namespace_version_;
+    int64_t disk_quota_;
 };
 
 } // bfs
