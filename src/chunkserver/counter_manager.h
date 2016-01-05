@@ -36,9 +36,9 @@ public:
     void GatherCounters();
     Counters GetCounters();
 private:
-    Mutex _counters_lock;
-    Counters _counters;
-    int64_t _last_gather_time;
+    Mutex counters_lock_;
+    Counters counters_;
+    int64_t last_gather_time_;
 };
 
 } // namespace bfs

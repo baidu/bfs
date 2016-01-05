@@ -21,7 +21,7 @@ public:
 private:
     common::Cache::Handle* FindFile(const std::string& file_path);
 private:
-    common::Cache* _cache;
+    common::Cache* cache_;
 };
 
 } // namespace bfs

@@ -82,25 +82,25 @@ private:
         InDisk,
         InMem,
     };
-    ThreadPool* _thread_pool;
-    BlockMeta   _meta;
-    int32_t     _last_seq;
-    int32_t     _slice_num;
-    char*       _blockbuf;
-    int32_t     _buflen;
-    int32_t     _bufdatalen;
-    std::vector<std::pair<const char*,int> > _block_buf_list;
-    bool        _disk_writing;
-    std::string _disk_file;
-    int32_t     _disk_file_size;
-    int         _file_desc; ///< disk file fd
-    volatile int _refs;
-    Mutex       _mu;
-    common::SlidingWindow<Buffer>* _recv_window;
-    bool        _finished;
-    volatile int _deleted;
+    ThreadPool* thread_pool_;
+    BlockMeta   meta_;
+    int32_t     last_seq_;
+    int32_t     slice_num_;
+    char*       blockbuf_;
+    int32_t     buflen_;
+    int32_t     bufdatalen_;
+    std::vector<std::pair<const char*,int> > block_buf_list_;
+    bool        disk_writing_;
+    std::string disk_file_;
+    int32_t     disk_file_size_;
+    int         file_desc_; ///< disk file fd
+    volatile int refs_;
+    Mutex       mu_;
+    common::SlidingWindow<Buffer>* recv_window_;
+    bool        finished_;
+    volatile int deleted_;
 
-    FileCache*  _file_cache;
+    FileCache*  file_cache_;
 };
 
 }
