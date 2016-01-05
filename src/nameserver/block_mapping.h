@@ -45,11 +45,11 @@ public:
     bool SetBlockVersion(int64_t block_id, int64_t version);
 
 private:
-    Mutex _mu;
+    Mutex mu_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
-    NSBlockMap _block_map;
-    int64_t _next_block_id;
-    std::map<int32_t, std::set<int64_t> > _blocks_to_replicate;
+    NSBlockMap block_map_;
+    int64_t next_block_id_;
+    std::map<int32_t, std::set<int64_t> > blocks_to_replicate_;
 };
 
 } // namespace bfs
