@@ -979,6 +979,7 @@ bool BfsFileImpl::Close() {
         FinishBlockRequest request;
         FinishBlockResponse response;
         request.set_sequence_id(0);
+        request.set_file_name(_name);
         request.set_block_id(block_id);
         request.set_block_version(_last_seq);
         ret = _rpc_client->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
