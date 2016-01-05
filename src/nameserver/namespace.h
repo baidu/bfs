@@ -61,9 +61,9 @@ private:
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed);
 private:
-    leveldb::DB* _db;   /// NameSpace storage
-    int64_t _version;   /// Namespace version.
-    volatile int64_t _last_entry_id;
+    leveldb::DB* db_;   /// NameSpace storage
+    int64_t version_;   /// Namespace version.
+    volatile int64_t last_entry_id_;
 };
 
 } // namespace bfs

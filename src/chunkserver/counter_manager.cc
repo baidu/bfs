@@ -30,14 +30,14 @@ common::Counter g_data_size;
 
 
 CounterManager::CounterManager() {
-    _last_gather_time = common::timer::get_micros();
-    memset(&_counters, 0 ,sizeof(_counters));
+    last_gather_time_ = common::timer::get_micros();
+    memset(&counters_, 0 ,sizeof(counters_));
 }
 
 void CounterManager::GatherCounters() {
     int64_t now = common::timer::get_micros();
-    int64_t interval = now - _last_gather_time;
-    _last_gather_time = now;
+    int64_t interval = now - last_gather_time_;
+    last_gather_time_ = now;
 
     Counters counters;
     counters.rpc_count = g_rpc_count.Clear();
@@ -54,13 +54,13 @@ void CounterManager::GatherCounters() {
     counters.write_bytes = g_write_bytes.Clear() * 1000000 / interval;
     counters.buffers_new = g_buffers_new.Clear() * 1000000 / interval;
     counters.buffers_delete = g_buffers_delete.Clear() * 1000000 / interval;
-    MutexLock lock(&_counters_lock);
-    _counters = counters;
+    MutexLock lock(&counters_lock_);
+    counters_ = counters;
 }
 
 CounterManager::Counters CounterManager::GetCounters() {
-    MutexLock lock(&_counters_lock);
-    return _counters;
+    MutexLock lock(&counters_lock_);
+    return counters_;
 }
 
 } // namespace bfs

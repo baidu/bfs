@@ -27,44 +27,44 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
-NameSpace::NameSpace(): _last_entry_id(1) {
+NameSpace::NameSpace(): last_entry_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
-    leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &_db);
+    leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
-        _db = NULL;
+        db_ = NULL;
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
     }
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
-    s = _db->Get(leveldb::ReadOptions(), version_key, &version_str);
+    s = db_->Get(leveldb::ReadOptions(), version_key, &version_str);
     if (s.ok()) {
         if (version_str.size() != sizeof(int64_t)) {
             LOG(FATAL, "Bad namespace version len= %lu.", version_str.size());
         }
-        _version = *(reinterpret_cast<int64_t*>(&version_str[0]));
-        LOG(INFO, "Load namespace version: %ld", _version);
+        version_ = *(reinterpret_cast<int64_t*>(&version_str[0]));
+        LOG(INFO, "Load namespace version: %ld", version_);
     } else {
-        _version = common::timer::get_micros();
+        version_ = common::timer::get_micros();
         version_str.resize(8);
-        *(reinterpret_cast<int64_t*>(&version_str[0])) = _version;
-        s = _db->Put(leveldb::WriteOptions(), version_key, version_str);
+        *(reinterpret_cast<int64_t*>(&version_str[0])) = version_;
+        s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
         if (!s.ok()) {
             LOG(FATAL, "Write namespace version to db fail: %s", s.ToString().c_str());
         }
-        LOG(INFO, "Create new namespace version: %ld", _version);
+        LOG(INFO, "Create new namespace version: %ld", version_);
     }
 }
 
 NameSpace::~NameSpace() {
-    delete _db;
-    _db = NULL;
+    delete db_;
+    db_ = NULL;
 }
 
 int64_t NameSpace::Version() const {
-    return _version;
+    return version_;
 }
 
 bool NameSpace::IsDir(int type) {
@@ -81,7 +81,7 @@ void NameSpace::EncodingStoreKey(int64_t entry_id,
 
 bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
     std::string value;
-    leveldb::Status s = _db->Get(leveldb::ReadOptions(), key, &value);
+    leveldb::Status s = db_->Get(leveldb::ReadOptions(), key, &value);
     if (!s.ok()) {
         LOG(DEBUG, "GetFromStore get fail %s", key.substr(8).c_str());
         return false;
@@ -136,7 +136,7 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
 }
 
 bool NameSpace::DeleteFileInfo(const std::string file_key) {
-    leveldb::Status s = _db->Delete(leveldb::WriteOptions(), file_key);
+    leveldb::Status s = db_->Delete(leveldb::WriteOptions(), file_key);
     return s.ok();
 }
 bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
@@ -144,7 +144,7 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
     EncodingStoreKey(file_info.parent_entry_id(), file_info.name(), &file_key);
     std::string infobuf;
     file_info.SerializeToString(&infobuf);
-    leveldb::Status s = _db->Put(leveldb::WriteOptions(), file_key, infobuf);
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf);
     return s.ok();
 };
 
@@ -168,11 +168,11 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
         if (!LookUp(parent_id, paths[i], &file_info)) {
             file_info.set_type((1<<9)|0755);
             file_info.set_ctime(time(NULL));
-            file_info.set_entry_id(common::atomic_add64(&_last_entry_id, 1) + 1);
+            file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
             file_info.SerializeToString(&info_value);
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
-            leveldb::Status s = _db->Put(leveldb::WriteOptions(), key_str, info_value);
+            leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
             LOG(INFO, "Put %s", common::DebugString(key_str).c_str());
             assert (s.ok());
             LOG(INFO, "Create path recursively: %s %ld", paths[i].c_str(), file_info.entry_id());
@@ -197,14 +197,14 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
     } else {
         file_info.set_type(0755);
     }
-    file_info.set_entry_id(common::atomic_add64(&_last_entry_id, 1) + 1);
+    file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(FLAGS_default_replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     std::string file_key;
     EncodingStoreKey(parent_id, fname, &file_key);
-    leveldb::Status s = _db->Put(leveldb::WriteOptions(), file_key, info_value);
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s %ld", path.c_str(), file_info.entry_id());
         return 0;
@@ -237,7 +237,7 @@ int NameSpace::ListDirectory(const std::string& dir,
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
     EncodingStoreKey(entry_id + 1, "", &key_end);
-    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
+    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(key_start); it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
         if (key.compare(key_end)>=0) {
@@ -316,7 +316,7 @@ int NameSpace::Rename(const std::string& old_path,
     leveldb::WriteBatch batch;
     batch.Put(new_key, value);
     batch.Delete(old_key);
-    leveldb::Status s = _db->Write(leveldb::WriteOptions(), &batch);
+    leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Rename %s to %s[%s], replace: %d",
             old_path.c_str(), new_path.c_str(),
@@ -383,7 +383,7 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     EncodingStoreKey(entry_id, "", &key_start);
     EncodingStoreKey(entry_id + 1, "", &key_end);
 
-    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
+    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     it->Seek(key_start);
     if (it->Valid() && it->key().compare(key_end) < 0 && recursive == false) {
         LOG(WARNING, "Try to delete an unempty directory unrecursively: %s",
@@ -427,7 +427,7 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     std::string store_key;
     EncodingStoreKey(dir_info.parent_entry_id(), dir_info.name(), &store_key);
     batch.Delete(store_key);
-    leveldb::Status s = _db->Write(leveldb::WriteOptions(), &batch);
+    leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Unlink dentry done: %s[%s]",
             dir_info.name().c_str(), common::DebugString(store_key).c_str());
@@ -440,12 +440,12 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
 }
 
 bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
-    leveldb::Iterator* it = _db->NewIterator(leveldb::ReadOptions());
+    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
-        if (_last_entry_id < file_info.entry_id()) {
-            _last_entry_id = file_info.entry_id();
+        if (last_entry_id_ < file_info.entry_id()) {
+            last_entry_id_ = file_info.entry_id();
         }
         assert(ret);
         if (!IsDir(file_info.type())) {
@@ -454,7 +454,7 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
         }
     }
     delete it;
-    LOG(INFO, "RebuildBlockMap done. last_entry_id= E%ld", _last_entry_id);
+    LOG(INFO, "RebuildBlockMap done. last_entry_id= E%ld", last_entry_id_);
     return true;
 }
 
