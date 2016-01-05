@@ -13,9 +13,9 @@
 #include <gflags/gflags.h>
 #include <sofa/pbrpc/pbrpc.h>
 
-#include "common/counter.h"
-#include "common/logging.h"
-#include "common/string_util.h"
+#include <common/counter.h>
+#include <common/logging.h>
+#include <common/string_util.h>
 
 #include "nameserver/namespace.h"
 
@@ -302,7 +302,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
     } else {
         for (int i=0; i<info.blocks_size(); i++) {
             int64_t block_id = info.blocks(i);
-            BlockMapping::NSBlock nsblock(block_id);
+            NSBlock nsblock(block_id);
             if (!_block_manager->GetBlock(block_id, &nsblock)) {
                 LOG(WARNING, "GetFileLocation GetBlock fail #%ld ", block_id);
                 continue;
@@ -366,7 +366,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         int64_t file_size = 0;
         for (int i = 0; i < out_info->blocks_size(); i++) {
             int64_t block_id = out_info->blocks(i);
-            BlockMapping::NSBlock nsblock(block_id);
+            NSBlock nsblock(block_id);
             if (!_block_manager->GetBlock(block_id, &nsblock)) {
                 continue;
             }

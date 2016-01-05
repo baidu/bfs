@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "common/logging.h"
+#include <common/logging.h>
 
 namespace baidu {
 namespace bfs {

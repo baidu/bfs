@@ -11,9 +11,9 @@
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
 #include <sofa/pbrpc/pbrpc.h>
-#include "common/mutex.h"
-#include "common/thread_pool.h"
-#include "common/logging.h"
+#include <common/mutex.h>
+#include <common/thread_pool.h>
+#include <common/logging.h>
 
 namespace baidu {
 namespace bfs {

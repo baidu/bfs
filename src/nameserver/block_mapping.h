@@ -7,30 +7,25 @@
 
 #include <gflags/gflags.h>
 
-#include "common/mutex.h"
+#include <common/mutex.h>
 #include "proto/nameserver.pb.h"
-
-DECLARE_int32(default_replica_num);
 
 namespace baidu {
 namespace bfs {
 
+struct NSBlock {
+    int64_t id;
+    int64_t version;
+    std::set<int32_t> replica;
+    int64_t block_size;
+    int32_t expect_replica_num;
+    bool pending_change;
+    std::set<int32_t> pulling_chunkservers;
+    NSBlock(int64_t block_id);
+};
+
 class BlockMapping {
 public:
-    struct NSBlock {
-        int64_t id;
-        int64_t version;
-        std::set<int32_t> replica;
-        int64_t block_size;
-        int32_t expect_replica_num;
-        bool pending_change;
-        std::set<int32_t> pulling_chunkservers;
-        NSBlock(int64_t block_id)
-         : id(block_id), version(-1), block_size(0),
-           expect_replica_num(FLAGS_default_replica_num),
-           pending_change(true) {
-        }
-    };
 
     BlockMapping();
     int64_t NewBlockID();

@@ -7,12 +7,18 @@
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
-#include "common/logging.h"
+#include <common/logging.h>
 
 DECLARE_int32(default_replica_num);
 
 namespace baidu {
 namespace bfs {
+
+NSBlock::NSBlock(int64_t block_id)
+ : id(block_id), version(-1), block_size(0),
+   expect_replica_num(FLAGS_default_replica_num),
+   pending_change(true) {
+}
 
 BlockMapping::BlockMapping() :_next_block_id(1) {}
 

@@ -7,7 +7,7 @@
 #include <set>
 #include <map>
 
-#include "common/thread_pool.h"
+#include <common/thread_pool.h>
 
 namespace baidu {
 namespace bfs {

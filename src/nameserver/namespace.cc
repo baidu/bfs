@@ -13,10 +13,10 @@
 #include <leveldb/write_batch.h>
 #include <common/logging.h>
 
-#include "common/timer.h"
-#include "common/util.h"
-#include "common/atomic.h"
-#include "common/string_util.h"
+#include <common/timer.h>
+#include <common/util.h>
+#include <common/atomic.h>
+#include <common/string_util.h>
 
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);

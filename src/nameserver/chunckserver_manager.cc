@@ -7,7 +7,7 @@
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
-#include "common/logging.h"
+#include <common/logging.h>
 
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);

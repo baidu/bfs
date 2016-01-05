@@ -9,7 +9,8 @@
 
 #include "proto/chunkserver.pb.h"
 #include "proto/nameserver.pb.h"
-#include "common/thread_pool.h"
+
+#include <common/thread_pool.h>
 
 namespace sofa {
 namespace pbrpc {

@@ -9,7 +9,7 @@
 #include <sofa/pbrpc/pbrpc.h>
 #include <gflags/gflags.h>
 
-#include "common/logging.h"
+#include <common/logging.h>
 #include "nameserver/nameserver_impl.h"
 
 DECLARE_string(flagfile);

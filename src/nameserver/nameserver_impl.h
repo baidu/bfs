@@ -9,6 +9,8 @@
 
 #include "chunckserver_manager.h"
 
+#include <common/mutex.h>
+
 #include "proto/nameserver.pb.h"
 
 namespace sofa {
