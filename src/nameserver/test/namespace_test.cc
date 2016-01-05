@@ -7,7 +7,7 @@
 #define private public
 #include "nameserver/namespace.h"
 
-#include "common/util.h"
+#include <common/util.h>
 #include <fcntl.h>
 
 #include <gflags/gflags.h>

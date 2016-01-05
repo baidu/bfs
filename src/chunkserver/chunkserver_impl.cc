@@ -15,15 +15,15 @@
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
-#include "common/mutex.h"
-#include "common/atomic.h"
-#include "common/counter.h"
-#include "common/mutex.h"
-#include "common/thread_pool.h"
-#include "common/util.h"
-#include "common/timer.h"
-#include "common/sliding_window.h"
-#include "common/string_util.h"
+#include <common/mutex.h>
+#include <common/atomic.h>
+#include <common/counter.h>
+#include <common/mutex.h>
+#include <common/thread_pool.h>
+#include <common/util.h>
+#include <common/timer.h>
+#include <common/sliding_window.h>
+#include <common/string_util.h>
 #include "proto/nameserver.pb.h"
 #include "rpc/rpc_client.h"
 
@@ -32,7 +32,7 @@
 #include "chunkserver/block_manager.h"
 
 // Avoid conflict, we define LOG...
-#include "common/logging.h"
+#include <common/logging.h>
 
 DECLARE_string(block_store_path);
 DECLARE_string(nameserver);
