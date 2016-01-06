@@ -36,8 +36,8 @@ common::Counter g_report_blocks;
 
 NameServerImpl::NameServerImpl() : safe_mode_(true) {
     namespace_ = new NameSpace();
-    block_manager_ = new BlockMapping();
-    chunkserver_manager_ = new ChunkServerManager(&thread_pool_, block_manager_);
+    block_mapping_ = new BlockMapping();
+    chunkserver_manager_ = new ChunkServerManager(&thread_pool_, block_mapping_);
     namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
     thread_pool_.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
     thread_pool_.DelayTask(FLAGS_nameserver_safemode_time * 1000,
@@ -131,7 +131,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             // update block -> cs
             int32_t more_replica_num = 0;
             int64_t block_version = block.version();
-            if (!block_manager_->UpdateBlockInfo(cur_block_id, cs_id,
+            if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                                  cur_block_size,
                                                  block_version,
                                                  &more_replica_num)) {
@@ -148,14 +148,14 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 ///TODO: Not get all chunkservers, but get more.
                 if (chunkserver_manager_->GetChunkServerChains(more_replica_num, &chains)) {
                     std::set<int32_t> cur_replica_location;
-                    block_manager_->GetReplicaLocation(cur_block_id, &cur_replica_location);
+                    block_mapping_->GetReplicaLocation(cur_block_id, &cur_replica_location);
 
                     std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
                     int num;
                     for (num = 0; num < more_replica_num &&
                             chains_it != chains.end(); ++chains_it) {
                         if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                            bool mark_pull = block_manager_->MarkPullBlock(chains_it->first, cur_block_id);
+                            bool mark_pull = block_mapping_->MarkPullBlock(chains_it->first, cur_block_id);
                             if (mark_pull) {
                                 num++;
                             }
@@ -163,7 +163,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                     }
                     //no suitable chunkserver
                     if (num == 0) {
-                        block_manager_->MarkBlockStable(cur_block_id);
+                        block_mapping_->MarkBlockStable(cur_block_id);
                     }
                 }
             }
@@ -171,7 +171,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
         // recover replica
         std::vector<std::pair<int64_t, std::set<int32_t> > > pull_blocks;
-        if (block_manager_->GetPullBlocks(cs_id, &pull_blocks)) {
+        if (block_mapping_->GetPullBlocks(cs_id, &pull_blocks)) {
             ReplicaInfo* info = NULL;
             for (size_t i = 0; i < pull_blocks.size(); i++) {
                 info = response->add_new_replicas();
@@ -197,7 +197,7 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
     response->set_status(0);
     int32_t chunkserver_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_manager_->UnmarkPullBlock(chunkserver_id, request->blocks(i));
+        block_mapping_->UnmarkPullBlock(chunkserver_id, request->blocks(i));
     }
     done->Run();
 }
@@ -236,16 +236,16 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains)) {
-        int64_t new_block_id = block_manager_->NewBlockID();
+        int64_t new_block_id = block_mapping_->NewBlockID();
         LOG(INFO, "[AddBlock] new block for %s id= #%ld ",
             path.c_str(), new_block_id);
         LocatedBlock* block = response->mutable_block();
-        block_manager_->AddNewBlock(new_block_id);
+        block_mapping_->AddNewBlock(new_block_id);
         for (int i =0; i<replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            block_manager_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0);
+            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0);
         }
         block->set_block_id(new_block_id);
         response->set_status(0);
@@ -285,13 +285,13 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    if (!block_manager_->SetBlockVersion(block_id, block_version)) {
+    if (!block_mapping_->SetBlockVersion(block_id, block_version)) {
         LOG(WARNING, "Set block version fail: %s", file_name.c_str());
         response->set_status(886);
         done->Run();
         return;
     }
-    if (block_manager_->MarkBlockStable(block_id)) {
+    if (block_mapping_->MarkBlockStable(block_id)) {
         response->set_status(0);
     } else {
         response->set_status(886);
@@ -319,7 +319,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
         for (int i=0; i<info.blocks_size(); i++) {
             int64_t block_id = info.blocks(i);
             NSBlock nsblock(block_id);
-            if (!block_manager_->GetBlock(block_id, &nsblock)) {
+            if (!block_mapping_->GetBlock(block_id, &nsblock)) {
                 LOG(WARNING, "GetFileLocation GetBlock fail #%ld ", block_id);
                 continue;
             } else {
@@ -383,7 +383,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         for (int i = 0; i < out_info->blocks_size(); i++) {
             int64_t block_id = out_info->blocks(i);
             NSBlock nsblock(block_id);
-            if (!block_manager_->GetBlock(block_id, &nsblock)) {
+            if (!block_mapping_->GetBlock(block_id, &nsblock)) {
                 continue;
             }
             file_size += nsblock.block_size;
@@ -410,7 +410,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     FileInfo remove_file;
     int status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file);
     if (status == 0 && need_unlink) {
-        block_manager_->RemoveBlocksForFile(remove_file);
+        block_mapping_->RemoveBlocksForFile(remove_file);
     }
     response->set_status(status);
     done->Run();
@@ -427,7 +427,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     int status = namespace_->RemoveFile(path, &file_info);
     if (status == 0) {
-        block_manager_->RemoveBlocksForFile(file_info);
+        block_mapping_->RemoveBlocksForFile(file_info);
     }
     LOG(INFO, "Unlink: %s return %d", path.c_str(), status);
     response->set_status(status);
@@ -448,7 +448,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     std::vector<FileInfo> removed;
     int ret_status = namespace_->DeleteDirectory(path, recursive, &removed);
     for (uint32_t i = 0; i < removed.size(); i++) {
-        block_manager_->RemoveBlocksForFile(removed[i]);
+        block_mapping_->RemoveBlocksForFile(removed[i]);
     }
     response->set_status(ret_status);
     done->Run();
@@ -469,7 +469,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         file_info.set_replicas(replica_num);
         bool ret = namespace_->UpdateFileInfo(file_info);
         assert(ret);
-        if (block_manager_->ChangeReplicaNum(file_info.entry_id(), replica_num)) {
+        if (block_mapping_->ChangeReplicaNum(file_info.entry_id(), replica_num)) {
             LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
             ret_status = 0;
         } else {
@@ -487,11 +487,11 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
-        block_manager_->AddNewBlock(block_id);
-        block_manager_->ChangeReplicaNum(block_id, file_info.replicas());
+        block_mapping_->AddNewBlock(block_id);
+        block_mapping_->ChangeReplicaNum(block_id, file_info.replicas());
         if (version != -1) {
-            block_manager_->SetBlockVersion(block_id, version);
-            block_manager_->MarkBlockStable(block_id);
+            block_mapping_->SetBlockVersion(block_id, version);
+            block_mapping_->MarkBlockStable(block_id);
         }
     }
 }
