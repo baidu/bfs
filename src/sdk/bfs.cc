@@ -134,7 +134,7 @@ public:
     void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
                          int retry_times, std::string cs_addr);
     bool Flush();
-    bool Sync();
+    bool Sync(int32_t timeout = 0);
     bool Close();
 
     struct WriteBufferCmp {
@@ -918,7 +918,7 @@ bool BfsFileImpl::Flush() {
     // Not impliment
     return true;
 }
-bool BfsFileImpl::Sync() {
+bool BfsFileImpl::Sync(int32_t timeout) {
     common::timer::AutoTimer at(50, "Sync", name_.c_str());
     if (open_flags_ != O_WRONLY) {
         return false;
@@ -928,7 +928,7 @@ bool BfsFileImpl::Sync() {
         StartWrite();
     }
     int wait_time = 0;
-    while (back_writing_ && !bg_error_) {
+    while (back_writing_ && !bg_error_ && (timeout == 0 || wait_time < timeout)) {
         bool finish = sync_signal_.TimeWait(1000, "Sync wait");
         if (++wait_time >= 30 && (wait_time % 10 == 0)) {
             LOG(WARNING, "Sync timeout %d s, %s back_writing_= %d, finish= %d",
@@ -936,7 +936,7 @@ bool BfsFileImpl::Sync() {
         }
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
-    return !bg_error_;
+    return !bg_error_ && !back_writing_;
 }
 
 bool BfsFileImpl::Close() {
