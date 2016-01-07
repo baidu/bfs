@@ -31,7 +31,7 @@ public:
     virtual int32_t Read(char* buf, int32_t read_size) = 0;
     virtual int32_t Write(const char* buf, int32_t write_size) = 0;
     virtual bool Flush() = 0;
-    virtual bool Sync() = 0;
+    virtual bool Sync(int32_t timeout = 0) = 0;
     virtual bool Close() = 0;
 private:
     // No copying allowed
