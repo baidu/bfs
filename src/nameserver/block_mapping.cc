@@ -150,28 +150,32 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
             //    id, nsblock->block_size, block_size);
         }
     }
-    std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
-    int32_t cur_replica_num = nsblock->replica.size();
-    int32_t expect_replica_num = nsblock->expect_replica_num;
-    if (cur_replica_num != expect_replica_num) {
-        if (!nsblock->pending_change) {
-            nsblock->pending_change = true;
-            if (cur_replica_num > expect_replica_num) {
-                LOG(INFO, "too much replica cur=%d expect=%d server=%d",
-                    server_id, cur_replica_num, expect_replica_num);
-                nsblock->replica.erase(ret.first);
-                return false;
-            } else {
-                // add new replica
-                if (more_replica_num) {
-                    *more_replica_num = expect_replica_num - cur_replica_num;
-                    LOG(INFO, "Need to add %d new replica for #%ld cur=%d expect=%d",
-                        *more_replica_num, id, cur_replica_num, expect_replica_num);
-                }
-            }
-        }
-    }
-    return true;
+
+   std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
+   //skip unfinished blocks
+   if (block_version >= 0) {
+       int32_t cur_replica_num = nsblock->replica.size();
+       int32_t expect_replica_num = nsblock->expect_replica_num;
+       if (cur_replica_num != expect_replica_num) {
+           if (!nsblock->pending_change) {
+               nsblock->pending_change = true;
+               if (cur_replica_num > expect_replica_num) {
+                   LOG(INFO, "too much replica cur=%d expect=%d server=%d",
+                           server_id, cur_replica_num, expect_replica_num);
+                   nsblock->replica.erase(ret.first);
+                   return false;
+               } else {
+                   // add new replica
+                   if (more_replica_num) {
+                       *more_replica_num = expect_replica_num - cur_replica_num;
+                       LOG(INFO, "Need to add %d new replica for #%ld cur=%d expect=%d",
+                               *more_replica_num, id, cur_replica_num, expect_replica_num);
+                   }
+               }
+           }
+       }
+   }
+   return true;
 }
 
 void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info) {
@@ -252,7 +256,11 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
         LOG(WARNING, "Can't find block: #%ld ", block_id);
         ret = false;
     } else {
-        it->second->version = version;
+        if (it->second->version < 0) {
+            it->second->version = version;
+        } else {
+            assert(it->second->version == version);
+        }
     }
     return ret;
 }
