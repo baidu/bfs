@@ -30,6 +30,7 @@ DEFINE_int32(chunkserver_work_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_read_thread_num, 20, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_write_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
+DEFINE_int32(chunkserver_use_root_partition, 1, "Should chunkserver use root partition, 0: forbidden");
 
 // SDK
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
