@@ -99,8 +99,8 @@ ChunkServerImpl::~ChunkServerImpl() {
     delete heartbeat_thread_;
     delete block_manager_;
     delete rpc_client_;
-    delete counter_manager_;
     LogStatus(false);
+    delete counter_manager_;
 }
 
 void ChunkServerImpl::LogStatus(bool routine) {
