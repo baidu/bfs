@@ -4,6 +4,7 @@
 
 #include <set>
 #include <map>
+#include <vector>
 
 #include <gflags/gflags.h>
 
@@ -19,8 +20,6 @@ struct NSBlock {
     std::set<int32_t> replica;
     int64_t block_size;
     int32_t expect_replica_num;
-    bool pending_change;
-    std::set<int32_t> pulling_chunkservers;
     NSBlock(int64_t block_id);
 };
 
@@ -30,26 +29,32 @@ public:
     BlockMapping();
     int64_t NewBlockID();
     bool GetBlock(int64_t block_id, NSBlock* block);
-    bool MarkBlockStable(int64_t block_id);
     bool GetReplicaLocation(int64_t id, std::set<int32_t>* chunkserver_id);
-    void DealDeadBlocks(int32_t id, std::set<int64_t> blocks);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id);
     bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                         int64_t block_version, int32_t* more_replica_num = NULL);
+                         int64_t block_version);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
-    bool MarkPullBlock(int32_t dst_cs, int64_t block_id);
-    void UnmarkPullBlock(int32_t cs_id, int64_t block_id);
-    bool GetPullBlocks(int32_t id, std::vector<std::pair<int64_t, std::set<int32_t> > >* blocks);
     bool SetBlockVersion(int64_t block_id, int64_t version);
+    void PickRecoverBlocks(int64_t cs_id, int64_t block_num, std::map<int64_t, int64_t>* recover_blocks);
+
+private:
+    void AddToRecover(NSBlock* nsblock, bool need_check);
+    bool NeedRecover(NSBlock* nsblock);
+    void CheckRecover(int64_t block_id, int64_t cs_id);
 
 private:
     Mutex mu_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
     int64_t next_block_id_;
-    std::map<int32_t, std::set<int64_t> > blocks_to_replicate_;
+
+    typedef std::map<int64_t, NSBlock*> RecoverList;
+    RecoverList recover_hi_;
+    RecoverList recover_lo_;
+    typedef std::multimap<int64_t, int64_t> CheckList;
+    CheckList recover_check_;
 };
 
 } // namespace bfs

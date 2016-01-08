@@ -129,12 +129,10 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             int64_t cur_block_size = block.block_size();
 
             // update block -> cs
-            int32_t more_replica_num = 0;
             int64_t block_version = block.version();
             if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                                  cur_block_size,
-                                                 block_version,
-                                                 &more_replica_num)) {
+                                                 block_version)) {
                 response->add_obsolete_blocks(cur_block_id);
                 chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
                 LOG(INFO, "obsolete_block: #%ld", cur_block_id);
@@ -143,47 +141,9 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, cur_block_id);
-            if (!safe_mode_ && more_replica_num != 0) {
-                std::vector<std::pair<int32_t, std::string> > chains;
-                ///TODO: Not get all chunkservers, but get more.
-                if (chunkserver_manager_->GetChunkServerChains(more_replica_num, &chains)) {
-                    std::set<int32_t> cur_replica_location;
-                    block_mapping_->GetReplicaLocation(cur_block_id, &cur_replica_location);
-
-                    std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
-                    int num;
-                    for (num = 0; num < more_replica_num &&
-                            chains_it != chains.end(); ++chains_it) {
-                        if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                            bool mark_pull = block_mapping_->MarkPullBlock(chains_it->first, cur_block_id);
-                            if (mark_pull) {
-                                num++;
-                            }
-                        }
-                    }
-                    //no suitable chunkserver
-                    if (num == 0) {
-                        block_mapping_->MarkBlockStable(cur_block_id);
-                    }
-                }
-            }
         }
 
-        // recover replica
-        std::vector<std::pair<int64_t, std::set<int32_t> > > pull_blocks;
-        if (block_mapping_->GetPullBlocks(cs_id, &pull_blocks)) {
-            ReplicaInfo* info = NULL;
-            for (size_t i = 0; i < pull_blocks.size(); i++) {
-                info = response->add_new_replicas();
-                info->set_block_id(pull_blocks[i].first);
-                std::set<int32_t>::iterator it = pull_blocks[i].second.begin();
-                for (; it != pull_blocks[i].second.end(); ++it) {
-                    std::string cs_addr = chunkserver_manager_->GetChunkServerAddr(*it);
-                    info->add_chunkserver_address(cs_addr);
-                }
-                LOG(INFO, "Add pull block: #%ld dst cs: %d", pull_blocks[i].first, cs_id);
-            }
-        }
+        // TODO recover replica
     }
     response->set_chunkserver_id(cs_id);
     done->Run();
@@ -195,9 +155,8 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
                    ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     response->set_status(0);
-    int32_t chunkserver_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_->UnmarkPullBlock(chunkserver_id, request->blocks(i));
+        // TODO: Unmark
     }
     done->Run();
 }
@@ -275,11 +234,6 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    if (block_mapping_->MarkBlockStable(block_id)) {
-        response->set_status(0);
-    } else {
-        response->set_status(886);
-    }
     done->Run();
 }
 
@@ -313,11 +267,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                 for (std::set<int32_t>::iterator it = nsblock.replica.begin();
                         it != nsblock.replica.end(); ++it) {
                     int32_t server_id = *it;
-                    if (nsblock.pulling_chunkservers.find(server_id) !=
-                            nsblock.pulling_chunkservers.end()) {
-                        LOG(INFO, "replica is under construction #%ld on %d", block_id, server_id);
-                        continue;
-                    }
+                    // TODO: under recovery
                     std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
                     if (addr == "") {
                         LOG(INFO, "GetChunkServerAddr from id:%d fail.", server_id);
@@ -474,7 +424,6 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         block_mapping_->AddNewBlock(block_id);
         block_mapping_->SetBlockVersion(block_id, version);
         block_mapping_->ChangeReplicaNum(block_id, file_info.replicas());
-        block_mapping_->MarkBlockStable(block_id);
     }
 }
 

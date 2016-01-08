@@ -40,14 +40,6 @@ void ChunkServerManager::DeadCheck() {
             LOG(INFO, "[DeadCheck] Chunkserver[%d] %s dead, cs_num=%d",
                 cs->id(), cs->address().c_str(), chunkserver_num_);
             node = it->second.begin();
-
-            int32_t id = cs->id();
-            std::set<int64_t> blocks = chunkserver_block_map_[id];
-            boost::function<void ()> task =
-                boost::bind(&BlockMapping::DealDeadBlocks,
-                        block_manager_, id, blocks);
-            thread_pool_->AddTask(task);
-            chunkserver_block_map_.erase(id);
         }
         assert(it->second.empty());
         heartbeat_list_.erase(it);
