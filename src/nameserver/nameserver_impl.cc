@@ -5,6 +5,7 @@
 // Author: yanshiguang02@baidu.com
 
 #include "nameserver_impl.h"
+#include "types.h"
 
 #include <set>
 #include <map>
@@ -96,20 +97,22 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             for (int i = 0; i < blocks.size(); i++) {
                 response->add_obsolete_blocks(blocks.Get(i).block_id());
             }
+            cs_id = kUnknownChunkServerId;
             LOG(INFO, "Unknown chunkserver namespace version %ld id= %d",
                 version, cs_id);
         }
     } else {
         int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
-        if (old_id == -1) {
+        if (old_id == kUnknownChunkServerId) {
             if (!request->is_complete()) {
                 response->set_status(403);
                 done->Run();
                 return;
             }
             cs_id = chunkserver_manager_->AddChunkServer(request->chunkserver_addr(),
-                                                         request->disk_quota(), -1);
-        } else if (cs_id == -1) {
+                                                         request->disk_quota(),
+                                                         kUnknownChunkServerId);
+        } else if (cs_id == kUnknownChunkServerId) {
             cs_id = old_id;
             chunkserver_manager_->IncChunkServerNum();
             LOG(INFO, "Reconnect chunkserver %d %s, cs_num=%d",

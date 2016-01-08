@@ -5,6 +5,7 @@
 // Author: yanshiguang02@baidu.com
 
 #include "chunkserver_impl.h"
+#include "types.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -65,7 +66,6 @@ extern common::Counter g_rpc_delay_all;
 extern common::Counter g_rpc_count;
 extern common::Counter g_data_size;
 
-const int kUnknownChunkServerId = -1;
 
 ChunkServerImpl::ChunkServerImpl()
     : chunkserver_id_(kUnknownChunkServerId) {
