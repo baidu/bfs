@@ -110,8 +110,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             cs_id = chunkserver_manager_->AddChunkServer(request->chunkserver_addr(),
                                                          request->disk_quota(), -1);
         } else if (cs_id == -1) {
-            cs_id = old_id;
-            chunkserver_manager_->IncChunkServerNum();
+            cs_id = chunkserver_manager_->AddChunkServer(request->chunkserver_addr(),
+                                                         request->disk_quota(), old_id);
             LOG(INFO, "Reconnect chunkserver %d %s, cs_num=%d",
                 cs_id, request->chunkserver_addr().c_str(), chunkserver_manager_->GetChunkServerNum());
         } else if (cs_id != old_id) {
