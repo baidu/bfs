@@ -181,7 +181,13 @@ int64_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t q
     info->set_address(address);
     info->set_disk_quota(quota);
     LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
-    chunkservers_[id] = info;
+    ServerMap::iterator it = chunkservers_.find(id);
+    if (it != chunkservers_.end()) {
+        delete it->second;
+        it->second = info;
+    } else {
+        chunkservers_.insert(std::make_pair(id, info));
+    }
     address_map_[address] = id;
     int32_t now_time = common::timer::now_time();
     heartbeat_list_[now_time].insert(info);
