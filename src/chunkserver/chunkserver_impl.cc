@@ -444,6 +444,15 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
                         const ReadBlockRequest* request,
                         ReadBlockResponse* response,
                         ::google::protobuf::Closure* done) {
+    int64_t block_id = request->block_id();
+    int64_t offset = request->offset();
+    int32_t read_len = request->read_len();
+    if (read_len <= 0 || offset < 0) {
+        LOG(WARNING, "ReadBlock bad parameters %d %ld", read_len, offset);
+        response->set_status(-1);
+        done->Run();
+        return;
+    }
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         response->add_timestamp(common::timer::get_micros());
@@ -453,9 +462,6 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         return;
     }
 
-    int64_t block_id = request->block_id();
-    int64_t offset = request->offset();
-    int32_t read_len = request->read_len();
     int status = 0;
 
     int64_t find_start = common::timer::get_micros();

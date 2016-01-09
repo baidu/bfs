@@ -523,6 +523,11 @@ BfsFileImpl::~BfsFileImpl () {
 }
 
 int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada) {
+    if (read_len <= 0 || buf == NULL || offset < 0) {
+        LOG(WARNING, "Pread(%s, %ld, %d), bad parameters!",
+            _name.c_str(), offset, read_len);
+        return -1;
+    }
     {
         MutexLock lock(&_mu, "Pread read buffer", 1000);
         if (_last_read_offset == -1
