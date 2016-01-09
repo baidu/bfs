@@ -175,24 +175,28 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 
 int64_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota, int cs_id) {
     ChunkServerInfo* info = new ChunkServerInfo;
-    MutexLock lock(&mu_);
-    int32_t id = cs_id==-1 ? next_chunkserver_id_++ : cs_id;
-    info->set_id(id);
-    info->set_address(address);
-    info->set_disk_quota(quota);
-    LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
-    ServerMap::iterator it = chunkservers_.find(id);
-    if (it != chunkservers_.end()) {
-        delete it->second;
-        it->second = info;
-    } else {
-        chunkservers_.insert(std::make_pair(id, info));
+    ChunkServerInfo* old_info = NULL;
+    {
+        MutexLock lock(&mu_);
+        int32_t id = cs_id==-1 ? next_chunkserver_id_++ : cs_id;
+        info->set_id(id);
+        info->set_address(address);
+        info->set_disk_quota(quota);
+        LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
+        ServerMap::iterator it = chunkservers_.find(id);
+        if (it != chunkservers_.end()) {
+            old_info = it->second;
+            it->second = info;
+        } else {
+            chunkservers_.insert(std::make_pair(id, info));
+        }
+        address_map_[address] = id;
+        int32_t now_time = common::timer::now_time();
+        heartbeat_list_[now_time].insert(info);
+        info->set_last_heartbeat(now_time);
+        ++chunkserver_num_;
     }
-    address_map_[address] = id;
-    int32_t now_time = common::timer::now_time();
-    heartbeat_list_[now_time].insert(info);
-    info->set_last_heartbeat(now_time);
-    ++chunkserver_num_;
+    delete old_info;
     return id;
 }
 
