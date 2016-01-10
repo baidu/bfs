@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "chunckserver_manager.h"
+#include "types.h"
 
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
@@ -176,7 +177,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota, int cs_id) {
     ChunkServerInfo* info = new ChunkServerInfo;
     MutexLock lock(&mu_);
-    int32_t id = cs_id==-1 ? next_chunkserver_id_++ : cs_id;
+    int32_t id = cs_id==kUnknownChunkServerId ? next_chunkserver_id_++ : cs_id;
     info->set_id(id);
     info->set_address(address);
     info->set_disk_quota(quota);
