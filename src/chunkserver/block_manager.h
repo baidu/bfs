@@ -31,7 +31,7 @@ public:
     ~BlockManager();
     int64_t DiskQuota()  const;
     void CheckStorePath(const std::string& store_path);
-    const std::string& GetStorePath(int64_t block_id);
+    std::string GetStorePath(int64_t block_id);
     /// Load meta from disk
     bool LoadStorage();
     int64_t NameSpaceVersion() const;
@@ -51,7 +51,8 @@ private:
     FileCache* file_cache_;
     Mutex   mu_;
     int64_t namespace_version_;
-    int64_t disk_quota_;
+    int64_t total_disk_quota_;
+    std::map<std::string, int64_t> disk_quotas_;
 };
 
 } // bfs

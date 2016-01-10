@@ -32,7 +32,7 @@ extern common::Counter g_find_ops;
 BlockManager::BlockManager(ThreadPool* thread_pool, const std::string& store_path)
     :thread_pool_(thread_pool),
      metadb_(NULL),
-     namespace_version_(0), disk_quota_(0) {
+     namespace_version_(0), total_disk_quota_(0) {
      CheckStorePath(store_path);
      file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
 }
@@ -46,10 +46,10 @@ BlockManager::~BlockManager() {
     metadb_ = NULL;
 }
 int64_t BlockManager::DiskQuota() const{
-    return disk_quota_;
+    return total_disk_quota_;
 }
 void BlockManager::CheckStorePath(const std::string& store_path) {
-    int64_t disk_quota = 0;
+    int64_t total_disk_quota = 0;
     common::SplitString(store_path, ",", &store_path_list_);
     for (uint32_t i = 0; i < store_path_list_.size(); ++i) {
        std::string& disk_path = store_path_list_[i];
@@ -67,7 +67,8 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
                common::HumanReadableString(disk_size).c_str(),
                common::HumanReadableString(super_quota).c_str(),
                common::HumanReadableString(user_quota).c_str());
-           disk_quota += user_quota;
+           total_disk_quota += user_quota;
+           disk_quotas_[disk_path] = user_quota;
        } else {
            LOG(WARNING, "Stat store_path %s fail, ignore it", disk_path.c_str());
            store_path_list_[i] = store_path_list_[store_path_list_.size() - 1];
@@ -81,10 +82,21 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     store_path_list_.resize(std::distance(store_path_list_.begin(), it));
     LOG(INFO, "%lu store path used.", store_path_list_.size());
     assert(store_path_list_.size() > 0);
-    disk_quota_ = disk_quota;
+    total_disk_quota_ = total_disk_quota;
 }
-const std::string& BlockManager::GetStorePath(int64_t block_id) {
-    return store_path_list_[block_id % store_path_list_.size()];
+std::string BlockManager::GetStorePath(int64_t block_id) {
+    mu_.AssertHeld();
+    int64_t max_quota = -1;
+    std::string path;
+    std::map<std::string, int64_t>::iterator it = disk_quotas_.begin();
+    ///TODO: improve here
+    for (; it != disk_quotas_.end(); ++it) {
+        if (it->second > max_quota) {
+            path = it->first;
+            max_quota = it->second;
+        }
+    }
+    return path;
 }
 /// Load meta from disk
 bool BlockManager::LoadStorage() {
@@ -128,7 +140,7 @@ bool BlockManager::LoadStorage() {
     if (namespace_version_ == 0 && block_num > 0) {
         LOG(WARNING, "Namespace version lost!");
     }
-    disk_quota_ += g_data_size.Get();
+    total_disk_quota_ += g_data_size.Get();
     return true;
 }
 int64_t BlockManager::NameSpaceVersion() const {
@@ -235,7 +247,17 @@ bool BlockManager::CloseBlock(Block* block) {
 
     // Update meta
     BlockMeta meta = block->GetMeta();
-    return SyncBlockMeta(meta, NULL);
+    if (!SyncBlockMeta(meta, NULL)) {
+        return false;
+    }
+    std::string store_path = block->GetFilePath();
+    store_path.resize(store_path.size() - 15);
+    int64_t size = block->DiskUsed();
+    {
+        MutexLock lock(&mu_);
+        disk_quotas_[store_path] -= size;
+    }
+    return true;
 }
 bool BlockManager::RemoveBlock(int64_t block_id) {
     Block* block = NULL;
@@ -285,6 +307,11 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
     } else {
         LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
         ret = false;
+    }
+    {
+        MutexLock lock(&mu_);
+        std::string disk_path = std::string(file_path.begin(), file_path.end() - 15);
+        disk_quotas_[disk_path] += du;
     }
     block->DecRef();
     return ret;
