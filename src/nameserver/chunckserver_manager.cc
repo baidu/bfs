@@ -174,7 +174,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     return true;
 }
 
-int64_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota, int cs_id) {
+int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota, int cs_id) {
     ChunkServerInfo* info = new ChunkServerInfo;
     MutexLock lock(&mu_);
     int32_t id = cs_id==kUnknownChunkServerId ? next_chunkserver_id_++ : cs_id;
