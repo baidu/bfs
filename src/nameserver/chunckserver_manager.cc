@@ -175,18 +175,26 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 
 int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota, int cs_id) {
     ChunkServerInfo* info = new ChunkServerInfo;
-    MutexLock lock(&mu_);
-    int32_t id = cs_id==-1 ? next_chunkserver_id_++ : cs_id;
-    info->set_id(id);
-    info->set_address(address);
-    info->set_disk_quota(quota);
-    LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
-    chunkservers_[id] = info;
-    address_map_[address] = id;
-    int32_t now_time = common::timer::now_time();
-    heartbeat_list_[now_time].insert(info);
-    info->set_last_heartbeat(now_time);
-    ++chunkserver_num_;
+    ChunkServerInfo* old_info = NULL;
+    int32_t id;
+    {
+        MutexLock lock(&mu_);
+        id = cs_id==-1 ? next_chunkserver_id_++ : cs_id;
+        info->set_id(id);
+        info->set_address(address);
+        info->set_disk_quota(quota);
+        LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
+        if (cs_id != -1)  {
+            old_info = chunkservers_[id];
+        }
+        chunkservers_[id] = info;
+        address_map_[address] = id;
+        int32_t now_time = common::timer::now_time();
+        heartbeat_list_[now_time].insert(info);
+        info->set_last_heartbeat(now_time);
+        ++chunkserver_num_;
+    }
+    delete old_info;
     return id;
 }
 
