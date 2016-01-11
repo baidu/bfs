@@ -88,7 +88,6 @@ private:
     CounterManager* counter_manager_;
     int64_t heartbeat_task_id_;
     volatile int64_t blockreport_task_id_;
-    volatile int blockreport_status_;
 };
 
 } // namespace bfs

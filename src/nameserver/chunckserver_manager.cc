@@ -38,7 +38,8 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     LOG(INFO, "Remove Chunkserver[%d] %s %s, cs_num=%d",
         cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     int32_t id = cs->id();
-    std::set<int64_t> blocks = chunkserver_block_map_[id];
+    std::set<int64_t> blocks;
+    std::swap(blocks, chunkserver_block_map_[id]);
     chunkserver_block_map_.erase(id);
     cs->set_status(kCsCleaning);
     mu_.Unlock();

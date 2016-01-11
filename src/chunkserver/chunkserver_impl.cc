@@ -71,8 +71,7 @@ const int kUnknownChunkServerId = -1;
 ChunkServerImpl::ChunkServerImpl()
     : chunkserver_id_(kUnknownChunkServerId),
      heartbeat_task_id_(-1),
-     blockreport_task_id_(-1),
-     blockreport_status_(0) {
+     blockreport_task_id_(-1) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     work_thread_pool_ = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     read_thread_pool_ = new ThreadPool(FLAGS_chunkserver_read_thread_num);
@@ -163,8 +162,6 @@ void ChunkServerImpl::Register() {
         return;
     }
     assert (response.chunkserver_id() != kUnknownChunkServerId);
-    chunkserver_id_ = response.chunkserver_id();
-    // Chunkserver restart
     chunkserver_id_ = response.chunkserver_id();
     LOG(INFO, "Connect to nameserver version= %ld, cs_id = %d",
         block_manager_->NameSpaceVersion(), chunkserver_id_);
