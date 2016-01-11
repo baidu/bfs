@@ -18,15 +18,18 @@ public:
     void DeadCheck();
     void IncChunkServerNum();
     int32_t GetChunkServerNum();
+    void HandleRegister(const RegisterRequest* request, RegisterResponse* response);
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response);
     void ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers);
     bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains);
-    int64_t AddChunkServer(const std::string& address, int64_t quota, int cs_id = -1);
+    int64_t AddChunkServer(const std::string& address, int64_t quota);
+    bool UpdateChunkServer(int cs_id, int64_t quota);
+    bool RemoveChunkServer(const std::string& address);
     std::string GetChunkServerAddr(int32_t id);
-    int32_t GetChunkserverId(const std::string& addr);
+    int32_t GetChunkserverId(const std::string& address);
     void AddBlock(int32_t id, int64_t block_id);
     void RemoveBlock(int32_t id, int64_t block_id);
-
+    void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
 private:
     ThreadPool* thread_pool_;
     BlockMapping* block_manager_;

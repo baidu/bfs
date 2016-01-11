@@ -75,6 +75,24 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+void NameServerImpl::Register(::google::protobuf::RpcController* controller,
+                   const ::baidu::bfs::RegisterRequest* request,
+                   ::baidu::bfs::RegisterResponse* response,
+                   ::google::protobuf::Closure* done) {
+    const std::string address = request->chunkserver_addr();
+    int64_t version = response->namespace_version();
+    if (version != namespace_->Version()) {
+        LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
+            address.c_str(), version, namespace_->Version());
+        chunkserver_manager_->RemoveChunkServer(address);
+        response->set_namespace_version(namespace_->Version());
+    } else {
+        LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
+        chunkserver_manager_->HandleRegister(request, response);
+    }
+    done->Run();
+}
+
 void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    const BlockReportRequest* request,
                    BlockReportResponse* response,
@@ -108,7 +126,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 return;
             }
             cs_id = chunkserver_manager_->AddChunkServer(request->chunkserver_addr(),
-                                                         request->disk_quota(), -1);
+                                                         request->disk_quota());
         } else if (cs_id == -1) {
             cs_id = old_id;
             chunkserver_manager_->IncChunkServerNum();
