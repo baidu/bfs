@@ -5,10 +5,12 @@
 #include <set>
 #include <map>
 #include <vector>
+#include <queue>
 
 #include <gflags/gflags.h>
 
 #include <common/mutex.h>
+#include <common/thread_pool.h>
 #include "proto/nameserver.pb.h"
 
 namespace baidu {
@@ -20,7 +22,11 @@ struct NSBlock {
     std::set<int32_t> replica;
     int64_t block_size;
     int32_t expect_replica_num;
+    bool pending_recover;
     NSBlock(int64_t block_id);
+    bool operator<(const NSBlock &b) const {
+        return (this->replica.size() >= b.replica.size());
+    }
 };
 
 class BlockMapping {
@@ -33,27 +39,28 @@ public:
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id);
     bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                         int64_t block_version);
+                         int64_t block_version, bool need_recovery);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
+    void DealWithDeadBlocks(int64_t cs_id, std::set<int64_t> blocks);
     bool SetBlockVersion(int64_t block_id, int64_t version);
     void PickRecoverBlocks(int64_t cs_id, int64_t block_num, std::map<int64_t, int64_t>* recover_blocks);
+    void ProcessRecoveredBlock(int64_t cs_id, int64_t block_id);
+    void GetStat(int64_t* recover_num, int64_t* pending_num);
 
 private:
-    void AddToRecover(NSBlock* nsblock, bool need_check);
-    bool NeedRecover(NSBlock* nsblock);
-    void CheckRecover(int64_t block_id, int64_t cs_id);
+    void AddToRecover(NSBlock* nsblock);
+    void CheckRecover(int64_t block_id);
 
 private:
     Mutex mu_;
+    ThreadPool thread_pool_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
     int64_t next_block_id_;
 
-    typedef std::map<int64_t, NSBlock*> RecoverList;
-    RecoverList recover_hi_;
-    RecoverList recover_lo_;
-    typedef std::multimap<int64_t, int64_t> CheckList;
+    std::priority_queue<NSBlock*> recover_q_;
+    typedef std::map<int64_t, NSBlock*> CheckList;
     CheckList recover_check_;
 };
 

@@ -15,15 +15,13 @@ DECLARE_int32(default_replica_num);
 namespace baidu {
 namespace bfs {
 
-common::Counter g_recovering_blocks_hi;
-common::Counter g_recovering_blocks_lo;
+common::Counter g_recovering;
 common::Counter g_recovering_blocks_ck;
 
 NSBlock::NSBlock(int64_t block_id)
  : id(block_id), version(-1), block_size(0),
-   expect_replica_num(FLAGS_default_replica_num) {
-    g_recovering_blocks_hi.Clear();
-    g_recovering_blocks_lo.Clear();
+   expect_replica_num(FLAGS_default_replica_num), pending_recover(false) {
+    g_recovering.Clear();
     g_recovering_blocks_ck.Clear();
 }
 
@@ -89,7 +87,7 @@ void BlockMapping::AddNewBlock(int64_t block_id) {
 }
 
 bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                     int64_t block_version) {
+                     int64_t block_version, bool need_recovery) {
     MutexLock lock(&mu_);
     NSBlock* nsblock = NULL;
     NSBlockMap::iterator it = block_map_.find(id);
@@ -130,9 +128,11 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
             server_id, cur_replica_num, expect_replica_num);
         nsblock->replica.erase(ret.first);
         return false;
-    } else {
-        LOG(INFO, "Need to recover for #%ld, cur=%d expect=%d", id, cur_replica_num, expect_replica_num);
-        AddToRecover(nsblock, true);
+    } else if (cur_replica_num < expect_replica_num) {
+        if (need_recovery) {
+            LOG(INFO, "Need to recover for #%ld, cur=%d expect=%d", id, cur_replica_num, expect_replica_num);
+            AddToRecover(nsblock);
+        }
     }
     return true;
 }
@@ -171,105 +171,101 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
     return ret;
 }
 
+void BlockMapping::DealWithDeadBlocks(int64_t cs_id, std::set<int64_t> blocks) {
+    MutexLock lock(&mu_);
+    for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        NSBlockMap::iterator b_it = block_map_.find(*it);
+        if (b_it == block_map_.end()) {
+            LOG(INFO, "Can't find block: #%ld ", *it);
+            continue;
+        }
+        b_it->second->replica.erase(cs_id);
+        AddToRecover(b_it->second);
+    }
+}
+
 void BlockMapping::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
                                      std::map<int64_t, int64_t>* recover_blocks) {
     MutexLock lock(&mu_);
-    int n = 0;
-    std::set<int64_t> tmp_blocks;
-    for (RecoverList::iterator it = recover_hi_.begin(); n < block_num && it != recover_hi_.end(); ++it) {
-        NSBlock* cur_block = it->second;
-        const std::set<int32_t>& replica = cur_block->replica;
-        if (!NeedRecover(cur_block)) {
-            recover_hi_.erase(it++);
+    std::set<NSBlock*> tmp_holder;
+    int64_t n = 0;
+    while (n < block_num && !recover_q_.empty()) {
+        NSBlock* cur_block = recover_q_.top();
+        if (!cur_block) { // block is removed
+            LOG(DEBUG, "Can't find block: #%ld ", cur_block->id);
+            recover_q_.pop();
             continue;
         }
-        if (replica.find(cs_id) != replica.end()) {
+        if (cur_block->replica.size() == cur_block->expect_replica_num) {
+            LOG(DEBUG, "enough replica #%ld", cur_block->id);
+            cur_block->pending_recover = false;
+            recover_q_.pop();
             continue;
-            ++it;
-        } else {
-            (*recover_blocks)[it->first] = *replica.begin();
-            recover_check_.insert(std::make_pair<int64_t, int64_t>(it->first, cs_id));
-            tmp_blocks.insert(it->first);
-            recover_hi_.erase(it++);
-            ++n;
         }
+        if (cur_block->replica.find(cs_id) != cur_block->replica.end()) {
+            tmp_holder.insert(cur_block);
+            recover_q_.pop();
+            continue;
+        }
+        recover_blocks->insert(std::make_pair<int64_t, int64_t>
+                                    (cur_block->id, *(cur_block->replica.begin())));
+        recover_check_[cur_block->id] = cur_block;
+        thread_pool_.DelayTask(5000, boost::bind(&BlockMapping::CheckRecover, this, cur_block->id));
+        recover_q_.pop();
+        ++n;
     }
-    for (RecoverList::iterator it = recover_lo_.begin(); n < block_num && it != recover_lo_.end(); ++it) {
-        NSBlock* cur_block = it->second;
-        const std::set<int32_t>& replica = cur_block->replica;
-        if (!NeedRecover(cur_block)) {
-            recover_lo_.erase(it++);
-            continue;
-        }
-        if (replica.find(cs_id) != replica.end() || tmp_blocks.find(it->first) != tmp_blocks.end()) {
-            continue;
-            ++it;
-        } else {
-            (*recover_blocks)[it->first] = *replica.begin();
-            recover_check_.insert(std::make_pair<int64_t, int64_t>(it->first, cs_id));
-            recover_lo_.erase(it++);
-            ++n;
-        }
+    for (std::set<NSBlock*>::iterator it = tmp_holder.begin(); it != tmp_holder.end(); ++it) {
+        recover_q_.push(*it);
     }
 }
 
-void BlockMapping::AddToRecover(NSBlock* nsblock, bool need_check) {
+void BlockMapping::ProcessRecoveredBlock(int64_t cs_id, int64_t block_id) {
+    MutexLock lock(&mu_);
+    CheckList::iterator check_it = recover_check_.find(block_id);
+    if (check_it == recover_check_.end()) {
+        LOG(DEBUG, "not in recover_check_ #%ld cs_id=", block_id, cs_id);
+    }
+    NSBlock* b = check_it->second;
+    b->replica.insert(cs_id);
+    b->pending_recover = false;
+}
+
+void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num) {
+    MutexLock lock(&mu_);
+    if (recover_num) {
+        *recover_num = recover_q_.size();
+    }
+    if (pending_num) {
+        *pending_num = recover_check_.size();
+    }
+}
+
+void BlockMapping::AddToRecover(NSBlock* block) {
     mu_.AssertHeld();
-    int64_t block_id = nsblock->id;
-    if (!need_check ||
-        recover_check_.find(block_id) != recover_check_.end() ||
-        recover_hi_.find(block_id) != recover_hi_.end() ||
-        recover_lo_.find(block_id) != recover_lo_.end()) {
-        // block is being recovering
-        return;
-    }
-    if (nsblock->replica.size() == 0) {
-        LOG(WARNING, "Lost block #%ld", block_id);
-    } else if (nsblock->replica.size() == 1) {
-        recover_hi_[block_id] = nsblock;
-        recover_lo_.erase(block_id);
+    if (!block->pending_recover) {
+        recover_q_.push(block);
+        block->pending_recover = true;
+        LOG(DEBUG, "add to recover block_id=%ld replica=%ld", block->id, block->replica.size());
     } else {
-        recover_lo_[block_id] = nsblock;
-        recover_hi_.erase(block_id);
+        LOG(DEBUG, "block pending, ignore. block_id=%ld", block->id);
     }
 }
 
-bool BlockMapping::NeedRecover(NSBlock* nsblock) {
-    if (!nsblock) {
-        LOG(INFO, "Can't find block: #%ld ", nsblock->id);
-        return false;
-    }
-    if (nsblock->replica.size() == 0) {
-        LOG(WARNING, "Lost block #%ld", nsblock->id);
-        return false;
-    }
-    if (nsblock->replica.size() == nsblock->expect_replica_num) {
-        return false;
-    }
-    return true;
-}
-
-void BlockMapping::CheckRecover(int64_t block_id, int64_t cs_id) {
-    NSBlockMap::iterator mapping_it = block_map_.find(block_id);
-    if (mapping_it == block_map_.end()) {
-        LOG(INFO, "Can't find block: #%ld ", block_id);
-        reutrn;
-    }
-
-    std::pair<CheckList::iterator, CheckList::iterator> ret = recover_check_.equal_range(block_id);
-    CheckList::iterator block_it = ret.first;
-    for (; block_it != ret.second; ++block_it) {
-        if (block_it->second == cs_id) {
-            break;
-        }
-    }
-    if (block_it == ret.second) {
-        LOG(INFO, "Can't find recovered block: block_id=%ld cs_id=%ld ", block_id, cs_id);
+void BlockMapping::CheckRecover(int64_t block_id) {
+    MutexLock lock(&mu_);
+    CheckList::iterator check_it = recover_check_.find(block_id);
+    assert(check_it != recover_check_.end());
+    NSBlock* block = check_it->second;
+    if (!block) {
+        LOG(DEBUG, "Can't find block: #%ld ", block_id);
         return;
     }
-    if (mapping_it->second.replica.size() != mapping_it->second.expect_replica_num) {
-        AddToRecover(mapping_it->second, false);
+    if (block->replica.size() < block->expect_replica_num) {
+        recover_q_.push(block);
+    } else {
+        block->pending_recover = false;
     }
+    recover_check_.erase(block_id);
 }
 
 } // namespace bfs

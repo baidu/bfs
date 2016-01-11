@@ -40,6 +40,7 @@ void ChunkServerManager::DeadCheck() {
             LOG(INFO, "[DeadCheck] Chunkserver[%d] %s dead, cs_num=%d",
                 cs->id(), cs->address().c_str(), chunkserver_num_);
             node = it->second.begin();
+            block_manager_->DealWithDeadBlocks(cs->id(), chunkserver_block_map_[cs->id()]);
         }
         assert(it->second.empty());
         heartbeat_list_.erase(it);
@@ -211,6 +212,21 @@ void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     MutexLock lock(&mu_);
     chunkserver_block_map_[id].erase(block_id);
+}
+
+void ChunkServerManager::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
+                                           std::map<int64_t, std::string>* recover_blocks) {
+    std::map<int64_t, int64_t> blocks;
+    MutexLock lock(&mu_);
+    block_manager_->PickRecoverBlocks(cs_id, block_num, &blocks);
+    for (std::map<int64_t, int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        ServerMap::iterator cs_it = chunkservers_.find(it->second);
+        if (cs_it == chunkservers_.end()) {
+            LOG(INFO, "can't find chunkserver %ld", it->second);
+        }
+        ChunkServerInfo* cs = cs_it->second;
+        recover_blocks->insert(std::make_pair<int64_t, std::string>(it->first, cs->address()));
+    }
 }
 
 } // namespace bfs

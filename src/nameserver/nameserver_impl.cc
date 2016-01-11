@@ -132,7 +132,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             int64_t block_version = block.version();
             if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                                  cur_block_size,
-                                                 block_version)) {
+                                                 block_version, !safe_mode_)) {
                 response->add_obsolete_blocks(cur_block_id);
                 chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
                 LOG(INFO, "obsolete_block: #%ld", cur_block_id);
@@ -143,7 +143,17 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             chunkserver_manager_->AddBlock(cs_id, cur_block_id);
         }
 
-        // TODO recover replica
+        // recover replica
+        if (!safe_mode_) {
+            std::map<int64_t, std::string> recover_blocks;
+            chunkserver_manager_->PickRecoverBlocks(cs_id, 1000, &recover_blocks);
+            for (std::map<int64_t, std::string>::iterator it = recover_blocks.begin();
+                 it != recover_blocks.end(); ++it) {
+                ReplicaInfo* rep = response->add_new_replicas();
+                rep->set_block_id(it->first);
+                rep->add_chunkserver_address(it->second);
+            }
+        }
     }
     response->set_chunkserver_id(cs_id);
     done->Run();
@@ -156,7 +166,7 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
     response->set_sequence_id(request->sequence_id());
     response->set_status(0);
     for (int i = 0; i < request->blocks_size(); i++) {
-        // TODO: Unmark
+        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->blocks(i));
     }
     done->Run();
 }
@@ -204,7 +214,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0);
+            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0, false);
         }
         block->set_block_id(new_block_id);
         response->set_status(0);
@@ -508,12 +518,16 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
+    int64_t recover_num, pending_num;
+    block_mapping_->GetStat(&recover_num, &pending_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
     str += "<h2 align=left>Nameserver status</h2>";
     str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</p>";
     str += "<p align=left>Used: " + common::HumanReadableString(total_data) + "B</p>";
     str += "<p align=left>Pending tasks: "
         + common::NumToString(thread_pool_.PendingNum()) + "</p>";
+    str += "<p align=left>Recover: " + common::NumToString(recover_num) + "</p>";
+    str += "<p align=left>Pending: " + common::NumToString(pending_num) + "</p>";
     str += "<p align=left>Safemode: " + common::NumToString(safe_mode_) + "</p>";
     str += "<p align=left><a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
     str += "<h2 align=left>Chunkserver status</h2>";
