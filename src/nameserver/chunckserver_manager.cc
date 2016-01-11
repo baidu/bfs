@@ -166,7 +166,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     return true;
 }
 
-int64_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota, int cs_id) {
+int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota, int cs_id) {
     ChunkServerInfo* info = new ChunkServerInfo;
     MutexLock lock(&mu_);
     int32_t id = cs_id==-1 ? next_chunkserver_id_++ : cs_id;
@@ -223,6 +223,7 @@ void ChunkServerManager::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
         ServerMap::iterator cs_it = chunkservers_.find(it->second);
         if (cs_it == chunkservers_.end()) {
             LOG(INFO, "can't find chunkserver %ld", it->second);
+            continue;
         }
         ChunkServerInfo* cs = cs_it->second;
         recover_blocks->insert(std::make_pair<int64_t, std::string>(it->first, cs->address()));

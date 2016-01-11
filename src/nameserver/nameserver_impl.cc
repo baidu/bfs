@@ -277,7 +277,6 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                 for (std::set<int32_t>::iterator it = nsblock.replica.begin();
                         it != nsblock.replica.end(); ++it) {
                     int32_t server_id = *it;
-                    // TODO: under recovery
                     std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
                     if (addr == "") {
                         LOG(INFO, "GetChunkServerAddr from id:%d fail.", server_id);
