@@ -22,6 +22,7 @@
 #include "chunkserver/file_cache.h"
 
 DECLARE_int32(chunkserver_file_cache_size);
+DECLARE_bool(multiple_disks_load_balance);
 
 namespace baidu {
 namespace bfs {
@@ -85,16 +86,20 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     total_disk_quota_ = total_disk_quota;
 }
 std::string BlockManager::GetStorePath(int64_t block_id) {
-    mu_.AssertHeld();
-    int64_t max_quota = -1;
     std::string path;
-    std::map<std::string, int64_t>::iterator it = disk_quotas_.begin();
-    ///TODO: improve here
-    for (; it != disk_quotas_.end(); ++it) {
-        if (it->second > max_quota) {
-            path = it->first;
-            max_quota = it->second;
+    if (FLAGS_multiple_disks_load_balance) {
+        mu_.AssertHeld();
+        int64_t max_quota = -1;
+        std::map<std::string, int64_t>::iterator it = disk_quotas_.begin();
+        ///TODO: improve here
+        for (; it != disk_quotas_.end(); ++it) {
+            if (it->second > max_quota) {
+                path = it->first;
+                max_quota = it->second;
+            }
         }
+    } else {
+        path = store_path_list_[block_id % store_path_list_.size()];
     }
     return path;
 }
