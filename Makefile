@@ -9,7 +9,7 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I./thirdparty/leveldb/include \
                -I$(SNAPPY_PATH)/include \
-               -I$(BOOST_PATH)/include \
+               -I$(BOOST_PATH) \
                -I$(GFLAG_PATH)/include \
                -I$(COMMON_PATH)/include
 
