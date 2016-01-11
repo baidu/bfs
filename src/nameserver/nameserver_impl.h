@@ -105,7 +105,7 @@ private:
     /// Chunkserver map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
-    BlockMapping* block_manager_;
+    BlockMapping* block_mapping_;
     bool safe_mode_;
     /// Namespace
     NameSpace* namespace_;

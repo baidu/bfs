@@ -270,7 +270,7 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
     return true;
 }
 
-int64_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota) {
+int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = new ChunkServerInfo;
     int32_t id = next_chunkserver_id_++;

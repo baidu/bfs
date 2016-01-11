@@ -206,7 +206,6 @@ Block* BlockManager::FindBlock(int64_t block_id, bool create_if_missing, int64_t
         } else if (create_if_missing) {
             BlockMeta meta;
             meta.block_id = block_id;
-            meta.version = 0;
             block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
             // for block_map
             block->AddRef();

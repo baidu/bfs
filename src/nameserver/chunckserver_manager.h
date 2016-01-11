@@ -22,7 +22,7 @@ public:
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response);
     void ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers);
     bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains);
-    int64_t AddChunkServer(const std::string& address, int64_t quota);
+    int32_t AddChunkServer(const std::string& address, int64_t quota);
     bool UpdateChunkServer(int cs_id, int64_t quota);
     bool RemoveChunkServer(const std::string& address);
     std::string GetChunkServerAddr(int32_t id);
