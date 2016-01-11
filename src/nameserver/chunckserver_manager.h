@@ -30,6 +30,7 @@ public:
     void AddBlock(int32_t id, int64_t block_id);
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
+    void PickRecoverBlocks(int64_t cs_id, int64_t block_num, std::map<int64_t, std::string>* recover_blocks);
 private:
     ThreadPool* thread_pool_;
     BlockMapping* block_manager_;

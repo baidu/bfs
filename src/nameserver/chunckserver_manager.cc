@@ -43,7 +43,7 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     chunkserver_block_map_.erase(id);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
-    block_manager_->DealDeadBlocks(id, blocks);
+    block_manager_->DealWithDeadBlocks(id, blocks);
     mu_.Lock();
     if (cs->is_dead()) {
         cs->set_status(kCsOffLine);
@@ -261,6 +261,7 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
     }
     ChunkServerInfo* info = it->second;
     info->set_disk_quota(quota);
+    info->set_status(kCsActive);
     if (info->is_dead()) {
         int32_t now_time = common::timer::now_time();
         heartbeat_list_[now_time].insert(info);
@@ -278,6 +279,7 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t q
     info->set_id(id);
     info->set_address(address);
     info->set_disk_quota(quota);
+    info->set_status(kCsActive);
     LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
     chunkservers_[id] = info;
     address_map_[address] = id;
@@ -317,6 +319,22 @@ void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     MutexLock lock(&mu_);
     chunkserver_block_map_[id].erase(block_id);
+}
+
+void ChunkServerManager::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
+                                           std::map<int64_t, std::string>* recover_blocks) {
+    std::map<int64_t, int64_t> blocks;
+    MutexLock lock(&mu_);
+    block_manager_->PickRecoverBlocks(cs_id, block_num, &blocks);
+    for (std::map<int64_t, int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        ServerMap::iterator cs_it = chunkservers_.find(it->second);
+        if (cs_it == chunkservers_.end()) {
+            LOG(INFO, "can't find chunkserver %ld", it->second);
+            continue;
+        }
+        ChunkServerInfo* cs = cs_it->second;
+        recover_blocks->insert(std::make_pair<int64_t, std::string>(it->first, cs->address()));
+    }
 }
 
 } // namespace bfs
