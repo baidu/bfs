@@ -69,7 +69,10 @@ extern common::Counter g_data_size;
 const int kUnknownChunkServerId = -1;
 
 ChunkServerImpl::ChunkServerImpl()
-    : chunkserver_id_(kUnknownChunkServerId) {
+    : chunkserver_id_(kUnknownChunkServerId),
+     heartbeat_task_id_(-1),
+     blockreport_task_id_(-1),
+     blockreport_status_(0) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     work_thread_pool_ = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     read_thread_pool_ = new ThreadPool(FLAGS_chunkserver_read_thread_num);
@@ -170,6 +173,15 @@ void ChunkServerImpl::Register() {
     heartbeat_thread_->DelayTask(1, boost::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
 
+void ChunkServerImpl::StopBlockReport() {
+    int64_t now_reprot_id = blockreport_task_id_;
+    work_thread_pool_->CancelTask(now_reprot_id);
+    while (now_reprot_id != blockreport_task_id_) {
+        now_reprot_id = blockreport_task_id_;
+        work_thread_pool_->CancelTask(blockreport_task_id_);
+    }
+}
+
 void ChunkServerImpl::SendHeartbeat() {
     HeartBeatRequest request;
     request.set_chunkserver_id(chunkserver_id_);
@@ -188,8 +200,7 @@ void ChunkServerImpl::SendHeartbeat() {
         } else {
             LOG(INFO, "Nameserver restart!");
         }
-        bool ret = work_thread_pool_->CancelTask(blockreport_task_id_);
-        assert(ret == true);
+        StopBlockReport();
         heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
         return;
     }

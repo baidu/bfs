@@ -74,6 +74,7 @@ private:
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
     void GatherCounter();
+    void StopBlockReport();
 private:
     BlockManager*   block_manager_;
     std::string     data_server_addr_;
@@ -86,7 +87,8 @@ private:
     int32_t chunkserver_id_;
     CounterManager* counter_manager_;
     int64_t heartbeat_task_id_;
-    int64_t blockreport_task_id_;
+    volatile int64_t blockreport_task_id_;
+    volatile int blockreport_status_;
 };
 
 } // namespace bfs
