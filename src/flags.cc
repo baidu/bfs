@@ -31,6 +31,7 @@ DEFINE_int32(chunkserver_read_thread_num, 20, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_write_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 DEFINE_bool(multiple_disks_load_balance, true, "Load balance between disks");
+DEFINE_int32(max_request_wait_time, 1000, "Max request wait time threeshold in disks load balance");
 
 // SDK
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");

@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/vfs.h>
 #include <boost/bind.hpp>
+#include <limits>
 
 #include <gflags/gflags.h>
 #include <leveldb/db.h>
@@ -20,9 +21,11 @@
 
 #include "chunkserver/data_block.h"
 #include "chunkserver/file_cache.h"
+#include "utils/iostat.h"
 
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_bool(multiple_disks_load_balance);
+DECLARE_int32(max_request_wait_time);
 
 namespace baidu {
 namespace bfs {
@@ -53,11 +56,19 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     int64_t total_disk_quota = 0;
     common::SplitString(store_path, ",", &store_path_list_);
     for (uint32_t i = 0; i < store_path_list_.size(); ++i) {
+       std::vector<std::string> tmp;
+       common::SplitString(store_path_list_[i], ":", &tmp);
+       assert(tmp.size() == 2);
+       store_path_list_[i] = tmp[0];
        std::string& disk_path = store_path_list_[i];
        disk_path = common::TrimString(disk_path, " ");
        if (disk_path.empty() || disk_path[disk_path.size() - 1] != '/') {
            disk_path += "/";
        }
+       std::string device_path = common::TrimString(tmp[1], " ");
+       device_path.replace(device_path.find_first_of("/dev"), 4, "/sys/block");
+       device_path += "/stat";
+
        struct statfs fs_info;
        if (0 == statfs(disk_path.c_str(), &fs_info)) {
            int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
@@ -69,7 +80,8 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
                common::HumanReadableString(super_quota).c_str(),
                common::HumanReadableString(user_quota).c_str());
            total_disk_quota += user_quota;
-           disk_quotas_[disk_path] = user_quota;
+           disk_stats_[disk_path].device_path = device_path;
+           disk_stats_[disk_path].disk_quota = user_quota;
        } else {
            LOG(WARNING, "Stat store_path %s fail, ignore it", disk_path.c_str());
            store_path_list_[i] = store_path_list_[store_path_list_.size() - 1];
@@ -84,19 +96,35 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     LOG(INFO, "%lu store path used.", store_path_list_.size());
     assert(store_path_list_.size() > 0);
     total_disk_quota_ = total_disk_quota;
+    thread_pool_->AddTask(boost::bind(&BlockManager::GetIOStats, this));
 }
 std::string BlockManager::GetStorePath(int64_t block_id) {
     std::string path;
     if (FLAGS_multiple_disks_load_balance) {
         mu_.AssertHeld();
         int64_t max_quota = -1;
-        std::map<std::string, int64_t>::iterator it = disk_quotas_.begin();
+        uint64_t min_time_in_queue = std::numeric_limits<uint64_t>::max();
+        int64_t total_wait_time = 0;
+        std::string max_quota_path;
+        std::string min_wait_time_path;
+        std::map<std::string, DiskStat>::iterator it = disk_stats_.begin();
         ///TODO: improve here
-        for (; it != disk_quotas_.end(); ++it) {
-            if (it->second > max_quota) {
-                path = it->first;
-                max_quota = it->second;
+        for (; it != disk_stats_.end(); ++it) {
+            DiskStat& stat = it->second;
+            if (stat.disk_quota > max_quota) {
+                max_quota_path = it->first;
+                max_quota = stat.disk_quota;
             }
+            total_wait_time += stat.iostat_diff.time_in_queue;
+            if (stat.iostat_diff.time_in_queue < min_time_in_queue) {
+                min_wait_time_path = it->first;
+                min_time_in_queue = stat.iostat_diff.time_in_queue;
+            }
+        }
+        if (total_wait_time > FLAGS_max_request_wait_time) {
+            path = min_wait_time_path;
+        } else {
+            path = max_quota_path;
         }
     } else {
         path = store_path_list_[block_id % store_path_list_.size()];
@@ -260,7 +288,7 @@ bool BlockManager::CloseBlock(Block* block) {
     int64_t size = block->DiskUsed();
     {
         MutexLock lock(&mu_);
-        disk_quotas_[store_path] -= size;
+        disk_stats_[store_path].disk_quota -= size;
     }
     return true;
 }
@@ -316,10 +344,44 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
     {
         MutexLock lock(&mu_);
         std::string disk_path = std::string(file_path.begin(), file_path.end() - 15);
-        disk_quotas_[disk_path] += du;
+        disk_stats_[disk_path].disk_quota += du;
     }
     block->DecRef();
     return ret;
+}
+void BlockManager::GetIOStats() {
+    {
+        MutexLock lock(&mu_);
+        std::map<std::string, DiskStat>::iterator it = disk_stats_.begin();
+        for (; it != disk_stats_.end(); ++it) {
+            IOStat tmp;
+            GetIOStat(it->second.device_path, &tmp);
+            IOStat& prev_stat = it->second.prev_iostat;
+            IOStat& stat_diff = it->second.iostat_diff;
+            stat_diff.read_ios = (tmp.read_ios - prev_stat.read_ios);
+            stat_diff.read_merges = (tmp.read_merges - prev_stat.read_merges);
+            stat_diff.read_sectors = (tmp.read_sectors - prev_stat.read_sectors);
+            stat_diff.read_ticks = (tmp.read_ticks - prev_stat.read_ticks);
+            stat_diff.write_ios = (tmp.write_ios - prev_stat.write_ios);
+            stat_diff.write_merges = (tmp.write_merges - prev_stat.write_merges);
+            stat_diff.write_sectors = (tmp.write_sectors - prev_stat.write_sectors);
+            stat_diff.write_ticks = (tmp.write_ticks - prev_stat.write_ticks);
+            stat_diff.in_flight = tmp.in_flight;
+            stat_diff.io_ticks = (tmp.io_ticks - prev_stat.io_ticks);
+            stat_diff.time_in_queue = (tmp.time_in_queue - prev_stat.time_in_queue);
+            prev_stat = tmp;
+            /*
+            LOG(INFO, "iostat: %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n\n",
+                    stat_diff.read_ios, stat_diff.read_merges,
+                    stat_diff.read_sectors, stat_diff.read_ticks,
+                    stat_diff.write_ios, stat_diff.write_merges,
+                    stat_diff.write_sectors, stat_diff.write_ticks,
+                    stat_diff.in_flight, stat_diff.io_ticks,
+                    stat_diff.time_in_queue);
+            */
+        }
+    }
+    thread_pool_->DelayTask(10000, boost::bind(&BlockManager::GetIOStats, this));
 }
 
 }

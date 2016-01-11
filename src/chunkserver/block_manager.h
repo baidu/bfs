@@ -14,6 +14,8 @@
 
 #include <common/thread_pool.h>
 
+#include "utils/iostat.h"
+
 namespace leveldb {
 class DB;
 }
@@ -43,6 +45,8 @@ public:
     bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);
 private:
+    void GetIOStats();
+private:
     ThreadPool* thread_pool_;
     std::vector<std::string> store_path_list_;
     typedef std::map<int64_t, Block*> BlockMap;
@@ -52,7 +56,13 @@ private:
     Mutex   mu_;
     int64_t namespace_version_;
     int64_t total_disk_quota_;
-    std::map<std::string, int64_t> disk_quotas_;
+    struct DiskStat {
+        std::string device_path;
+        int64_t disk_quota;
+        IOStat prev_iostat;
+        IOStat iostat_diff;
+    };
+    std::map<std::string, DiskStat> disk_stats_;
 };
 
 } // bfs
