@@ -42,6 +42,8 @@ public:
     bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time);
     bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);
+    bool RemoveAllBlocksAsync();
+    bool RemoveAllBlocks();
 private:
     ThreadPool* thread_pool_;
     std::vector<std::string> store_path_list_;

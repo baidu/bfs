@@ -46,6 +46,7 @@ DECLARE_int32(chunkserver_work_thread_num);
 DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_bool(chunkserver_auto_clean);
 
 namespace baidu {
 namespace bfs {
@@ -84,8 +85,7 @@ ChunkServerImpl::ChunkServerImpl()
     }
     counter_manager_ = new CounterManager;
     work_thread_pool_->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this, true));
-    work_thread_pool_->AddTask(boost::bind(&ChunkServerImpl::SendBlockReport, this));
-    heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::SendHeartbeat, this));
+    heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
 }
 
 ChunkServerImpl::~ChunkServerImpl() {
@@ -121,6 +121,55 @@ void ChunkServerImpl::LogStatus(bool routine) {
     }
 }
 
+void ChunkServerImpl::Register() {
+    RegisterRequest request;
+    request.set_chunkserver_addr(data_server_addr_);
+    request.set_disk_quota(block_manager_->DiskQuota());
+    request.set_namespace_version(block_manager_->NameSpaceVersion());
+
+    LOG(INFO, "Send Register request with version %ld", request.namespace_version());
+    RegisterResponse response;
+    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Register,
+            &request, &response, 20, 3)) {
+        LOG(WARNING, "Register fail, wait and retry");
+        work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
+        return;
+    }
+    if (response.status() != 0) {
+        LOG(FATAL, "Block report return %d", response.status());
+        work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
+        return;
+    }
+    int64_t new_version = response.namespace_version();
+    if (block_manager_->NameSpaceVersion() != new_version) {
+        // NameSpace change
+        if (!FLAGS_chunkserver_auto_clean) {
+            /// abort
+            LOG(FATAL, "Name space verion FLAGS_chunkserver_auto_clean == false");
+        }
+        LOG(INFO, "Use new namespace version: %ld, clean local data", new_version);
+        // Clean 
+        std::vector<BlockMeta> blocks;
+        if (!block_manager_->RemoveAllBlocks()) {
+            LOG(FATAL, "Remove local blocks fail");
+        }
+        if (!block_manager_->SetNameSpaceVersion(new_version)) {
+            LOG(FATAL, "SetNameSpaceVersion fail");
+        }
+        work_thread_pool_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
+        return;
+    }
+    assert (response.chunkserver_id() != kUnknownChunkServerId);
+    chunkserver_id_ = response.chunkserver_id();
+    // Chunkserver restart
+    chunkserver_id_ = response.chunkserver_id();
+    LOG(INFO, "Connect to nameserver version= %ld, cs_id = %d",
+        block_manager_->NameSpaceVersion(), chunkserver_id_);
+
+    work_thread_pool_->DelayTask(1, boost::bind(&ChunkServerImpl::SendBlockReport, this));
+    heartbeat_thread_->DelayTask(1, boost::bind(&ChunkServerImpl::SendHeartbeat, this));
+}
+
 void ChunkServerImpl::SendHeartbeat() {
     HeartBeatRequest request;
     request.set_chunkserver_id(chunkserver_id_);
@@ -132,11 +181,19 @@ void ChunkServerImpl::SendHeartbeat() {
     if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::HeartBeat,
             &request, &response, 15, 1)) {
         LOG(WARNING, "Heat beat fail\n");
-    } else if (block_manager_->NameSpaceVersion() != response.namespace_version()) {
-        LOG(INFO, "Namespace version mismatch self:%ld ns:%ld",
-            block_manager_->NameSpaceVersion(), response.namespace_version());
+    } else if (response.status() != 0) {
+        if (block_manager_->NameSpaceVersion() != response.namespace_version()) {
+            LOG(INFO, "Namespace version mismatch self:%ld ns:%ld",
+                block_manager_->NameSpaceVersion(), response.namespace_version());
+        } else {
+            LOG(INFO, "Nameserver restart!");
+        }
+        bool ret = work_thread_pool_->CancelTask(blockreport_task_id_);
+        assert(ret == true);
+        heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
+        return;
     }
-    heartbeat_thread_->DelayTask(FLAGS_heartbeat_interval * 1000,
+    heartbeat_task_id_ = heartbeat_thread_->DelayTask(FLAGS_heartbeat_interval * 1000,
         boost::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
 
@@ -146,8 +203,6 @@ void ChunkServerImpl::SendBlockReport() {
     BlockReportRequest request;
     request.set_chunkserver_id(chunkserver_id_);
     request.set_chunkserver_addr(data_server_addr_);
-    request.set_disk_quota(block_manager_->DiskQuota());
-    request.set_namespace_version(block_manager_->NameSpaceVersion());
 
     std::vector<BlockMeta> blocks;
     block_manager_->ListBlocks(&blocks, last_report_blockid + 1, FLAGS_blockreport_size);
@@ -175,32 +230,9 @@ void ChunkServerImpl::SendBlockReport() {
         LOG(WARNING, "Block reprot fail\n");
     } else {
         if (response.status() != 0) {
-            LOG(FATAL, "Block report return %d", response.status());
-        }
-        int64_t new_version = response.namespace_version();
-        if (block_manager_->NameSpaceVersion() != new_version) {
-            // NameSpace change, chunkserver is empty.
-            LOG(INFO, "New namespace version: %ld chunkserver id: %d",
-                new_version, response.chunkserver_id());
-            if (!block_manager_->SetNameSpaceVersion(new_version)) {
-                LOG(FATAL, "Can not change namespace version");
-            }
-            chunkserver_id_ = response.chunkserver_id();
-        } else if (chunkserver_id_ == kUnknownChunkServerId
-                   && response.chunkserver_id() != kUnknownChunkServerId) {
-            // Chunkserver restart
-            chunkserver_id_ = response.chunkserver_id();
-            LOG(INFO, "Reconnect to nameserver version= %ld, new cs_id = %d",
-                block_manager_->NameSpaceVersion(), chunkserver_id_);
-        } else if (response.chunkserver_id() == kUnknownChunkServerId) {
-            // Namespace change, chunkserver has old blocks.
-            LOG(INFO, "Old chunkserver, namespace version: %ld, old_id: %d",
-                block_manager_->NameSpaceVersion(), chunkserver_id_);
-        } else if (chunkserver_id_ != response.chunkserver_id()) {
-            // Nameserver restart, chunkserver id change.
-            LOG(INFO, "Chunkserver id change from %d to %d",
-                chunkserver_id_, response.chunkserver_id());
-            chunkserver_id_ = response.chunkserver_id();
+            last_report_blockid = -1;
+            LOG(WARNING, "BlockReport return %d, Pause to report", response.status());
+            return;
         }
         //LOG(INFO, "Report return old: %d new: %d", chunkserver_id_, response.chunkserver_id());
         //deal with obsolete blocks
@@ -227,7 +259,7 @@ void ChunkServerImpl::SendBlockReport() {
             write_thread_pool_->AddTask(new_replica_task);
         }
     }
-    work_thread_pool_->DelayTask(FLAGS_blockreport_interval* 1000,
+    blockreport_task_id_ = work_thread_pool_->DelayTask(FLAGS_blockreport_interval* 1000,
         boost::bind(&ChunkServerImpl::SendBlockReport, this));
 }
 
@@ -235,7 +267,6 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     BlockReportRequest request;
     request.set_chunkserver_id(chunkserver_id_);
     request.set_chunkserver_addr(data_server_addr_);
-    request.set_namespace_version(block_manager_->NameSpaceVersion());
     request.set_is_complete(false);
 
     ReportBlockInfo* info = request.add_blocks();

@@ -124,21 +124,21 @@ int32_t ChunkServerManager::GetChunkServerNum() {
 void ChunkServerManager::HandleRegister(const RegisterRequest* request,
                                         RegisterResponse* response) {
     const std::string& address = request->chunkserver_addr();
-
+    int status = 0;
+    int cs_id = -1;
     MutexLock lock(&mu_);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
-        int32_t cs_id = AddChunkServer(request->chunkserver_addr(), request->disk_quota());
+        cs_id = AddChunkServer(request->chunkserver_addr(), request->disk_quota());
         assert(cs_id >= 0);
         response->set_chunkserver_id(cs_id);
-        response->set_status(0);
     } else {
-        int32_t cs_id = it->second;
+        cs_id = it->second;
         ServerMap::iterator info_it = chunkservers_.find(cs_id);
         assert(info_it != chunkservers_.end());
         ChunkServerInfo* cs_info = info_it->second;
         if (cs_info->status() == kCsWaitClean || cs_info->status() == kCsCleaning) {
-            response->set_status(-1);
+            status = -1;
             LOG(INFO, "Reconnect chunkserver %d %s, cs_num=%d, internal cleaning",
                 cs_id, address.c_str(), chunkserver_num_);
         } else {
@@ -147,6 +147,8 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
                 cs_id, address.c_str(), chunkserver_num_);
         }
     }
+    response->set_chunkserver_id(cs_id);
+    response->set_status(status);
 }
 
 void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
@@ -171,6 +173,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
         //reconnect after DeadCheck()
         LOG(WARNING, "Unknown chunkserver %d with namespace version %ld",
             id, request->namespace_version());
+        response->set_status(-2);
         return;
         /*
         info = new ChunkServerInfo;
@@ -250,7 +253,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 }
 
 bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
-    MutexLock lock(&mu_);
+    mu_.AssertHeld();
     ServerMap::iterator it = chunkservers_.find(cs_id);
     if (it == chunkservers_.end()) {
         return false;
@@ -268,8 +271,8 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
 }
 
 int64_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota) {
+    mu_.AssertHeld();
     ChunkServerInfo* info = new ChunkServerInfo;
-    MutexLock lock(&mu_);
     int32_t id = next_chunkserver_id_++;
     info->set_id(id);
     info->set_address(address);

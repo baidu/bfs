@@ -27,6 +27,7 @@ DECLARE_int32(chunkserver_use_root_partition);
 namespace baidu {
 namespace bfs {
 
+extern common::Counter g_blocks;
 extern common::Counter g_data_size;
 extern common::Counter g_find_ops;
 
@@ -169,6 +170,7 @@ bool BlockManager::SetNameSpaceVersion(int64_t version) {
     LOG(INFO, "Set namespace version: %ld", namespace_version_);
     return true;
 }
+
 bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
     leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(BlockId2Str(offset)); it->Valid(); it->Next()) {
@@ -309,6 +311,38 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
     }
     block->DecRef();
     return ret;
+}
+
+bool BlockManager::RemoveAllBlocks() {
+    LOG(INFO, "RemoveAllBlocks...");
+    if (!RemoveAllBlocksAsync()) {
+        return false;
+    }
+    int count = 0;
+    while (g_blocks.Get() > 0) {
+        if (count++ %1000 == 0) {
+            LOG(INFO, "RemoveAllBlocks wait done now block num: %ld", g_blocks.Get());
+        }
+        usleep(10000);
+    }
+    LOG(INFO, "RemoveAllBlocks done");
+    return true;
+}
+
+bool BlockManager::RemoveAllBlocksAsync() {
+    leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
+    for (it->Seek(BlockId2Str(0)); it->Valid(); it->Next()) {
+        int64_t block_id = 0;
+        if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
+            LOG(FATAL, "[ListBlocks] Unknown meta key: %s\n",
+                it->key().ToString().c_str());
+            delete it;
+            return false;
+        }
+        thread_pool_->AddTask(boost::bind(&BlockManager::RemoveBlock, this, block_id));
+    }
+    delete it;
+    return true;
 }
 
 }

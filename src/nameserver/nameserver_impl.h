@@ -95,6 +95,7 @@ public:
 private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
+    void Register();
     void LeaveSafemode();
 private:
     /// Global thread pool
