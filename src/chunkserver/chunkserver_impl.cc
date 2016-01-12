@@ -45,6 +45,7 @@ DECLARE_int32(write_buf_size);
 DECLARE_int32(chunkserver_work_thread_num);
 DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
+DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_bool(chunkserver_auto_clean);
 
@@ -76,6 +77,7 @@ ChunkServerImpl::ChunkServerImpl()
     work_thread_pool_ = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     read_thread_pool_ = new ThreadPool(FLAGS_chunkserver_read_thread_num);
     write_thread_pool_ = new ThreadPool(FLAGS_chunkserver_write_thread_num);
+    recover_thread_pool_ = new ThreadPool(FLAGS_chunkserver_recover_thread_num);
     heartbeat_thread_ = new ThreadPool(1);
     block_manager_ = new BlockManager(write_thread_pool_, FLAGS_block_store_path);
     bool s_ret = block_manager_->LoadStorage();
@@ -150,7 +152,7 @@ void ChunkServerImpl::Register() {
             LOG(FATAL, "Name space verion FLAGS_chunkserver_auto_clean == false");
         }
         LOG(INFO, "Use new namespace version: %ld, clean local data", new_version);
-        // Clean 
+        // Clean
         std::vector<BlockMeta> blocks;
         if (!block_manager_->RemoveAllBlocks()) {
             LOG(FATAL, "Remove local blocks fail");
@@ -265,7 +267,7 @@ void ChunkServerImpl::SendBlockReport() {
             boost::function<void ()> new_replica_task =
                 boost::bind(&ChunkServerImpl::PullNewBlocks,
                             this, new_replica_info);
-            write_thread_pool_->AddTask(new_replica_task);
+            recover_thread_pool_->AddTask(new_replica_task);
         }
     }
     blockreport_task_id_ = work_thread_pool_->DelayTask(FLAGS_blockreport_interval* 1000,
@@ -553,6 +555,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
     PullBlockReportRequest report_request;
     report_request.set_sequence_id(0);
     report_request.set_chunkserver_id(chunkserver_id_);
+    report_request.set_received_replica_num(new_replica_info.size());
     for (size_t i = 0; i < new_replica_info.size(); i++) {
         int64_t block_id = new_replica_info[i].block_id();
         ChunkServer_Stub* chunkserver = NULL;

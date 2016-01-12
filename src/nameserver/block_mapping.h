@@ -43,12 +43,13 @@ public:
     void RemoveBlock(int64_t block_id);
     void DealWithDeadBlocks(int64_t cs_id, std::set<int64_t> blocks);
     bool SetBlockVersion(int64_t block_id, int64_t version);
-    void PickRecoverBlocks(int64_t cs_id, int64_t block_num, std::map<int64_t, int64_t>* recover_blocks);
+    int32_t PickRecoverBlocks(int64_t cs_id, int64_t block_num, std::map<int64_t, int64_t>* recover_blocks);
     void ProcessRecoveredBlock(int64_t cs_id, int64_t block_id);
     void GetStat(int64_t* recover_num, int64_t* pending_num);
 
 private:
-    void AddToRecover(NSBlock* nsblock);
+    void AddToRecover(NSBlock* block);
+    void TryRecover(NSBlock* block);
     void CheckRecover(int64_t block_id);
     bool GetBlockPtr(int64_t block_id, NSBlock** block);
 
