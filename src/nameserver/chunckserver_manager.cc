@@ -317,12 +317,12 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     chunkserver_block_map_[id].erase(block_id);
 }
 
-void ChunkServerManager::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
+void ChunkServerManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                            std::map<int64_t, std::string>* recover_blocks) {
-    std::map<int64_t, int64_t> blocks;
-    MutexLock lock(&mu_);
+    std::map<int64_t, int32_t> blocks;
     block_manager_->PickRecoverBlocks(cs_id, block_num, &blocks);
-    for (std::map<int64_t, int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+    MutexLock lock(&mu_);
+    for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         ServerMap::iterator cs_it = chunkservers_.find(it->second);
         if (cs_it == chunkservers_.end()) {
             LOG(INFO, "can't find chunkserver %ld", it->second);

@@ -41,10 +41,10 @@ public:
                          int64_t block_version, bool need_recovery);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
-    void DealWithDeadBlocks(int64_t cs_id, std::set<int64_t> blocks);
+    void DealWithDeadBlocks(int32_t cs_id, std::set<int64_t> blocks);
     bool SetBlockVersion(int64_t block_id, int64_t version);
-    void PickRecoverBlocks(int64_t cs_id, int64_t block_num, std::map<int64_t, int64_t>* recover_blocks);
-    void ProcessRecoveredBlock(int64_t cs_id, int64_t block_id);
+    void PickRecoverBlocks(int32_t cs_id, int64_t block_num, std::map<int64_t, int32_t>* recover_blocks);
+    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
     void GetStat(int64_t* recover_num, int64_t* pending_num);
 
 private:
@@ -59,7 +59,7 @@ private:
     NSBlockMap block_map_;
     int64_t next_block_id_;
 
-    std::priority_queue<std::pair<int64_t, int64_t> > recover_q_;
+    std::priority_queue<std::pair<int32_t, int64_t> > recover_q_;
     std::set<int64_t> recover_check_;
 };
 
