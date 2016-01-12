@@ -116,7 +116,7 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
         }
         parent_id = entry_id;
         entry_id = info->entry_id();
-        LOG(INFO, "LookUp %s entry_id= %ld", paths[i].c_str(), entry_id);
+        LOG(DEBUG, "LookUp %s entry_id= %ld", paths[i].c_str(), entry_id);
     }
     info->set_name(paths[paths.size()-1]);
     info->set_parent_entry_id(parent_id);
@@ -131,7 +131,7 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
         LOG(INFO, "LookUp %ld %s return false", parent_id, name.c_str());
         return false;
     }
-    LOG(INFO, "LookUp %ld %s return true", parent_id, name.c_str());
+    LOG(DEBUG, "LookUp %ld %s return true", parent_id, name.c_str());
     return true;
 }
 

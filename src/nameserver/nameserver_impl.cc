@@ -81,7 +81,10 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
                    const ::baidu::bfs::RegisterRequest* request,
                    ::baidu::bfs::RegisterResponse* response,
                    ::google::protobuf::Closure* done) {
-    const std::string address = request->chunkserver_addr();
+    sofa::pbrpc::RpcController* sofa_cntl =
+        reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    const std::string& address = request->chunkserver_addr();
+    LOG(INFO, "Register ip: %s", sofa_cntl->RemoteAddress().c_str());
     int64_t version = request->namespace_version();
     if (version != namespace_->Version()) {
         LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",

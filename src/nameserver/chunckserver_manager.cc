@@ -153,36 +153,32 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
 }
 
 void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
-    MutexLock lock(&mu_);
     int32_t id = request->chunkserver_id();
-    ServerMap::iterator it = chunkservers_.find(id);
-    ChunkServerInfo* info = NULL;
-    if (it != chunkservers_.end()) {
-        info = it->second;
-        assert(info);
-        if (!info->is_dead()) {
-            assert(heartbeat_list_.find(info->last_heartbeat()) != heartbeat_list_.end());
-            heartbeat_list_[info->last_heartbeat()].erase(info);
-            if (heartbeat_list_[info->last_heartbeat()].empty()) {
-                heartbeat_list_.erase(info->last_heartbeat());
-            }
-        } else {
-            assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
-            info->set_is_dead(false);
-        }
-    } else {
+    const std::string& address = request->chunkserver_addr();
+    int cs_id = GetChunkserverId(address);
+    if (id < 0 || cs_id != id) {
         //reconnect after DeadCheck()
-        LOG(WARNING, "Unknown chunkserver %d with namespace version %ld",
-            id, request->namespace_version());
+        LOG(WARNING, "Unknown chunkserver %s with namespace version %ld",
+            address.c_str(), request->namespace_version());
         response->set_status(-2);
         return;
-        /*
-        info = new ChunkServerInfo;
-        info->set_id(id);
-        info->set_address(request->data_server_addr());
-        LOG(INFO, "New ChunkServerInfo[%id] %p ", id, info);
-        chunkservers_[id] = info;
-        ++_chunkserver_num;*/
+    }
+
+    MutexLock lock(&mu_);
+    ServerMap::iterator it = chunkservers_.find(id);
+    ChunkServerInfo* info = NULL;
+    assert(it != chunkservers_.end());
+    info = it->second;
+    assert(info);
+    if (!info->is_dead()) {
+        assert(heartbeat_list_.find(info->last_heartbeat()) != heartbeat_list_.end());
+        heartbeat_list_[info->last_heartbeat()].erase(info);
+        if (heartbeat_list_[info->last_heartbeat()].empty()) {
+            heartbeat_list_.erase(info->last_heartbeat());
+        }
+    } else {
+        assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
+        info->set_is_dead(false);
     }
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
