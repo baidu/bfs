@@ -11,6 +11,7 @@
 
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_int32(recover_speed);
 
 namespace baidu {
 namespace bfs {
@@ -317,11 +318,16 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     chunkserver_block_map_[id].erase(block_id);
 }
 
-void ChunkServerManager::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
-                                           std::map<int64_t, std::string>* recover_blocks) {
-    std::map<int64_t, int64_t> blocks;
+void ChunkServerManager::PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks) {
     MutexLock lock(&mu_);
-    block_manager_->PickRecoverBlocks(cs_id, block_num, &blocks);
+    ServerMap::iterator it = chunkservers_.find(cs_id);
+    if (it == chunkservers_.end()) return;
+    ChunkServerInfo* cs = it->second;
+    LOG(INFO, "cs %d has %d pending recover blocks", cs_id, cs->recovering_num());
+    int32_t recover_quota = FLAGS_recover_speed - cs->recovering_num();
+
+    std::map<int64_t, int64_t> blocks;
+    int64_t actual_recover_num = block_manager_->PickRecoverBlocks(cs_id, recover_quota, &blocks);
     for (std::map<int64_t, int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         ServerMap::iterator cs_it = chunkservers_.find(it->second);
         if (cs_it == chunkservers_.end()) {
@@ -331,6 +337,18 @@ void ChunkServerManager::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
         ChunkServerInfo* cs = cs_it->second;
         recover_blocks->insert(std::make_pair<int64_t, std::string>(it->first, cs->address()));
     }
+    LOG(INFO, "cs %d picked %d blocks to recover", cs_id, actual_recover_num);
+    cs->set_recovering_num(cs->recovering_num() + actual_recover_num);
+}
+
+void ChunkServerManager::ProcessRecoveredBlocks(int cs_id, int32_t recovered_num) {
+    MutexLock lock(&mu_);
+    ServerMap::iterator it = chunkservers_.find(cs_id);
+    if (it == chunkservers_.end()) {
+        return;
+    }
+    ChunkServerInfo* cs = it->second;
+    cs->set_recovering_num(cs->recovering_num() - recovered_num);
 }
 
 } // namespace bfs

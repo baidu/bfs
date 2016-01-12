@@ -82,6 +82,7 @@ private:
     ThreadPool*     work_thread_pool_;
     ThreadPool*     read_thread_pool_;
     ThreadPool*     write_thread_pool_;
+    ThreadPool*     recover_thread_pool_;
     ThreadPool*     heartbeat_thread_;
     NameServer_Stub* nameserver_;
     int32_t chunkserver_id_;

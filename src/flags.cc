@@ -15,6 +15,7 @@ DEFINE_int32(keepalive_timeout, 30, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 2, "Nameserver log level");
 DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in ms");
+DEFINE_int32(recover_speed, 100, "max num of block to recover for one chunkserver");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
@@ -29,6 +30,7 @@ DEFINE_int32(chunkserver_max_pending_buffers, 10240, "Buffer num wait flush to d
 DEFINE_int32(chunkserver_work_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_read_thread_num, 20, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_write_thread_num, 10, "Chunkserver work thread num");
+DEFINE_int32(chunkserver_recover_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 DEFINE_int32(chunkserver_use_root_partition, 1, "Should chunkserver use root partition, 0: forbidden");
 DEFINE_bool(chunkserver_auto_clean, true, "If namespace version mismatch, chunkserver clean itself");
