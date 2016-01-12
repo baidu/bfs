@@ -50,6 +50,7 @@ public:
 private:
     void AddToRecover(NSBlock* nsblock);
     void CheckRecover(int64_t block_id);
+    bool GetBlockPtr(int64_t block_id, NSBlock** block);
 
 private:
     Mutex mu_;
@@ -58,9 +59,8 @@ private:
     NSBlockMap block_map_;
     int64_t next_block_id_;
 
-    std::priority_queue<NSBlock*> recover_q_;
-    typedef std::map<int64_t, NSBlock*> CheckList;
-    CheckList recover_check_;
+    std::priority_queue<std::pair<int64_t, int64_t> > recover_q_;
+    std::set<int64_t> recover_check_;
 };
 
 } // namespace bfs
