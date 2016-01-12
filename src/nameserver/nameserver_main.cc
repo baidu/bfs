@@ -20,9 +20,9 @@ int main(int argc, char* argv[])
 {
     FLAGS_flagfile = "./bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
-    baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
+    ::baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
 
-
+    LOG(baidu::common::INFO, "NameServe start ...");
 
     // Service
     baidu::bfs::NameServerImpl* nameserver_service = new baidu::bfs::NameServerImpl();

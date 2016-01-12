@@ -22,10 +22,12 @@
 #include "chunkserver/file_cache.h"
 
 DECLARE_int32(chunkserver_file_cache_size);
+DECLARE_int32(chunkserver_use_root_partition);
 
 namespace baidu {
 namespace bfs {
 
+extern common::Counter g_blocks;
 extern common::Counter g_data_size;
 extern common::Counter g_find_ops;
 
@@ -48,32 +50,51 @@ BlockManager::~BlockManager() {
 int64_t BlockManager::DiskQuota() const{
     return disk_quota_;
 }
+
 void BlockManager::CheckStorePath(const std::string& store_path) {
     int64_t disk_quota = 0;
     common::SplitString(store_path, ",", &store_path_list_);
+    std::map<std::string, std::string> fs_map;
+    std::string fsid_str;
+    struct statfs fs_info;
+    int stat_ret = statfs("/home", &fs_info);
+    if (stat_ret != 0 && statfs("/", &fs_info) != 0) {
+        LOG(FATAL, "statfs(\"/\") fail: %s", strerror(errno));
+    } else if (FLAGS_chunkserver_use_root_partition == 0) {
+        fsid_str.assign((const char*)&fs_info.f_fsid, sizeof(fs_info.f_fsid));
+        fs_map[fsid_str] = "Root";
+        LOG(INFO, "Root fsid: %s", common::DebugString(fsid_str).c_str());
+    }
     for (uint32_t i = 0; i < store_path_list_.size(); ++i) {
-       std::string& disk_path = store_path_list_[i];
-       disk_path = common::TrimString(disk_path, " ");
-       if (disk_path.empty() || disk_path[disk_path.size() - 1] != '/') {
-           disk_path += "/";
-       }
-       struct statfs fs_info;
-       if (0 == statfs(disk_path.c_str(), &fs_info)) {
-           int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
-           int64_t user_quota = fs_info.f_bavail * fs_info.f_bsize;
-           int64_t super_quota = fs_info.f_bfree * fs_info.f_bsize;
-           LOG(INFO, "Use store path: %s block: %ld disk: %s available %s quota: %s",
-               disk_path.c_str(), fs_info.f_bsize,
-               common::HumanReadableString(disk_size).c_str(),
-               common::HumanReadableString(super_quota).c_str(),
-               common::HumanReadableString(user_quota).c_str());
-           disk_quota += user_quota;
-       } else {
-           LOG(WARNING, "Stat store_path %s fail, ignore it", disk_path.c_str());
-           store_path_list_[i] = store_path_list_[store_path_list_.size() - 1];
-           store_path_list_.resize(store_path_list_.size() - 1);
-           --i;
-       }
+        std::string& disk_path = store_path_list_[i];
+        disk_path = common::TrimString(disk_path, " ");
+        if (disk_path.empty() || disk_path[disk_path.size() - 1] != '/') {
+            disk_path += "/";
+        }
+        if (0 == (stat_ret = statfs(disk_path.c_str(), &fs_info))
+          && (fsid_str.assign((const char*)&fs_info.f_fsid, sizeof(fs_info.f_fsid)),
+              fs_map.find(fsid_str) == fs_map.end())) {
+            int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
+            int64_t user_quota = fs_info.f_bavail * fs_info.f_bsize;
+            int64_t super_quota = fs_info.f_bfree * fs_info.f_bsize;
+            fs_map[fsid_str] = disk_path;
+            LOG(INFO, "Use store path: %s block: %ld disk: %s available %s quota: %s",
+                disk_path.c_str(), fs_info.f_bsize,
+                common::HumanReadableString(disk_size).c_str(),
+                common::HumanReadableString(super_quota).c_str(),
+                common::HumanReadableString(user_quota).c_str());
+            disk_quota += user_quota;
+        } else {
+            if (stat_ret != 0) {
+                LOG(WARNING, "Stat store_path %s fail, ignore it", disk_path.c_str());
+            } else {
+                LOG(WARNING, "%s's fsid is same to %s, ignore it",
+                    disk_path.c_str(), fs_map[fsid_str].c_str());
+            }
+            store_path_list_[i] = store_path_list_[store_path_list_.size() - 1];
+            store_path_list_.resize(store_path_list_.size() - 1);
+            --i;
+        }
     }
     std::sort(store_path_list_.begin(), store_path_list_.end());
     std::vector<std::string>::iterator it
@@ -149,6 +170,7 @@ bool BlockManager::SetNameSpaceVersion(int64_t version) {
     LOG(INFO, "Set namespace version: %ld", namespace_version_);
     return true;
 }
+
 bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
     leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(BlockId2Str(offset)); it->Valid(); it->Next()) {
@@ -288,6 +310,38 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
     }
     block->DecRef();
     return ret;
+}
+
+bool BlockManager::RemoveAllBlocks() {
+    LOG(INFO, "RemoveAllBlocks...");
+    if (!RemoveAllBlocksAsync()) {
+        return false;
+    }
+    int count = 0;
+    while (g_blocks.Get() > 0) {
+        if (count++ %1000 == 0) {
+            LOG(INFO, "RemoveAllBlocks wait done now block num: %ld", g_blocks.Get());
+        }
+        usleep(10000);
+    }
+    LOG(INFO, "RemoveAllBlocks done");
+    return true;
+}
+
+bool BlockManager::RemoveAllBlocksAsync() {
+    leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
+    for (it->Seek(BlockId2Str(0)); it->Valid(); it->Next()) {
+        int64_t block_id = 0;
+        if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
+            LOG(FATAL, "[ListBlocks] Unknown meta key: %s\n",
+                it->key().ToString().c_str());
+            delete it;
+            return false;
+        }
+        thread_pool_->AddTask(boost::bind(&BlockManager::RemoveBlock, this, block_id));
+    }
+    delete it;
+    return true;
 }
 
 }
