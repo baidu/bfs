@@ -75,6 +75,10 @@ public:
                        const HeartBeatRequest* request,
                        HeartBeatResponse* response,
                        ::google::protobuf::Closure* done);
+    void Register(::google::protobuf::RpcController* controller,
+                       const ::baidu::bfs::RegisterRequest* request,
+                       ::baidu::bfs::RegisterResponse* response,
+                       ::google::protobuf::Closure* done);
     void BlockReport(::google::protobuf::RpcController* controller,
                        const BlockReportRequest* request,
                        BlockReportResponse* response,
@@ -91,6 +95,7 @@ public:
 private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
+    void Register();
     void LeaveSafemode();
 private:
     /// Global thread pool
