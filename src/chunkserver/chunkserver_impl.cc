@@ -58,6 +58,7 @@ extern common::Counter g_blocks;
 extern common::Counter g_writing_blocks;
 extern common::Counter g_writing_bytes;
 extern common::Counter g_read_ops;
+extern common::Counter g_read_bytes;
 extern common::Counter g_write_ops;
 extern common::Counter g_write_bytes;
 extern common::Counter g_refuse_ops;
@@ -529,6 +530,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
                 (read_end - read_start) / 1000,  // read time
                 (read_end - response->timestamp(0)) / 1000);    // service time
             g_read_ops.Inc();
+            g_read_bytes.Add(len);
         } else {
             status = 882;
             LOG(WARNING, "ReadBlock #%ld fail offset: %ld len: %d\n",
@@ -700,12 +702,13 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<body> <h1>分布式文件系统控制台 - ChunkServer</h1>";
     str += "<table class=dataintable>";
     str += "<tr><td>Block number</td><td>Data size</td>"
-           "<td>Write(QPS)</td><td>Write(Speed)<td>Read(QPS)</td><td>Buffers(new/delete)</td><tr>";
+           "<td>Write(QPS)</td><td>Write(Speed)</td><td>Read(QPS)</td><td>Read(Speed)</td><td>Buffers(new/delete)</td><tr>";
     str += "<tr><td>" + common::NumToString(g_blocks.Get()) + "</td>";
     str += "<td>" + common::HumanReadableString(g_data_size.Get()) + "</td>";
     str += "<td>" + common::NumToString(counters.write_ops) + "</td>";
     str += "<td>" + common::HumanReadableString(counters.write_bytes) + "/S</td>";
     str += "<td>" + common::NumToString(counters.read_ops) + "</td>";
+    str += "<td>" + common::HumanReadableString(counters.read_bytes) + "/S</td>";
     str += "<td>" + common::NumToString(g_block_buffers.Get())
            + "(" + common::NumToString(counters.buffers_new) + "/"
            + common::NumToString(counters.buffers_delete) +")" + "</td>";
