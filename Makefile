@@ -9,7 +9,7 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I./thirdparty/leveldb/include \
                -I$(SNAPPY_PATH)/include \
-               -I$(BOOST_PATH)/include \
+               -I$(BOOST_PATH) \
                -I$(GFLAG_PATH)/include \
                -I$(COMMON_PATH)/include
 
@@ -52,8 +52,8 @@ OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
 
-TESTS = namespace_test file_cache_test
-TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o
+TESTS = namespace_test file_cache_test chunkserver_impl_test
+TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o src/chunkserver_impl_test.o
 UNITTEST_OUTPUT = test/
 
 all: $(BIN)
@@ -77,6 +77,11 @@ namespace_test: src/nameserver/test/namespace_test.o
 
 file_cache_test: src/chunkserver/test/file_cache_test.o
 	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
+
+chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
+	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o src/chunkserver/block_manager.o \
+	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS) $(LEVELDB)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)

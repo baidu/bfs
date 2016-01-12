@@ -27,14 +27,14 @@ protected:
 TEST_F(NameSpaceTest, EncodingStoreKey) {
     std::string key_start;
     NameSpace::EncodingStoreKey(5, "", &key_start);
-    ASSERT_EQ(key_start.size(), 8);
+    ASSERT_EQ(key_start.size(), 8U);
     for (int i = 0; i < 7; i++) {
         ASSERT_EQ(key_start[i], 0);
     }
     ASSERT_EQ(key_start[7], '\5');
 
     NameSpace::EncodingStoreKey(3<<16, "/home", &key_start);
-    ASSERT_EQ(key_start.size(), 13);
+    ASSERT_EQ(key_start.size(), 13U);
     ASSERT_EQ(key_start[5], 3);
     ASSERT_EQ(key_start.substr(8), std::string("/home"));
 }
@@ -125,7 +125,7 @@ TEST_F(NameSpaceTest, List) {
     ASSERT_TRUE(CreateTree(&ns));
     google::protobuf::RepeatedPtrField<FileInfo> outputs;
     ASSERT_EQ(0, ns.ListDirectory("/dir1", &outputs));
-    ASSERT_EQ(2U, outputs.size());
+    ASSERT_EQ(2, outputs.size());
     ASSERT_EQ(std::string("subdir1"), outputs.Get(0).name());
     ASSERT_EQ(std::string("subdir2"), outputs.Get(1).name());
 }
@@ -201,14 +201,14 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     // List after delete
     google::protobuf::RepeatedPtrField<FileInfo> outputs;
     ASSERT_EQ(0, ns.ListDirectory("/dir1", &outputs));
-    ASSERT_EQ(1U, outputs.size());
+    ASSERT_EQ(1, outputs.size());
     ASSERT_EQ(std::string("subdir1"), outputs.Get(0).name());
 
     // Delete another subdir
     printf("Delete another subdir\n");
     ASSERT_NE(0, ns.DeleteDirectory("/dir1/subdir1", false, &files_removed));
     ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1", &outputs));
-    ASSERT_EQ(2U, outputs.size());
+    ASSERT_EQ(2, outputs.size());
 
     ASSERT_EQ(0, ns.DeleteDirectory("/dir1", true, &files_removed));
     ASSERT_EQ(files_removed.size(), 2U);

@@ -30,3 +30,6 @@
 # Proto .h .cc
 *.pb.cc
 *.pb.h
+
+#depends
+depends.mk

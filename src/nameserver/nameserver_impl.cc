@@ -70,6 +70,29 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
     int64_t version = request->namespace_version();
     if (version == namespace_->Version()) {
         chunkserver_manager_->HandleHeartBeat(request, response);
+    } else {
+        response->set_status(-1);
+    }
+    response->set_namespace_version(namespace_->Version());
+    done->Run();
+}
+
+void NameServerImpl::Register(::google::protobuf::RpcController* controller,
+                   const ::baidu::bfs::RegisterRequest* request,
+                   ::baidu::bfs::RegisterResponse* response,
+                   ::google::protobuf::Closure* done) {
+    sofa::pbrpc::RpcController* sofa_cntl =
+        reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    const std::string& address = request->chunkserver_addr();
+    LOG(INFO, "Register ip: %s", sofa_cntl->RemoteAddress().c_str());
+    int64_t version = request->namespace_version();
+    if (version != namespace_->Version()) {
+        LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
+            address.c_str(), version, namespace_->Version());
+        chunkserver_manager_->RemoveChunkServer(address);
+    } else {
+        LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
+        chunkserver_manager_->HandleRegister(request, response);
     }
     response->set_namespace_version(namespace_->Version());
     done->Run();
@@ -81,111 +104,50 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    ::google::protobuf::Closure* done) {
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
-    int64_t version = request->namespace_version();
     LOG(INFO, "Report from %d, %s, %d blocks\n",
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
-    response->set_namespace_version(version);
-    if (version != namespace_->Version()) {
-        if (blocks.size() == 0) {
-            cs_id = chunkserver_manager_->AddChunkServer(request->chunkserver_addr(),
-                                                         request->disk_quota());
-            response->set_namespace_version(namespace_->Version());
-        } else {
-            // Clean it~
-            for (int i = 0; i < blocks.size(); i++) {
-                response->add_obsolete_blocks(blocks.Get(i).block_id());
-            }
-            LOG(INFO, "Unknown chunkserver namespace version %ld id= %d",
-                version, cs_id);
-        }
-    } else {
-        int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
-        if (old_id == -1) {
-            if (!request->is_complete()) {
-                response->set_status(403);
-                done->Run();
-                return;
-            }
-            cs_id = chunkserver_manager_->AddChunkServer(request->chunkserver_addr(),
-                                                         request->disk_quota(), -1);
-        } else if (cs_id == -1) {
-            cs_id = old_id;
-            chunkserver_manager_->IncChunkServerNum();
-            LOG(INFO, "Reconnect chunkserver %d %s, cs_num=%d",
-                cs_id, request->chunkserver_addr().c_str(), chunkserver_manager_->GetChunkServerNum());
-        } else if (cs_id != old_id) {
-            // bug...
-            LOG(WARNING, "Chunkserver %s id mismatch, old: %d new: %d",
-                request->chunkserver_addr().c_str(), old_id, cs_id);
-            response->set_status(-1);
-            done->Run();
-            return;
-        }
-        for (int i = 0; i < blocks.size(); i++) {
-            g_report_blocks.Inc();
-            const ReportBlockInfo& block =  blocks.Get(i);
-            int64_t cur_block_id = block.block_id();
-            int64_t cur_block_size = block.block_size();
 
-            // update block -> cs
-            int32_t more_replica_num = 0;
-            int64_t block_version = block.version();
-            if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
-                                                 cur_block_size,
-                                                 block_version,
-                                                 &more_replica_num)) {
-                response->add_obsolete_blocks(cur_block_id);
-                chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
-                LOG(INFO, "obsolete_block: #%ld", cur_block_id);
-                continue;
-            }
+    int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
+    if (cs_id != old_id) {
+        LOG(WARNING, "Chunkserver %s id mismatch, old: %d new: %d",
+            request->chunkserver_addr().c_str(), old_id, cs_id);
+        response->set_status(-1);
+        done->Run();
+        return;
+    }
+    for (int i = 0; i < blocks.size(); i++) {
+        g_report_blocks.Inc();
+        const ReportBlockInfo& block =  blocks.Get(i);
+        int64_t cur_block_id = block.block_id();
+        int64_t cur_block_size = block.block_size();
 
-            // update cs -> block
-            chunkserver_manager_->AddBlock(cs_id, cur_block_id);
-            if (!safe_mode_ && more_replica_num != 0) {
-                std::vector<std::pair<int32_t, std::string> > chains;
-                ///TODO: Not get all chunkservers, but get more.
-                if (chunkserver_manager_->GetChunkServerChains(more_replica_num, &chains)) {
-                    std::set<int32_t> cur_replica_location;
-                    block_mapping_->GetReplicaLocation(cur_block_id, &cur_replica_location);
-
-                    std::vector<std::pair<int32_t, std::string> >::iterator chains_it = chains.begin();
-                    int num;
-                    for (num = 0; num < more_replica_num &&
-                            chains_it != chains.end(); ++chains_it) {
-                        if (cur_replica_location.find(chains_it->first) == cur_replica_location.end()) {
-                            bool mark_pull = block_mapping_->MarkPullBlock(chains_it->first, cur_block_id);
-                            if (mark_pull) {
-                                num++;
-                            }
-                        }
-                    }
-                    //no suitable chunkserver
-                    if (num == 0) {
-                        block_mapping_->MarkBlockStable(cur_block_id);
-                    }
-                }
-            }
+        // update block -> cs
+        int64_t block_version = block.version();
+        if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
+                                             cur_block_size,
+                                             block_version, !safe_mode_)) {
+            response->add_obsolete_blocks(cur_block_id);
+            chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
+            LOG(INFO, "obsolete_block: #%ld", cur_block_id);
+            continue;
         }
 
-        // recover replica
-        std::vector<std::pair<int64_t, std::set<int32_t> > > pull_blocks;
-        if (block_mapping_->GetPullBlocks(cs_id, &pull_blocks)) {
-            ReplicaInfo* info = NULL;
-            for (size_t i = 0; i < pull_blocks.size(); i++) {
-                info = response->add_new_replicas();
-                info->set_block_id(pull_blocks[i].first);
-                std::set<int32_t>::iterator it = pull_blocks[i].second.begin();
-                for (; it != pull_blocks[i].second.end(); ++it) {
-                    std::string cs_addr = chunkserver_manager_->GetChunkServerAddr(*it);
-                    info->add_chunkserver_address(cs_addr);
-                }
-                LOG(INFO, "Add pull block: #%ld dst cs: %d", pull_blocks[i].first, cs_id);
-            }
+        // update cs -> block
+        chunkserver_manager_->AddBlock(cs_id, cur_block_id);
+    }
+
+    // recover replica
+    if (!safe_mode_) {
+        std::map<int64_t, std::string> recover_blocks;
+        chunkserver_manager_->PickRecoverBlocks(cs_id, 1000, &recover_blocks);
+        for (std::map<int64_t, std::string>::iterator it = recover_blocks.begin();
+                it != recover_blocks.end(); ++it) {
+            ReplicaInfo* rep = response->add_new_replicas();
+            rep->set_block_id(it->first);
+            rep->add_chunkserver_address(it->second);
         }
     }
-    response->set_chunkserver_id(cs_id);
     done->Run();
 }
 
@@ -195,9 +157,8 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
                    ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     response->set_status(0);
-    int32_t chunkserver_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_->UnmarkPullBlock(chunkserver_id, request->blocks(i));
+        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->blocks(i));
     }
     done->Run();
 }
@@ -245,7 +206,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0);
+            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0, false);
         }
         block->set_block_id(new_block_id);
         response->set_status(0);
@@ -291,11 +252,6 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    if (block_mapping_->MarkBlockStable(block_id)) {
-        response->set_status(0);
-    } else {
-        response->set_status(886);
-    }
     done->Run();
 }
 
@@ -329,11 +285,6 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                 for (std::set<int32_t>::iterator it = nsblock.replica.begin();
                         it != nsblock.replica.end(); ++it) {
                     int32_t server_id = *it;
-                    if (nsblock.pulling_chunkservers.find(server_id) !=
-                            nsblock.pulling_chunkservers.end()) {
-                        LOG(INFO, "replica is under construction #%ld on %d", block_id, server_id);
-                        continue;
-                    }
                     std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
                     if (addr == "") {
                         LOG(INFO, "GetChunkServerAddr from id:%d fail.", server_id);
@@ -488,13 +439,9 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
         block_mapping_->AddNewBlock(block_id);
+        block_mapping_->SetBlockVersion(block_id, version);
         block_mapping_->ChangeReplicaNum(block_id, file_info.replicas());
-        if (version != -1) {
-            block_mapping_->SetBlockVersion(block_id, version);
-            block_mapping_->MarkBlockStable(block_id);
-        }
-    }
-}
+    } }
 
 void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
                              const SysStatRequest* request,
@@ -577,19 +524,23 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
+    int64_t recover_num, pending_num;
+    block_mapping_->GetStat(&recover_num, &pending_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
-    str += "<h2 align=left>Nameserver status</h2>";
-    str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</p>";
-    str += "<p align=left>Used: " + common::HumanReadableString(total_data) + "B</p>";
-    str += "<p align=left>Pending tasks: "
-        + common::NumToString(thread_pool_.PendingNum()) + "</p>";
-    str += "<p align=left>Safemode: " + common::NumToString(safe_mode_) + "</p>";
-    str += "<p align=left><a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
-    str += "<h2 align=left>Chunkserver status</h2>";
-    str += "<p align=left>Total: " + common::NumToString(chunkservers->size())+"</p>";
-    str += "<p align=left>Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</p>";
-    str += "<p align=left>Dead: " + common::NumToString(dead_num)+"</p>";
-    str += "<p align=left>Overload: " + common::NumToString(overladen_num)+"</p>";
+    str += "<h3 align=left>Nameserver status</h2>";
+    str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</br>";
+    str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
+    str += "Recover: " + common::NumToString(recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(pending_num) + "</br>";
+    str += "Safemode: " + common::NumToString(safe_mode_) + "</br>";
+    str += "Pending tasks: "
+        + common::NumToString(thread_pool_.PendingNum()) + "</br>";
+    str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
+    str += "<h3 align=left>Chunkserver status</h2>";
+    str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
+    str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
+    str += "Dead: " + common::NumToString(dead_num)+"</br>";
+    str += "Overload: " + common::NumToString(overladen_num)+"</p>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"
