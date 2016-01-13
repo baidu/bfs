@@ -31,7 +31,6 @@ public:
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
     void PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks);
-    void ProcessRecoveredBlocks(int int64_t, int32_t recovered_num);
 private:
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
 private:

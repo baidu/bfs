@@ -11,6 +11,7 @@
 #include <common/logging.h>
 
 DECLARE_int32(default_replica_num);
+DECLARE_int32(recover_speed);
 
 namespace baidu {
 namespace bfs {
@@ -176,12 +177,16 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, std::set<int64_t> blocks) {
     }
 }
 
-int32_t BlockMapping::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
+int32_t BlockMapping::PickRecoverBlocks(int64_t cs_id, int32_t block_num,
                                      std::map<int64_t, int64_t>* recover_blocks) {
     MutexLock lock(&mu_);
     std::vector<std::pair<int64_t, int64_t> > tmp_holder;
+    CheckList::iterator check_it = recover_check_.insert(std::make_pair<int32_t, std::set<int64_t> >(cs_id, std::set<int64_t>())).first;
+    int32_t quota = FLAGS_recover_speed - (check_it->second).size();
+    LOG(DEBUG, "cs %d has %d pending_recover blocks", cs_id, (check_it->second).size());
+    quota = quota < block_num ? quota : block_num;
     int32_t n = 0;
-    while (n < block_num && !recover_q_.empty()) {
+    while (n < quota && !recover_q_.empty()) {
         std::pair<int64_t, int64_t> recover_item = recover_q_.top();
         NSBlock* cur_block = NULL;
         if (!GetBlockPtr(recover_item.second, &cur_block)) { // block is removed
@@ -200,8 +205,8 @@ int32_t BlockMapping::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
         }
         recover_blocks->insert(std::make_pair<int64_t, int64_t>
                                     (cur_block->id, *(cur_block->replica.begin())));
-        recover_check_.insert(cur_block->id);
-        thread_pool_.DelayTask(5000, boost::bind(&BlockMapping::CheckRecover, this, cur_block->id));
+        (check_it->second).insert(cur_block->id);
+        thread_pool_.DelayTask(5000, boost::bind(&BlockMapping::CheckRecover, this, cs_id, cur_block->id));
         recover_q_.pop();
         ++n;
     }
@@ -213,15 +218,19 @@ int32_t BlockMapping::PickRecoverBlocks(int64_t cs_id, int64_t block_num,
     return n;
 }
 
-void BlockMapping::ProcessRecoveredBlock(int64_t cs_id, int64_t block_id) {
+void BlockMapping::ProcessRecoveredBlock(int64_t cs_id, int64_t block_id, bool recover_success) {
     MutexLock lock(&mu_);
     NSBlock* b = NULL;
     if (!GetBlockPtr(block_id, &b)) {
         return;
     }
-    b->replica.insert(cs_id);
-    LOG(DEBUG, "recovered  block #%ld at %ld", block_id, cs_id);
-    recover_check_.erase(block_id);
+    if (recover_success) {
+        b->replica.insert(cs_id);
+        LOG(DEBUG, "recovered  block #%ld at %ld", block_id, cs_id);
+    }
+    CheckList::iterator it = recover_check_.find(cs_id);
+    if (it == recover_check_.end()) return;
+    (it->second).erase(block_id);
     TryRecover(b);
 }
 
@@ -231,7 +240,10 @@ void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num) {
         *recover_num = recover_q_.size();
     }
     if (pending_num) {
-        *pending_num = recover_check_.size();
+        *pending_num = 0;
+        for (CheckList::iterator it = recover_check_.begin(); it != recover_check_.end(); ++it) {
+            *pending_num += (it->second).size();
+        }
     }
 }
 
@@ -257,19 +269,22 @@ void BlockMapping::TryRecover(NSBlock* block) {
     }
 }
 
-void BlockMapping::CheckRecover(int64_t block_id) {
+void BlockMapping::CheckRecover(int64_t cs_id, int64_t block_id) {
     MutexLock lock(&mu_);
     LOG(DEBUG, "recover timeout check: #%ld ", block_id);
-    std::set<int64_t>::iterator check_it = recover_check_.find(block_id);
-    if (check_it == recover_check_.end()) {
+    CheckList::iterator it = recover_check_.find(cs_id);
+    if (it == recover_check_.end()) return;
+    std::set<int64_t>& block_set = it->second;
+    std::set<int64_t>::iterator check_it = block_set.find(block_id);
+    if (check_it == block_set.end()) {
         return;
     }
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
-        recover_check_.erase(block_id);
+        block_set.erase(block_id);
         return;
     }
-    recover_check_.erase(block_id);
+    block_set.erase(block_id);
     TryRecover(block);
 }
 
