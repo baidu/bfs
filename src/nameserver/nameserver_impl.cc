@@ -441,7 +441,8 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         block_mapping_->AddNewBlock(block_id);
         block_mapping_->SetBlockVersion(block_id, version);
         block_mapping_->ChangeReplicaNum(block_id, file_info.replicas());
-    } }
+    }
+}
 
 void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
                              const SysStatRequest* request,
