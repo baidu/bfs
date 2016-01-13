@@ -136,7 +136,6 @@ void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         std::set<int32_t> chunkservers;
-        GetReplicaLocation(block_id, &chunkservers);
         RemoveBlock(block_id);
         LOG(INFO, "Remove block #%ld for %s", block_id, file_info.name().c_str());
     }
