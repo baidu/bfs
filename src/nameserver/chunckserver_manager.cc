@@ -59,10 +59,9 @@ bool ChunkServerManager::RemoveChunkServer(const std::string& addr) {
     if (it == address_map_.end()) {
         return false;
     }
-    int cs_id = it->second;
-    ServerMap::iterator info_it = chunkservers_.find(cs_id);
-    assert(info_it != chunkservers_.end());
-    ChunkServerInfo* cs_info = info_it->second;
+    ChunkServerInfo* cs_info = NULL;
+    bool ret = GetChunkServerPtr(it->second, &cs_info);
+    assert(ret);
     if (cs_info->status() == kCsActive) {
         cs_info->set_status(kCsWaitClean);
         boost::function<void ()> task =
@@ -136,9 +135,9 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
         response->set_chunkserver_id(cs_id);
     } else {
         cs_id = it->second;
-        ServerMap::iterator info_it = chunkservers_.find(cs_id);
-        assert(info_it != chunkservers_.end());
-        ChunkServerInfo* cs_info = info_it->second;
+        ChunkServerInfo* cs_info;
+        bool ret = GetChunkServerPtr(cs_id, &cs_info);
+        assert(ret);
         if (cs_info->status() == kCsWaitClean || cs_info->status() == kCsCleaning) {
             status = -1;
             LOG(INFO, "Reconnect chunkserver %d %s, cs_num=%d, internal cleaning",
@@ -166,11 +165,9 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     }
 
     MutexLock lock(&mu_);
-    ServerMap::iterator it = chunkservers_.find(id);
     ChunkServerInfo* info = NULL;
-    assert(it != chunkservers_.end());
-    info = it->second;
-    assert(info);
+    bool ret = GetChunkServerPtr(id, &info);
+    assert(ret && info);
     if (!info->is_dead()) {
         assert(heartbeat_list_.find(info->last_heartbeat()) != heartbeat_list_.end());
         heartbeat_list_[info->last_heartbeat()].erase(info);
@@ -252,11 +249,10 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 
 bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
     mu_.AssertHeld();
-    ServerMap::iterator it = chunkservers_.find(cs_id);
-    if (it == chunkservers_.end()) {
+    ChunkServerInfo* info = NULL;
+    if (!GetChunkServerPtr(cs_id, &info)) {
         return false;
     }
-    ChunkServerInfo* info = it->second;
     info->set_disk_quota(quota);
     info->set_status(kCsActive);
     if (info->is_dead()) {
@@ -289,12 +285,9 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t q
 
 std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
     MutexLock lock(&mu_);
-    ServerMap::iterator it = chunkservers_.find(id);
-    if (it != chunkservers_.end()) {
-        ChunkServerInfo* info = it->second;
-        if (!info->is_dead()) {
-            return info->address();
-        }
+    ChunkServerInfo* cs = NULL;
+    if (GetChunkServerPtr(id, &cs) && !cs->is_dead()) {
+        return cs->address();
     }
     return "";
 }
@@ -320,21 +313,21 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
 
 void ChunkServerManager::PickRecoverBlocks(int32_t cs_id, std::map<int64_t, std::string>* recover_blocks) {
     MutexLock lock(&mu_);
-    ServerMap::iterator it = chunkservers_.find(cs_id);
-    if (it == chunkservers_.end()) return;
-    ChunkServerInfo* cs = it->second;
+    ChunkServerInfo* cs = NULL;
+    if (!GetChunkServerPtr(cs_id, &cs)) {
+        return;
+    }
     LOG(INFO, "cs %d has %d pending recover blocks", cs_id, cs->recovering_num());
     int32_t recover_quota = FLAGS_recover_speed - cs->recovering_num();
 
     std::map<int64_t, int32_t> blocks;
     int64_t actual_recover_num = block_manager_->PickRecoverBlocks(cs_id, recover_quota, &blocks);
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        ServerMap::iterator cs_it = chunkservers_.find(it->second);
-        if (cs_it == chunkservers_.end()) {
+        ChunkServerInfo* cs = NULL;
+        if (!GetChunkServerPtr(it->second, &cs)) {
             LOG(INFO, "can't find chunkserver %ld", it->second);
             continue;
         }
-        ChunkServerInfo* cs = cs_it->second;
         recover_blocks->insert(std::make_pair<int64_t, std::string>(it->first, cs->address()));
     }
     LOG(INFO, "cs %d picked %d blocks to recover", cs_id, actual_recover_num);
@@ -343,12 +336,21 @@ void ChunkServerManager::PickRecoverBlocks(int32_t cs_id, std::map<int64_t, std:
 
 void ChunkServerManager::ProcessRecoveredBlocks(int32_t cs_id, int32_t recovered_num) {
     MutexLock lock(&mu_);
-    ServerMap::iterator it = chunkservers_.find(cs_id);
-    if (it == chunkservers_.end()) {
+    ChunkServerInfo* cs = NULL;
+    if (!GetChunkServerPtr(cs_id, &cs)) {
         return;
     }
-    ChunkServerInfo* cs = it->second;
     cs->set_recovering_num(cs->recovering_num() - recovered_num);
+}
+
+bool ChunkServerManager::GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs) {
+    mu_.AssertHeld();
+    ServerMap::iterator it = chunkservers_.find(cs_id);
+    if (it == chunkservers_.end()) {
+        return false;
+    }
+    if (cs) *cs = it->second;
+    return true;
 }
 
 } // namespace bfs
