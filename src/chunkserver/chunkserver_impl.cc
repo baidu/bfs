@@ -557,14 +557,22 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
     PullBlockReportRequest report_request;
     report_request.set_sequence_id(0);
     report_request.set_chunkserver_id(chunkserver_id_);
-    report_request.set_received_replica_num(new_replica_info.size());
     for (size_t i = 0; i < new_replica_info.size(); i++) {
         int64_t block_id = new_replica_info[i].block_id();
+        LOG(INFO, "started pull : #%ld ", block_id);
         ChunkServer_Stub* chunkserver = NULL;
-        Block* block = block_manager_->FindBlock(block_id, true);
+        Block* block = block_manager_->FindBlock(block_id, false);
+        if (block) {
+            block->DecRef();
+            LOG(INFO, "already has #%ld, skip pull", block_id);
+            report_request.add_failed(block_id);
+            continue;
+        }
+        block = block_manager_->FindBlock(block_id, true);
         if (!block) {
             LOG(WARNING, "Cant't create block: #%ld ", block_id);
             //ignore this block
+            report_request.add_failed(block_id);
             continue;
         } else {
             LOG(INFO, "Start pull #%ld from %s",
@@ -581,7 +589,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             //remove this block
             block->DecRef();
             block_manager_->RemoveBlock(block_id);
-            report_request.add_blocks(block_id);
+            report_request.add_failed(block_id);
             continue;
         }
         int64_t seq = -1;
@@ -594,7 +602,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             request.set_sequence_id(++seq);
             request.set_block_id(block_id);
             request.set_offset(offset);
-            request.set_read_len(256 * 1024);
+            request.set_read_len(1 << 20);
             request.set_require_block_version(true);
             bool ret = rpc_client_->SendRequest(chunkserver,
                                                 &ChunkServer_Stub::ReadBlock,
@@ -637,8 +645,11 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
         block->DecRef();
         if (!success) {
             block_manager_->RemoveBlock(block_id);
+            report_request.add_failed(block_id);
+        } else {
+            report_request.add_blocks(block_id);
         }
-        report_request.add_blocks(block_id);
+        LOG(INFO, "done pull : #%ld ", block_id);
     }
 
     PullBlockReportResponse report_response;
