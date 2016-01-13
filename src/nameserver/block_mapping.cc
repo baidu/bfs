@@ -166,27 +166,25 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
 
 void BlockMapping::DealWithDeadBlocks(int32_t cs_id, std::set<int64_t> blocks) {
     MutexLock lock(&mu_);
+    NSBlock* block = NULL;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        NSBlockMap::iterator b_it = block_map_.find(*it);
-        if (b_it == block_map_.end()) {
-            LOG(INFO, "Can't find block: #%ld ", *it);
+        if (!GetBlockPtr(*it, &block)) {
             continue;
         }
-        b_it->second->replica.erase(cs_id);
-        AddToRecover(b_it->second);
+        block->replica.erase(cs_id);
+        AddToRecover(block);
     }
 }
 
-void BlockMapping::PickRecoverBlocks(int32_t cs_id, int64_t block_num,
+int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                      std::map<int64_t, int32_t>* recover_blocks) {
     MutexLock lock(&mu_);
     std::vector<std::pair<int32_t, int64_t> > tmp_holder;
-    int64_t n = 0;
+    int32_t n = 0;
     while (n < block_num && !recover_q_.empty()) {
         std::pair<int32_t, int64_t> recover_item = recover_q_.top();
         NSBlock* cur_block = NULL;
         if (!GetBlockPtr(recover_item.second, &cur_block)) { // block is removed
-            LOG(DEBUG, "Can't find block: #%ld ", recover_item.second);
             recover_q_.pop();
             continue;
         }
@@ -211,22 +209,20 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int64_t block_num,
          it != tmp_holder.end(); ++it) {
         recover_q_.push(*it);
     }
+    LOG(DEBUG, "recover_q_ size = %d", recover_q_.size());
+    return n;
 }
 
 void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id) {
     MutexLock lock(&mu_);
-    std::set<int64_t>::iterator check_it = recover_check_.find(block_id);
-    if (check_it == recover_check_.end()) { // check recover timeout
-        LOG(DEBUG, "not in recover_check_ #%ld cs_id=", block_id, cs_id);
-    }
-
     NSBlock* b = NULL;
     if (!GetBlockPtr(block_id, &b)) {
-        LOG(DEBUG, "Can't find block: #%ld ", block_id);
         return;
     }
     b->replica.insert(cs_id);
     LOG(DEBUG, "recovered  block #%ld at %ld", block_id, cs_id);
+    recover_check_.erase(block_id);
+    TryRecover(b);
 }
 
 void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num) {
@@ -249,31 +245,39 @@ void BlockMapping::AddToRecover(NSBlock* block) {
     }
 }
 
+void BlockMapping::TryRecover(NSBlock* block) {
+    mu_.AssertHeld();
+    int64_t replica_diff = block->expect_replica_num - block->replica.size();
+    if (replica_diff > 0) {
+        recover_q_.push(std::make_pair<int64_t, int64_t>(replica_diff, block->id));
+        LOG(DEBUG, "need more recover: #%ld pending %d", block->id, block->pending_recover);
+    } else {
+        block->pending_recover = false;
+        LOG(DEBUG, "recover done: #%ld ", block->id);
+    }
+}
+
 void BlockMapping::CheckRecover(int64_t block_id) {
     MutexLock lock(&mu_);
+    LOG(DEBUG, "recover timeout check: #%ld ", block_id);
     std::set<int64_t>::iterator check_it = recover_check_.find(block_id);
-    assert(check_it != recover_check_.end());
+    if (check_it == recover_check_.end()) {
+        return;
+    }
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
-        LOG(DEBUG, "Can't find block: #%ld ", block_id);
         recover_check_.erase(block_id);
         return;
     }
-    int64_t replica_diff = block->expect_replica_num - block->replica.size();
-    if (replica_diff > 0) {
-        recover_q_.push(std::make_pair<int32_t, int64_t>(replica_diff, block_id));
-        LOG(DEBUG, "need more recover: #%ld ", block_id);
-    } else {
-        block->pending_recover = false;
-        LOG(DEBUG, "recover done: #%ld ", block_id);
-    }
     recover_check_.erase(block_id);
+    TryRecover(block);
 }
 
 bool BlockMapping::GetBlockPtr(int64_t block_id, NSBlock** block) {
     mu_.AssertHeld();
     NSBlockMap::iterator it = block_map_.find(block_id);
     if (it == block_map_.end()) {
+        LOG(DEBUG, "Can't find block: #%ld ", block_id);
         return false;
     }
     if (block) {
