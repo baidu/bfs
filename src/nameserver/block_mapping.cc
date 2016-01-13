@@ -177,11 +177,11 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
     }
 }
 
-int32_t BlockMapping::PickRecoverBlocks(int64_t cs_id, int32_t block_num,
-                                     std::map<int64_t, int64_t>* recover_blocks) {
+int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
+                                     std::map<int64_t, int32_t>* recover_blocks) {
     MutexLock lock(&mu_);
     std::vector<std::pair<int64_t, int64_t> > tmp_holder;
-    CheckList::iterator check_it = recover_check_.insert(std::make_pair<int32_t, std::set<int64_t> >(cs_id, std::set<int64_t>())).first;
+    CheckList::iterator check_it = recover_check_.insert(std::make_pair(cs_id, std::set<int64_t>())).first;
     int32_t quota = FLAGS_recover_speed - (check_it->second).size();
     LOG(DEBUG, "cs %d has %d pending_recover blocks", cs_id, (check_it->second).size());
     quota = quota < block_num ? quota : block_num;
@@ -203,8 +203,7 @@ int32_t BlockMapping::PickRecoverBlocks(int64_t cs_id, int32_t block_num,
             recover_q_.pop();
             continue;
         }
-        recover_blocks->insert(std::make_pair<int64_t, int64_t>
-                                    (cur_block->id, *(cur_block->replica.begin())));
+        recover_blocks->insert(std::make_pair(cur_block->id, *(cur_block->replica.begin())));
         (check_it->second).insert(cur_block->id);
         thread_pool_.DelayTask(5000, boost::bind(&BlockMapping::CheckRecover, this, cs_id, cur_block->id));
         recover_q_.pop();
@@ -229,7 +228,10 @@ void BlockMapping::ProcessRecoveredBlock(int64_t cs_id, int64_t block_id, bool r
         LOG(DEBUG, "recovered  block #%ld at %ld", block_id, cs_id);
     }
     CheckList::iterator it = recover_check_.find(cs_id);
-    if (it == recover_check_.end()) return;
+    if (it == recover_check_.end()) {
+        LOG(DEBUG, "not in recover_check_ #%ld cs_id %ld", block_id, cs_id);
+        return;
+    }
     (it->second).erase(block_id);
     TryRecover(b);
 }
@@ -250,8 +252,7 @@ void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num) {
 void BlockMapping::AddToRecover(NSBlock* block) {
     mu_.AssertHeld();
     if (!block->pending_recover) {
-        recover_q_.push(std::make_pair<int64_t, int64_t>
-                        (block->expect_replica_num - block->replica.size(), block->id));
+        recover_q_.push(std::make_pair(block->expect_replica_num - block->replica.size(), block->id));
         block->pending_recover = true;
         LOG(DEBUG, "add to recover block_id #%ld replica=%ld", block->id, block->replica.size());
     }
@@ -261,7 +262,7 @@ void BlockMapping::TryRecover(NSBlock* block) {
     mu_.AssertHeld();
     int64_t replica_diff = block->expect_replica_num - block->replica.size();
     if (replica_diff > 0) {
-        recover_q_.push(std::make_pair<int64_t, int64_t>(replica_diff, block->id));
+        recover_q_.push(std::make_pair(replica_diff, block->id));
         LOG(DEBUG, "need more recover: #%ld pending %d", block->id, block->pending_recover);
     } else {
         block->pending_recover = false;

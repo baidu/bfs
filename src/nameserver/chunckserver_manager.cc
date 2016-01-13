@@ -318,15 +318,15 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id, std::map<int64_t, std::str
         return;
     }
 
-    std::map<int64_t, int64_t> blocks;
+    std::map<int64_t, int32_t> blocks;
     int64_t actual_recover_num = block_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
-    for (std::map<int64_t, int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+    for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(it->second, &cs)) {
             LOG(INFO, "can't find chunkserver %ld", it->second);
             continue;
         }
-        recover_blocks->insert(std::make_pair<int64_t, std::string>(it->first, cs->address()));
+        recover_blocks->insert(std::make_pair(it->first, cs->address()));
     }
     LOG(INFO, "cs %d picked %d blocks to recover", cs_id, actual_recover_num);
 }
