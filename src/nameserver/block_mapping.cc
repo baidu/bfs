@@ -135,7 +135,6 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
 void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
-        std::set<int32_t> chunkservers;
         RemoveBlock(block_id);
         LOG(INFO, "Remove block #%ld for %s", block_id, file_info.name().c_str());
     }
@@ -170,6 +169,7 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
     NSBlock* block = NULL;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         if (!GetBlockPtr(*it, &block)) {
+            LOG(DEBUG, "DealWithDeadBlocks for %d can't find block: #%ld ", cs_id, *it);
             continue;
         }
         block->replica.erase(cs_id);
@@ -190,6 +190,8 @@ int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         std::pair<int64_t, int64_t> recover_item = recover_q_.top();
         NSBlock* cur_block = NULL;
         if (!GetBlockPtr(recover_item.second, &cur_block)) { // block is removed
+            LOG(DEBUG, "PickRecoverBlocks for %d can't find block: #%ld ",
+                cs_id, recover_item.second);
             recover_q_.pop();
             continue;
         }
@@ -222,6 +224,7 @@ void BlockMapping::ProcessRecoveredBlock(int64_t cs_id, int64_t block_id, bool r
     MutexLock lock(&mu_);
     NSBlock* b = NULL;
     if (!GetBlockPtr(block_id, &b)) {
+        LOG(DEBUG, "ProcessRecoveredBlock for %d can't find block: #%ld ", cs_id, block_id);
         return;
     }
     if (recover_success) {
@@ -283,6 +286,7 @@ void BlockMapping::CheckRecover(int64_t cs_id, int64_t block_id) {
     }
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
+        LOG(DEBUG, "CheckRecover for %d can't find block: #%ld ", cs_id, block_id);
         block_set.erase(block_id);
         return;
     }
@@ -294,7 +298,6 @@ bool BlockMapping::GetBlockPtr(int64_t block_id, NSBlock** block) {
     mu_.AssertHeld();
     NSBlockMap::iterator it = block_map_.find(block_id);
     if (it == block_map_.end()) {
-        LOG(DEBUG, "Can't find block: #%ld ", block_id);
         return false;
     }
     if (block) {
