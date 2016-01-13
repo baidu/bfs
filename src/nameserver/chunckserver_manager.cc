@@ -25,9 +25,9 @@ enum ChunkServerStatus {
     kCsStandby = 5,
 };
 
-ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_manager)
+ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping)
     : thread_pool_(thread_pool),
-      block_manager_(block_manager),
+      block_mapping_(block_mapping),
       chunkserver_num_(0),
       next_chunkserver_id_(1) {
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
@@ -44,7 +44,7 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     chunkserver_block_map_.erase(id);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
-    block_manager_->DealWithDeadBlocks(id, blocks);
+    block_mapping_->DealWithDeadBlocks(id, blocks);
     mu_.Lock();
     if (cs->is_dead()) {
         cs->set_status(kCsOffLine);
@@ -319,7 +319,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id, std::map<int64_t, std::str
     }
 
     std::map<int64_t, int32_t> blocks;
-    int64_t actual_recover_num = block_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
+    int64_t actual_recover_num = block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(it->second, &cs)) {
