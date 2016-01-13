@@ -284,7 +284,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     ReportBlockInfo* info = request.add_blocks();
     info->set_block_id(block->Id());
     info->set_block_size(block->Size());
-    info->set_version(0);
+    info->set_version(block->GetVersion());
     BlockReportResponse response;
     if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::BlockReport,
             &request, &response, 20, 3)) {
