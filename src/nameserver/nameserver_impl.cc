@@ -126,7 +126,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         int64_t block_version = block.version();
         if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
-                                             block_version, !safe_mode_)) {
+                                             block_version,
+                                             !safe_mode_ && block_version >= 0)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "obsolete_block: #%ld", cur_block_id);
@@ -516,20 +517,20 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     int64_t recover_num, pending_num;
     block_mapping_->GetStat(&recover_num, &pending_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
-    str += "<h2 align=left>Nameserver status</h2>";
-    str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</p>";
-    str += "<p align=left>Used: " + common::HumanReadableString(total_data) + "B</p>";
-    str += "<p align=left>Pending tasks: "
-        + common::NumToString(thread_pool_.PendingNum()) + "</p>";
-    str += "<p align=left>Recover: " + common::NumToString(recover_num) + "</p>";
-    str += "<p align=left>Pending: " + common::NumToString(pending_num) + "</p>";
-    str += "<p align=left>Safemode: " + common::NumToString(safe_mode_) + "</p>";
-    str += "<p align=left><a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
-    str += "<h2 align=left>Chunkserver status</h2>";
-    str += "<p align=left>Total: " + common::NumToString(chunkservers->size())+"</p>";
-    str += "<p align=left>Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</p>";
-    str += "<p align=left>Dead: " + common::NumToString(dead_num)+"</p>";
-    str += "<p align=left>Overload: " + common::NumToString(overladen_num)+"</p>";
+    str += "<h3 align=left>Nameserver status</h2>";
+    str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</br>";
+    str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
+    str += "Recover: " + common::NumToString(recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(pending_num) + "</br>";
+    str += "Safemode: " + common::NumToString(safe_mode_) + "</br>";
+    str += "Pending tasks: "
+        + common::NumToString(thread_pool_.PendingNum()) + "</br>";
+    str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
+    str += "<h3 align=left>Chunkserver status</h2>";
+    str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
+    str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
+    str += "Dead: " + common::NumToString(dead_num)+"</br>";
+    str += "Overload: " + common::NumToString(overladen_num)+"</p>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"

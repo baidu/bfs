@@ -165,7 +165,7 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
     return ret;
 }
 
-void BlockMapping::DealWithDeadBlocks(int64_t cs_id, std::set<int64_t> blocks) {
+void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& blocks) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {

@@ -358,7 +358,7 @@ public:
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != 0) {
-                fprintf(stderr, "Open file for write fail: %s, status= %d\n",
+                LOG(WARNING, "Open file for write fail: %s, status= %d\n",
                     path, response.status());
                 ret = false;
             } else {
