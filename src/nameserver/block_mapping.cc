@@ -12,6 +12,7 @@
 
 DECLARE_int32(default_replica_num);
 DECLARE_int32(recover_speed);
+DECLARE_int32(recover_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -205,7 +206,8 @@ int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         }
         recover_blocks->insert(std::make_pair(cur_block->id, *(cur_block->replica.begin())));
         (check_it->second).insert(cur_block->id);
-        thread_pool_.DelayTask(5000, boost::bind(&BlockMapping::CheckRecover, this, cs_id, cur_block->id));
+        thread_pool_.DelayTask(FLAGS_recover_timeout * 1000,
+            boost::bind(&BlockMapping::CheckRecover, this, cs_id, cur_block->id));
         recover_q_.pop();
         ++n;
     }
