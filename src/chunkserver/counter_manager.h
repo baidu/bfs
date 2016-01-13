@@ -27,6 +27,7 @@ public:
         int64_t refuse_ops;
         int64_t write_bytes;
         int64_t read_bytes;
+        int64_t recover_bytes;
         int64_t file_cache_hits;
         int64_t file_cache_miss;
         int64_t buffers_new;

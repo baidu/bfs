@@ -311,7 +311,8 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     chunkserver_block_map_[id].erase(block_id);
 }
 
-void ChunkServerManager::PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks) {
+void ChunkServerManager::PickRecoverBlocks(int cs_id,
+                                           std::map<int64_t, std::string>* recover_blocks) {
     MutexLock lock(&mu_);
     ChunkServerInfo* cs = NULL;
     if (!GetChunkServerPtr(cs_id, &cs)) {
@@ -319,11 +320,13 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id, std::map<int64_t, std::str
     }
 
     std::map<int64_t, int32_t> blocks;
-    int64_t actual_recover_num = block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
+    int64_t actual_recover_num = 
+        block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(it->second, &cs)) {
-            LOG(INFO, "can't find chunkserver %ld", it->second);
+            LOG(WARNING, "PickRecoverBlocks for %ld can't find chunkserver %d",
+                it->second, cs_id);
             continue;
         }
         recover_blocks->insert(std::make_pair(it->first, cs->address()));
