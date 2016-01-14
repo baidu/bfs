@@ -120,12 +120,14 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
     int32_t cur_replica_num = nsblock->replica.size();
     int32_t expect_replica_num = nsblock->expect_replica_num;
     if (cur_replica_num > expect_replica_num) {
-        LOG(INFO, "too much replica cur=%d expect=%d server=%d",
-            server_id, cur_replica_num, expect_replica_num);
+        LOG(INFO, "Too much replica #%ld cur=%d expect=%d server=C%d ",
+            id, cur_replica_num, expect_replica_num, server_id);
         nsblock->replica.erase(ret.first);
         return false;
     } else if (cur_replica_num < expect_replica_num) {
-        if (need_recovery) {
+        if (need_recovery && !nsblock->pending_recover) {
+            LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
+                id, server_id, cur_replica_num); 
             AddToRecover(nsblock);
         }
     }
@@ -168,12 +170,18 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        if (!GetBlockPtr(*it, &block)) {
-            LOG(DEBUG, "DealWithDeadBlocks for %d can't find block: #%ld ", cs_id, *it);
+        int64_t block_id = *it;
+        if (!GetBlockPtr(block_id, &block)) {
+            LOG(DEBUG, "DealWithDeadBlocks for C%d can't find block: #%ld ", cs_id, block_id);
             continue;
         }
         block->replica.erase(cs_id);
-        AddToRecover(block);
+        int32_t rep_num = block->replica.size();
+        if (rep_num < block->expect_replica_num) {
+            LOG(DEBUG, "DeadBlock #%ld at C%d , add to recover rep_num: %d",
+                block_id, cs_id, rep_num);
+            AddToRecover(block);
+        }
     }
 }
 
@@ -183,14 +191,14 @@ int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     std::vector<std::pair<int64_t, int64_t> > tmp_holder;
     CheckList::iterator check_it = recover_check_.insert(std::make_pair(cs_id, std::set<int64_t>())).first;
     int32_t quota = FLAGS_recover_speed - (check_it->second).size();
-    LOG(DEBUG, "cs %d has %d pending_recover blocks", cs_id, (check_it->second).size());
+    LOG(DEBUG, "C%d has %lu pending_recover blocks", cs_id, (check_it->second).size());
     quota = quota < block_num ? quota : block_num;
     int32_t n = 0;
     while (n < quota && !recover_q_.empty()) {
         std::pair<int64_t, int64_t> recover_item = recover_q_.top();
         NSBlock* cur_block = NULL;
         if (!GetBlockPtr(recover_item.second, &cur_block)) { // block is removed
-            LOG(DEBUG, "PickRecoverBlocks for %d can't find block: #%ld ",
+            LOG(DEBUG, "PickRecoverBlocks for C%d can't find block: #%ld ",
                 cs_id, recover_item.second);
             recover_q_.pop();
             continue;
@@ -205,8 +213,11 @@ int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
             recover_q_.pop();
             continue;
         }
-        recover_blocks->insert(std::make_pair(cur_block->id, *(cur_block->replica.begin())));
+        int src_id = *(cur_block->replica.begin());
+        recover_blocks->insert(std::make_pair(cur_block->id, src_id));
         (check_it->second).insert(cur_block->id);
+        LOG(INFO, "PickRecoverBlocks for C%d #%ld source: C%d ", 
+            cs_id, cur_block->id, src_id);
         thread_pool_.DelayTask(FLAGS_recover_timeout * 1000,
             boost::bind(&BlockMapping::CheckRecover, this, cs_id, cur_block->id));
         recover_q_.pop();
@@ -216,24 +227,26 @@ int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
          it != tmp_holder.end(); ++it) {
         recover_q_.push(*it);
     }
-    LOG(DEBUG, "recover_q_ size = %d", recover_q_.size());
+    LOG(DEBUG, "recover_q_ size = %lu", recover_q_.size());
     return n;
 }
 
-void BlockMapping::ProcessRecoveredBlock(int64_t cs_id, int64_t block_id, bool recover_success) {
+void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success) {
     MutexLock lock(&mu_);
     NSBlock* b = NULL;
     if (!GetBlockPtr(block_id, &b)) {
-        LOG(DEBUG, "ProcessRecoveredBlock for %d can't find block: #%ld ", cs_id, block_id);
+        LOG(DEBUG, "ProcessRecoveredBlock for C%d can't find block: #%ld ", cs_id, block_id);
         return;
     }
     if (recover_success) {
         b->replica.insert(cs_id);
-        LOG(DEBUG, "recovered  block #%ld at %ld", block_id, cs_id);
+        LOG(DEBUG, "Recovered block #%ld at C%d", block_id, cs_id);
+    } else {
+        LOG(INFO, "Recover block #%ld at C%d fail", block_id, cs_id);
     }
     CheckList::iterator it = recover_check_.find(cs_id);
     if (it == recover_check_.end()) {
-        LOG(DEBUG, "not in recover_check_ #%ld cs_id %ld", block_id, cs_id);
+        LOG(DEBUG, "Not in recover_check_ #%ld cs_id %d", block_id, cs_id);
         return;
     }
     (it->second).erase(block_id);
@@ -258,7 +271,8 @@ void BlockMapping::AddToRecover(NSBlock* block) {
     if (!block->pending_recover) {
         recover_q_.push(std::make_pair(block->expect_replica_num - block->replica.size(), block->id));
         block->pending_recover = true;
-        LOG(DEBUG, "add to recover block_id #%ld replica=%ld", block->id, block->replica.size());
+    } else {
+        LOG(DEBUG, "Add to recover #%ld replica=%ld", block->id, block->replica.size());
     }
 }
 
@@ -276,7 +290,7 @@ void BlockMapping::TryRecover(NSBlock* block) {
 
 void BlockMapping::CheckRecover(int64_t cs_id, int64_t block_id) {
     MutexLock lock(&mu_);
-    LOG(DEBUG, "recover timeout check: #%ld ", block_id);
+    LOG(DEBUG, "recover timeout check: #%ld C%d", block_id, cs_id);
     CheckList::iterator it = recover_check_.find(cs_id);
     if (it == recover_check_.end()) return;
     std::set<int64_t>& block_set = it->second;
@@ -286,7 +300,7 @@ void BlockMapping::CheckRecover(int64_t cs_id, int64_t block_id) {
     }
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
-        LOG(DEBUG, "CheckRecover for %d can't find block: #%ld ", cs_id, block_id);
+        LOG(DEBUG, "CheckRecover for C%d can't find block: #%ld ", cs_id, block_id);
         block_set.erase(block_id);
         return;
     }

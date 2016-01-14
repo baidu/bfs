@@ -565,7 +565,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
         Block* block = block_manager_->FindBlock(block_id, false);
         if (block) {
             block->DecRef();
-            LOG(INFO, "already has #%ld, skip pull", block_id);
+            LOG(INFO, "already has #%ld , skip pull", block_id);
             report_request.add_failed(block_id);
             continue;
         }

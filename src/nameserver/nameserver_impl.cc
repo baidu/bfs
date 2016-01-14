@@ -130,7 +130,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                              !safe_mode_ && block_version >= 0)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
-            LOG(INFO, "obsolete_block: #%ld", cur_block_id);
+            LOG(INFO, "BlockReport remove obsolete block: #%ld C%d", cur_block_id, cs_id);
             continue;
         }
 
@@ -164,7 +164,6 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
     for (int i = 0; i < request->failed_size(); i++) {
         block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->failed(i), false);
     }
-
     done->Run();
 }
 
