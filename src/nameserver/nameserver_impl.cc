@@ -126,10 +126,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         int64_t block_version = block.version();
         if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
-                                             block_version, !safe_mode_)) {
+                                             block_version,
+                                             !safe_mode_ && block_version >= 0)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
-            LOG(INFO, "obsolete_block: #%ld", cur_block_id);
+            LOG(INFO, "BlockReport remove obsolete block: #%ld C%d", cur_block_id, cs_id);
             continue;
         }
 
@@ -158,9 +159,11 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
     response->set_sequence_id(request->sequence_id());
     response->set_status(0);
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->blocks(i));
+        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->blocks(i), true);
     }
-    chunkserver_manager_->ProcessRecoveredBlocks(request->chunkserver_id(), request->received_replica_num());
+    for (int i = 0; i < request->failed_size(); i++) {
+        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->failed(i), false);
+    }
     done->Run();
 }
 

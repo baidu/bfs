@@ -44,13 +44,13 @@ public:
     void DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& blocks);
     bool SetBlockVersion(int64_t block_id, int64_t version);
     int32_t PickRecoverBlocks(int32_t cs_id, int32_t block_num, std::map<int64_t, int32_t>* recover_blocks);
-    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
+    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success);
     void GetStat(int64_t* recover_num, int64_t* pending_num);
 
 private:
     void AddToRecover(NSBlock* block);
     void TryRecover(NSBlock* block);
-    void CheckRecover(int64_t block_id);
+    void CheckRecover(int64_t cs_id, int64_t block_id);
     bool GetBlockPtr(int64_t block_id, NSBlock** block);
 
 private:
@@ -61,7 +61,8 @@ private:
     int64_t next_block_id_;
 
     std::priority_queue<std::pair<int32_t, int64_t> > recover_q_;
-    std::set<int64_t> recover_check_;
+    typedef std::map<int32_t, std::set<int64_t> > CheckList;
+    CheckList recover_check_;
 };
 
 } // namespace bfs

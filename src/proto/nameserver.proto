@@ -137,8 +137,10 @@ message ReportBlockInfo {
     optional int64 block_size = 3;
 }
 message ReplicaInfo {
-    required int64 block_id = 1;
+    optional int64 block_id = 1;
     repeated string chunkserver_address = 2;
+    //optional int64 block_size = 3;
+    //optional int64 block_version = 4;
 }
 
 message RegisterRequest {
@@ -172,7 +174,7 @@ message PullBlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     repeated int64 blocks = 3;
-    optional int32 received_replica_num = 4;
+    repeated int64 failed = 4;
 }
 message PullBlockReportResponse {
     optional int64 sequence_id = 1;

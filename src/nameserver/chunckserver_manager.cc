@@ -25,9 +25,9 @@ enum ChunkServerStatus {
     kCsStandby = 5,
 };
 
-ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_manager)
+ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping)
     : thread_pool_(thread_pool),
-      block_manager_(block_manager),
+      block_mapping_(block_mapping),
       chunkserver_num_(0),
       next_chunkserver_id_(1) {
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
@@ -44,7 +44,7 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     chunkserver_block_map_.erase(id);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
-    block_manager_->DealWithDeadBlocks(id, blocks);
+    block_mapping_->DealWithDeadBlocks(id, blocks);
     mu_.Lock();
     if (cs->is_dead()) {
         cs->set_status(kCsOffLine);
@@ -311,36 +311,27 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     chunkserver_block_map_[id].erase(block_id);
 }
 
-void ChunkServerManager::PickRecoverBlocks(int32_t cs_id, std::map<int64_t, std::string>* recover_blocks) {
+void ChunkServerManager::PickRecoverBlocks(int cs_id,
+                                           std::map<int64_t, std::string>* recover_blocks) {
     MutexLock lock(&mu_);
     ChunkServerInfo* cs = NULL;
     if (!GetChunkServerPtr(cs_id, &cs)) {
         return;
     }
-    LOG(INFO, "cs %d has %d pending recover blocks", cs_id, cs->recovering_num());
-    int32_t recover_quota = FLAGS_recover_speed - cs->recovering_num();
 
     std::map<int64_t, int32_t> blocks;
-    int64_t actual_recover_num = block_manager_->PickRecoverBlocks(cs_id, recover_quota, &blocks);
+    int32_t actual_recover_num = 
+        block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(it->second, &cs)) {
-            LOG(INFO, "can't find chunkserver %ld", it->second);
+            LOG(WARNING, "PickRecoverBlocks for %ld can't find chunkserver %d",
+                it->second, cs_id);
             continue;
         }
-        recover_blocks->insert(std::make_pair<int64_t, std::string>(it->first, cs->address()));
+        recover_blocks->insert(std::make_pair(it->first, cs->address()));
     }
     LOG(INFO, "cs %d picked %d blocks to recover", cs_id, actual_recover_num);
-    cs->set_recovering_num(cs->recovering_num() + actual_recover_num);
-}
-
-void ChunkServerManager::ProcessRecoveredBlocks(int32_t cs_id, int32_t recovered_num) {
-    MutexLock lock(&mu_);
-    ChunkServerInfo* cs = NULL;
-    if (!GetChunkServerPtr(cs_id, &cs)) {
-        return;
-    }
-    cs->set_recovering_num(cs->recovering_num() - recovered_num);
 }
 
 bool ChunkServerManager::GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs) {

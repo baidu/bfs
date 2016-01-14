@@ -11,11 +11,12 @@ DEFINE_string(namedb_path, "./db", "Namespace database");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
 DEFINE_string(nameserver, "127.0.0.1", "Nameserver host");
 DEFINE_string(nameserver_port, "8828", "Nameserver port");
-DEFINE_int32(keepalive_timeout, 30, "Chunkserver keepalive timeout");
+DEFINE_int32(keepalive_timeout, 10, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 2, "Nameserver log level");
 DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in ms");
 DEFINE_int32(recover_speed, 100, "max num of block to recover for one chunkserver");
+DEFINE_int32(recover_timeout, 60, "Recover timeout for one chunkserver");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
