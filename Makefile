@@ -11,7 +11,7 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(SNAPPY_PATH)/include \
                -I$(BOOST_PATH) \
                -I$(GFLAG_PATH)/include \
-               -I$(COMMON_PATH)/include
+               -I$(COMMON_PATH)/include -I$(FUSE_PATH)/include
 
 LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(PROTOBUF_PATH)/lib -lprotobuf \
@@ -20,9 +20,10 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(GFLAG_PATH)/lib -lgflags \
           -L$(GTEST_PATH)/lib -lgtest \
           -L$(TCMALLOC_PATH)/lib -ltcmalloc_minimal \
-          -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
+          -L$(COMMON_PATH)/lib  -L$(FUSE_PATH)/lib -lfuse -lcommon -lpthread -lz -lrt
 
 CXXFLAGS = -Wall -fPIC $(OPT)
+FUSEFLAGS = -D_FILE_OFFSET_BITS=64
 
 PROTO_FILE = $(wildcard src/proto/*.proto)
 PROTO_SRC = $(patsubst %.proto,%.pb.cc,$(PROTO_FILE))
@@ -41,6 +42,10 @@ SDK_SRC = $(wildcard src/sdk/*.cc)
 SDK_OBJ = $(patsubst %.cc, %.o, $(SDK_SRC))
 SDK_HEADER = $(wildcard src/sdk/*.h)
 
+FUSE_SRC = $(wildcard src/fuse/*.cc)
+FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
+FUSE_HEADER = $(wildcard src/fuse/*.h)
+
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
 LEVELDB = ./thirdparty/leveldb/libleveldb.a
@@ -50,7 +55,7 @@ COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
 OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
 
 LIBS = libbfs.a
-BIN = nameserver chunkserver bfs_client
+BIN = nameserver chunkserver bfs_client fuse_util
 
 TESTS = namespace_test file_cache_test chunkserver_impl_test
 TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o src/chunkserver_impl_test.o
@@ -64,6 +69,7 @@ $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)
 $(NAMESERVER_OBJ): $(NAMESERVER_HEADER)
 $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
 $(SDK_OBJ): $(SDK_HEADER)
+$(FUSE_OBJ): $(FUSE_HEADER)
 
 # Targets
 
@@ -95,11 +101,14 @@ libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
+fuse_util: $(FUSE_OBJ) $(LIBS)
+	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ $(LDFLAGS)
+
 $(LEVELDB):
 	cd thirdparty/leveldb; make -j4
 
 %.o: %.cc
-	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) $(FUSEFLAGS) -c $< -o $@
 
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
