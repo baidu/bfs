@@ -228,7 +228,6 @@ void ChunkServerImpl::SendBlockReport() {
         info->set_version(blocks[i].version);
     }
 
-    request.set_is_complete(true);
     if (blocks_num < FLAGS_blockreport_size) {
         last_report_blockid = -1;
     } else {
@@ -277,17 +276,16 @@ void ChunkServerImpl::SendBlockReport() {
 }
 
 bool ChunkServerImpl::ReportFinish(Block* block) {
-    BlockReportRequest request;
+    BlockReceivedRequest request;
     request.set_chunkserver_id(chunkserver_id_);
     request.set_chunkserver_addr(data_server_addr_);
-    request.set_is_complete(false);
 
     ReportBlockInfo* info = request.add_blocks();
     info->set_block_id(block->Id());
     info->set_block_size(block->Size());
     info->set_version(block->GetVersion());
-    BlockReportResponse response;
-    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::BlockReport,
+    BlockReceivedResponse response;
+    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::BlockReceived,
             &request, &response, 20, 3)) {
         LOG(WARNING, "Reprot finish fail: %ld\n", block->Id());
         return false;
@@ -554,7 +552,7 @@ void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
         }
     }
 }
-void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
+void ChunkServerImpl::PullNewBlocks(const std::vector<ReplicaInfo>& new_replica_info) {
     PullBlockReportRequest report_request;
     report_request.set_sequence_id(0);
     report_request.set_chunkserver_id(chunkserver_id_);

@@ -98,6 +98,41 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+
+void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller,
+                       const BlockReceivedRequest* request,
+                       BlockReceivedResponse* response,
+                       ::google::protobuf::Closure* done) {
+    g_block_report.Inc();
+    int32_t cs_id = request->chunkserver_id();
+    LOG(INFO, "BlockReceived from %d, %s, %d blocks",
+        cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
+    const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
+
+    int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
+    if (cs_id != old_id) {
+        LOG(INFO, "Chunkserver %s id mismatch, old: %d new: %d",
+            request->chunkserver_addr().c_str(), old_id, cs_id);
+        response->set_status(-1);
+        done->Run();
+        return;
+    }
+    for (int i = 0; i < blocks.size(); i++) {
+        g_report_blocks.Inc();
+        const ReportBlockInfo& block =  blocks.Get(i);
+        int64_t cur_block_id = block.block_id();
+        int64_t cur_block_size = block.block_size();
+
+        // update block -> cs
+        int64_t block_version = block.version();
+        block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
+                                        cur_block_size,
+                                        block_version,
+                                        !safe_mode_);
+    }
+    done->Run();
+}
+
 void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    const BlockReportRequest* request,
                    BlockReportResponse* response,

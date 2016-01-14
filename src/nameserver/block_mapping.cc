@@ -193,7 +193,7 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     int32_t quota = FLAGS_recover_speed - (check_it->second).size();
     LOG(DEBUG, "C%d has %lu pending_recover blocks", cs_id, (check_it->second).size());
     quota = quota < block_num ? quota : block_num;
-    while (static_cast<int>(recover_q_.size()) < quota && !recover_q_.empty()) {
+    while (static_cast<int>(recover_blocks->size()) < quota && !recover_q_.empty()) {
         std::pair<int64_t, int64_t> recover_item = recover_q_.top();
         NSBlock* cur_block = NULL;
         if (!GetBlockPtr(recover_item.second, &cur_block)) { // block is removed
