@@ -45,6 +45,7 @@ DECLARE_int32(write_buf_size);
 DECLARE_int32(chunkserver_work_thread_num);
 DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
+DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_bool(chunkserver_auto_clean);
 
@@ -61,6 +62,7 @@ extern common::Counter g_read_ops;
 extern common::Counter g_read_bytes;
 extern common::Counter g_write_ops;
 extern common::Counter g_write_bytes;
+extern common::Counter g_recover_bytes;
 extern common::Counter g_refuse_ops;
 extern common::Counter g_rpc_delay;
 extern common::Counter g_rpc_delay_all;
@@ -77,6 +79,7 @@ ChunkServerImpl::ChunkServerImpl()
     work_thread_pool_ = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     read_thread_pool_ = new ThreadPool(FLAGS_chunkserver_read_thread_num);
     write_thread_pool_ = new ThreadPool(FLAGS_chunkserver_write_thread_num);
+    recover_thread_pool_ = new ThreadPool(FLAGS_chunkserver_recover_thread_num);
     heartbeat_thread_ = new ThreadPool(1);
     block_manager_ = new BlockManager(write_thread_pool_, FLAGS_block_store_path);
     bool s_ret = block_manager_->LoadStorage();
@@ -151,7 +154,7 @@ void ChunkServerImpl::Register() {
             LOG(FATAL, "Name space verion FLAGS_chunkserver_auto_clean == false");
         }
         LOG(INFO, "Use new namespace version: %ld, clean local data", new_version);
-        // Clean 
+        // Clean
         std::vector<BlockMeta> blocks;
         if (!block_manager_->RemoveAllBlocks()) {
             LOG(FATAL, "Remove local blocks fail");
@@ -266,7 +269,7 @@ void ChunkServerImpl::SendBlockReport() {
             boost::function<void ()> new_replica_task =
                 boost::bind(&ChunkServerImpl::PullNewBlocks,
                             this, new_replica_info);
-            write_thread_pool_->AddTask(new_replica_task);
+            recover_thread_pool_->AddTask(new_replica_task);
         }
     }
     blockreport_task_id_ = work_thread_pool_->DelayTask(FLAGS_blockreport_interval* 1000,
@@ -282,7 +285,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     ReportBlockInfo* info = request.add_blocks();
     info->set_block_id(block->Id());
     info->set_block_size(block->Size());
-    info->set_version(0);
+    info->set_version(block->GetVersion());
     BlockReportResponse response;
     if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::BlockReport,
             &request, &response, 20, 3)) {
@@ -557,11 +560,20 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
     report_request.set_chunkserver_id(chunkserver_id_);
     for (size_t i = 0; i < new_replica_info.size(); i++) {
         int64_t block_id = new_replica_info[i].block_id();
+        LOG(INFO, "started pull : #%ld ", block_id);
         ChunkServer_Stub* chunkserver = NULL;
-        Block* block = block_manager_->FindBlock(block_id, true);
+        Block* block = block_manager_->FindBlock(block_id, false);
+        if (block) {
+            block->DecRef();
+            LOG(INFO, "already has #%ld , skip pull", block_id);
+            report_request.add_failed(block_id);
+            continue;
+        }
+        block = block_manager_->FindBlock(block_id, true);
         if (!block) {
             LOG(WARNING, "Cant't create block: #%ld ", block_id);
             //ignore this block
+            report_request.add_failed(block_id);
             continue;
         } else {
             LOG(INFO, "Start pull #%ld from %s",
@@ -578,7 +590,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             //remove this block
             block->DecRef();
             block_manager_->RemoveBlock(block_id);
-            report_request.add_blocks(block_id);
+            report_request.add_failed(block_id);
             continue;
         }
         int64_t seq = -1;
@@ -591,7 +603,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
             request.set_sequence_id(++seq);
             request.set_block_id(block_id);
             request.set_offset(offset);
-            request.set_read_len(256 * 1024);
+            request.set_read_len(1 << 20);
             request.set_require_block_version(true);
             bool ret = rpc_client_->SendRequest(chunkserver,
                                                 &ChunkServer_Stub::ReadBlock,
@@ -620,6 +632,7 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
                     success = false;
                     break;
                 }
+                g_recover_bytes.Add(len);
             } else {
                 block->SetSliceNum(seq);
                 block->SetVersion(response.block_version());
@@ -634,8 +647,11 @@ void ChunkServerImpl::PullNewBlocks(std::vector<ReplicaInfo> new_replica_info) {
         block->DecRef();
         if (!success) {
             block_manager_->RemoveBlock(block_id);
+            report_request.add_failed(block_id);
+        } else {
+            report_request.add_blocks(block_id);
         }
-        report_request.add_blocks(block_id);
+        LOG(INFO, "done pull : #%ld %ld bytes", block_id, offset);
     }
 
     PullBlockReportResponse report_response;
@@ -702,13 +718,15 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<body> <h1>分布式文件系统控制台 - ChunkServer</h1>";
     str += "<table class=dataintable>";
     str += "<tr><td>Block number</td><td>Data size</td>"
-           "<td>Write(QPS)</td><td>Write(Speed)</td><td>Read(QPS)</td><td>Read(Speed)</td><td>Buffers(new/delete)</td><tr>";
+           "<td>Write(QPS)</td><td>Write(Speed)</td><td>Read(QPS)</td><td>Read(Speed)</td>"
+           "<td>Recover(Speed)</td><td>Buffers(new/delete)</td><tr>";
     str += "<tr><td>" + common::NumToString(g_blocks.Get()) + "</td>";
     str += "<td>" + common::HumanReadableString(g_data_size.Get()) + "</td>";
     str += "<td>" + common::NumToString(counters.write_ops) + "</td>";
     str += "<td>" + common::HumanReadableString(counters.write_bytes) + "/S</td>";
     str += "<td>" + common::NumToString(counters.read_ops) + "</td>";
     str += "<td>" + common::HumanReadableString(counters.read_bytes) + "/S</td>";
+    str += "<td>" + common::HumanReadableString(counters.recover_bytes) + "/S</td>";
     str += "<td>" + common::NumToString(g_block_buffers.Get())
            + "(" + common::NumToString(counters.buffers_new) + "/"
            + common::NumToString(counters.buffers_delete) +")" + "</td>";

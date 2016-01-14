@@ -14,7 +14,7 @@ namespace bfs {
 
 class ChunkServerManager {
 public:
-    ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_manager);
+    ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping);
     void DeadCheck();
     void IncChunkServerNum();
     int32_t GetChunkServerNum();
@@ -30,10 +30,12 @@ public:
     void AddBlock(int32_t id, int64_t block_id);
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
-    void PickRecoverBlocks(int64_t cs_id, int64_t block_num, std::map<int64_t, std::string>* recover_blocks);
+    void PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks);
+private:
+    bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
 private:
     ThreadPool* thread_pool_;
-    BlockMapping* block_manager_;
+    BlockMapping* block_mapping_;
     Mutex mu_;      /// chunkserver_s list mutext;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
     ServerMap chunkservers_;
