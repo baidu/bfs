@@ -63,6 +63,8 @@ ifdef FUSE_PATH
 	BIN += fuse_util
 endif
 
+TESTS = namespace_test file_cache_test
+TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o
 UNITTEST_OUTPUT = test/
 
 all: $(BIN)
