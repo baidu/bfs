@@ -5,13 +5,13 @@ OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
 
 include depends.mk
 
-INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
+INCLUDE_PATH += -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I./thirdparty/leveldb/include \
                -I$(SNAPPY_PATH)/include \
                -I$(BOOST_PATH)/include \
                -I$(GFLAG_PATH)/include \
-               -I$(COMMON_PATH)/include -I$(FUSE_PATH)/include
+               -I$(COMMON_PATH)/include
 
 LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(PROTOBUF_PATH)/lib -lprotobuf \
@@ -20,7 +20,7 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(GFLAG_PATH)/lib -lgflags \
           -L$(GTEST_PATH)/lib -lgtest \
           -L$(TCMALLOC_PATH)/lib -ltcmalloc_minimal \
-          -L$(COMMON_PATH)/lib  -L$(FUSE_PATH)/lib -lfuse -lcommon -lpthread -lz -lrt
+          -L$(COMMON_PATH)/lib  -lcommon -lpthread -lz -lrt
 
 CXXFLAGS = -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64
@@ -55,7 +55,13 @@ COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
 OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
 
 LIBS = libbfs.a
-BIN = nameserver chunkserver bfs_client fuse_util
+BIN = nameserver chunkserver bfs_client
+
+ifdef FUSE_PATH
+	INCLUDE_PATH += -I$(FUSE_PATH)/include
+	LDFLAGS += -L$(FUSE_PATH)/lib -lfuse 
+	BIN += fuse_util
+endif
 
 TESTS = namespace_test file_cache_test
 TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o
