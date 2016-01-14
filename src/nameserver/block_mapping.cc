@@ -161,6 +161,8 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
         LOG(WARNING, "Can't find block: #%ld ", block_id);
         ret = false;
     } else {
+        LOG(INFO, "FinishBlock update version from %ld to %ld",
+            it->second->version, version);
         it->second->version = version;
     }
     return ret;
