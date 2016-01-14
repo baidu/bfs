@@ -23,6 +23,7 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
 CXXFLAGS = -Wall -fPIC $(OPT)
+FUSEFLAGS = -D_FILE_OFFSET_BITS=64
 
 PROTO_FILE = $(wildcard src/proto/*.proto)
 PROTO_SRC = $(patsubst %.proto,%.pb.cc,$(PROTO_FILE))
@@ -41,6 +42,10 @@ SDK_SRC = $(wildcard src/sdk/*.cc)
 SDK_OBJ = $(patsubst %.cc, %.o, $(SDK_SRC))
 SDK_HEADER = $(wildcard src/sdk/*.h)
 
+FUSE_SRC = $(wildcard src/fuse/*.cc)
+FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
+FUSE_HEADER = $(wildcard src/fuse/*.h)
+
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
 LEVELDB = ./thirdparty/leveldb/libleveldb.a
@@ -52,8 +57,12 @@ OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test
-TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o src/chunkserver_impl_test.o
+ifdef FUSE_PATH
+	INCLUDE_PATH += -I$(FUSE_PATH)/include
+	LDFLAGS += -L$(FUSE_PATH)/lib -lfuse 
+	BIN += fuse_util
+endif
+
 UNITTEST_OUTPUT = test/
 
 all: $(BIN)
@@ -64,6 +73,7 @@ $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)
 $(NAMESERVER_OBJ): $(NAMESERVER_HEADER)
 $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
 $(SDK_OBJ): $(SDK_HEADER)
+$(FUSE_OBJ): $(FUSE_HEADER)
 
 # Targets
 
@@ -95,11 +105,14 @@ libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
+fuse_util: $(FUSE_OBJ) $(LIBS)
+	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ $(LDFLAGS)
+
 $(LEVELDB):
 	cd thirdparty/leveldb; make -j4
 
 %.o: %.cc
-	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) $(FUSEFLAGS) -c $< -o $@
 
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
