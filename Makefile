@@ -5,7 +5,7 @@ OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
 
 include depends.mk
 
-INCLUDE_PATH += -I./src -I$(PROTOBUF_PATH)/include \
+INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I./thirdparty/leveldb/include \
                -I$(SNAPPY_PATH)/include \
@@ -20,7 +20,7 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(GFLAG_PATH)/lib -lgflags \
           -L$(GTEST_PATH)/lib -lgtest \
           -L$(TCMALLOC_PATH)/lib -ltcmalloc_minimal \
-          -L$(COMMON_PATH)/lib  -lcommon -lpthread -lz -lrt
+          -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
 CXXFLAGS = -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64
