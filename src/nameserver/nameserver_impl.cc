@@ -148,6 +148,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             rep->set_block_id(it->first);
             rep->add_chunkserver_address(it->second);
         }
+        LOG(INFO, "Response to C%d %s new_replicas_size= %d",
+            cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
     done->Run();
 }

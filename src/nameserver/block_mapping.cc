@@ -185,7 +185,7 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
     }
 }
 
-int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
+void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                      std::map<int64_t, int32_t>* recover_blocks) {
     MutexLock lock(&mu_);
     std::vector<std::pair<int64_t, int64_t> > tmp_holder;
@@ -193,8 +193,7 @@ int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     int32_t quota = FLAGS_recover_speed - (check_it->second).size();
     LOG(DEBUG, "C%d has %lu pending_recover blocks", cs_id, (check_it->second).size());
     quota = quota < block_num ? quota : block_num;
-    int32_t n = 0;
-    while (n < quota && !recover_q_.empty()) {
+    while (static_cast<int>(recover_q_.size()) < quota && !recover_q_.empty()) {
         std::pair<int64_t, int64_t> recover_item = recover_q_.top();
         NSBlock* cur_block = NULL;
         if (!GetBlockPtr(recover_item.second, &cur_block)) { // block is removed
@@ -221,14 +220,12 @@ int32_t BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         thread_pool_.DelayTask(FLAGS_recover_timeout * 1000,
             boost::bind(&BlockMapping::CheckRecover, this, cs_id, cur_block->id));
         recover_q_.pop();
-        ++n;
     }
     for (std::vector<std::pair<int64_t, int64_t> >::iterator it = tmp_holder.begin();
          it != tmp_holder.end(); ++it) {
         recover_q_.push(*it);
     }
     LOG(DEBUG, "recover_q_ size = %lu", recover_q_.size());
-    return n;
 }
 
 void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success) {
@@ -272,7 +269,7 @@ void BlockMapping::AddToRecover(NSBlock* block) {
         recover_q_.push(std::make_pair(block->expect_replica_num - block->replica.size(), block->id));
         block->pending_recover = true;
     } else {
-        LOG(DEBUG, "Add to recover #%ld replica=%ld", block->id, block->replica.size());
+        LOG(DEBUG, "Pending recover #%ld replica=%ld", block->id, block->replica.size());
     }
 }
 
