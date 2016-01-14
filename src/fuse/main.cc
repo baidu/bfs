@@ -47,16 +47,16 @@ static int dfs_write(const char *path, const char *buf, size_t size, off_t offse
 
 int dfs_getattr(const char *path, struct stat *st)
 {
-	  if (path == NULL) 
+    if (path == NULL) 
     {
-		    return -EINVAL;
-	  }	
+        return -EINVAL;
+    }	
 
     baidu::bfs::BfsFileInfo fileinfo;
     if (!fs->Stat(path, &fileinfo))
     {
         fprintf(stderr, "bfs stat error, maybe not exists\n");
-		    return -ENOENT;
+        return -ENOENT;
     }
 
     memset(st, 0, sizeof(struct stat));
