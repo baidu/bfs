@@ -35,8 +35,8 @@ static int dfs_open(const char *path, struct fuse_file_info *fi)
     {
         return -EINVAL;
     }
-	  fi->fh = (uint64_t)file;
-	  return 0;
+    fi->fh = (uint64_t)file;
+    return 0;
 }
 
 static int dfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *info)
@@ -59,19 +59,19 @@ int dfs_getattr(const char *path, struct stat *st)
 		    return -ENOENT;
     }
 
-	  memset(st, 0, sizeof(struct stat));
-	  st->st_mode = fileinfo.mode;
-	  st->st_size = fileinfo.size;
-	  st->st_nlink = 2;
-	  st->st_atime = fileinfo.ctime;
-	  st->st_ctime = fileinfo.ctime;
-	  st->st_mtime = fileinfo.ctime;
-	  st->st_mtime = fileinfo.ctime;
-	  st->st_blksize = 512;
-	  st->st_blocks = 1;
-	  // st->st_blksize  	= (blksize_t)fileinfo.blocks.size();
-	  //st->st_uid      	= default_id;  
-	  //st->st_gid      	= default_id; 	 	
+    memset(st, 0, sizeof(struct stat));
+    st->st_mode = fileinfo.mode;
+    st->st_size = fileinfo.size;
+    st->st_nlink = 2;
+    st->st_atime = fileinfo.ctime;
+    st->st_ctime = fileinfo.ctime;
+    st->st_mtime = fileinfo.ctime;
+    st->st_mtime = fileinfo.ctime;
+    st->st_blksize = 512;
+    st->st_blocks = 1;
+    // st->st_blksize  	= (blksize_t)fileinfo.blocks.size();
+    // st->st_uid      	= default_id;
+	  // st->st_gid      	= default_id;
     return 0;
 }
 
@@ -97,5 +97,5 @@ int main(int argc, char *argv[])
     oper.mkdir = dfs_mkdir;
     oper.write = dfs_write;
     oper.read = NULL;
-	  return fuse_main(argc, argv, &oper, NULL);
+    return fuse_main(argc, argv, &oper, NULL);
 }
