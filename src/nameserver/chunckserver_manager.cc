@@ -198,6 +198,7 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 
 bool ChunkServerManager::GetChunkServerChains(int num,
                           std::vector<std::pair<int32_t,std::string> >* chains) {
+    int32_t now_time = common::timer::now_time();
     MutexLock lock(&mu_);
     if (num > chunkserver_num_) {
         LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
@@ -208,6 +209,10 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     std::vector<std::pair<int64_t, ChunkServerInfo*> > loads;
 
     for (; it != heartbeat_list_.end(); ++it) {
+        if (it->first + FLAGS_keepalive_timeout <= now_time) {
+            //DeadCheck will handle it
+            continue;
+        }
         std::set<ChunkServerInfo*>& set = it->second;
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
              sit != set.end(); ++sit) {
