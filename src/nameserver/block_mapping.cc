@@ -10,16 +10,21 @@
 
 #include <common/logging.h>
 
-DECLARE_int32(default_replica_num);
 DECLARE_int32(recover_speed);
 DECLARE_int32(recover_timeout);
 
 namespace baidu {
 namespace bfs {
 
-NSBlock::NSBlock(int64_t block_id)
- : id(block_id), version(-1), block_size(0),
-   expect_replica_num(FLAGS_default_replica_num), pending_recover(false) {}
+NSBlock::NSBlock()
+    : id(-1), version(-1), block_size(-1),
+      expect_replica_num(0), pending_recover(false) {
+}
+NSBlock::NSBlock(int64_t block_id, int32_t replica, 
+                 int64_t block_version, int64_t block_size)
+    : id(block_id), version(block_version), block_size(block_size),
+      expect_replica_num(replica), pending_recover(false) {
+}
 
 BlockMapping::BlockMapping() : next_block_id_(1) {}
 
@@ -68,13 +73,14 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
     }
 }
 
-void BlockMapping::AddNewBlock(int64_t block_id) {
+void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
+                               int64_t version, int64_t size) {
     MutexLock lock(&mu_);
     NSBlock* nsblock = NULL;
     NSBlockMap::iterator it = block_map_.find(block_id);
     //Don't suppport soft link now
     assert(it == block_map_.end());
-    nsblock = new NSBlock(block_id);
+    nsblock = new NSBlock(block_id, replica, version, size);
     block_map_[block_id] = nsblock;
     LOG(DEBUG, "Init block info: #%ld ", block_id);
     if (next_block_id_ <= block_id) {
@@ -96,7 +102,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
         if (nsblock->version >= 0 && block_version >= 0 &&
                 nsblock->version != block_version) {
             LOG(INFO, "block #%ld on slow chunkserver: %d,"
-                    " NSB version: %ld, cs version: %ld, drop it",
+                    " Ns: V%ld cs: V%ld drop it",
                     id, server_id, nsblock->version, block_version);
             return false;
         }
@@ -107,8 +113,8 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
                 assert(0);
                 return false;
             } else {
-                LOG(INFO, "block #%ld size update, %ld to %ld",
-                    id, nsblock->block_size, block_size);
+                LOG(INFO, "block #%ld size update by C%d V%ld ,%ld to %ld",
+                    id, server_id, block_version, nsblock->block_size, block_size);
                 nsblock->block_size = block_size;
             }
         } else {

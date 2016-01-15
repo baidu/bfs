@@ -242,7 +242,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         LOG(INFO, "[AddBlock] new block for %s id= #%ld ",
             path.c_str(), new_block_id);
         LocatedBlock* block = response->mutable_block();
-        block_mapping_->AddNewBlock(new_block_id);
+        block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0);
         for (int i =0; i<replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
@@ -299,7 +299,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
     } else {
         for (int i=0; i<info.blocks_size(); i++) {
             int64_t block_id = info.blocks(i);
-            NSBlock nsblock(block_id);
+            NSBlock nsblock;
             if (!block_mapping_->GetBlock(block_id, &nsblock)) {
                 LOG(WARNING, "GetFileLocation GetBlock fail #%ld ", block_id);
                 continue;
@@ -358,7 +358,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         int64_t file_size = 0;
         for (int i = 0; i < out_info->blocks_size(); i++) {
             int64_t block_id = out_info->blocks(i);
-            NSBlock nsblock(block_id);
+            NSBlock nsblock;
             if (!block_mapping_->GetBlock(block_id, &nsblock)) {
                 continue;
             }
@@ -463,9 +463,8 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
-        block_mapping_->AddNewBlock(block_id);
-        block_mapping_->SetBlockVersion(block_id, version);
-        block_mapping_->ChangeReplicaNum(block_id, file_info.replicas());
+        block_mapping_->AddNewBlock(block_id, file_info.replicas(),
+                                    version, file_info.size());
     }
 }
 

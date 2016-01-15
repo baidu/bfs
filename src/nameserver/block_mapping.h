@@ -22,7 +22,8 @@ struct NSBlock {
     int64_t block_size;
     int32_t expect_replica_num;
     bool pending_recover;
-    NSBlock(int64_t block_id);
+    NSBlock();
+    NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size);
     bool operator<(const NSBlock &b) const {
         return (this->replica.size() >= b.replica.size());
     }
@@ -36,7 +37,7 @@ public:
     bool GetBlock(int64_t block_id, NSBlock* block);
     bool GetReplicaLocation(int64_t id, std::set<int32_t>* chunkserver_id);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
-    void AddNewBlock(int64_t block_id);
+    void AddNewBlock(int64_t block_id, int32_t replica, int64_t version, int64_t block_size);
     bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
                          int64_t block_version, bool need_recovery);
     void RemoveBlocksForFile(const FileInfo& file_info);
