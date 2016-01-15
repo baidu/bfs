@@ -552,6 +552,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     int64_t recover_num, pending_num;
     block_mapping_->GetStat(&recover_num, &pending_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
+
+    str += "<div class=\"row\">";
+    str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h3 align=left>Nameserver status</h2>";
     str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
@@ -561,11 +564,17 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Pending tasks: "
         + common::NumToString(thread_pool_.PendingNum()) + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
+    str += "</div>";
+
+    str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h3 align=left>Chunkserver status</h2>";
     str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
     str += "Dead: " + common::NumToString(dead_num)+"</br>";
     str += "Overload: " + common::NumToString(overladen_num)+"</p>";
+    str += "</div>";
+    str += "</div>";
+
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"
