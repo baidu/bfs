@@ -55,6 +55,7 @@ private:
                           const std::string& path,
                           std::string* key_str);
     bool GetFromStore(const std::string& key, FileInfo* info);
+    void SetupRoot();
     bool LookUp(const std::string& path, FileInfo* info);
     bool LookUp(int64_t pid, const std::string& name, FileInfo* info);
     int InternalDeleteDirectory(const FileInfo& dir_info,
@@ -64,6 +65,7 @@ private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
+    FileInfo root_path_;
 };
 
 } // namespace bfs
