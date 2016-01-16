@@ -61,6 +61,7 @@ bool CreateTree(NameSpace* ns) {
     ret |= ns->CreateFile("/dir1/subdir1/file3", 0, 0);
     ret |= ns->CreateFile("/dir1/subdir1/file4", 0, 0);
     ret |= ns->CreateFile("/dir1/subdir2/file5", 0, 0);
+    ret |= ns->CreateFile("/xdir", 0, 01755);
     return ret == 0;
 }
 
@@ -173,6 +174,8 @@ TEST_F(NameSpaceTest, RemoveFile) {
     NameSpace ns;
     ASSERT_TRUE(CreateTree(&ns));
     FileInfo file_removed;
+    ASSERT_NE(0, ns.RemoveFile("/", &file_removed));
+    ASSERT_NE(0, ns.RemoveFile("/dir1", &file_removed));
     ASSERT_EQ(0, ns.RemoveFile("/file2",&file_removed));
     ASSERT_EQ(3, file_removed.entry_id());
     ASSERT_NE(0, ns.RemoveFile("/",&file_removed));
@@ -192,6 +195,8 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     // Delete not empty
     ASSERT_NE(0, ns.DeleteDirectory("/dir1", false, &files_removed));
     ASSERT_NE(0, ns.DeleteDirectory("/dir1/subdir2", false, &files_removed));
+    // Delete empty
+    ASSERT_EQ(0, ns.DeleteDirectory("/xdir", true, &files_removed));
     // Delete root dir
     ASSERT_NE(0, ns.DeleteDirectory("/", false, &files_removed));
     // Delete subdir
@@ -219,7 +224,33 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
 
     // Use rmr to delete a file
     ASSERT_EQ(886, ns.DeleteDirectory("/file1", true, &files_removed));
+    // Rmr root path will clear the filesystem
+    ASSERT_EQ(0, ns.DeleteDirectory("/", true, &files_removed));
+    ASSERT_EQ(0, ns.ListDirectory("/", &outputs));
+    ASSERT_EQ(0, outputs.size());
 }
+
+TEST_F(NameSpaceTest, DeleteDirectory2) {
+    FLAGS_namedb_path = "./db";
+    system("rm -rf ./db");
+    NameSpace ns;
+    ns.CreateFile("/tera", 0, 01755);
+    ns.CreateFile("/file1", 0, 0);
+    ns.CreateFile("/tera/file2", 0, 0);
+    std::vector<FileInfo> files_removed;
+    ns.DeleteDirectory("/", true, &files_removed);
+    ASSERT_EQ(files_removed.size(), 2UL);
+    google::protobuf::RepeatedPtrField<FileInfo> outputs;
+    ns.ListDirectory("/", &outputs);
+    ASSERT_EQ(outputs.size(), 0);
+}
+
+TEST_F(NameSpaceTest, GetFileInfo) {
+    NameSpace ns;
+    FileInfo info;
+    ASSERT_TRUE(ns.GetFileInfo("/", &info));
+}
+
 }
 }
 

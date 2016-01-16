@@ -160,7 +160,6 @@ message BlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     optional string chunkserver_addr = 3;
-    optional bool is_complete = 5;
     repeated ReportBlockInfo blocks = 6;
 }
 message BlockReportResponse {
@@ -168,6 +167,16 @@ message BlockReportResponse {
     optional int32 status = 2;
     repeated int64 obsolete_blocks = 3;
     repeated ReplicaInfo new_replicas = 4;
+}
+
+message BlockReceivedRequest {
+    optional int32 chunkserver_id = 2;
+    optional string chunkserver_addr = 3;
+    repeated ReportBlockInfo blocks = 6;
+}
+
+message BlockReceivedResponse {
+    optional int32 status = 2;
 }
 
 message PullBlockReportRequest {
@@ -207,6 +216,7 @@ service NameServer {
     rpc Register(RegisterRequest) returns(RegisterResponse);
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
     rpc BlockReport(BlockReportRequest) returns(BlockReportResponse);
+    rpc BlockReceived(BlockReceivedRequest) returns(BlockReceivedResponse);
     rpc PullBlockReport(PullBlockReportRequest) returns(PullBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);

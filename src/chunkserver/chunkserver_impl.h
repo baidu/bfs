@@ -72,7 +72,7 @@ private:
                          WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
-    void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
+    void PullNewBlock(const ReplicaInfo& new_replica_info);
     void GatherCounter();
     void StopBlockReport();
 private:
