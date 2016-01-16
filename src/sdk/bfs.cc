@@ -33,7 +33,7 @@ DECLARE_string(sdk_write_mode);
 namespace baidu {
 namespace bfs {
 
-ThreadPool g_thread_pool(FLAGS_sdk_thread_num);
+ThreadPool* g_thread_pool = NULL;
 
 struct LocatedBlocks {
     int64_t file_length_;
@@ -742,7 +742,7 @@ void BfsFileImpl::StartWrite() {
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
     common::atomic_inc(&back_writing_);
     mu_.Unlock();
-    g_thread_pool.AddTask(task);
+    g_thread_pool->AddTask(task);
     mu_.Lock("StartWrite relock", 1000);
 }
 
@@ -813,7 +813,7 @@ void BfsFileImpl::BackgroundWrite() {
                     buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
             common::atomic_inc(&back_writing_);
             if (delay) {
-                g_thread_pool.DelayTask(5,
+                g_thread_pool->DelayTask(5,
                         boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, max_retry_times, cs_addr));
             } else {
@@ -890,7 +890,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         }
         if (!bg_error_) {
             common::atomic_inc(&back_writing_);
-            g_thread_pool.DelayTask(5,
+            g_thread_pool->DelayTask(5,
                 boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, retry_times, cs_addr));
         }
@@ -918,7 +918,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
 
     boost::function<void ()> task =
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
-    g_thread_pool.AddTask(task);
+    g_thread_pool->AddTask(task);
 }
 
 void BfsFileImpl::OnWriteCommit(int32_t, int) {
@@ -1008,7 +1008,8 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
         return false;
     }
     *fs = impl;
-    g_thread_pool.Start();
+    g_thread_pool = new ThreadPool(FLAGS_sdk_thread_num);
+    g_thread_pool->Start();
     return true;
 }
 
