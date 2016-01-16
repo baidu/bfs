@@ -47,6 +47,7 @@ public:
     Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool,
           FileCache* file_cache);
     ~Block();
+    static std::string BuildFilePath(int64_t block_id);
     /// Getter
     int64_t Id() const;
     int64_t Size() const;
