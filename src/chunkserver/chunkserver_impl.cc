@@ -558,6 +558,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     int64_t offset = 0;
     bool success = true;
     int init_index = 0;
+    int pre_index = -1;
     ChunkServer_Stub* chunkserver = NULL;
     Block* block = block_manager_->FindBlock(block_id, false);
     if (block) {
@@ -589,7 +590,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         report_request.add_failed(block_id);
         goto REPORT;
     }
-    int pre_index = init_index;
+    pre_index = init_index;
     while (1) {
         ReadBlockRequest request;
         ReadBlockResponse response;
