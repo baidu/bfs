@@ -195,12 +195,8 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
                    ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     response->set_status(0);
-    for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->blocks(i), true);
-    }
-    for (int i = 0; i < request->failed_size(); i++) {
-        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->failed(i), false);
-    }
+    block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(),
+                                            request->block_id(), request->success());
     done->Run();
 }
 
