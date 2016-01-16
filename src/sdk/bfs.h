@@ -67,6 +67,8 @@ public:
     virtual bool GetFileSize(const char* path, int64_t* file_size) = 0;
     /// Open file for read or write, flags: O_WRONLY or O_RDONLY
     virtual bool OpenFile(const char* path, int32_t flags, File** file) = 0;
+    virtual bool OpenFile(const char* path, int32_t flags, int32_t mode,
+                          int replica, File** file) = 0;
     virtual bool CloseFile(File* file) = 0;
     virtual bool DeleteFile(const char* path) = 0;
     virtual bool Rename(const char* oldpath, const char* newpath) = 0;

@@ -184,7 +184,8 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
     }
 
     baidu::bfs::File* file;
-    if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, &file)) {
+    ///TODO: Use the same mode as the source file.
+    if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, 0644, -1, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", target.c_str());
         fclose(fp);
         return 1;
@@ -353,7 +354,7 @@ int main(int argc, char* argv[]) {
             return ret;
         }
         baidu::bfs::File* file;
-        if (!fs->OpenFile(argv[2], O_WRONLY, &file)) {
+        if (!fs->OpenFile(argv[2], O_WRONLY, 644, -1, &file)) {
             fprintf(stderr, "Open %s fail\n", argv[2]);
         } else {
             ret = 0;

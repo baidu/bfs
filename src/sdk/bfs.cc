@@ -345,6 +345,10 @@ public:
         return true;
     }
     bool OpenFile(const char* path, int32_t flags, File** file) {
+        return OpenFile(path, flags, 0, -1, file);
+    }
+    bool OpenFile(const char* path, int32_t flags, int32_t mode,
+                  int32_t replica, File** file) {
         common::timer::AutoTimer at(100, "OpenFile", path);
         bool ret = false;
         *file = NULL;
@@ -354,7 +358,8 @@ public:
             request.set_file_name(path);
             request.set_sequence_id(0);
             request.set_flags(flags);
-            request.set_mode(0644);
+            request.set_mode(mode&0777);
+            request.set_replic_num(replica);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != 0) {
@@ -383,7 +388,7 @@ public:
                 ret = false;
             }
         } else {
-            LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY\n");
+            LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY, but %d", flags);
             ret = false;
         }
         return ret;
