@@ -552,6 +552,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     report_request.set_sequence_id(0);
     report_request.set_chunkserver_id(chunkserver_id_);
     int64_t block_id = new_replica_info.block_id();
+    report_request.set_block_id(block_id);
     LOG(INFO, "started pull : #%ld ", block_id);
 
     int64_t seq = -1;
@@ -564,14 +565,14 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     if (block) {
         block->DecRef();
         LOG(INFO, "already has #%ld , skip pull", block_id);
-        report_request.add_failed(block_id);
+        success = false;
         goto REPORT;
     }
     block = block_manager_->FindBlock(block_id, true);
     if (!block) {
         LOG(WARNING, "Cant't create block: #%ld ", block_id);
         //ignore this block
-        report_request.add_failed(block_id);
+        success = false;
         goto REPORT;
     } else {
         LOG(INFO, "Start pull #%ld from %s",
@@ -587,7 +588,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         //remove this block
         block->DecRef();
         block_manager_->RemoveBlock(block_id);
-        report_request.add_failed(block_id);
+        success = false;
         goto REPORT;
     }
     pre_index = init_index;
@@ -639,11 +640,9 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     }
     delete chunkserver;
     block->DecRef();
+    report_request.set_success(success);
     if (!success) {
         block_manager_->RemoveBlock(block_id);
-        report_request.add_failed(block_id);
-    } else {
-        report_request.add_blocks(block_id);
     }
     LOG(INFO, "done pull : #%ld %ld bytes", block_id, offset);
 
@@ -653,7 +652,7 @@ REPORT:
                 &report_request, &report_response, 15, 3)) {
         LOG(WARNING, "Report pull finish fail, chunkserver id: %d\n", chunkserver_id_);
     } else {
-        LOG(INFO, "Report pull finish dnne, %d blocks", report_request.blocks_size());
+        LOG(INFO, "Report pull block #%ld dnne", block_id);
     }
 }
 

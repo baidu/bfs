@@ -182,8 +182,8 @@ message BlockReceivedResponse {
 message PullBlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
-    repeated int64 blocks = 3;
-    repeated int64 failed = 4;
+    optional int64 block_id = 3;
+    optional bool success = 4;
 }
 message PullBlockReportResponse {
     optional int64 sequence_id = 1;
