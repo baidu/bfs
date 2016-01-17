@@ -213,10 +213,11 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     const std::string& file_name = request->file_name();
     int flags = request->flags();
     int mode = request->mode();
+    int replica_num = request->replica_num();
     if (mode == -1) {
         mode = 0644;    // default mode
     }
-    int status = namespace_->CreateFile(file_name, flags, mode);
+    int status = namespace_->CreateFile(file_name, flags, mode, replica_num);
     response->set_status(status);
     done->Run();
 }

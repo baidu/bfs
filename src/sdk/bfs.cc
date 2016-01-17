@@ -359,7 +359,7 @@ public:
             request.set_sequence_id(0);
             request.set_flags(flags);
             request.set_mode(mode&0777);
-            request.set_replic_num(replica);
+            request.set_replica_num(replica);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != 0) {
