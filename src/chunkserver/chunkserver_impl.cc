@@ -583,7 +583,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         }
     }
     if (init_index == new_replica_info.chunkserver_address_size()) {
-         LOG(WARNING, "Can't connect to any chunkservers for pull block #%ld\n", block_id);
+         LOG(WARNING, "Can't connect to any chunkservers for pull block #%ld ", block_id);
         //remove this block
         block->DecRef();
         block_manager_->RemoveBlock(block_id);
@@ -609,7 +609,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
             delete chunkserver;
             chunkserver = NULL;
             pre_index = (pre_index + 1) % new_replica_info.chunkserver_address_size();
-            LOG(INFO, "Change src chunkserver to %s for pull block #%ld",
+            LOG(INFO, "Change src chunkserver to %s for pull block #%ld ",
                     new_replica_info.chunkserver_address(pre_index).c_str(), block_id);
             if (pre_index == init_index) {
                 success = false;

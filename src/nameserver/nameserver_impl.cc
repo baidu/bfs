@@ -165,7 +165,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                              !safe_mode_ && block_version >= 0)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
-            LOG(INFO, "BlockReport remove obsolete block: #%ld C%d", cur_block_id, cs_id);
+            LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
             continue;
         }
 
@@ -213,7 +213,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     const std::string& file_name = request->file_name();
     int flags = request->flags();
     int mode = request->mode();
-    if (mode == -1) {
+    if (mode == 0) {
         mode = 0644;    // default mode
     }
     int status = namespace_->CreateFile(file_name, flags, mode);

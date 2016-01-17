@@ -219,7 +219,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
     EncodingStoreKey(parent_id, fname, &file_key);
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
-        LOG(INFO, "CreateFile %s %ld", path.c_str(), file_info.entry_id());
+        LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
         return 0;
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail", path.c_str());

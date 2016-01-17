@@ -140,11 +140,11 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
         assert(ret);
         if (cs_info->status() == kCsWaitClean || cs_info->status() == kCsCleaning) {
             status = -1;
-            LOG(INFO, "Reconnect chunkserver %d %s, cs_num=%d, internal cleaning",
+            LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d, internal cleaning",
                 cs_id, address.c_str(), chunkserver_num_);
         } else {
             UpdateChunkServer(cs_id, request->disk_quota());
-            LOG(INFO, "Reconnect chunkserver %d %s, cs_num=%d",
+            LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d",
                 cs_id, address.c_str(), chunkserver_num_);
         }
     }
@@ -273,7 +273,7 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t q
     info->set_address(address);
     info->set_disk_quota(quota);
     info->set_status(kCsActive);
-    LOG(INFO, "New ChunkServerInfo[%d] %p", id, info);
+    LOG(INFO, "New ChunkServerInfo C%d %s %p", id, address.c_str(), info);
     chunkservers_[id] = info;
     address_map_[address] = id;
     int32_t now_time = common::timer::now_time();
