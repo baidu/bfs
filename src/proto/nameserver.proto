@@ -118,6 +118,7 @@ message ChangeReplicaNumResponse {
 
 message HeartBeatRequest {
     optional int64 sequence_id = 1;
+    optional string chunkserver_addr = 2;
     optional int32 chunkserver_id = 3;
     optional int64 namespace_version = 4;
     optional int32 block_num = 5;
@@ -136,8 +137,10 @@ message ReportBlockInfo {
     optional int64 block_size = 3;
 }
 message ReplicaInfo {
-    required int64 block_id = 1;
+    optional int64 block_id = 1;
     repeated string chunkserver_address = 2;
+    //optional int64 block_size = 3;
+    //optional int64 block_version = 4;
 }
 
 message RegisterRequest {
@@ -149,15 +152,14 @@ message RegisterRequest {
 message RegisterResponse {
     optional int64 sequence_id = 1;
     optional int32 status = 2;
-    optional int32 chunkserver_id = 5;      // for register
-    optional int64 namespace_version = 6;   // for register
+    optional int32 chunkserver_id = 5;
+    optional int64 namespace_version = 6;
 }
 
 message BlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     optional string chunkserver_addr = 3;
-    optional bool is_complete = 5;
     repeated ReportBlockInfo blocks = 6;
 }
 message BlockReportResponse {
@@ -167,10 +169,21 @@ message BlockReportResponse {
     repeated ReplicaInfo new_replicas = 4;
 }
 
+message BlockReceivedRequest {
+    optional int32 chunkserver_id = 2;
+    optional string chunkserver_addr = 3;
+    repeated ReportBlockInfo blocks = 6;
+}
+
+message BlockReceivedResponse {
+    optional int32 status = 2;
+}
+
 message PullBlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     repeated int64 blocks = 3;
+    repeated int64 failed = 4;
 }
 message PullBlockReportResponse {
     optional int64 sequence_id = 1;
@@ -203,6 +216,7 @@ service NameServer {
     rpc Register(RegisterRequest) returns(RegisterResponse);
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
     rpc BlockReport(BlockReportRequest) returns(BlockReportResponse);
+    rpc BlockReceived(BlockReceivedRequest) returns(BlockReceivedResponse);
     rpc PullBlockReport(PullBlockReportRequest) returns(PullBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);

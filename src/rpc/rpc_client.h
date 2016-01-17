@@ -60,10 +60,11 @@ public:
             (stub->*func)(&controller, request, response, NULL);
             if (controller.Failed()) {
                 if (retry < retry_times - 1) {
-                    LOG(DEBUG, "Send failed, retry ...\n");
+                    LOG(DEBUG, "Send failed, retry ...");
                     usleep(1000000);
                 } else {
-                    LOG(WARNING, "SendRequest fail: %s\n", controller.ErrorText().c_str());
+                    LOG(WARNING, "SendRequest to %s fail: %s\n",
+                        controller.RemoteAddress().c_str(), controller.ErrorText().c_str());
                 }
             } else {
                 return true;

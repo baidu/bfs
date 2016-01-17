@@ -20,8 +20,10 @@ common::Counter g_writing_blocks;
 common::Counter g_writing_bytes;
 common::Counter g_find_ops;
 common::Counter g_read_ops;
+common::Counter g_read_bytes;
 common::Counter g_write_ops;
 common::Counter g_write_bytes;
+common::Counter g_recover_bytes;
 common::Counter g_refuse_ops;
 common::Counter g_rpc_delay;
 common::Counter g_rpc_delay_all;
@@ -49,9 +51,11 @@ void CounterManager::GatherCounters() {
     }
     counters.find_ops = g_find_ops.Clear() * 1000000 / interval;
     counters.read_ops = g_read_ops.Clear() * 1000000 / interval;
+    counters.read_bytes = g_read_bytes.Clear() * 1000000 / interval;
     counters.write_ops = g_write_ops.Clear() * 1000000 / interval;
     counters.refuse_ops = g_refuse_ops.Clear() * 1000000 / interval;
     counters.write_bytes = g_write_bytes.Clear() * 1000000 / interval;
+    counters.recover_bytes = g_recover_bytes.Clear() * 1000000 / interval;
     counters.buffers_new = g_buffers_new.Clear() * 1000000 / interval;
     counters.buffers_delete = g_buffers_delete.Clear() * 1000000 / interval;
     MutexLock lock(&counters_lock_);

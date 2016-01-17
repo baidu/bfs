@@ -184,6 +184,25 @@ bool BlockManager::LoadStorage() {
         assert(it->value().size() == sizeof(meta));
         memcpy(&meta, it->value().data(), sizeof(meta));
         assert(meta.block_id == block_id);
+        std::string file_path = GetStorePath(block_id) + Block::BuildFilePath(block_id);
+        if (meta.version < 0) {
+            LOG(INFO, "Incomplete block #%ld V%ld %ld, drop it",
+                block_id, meta.version, meta.block_size);
+            metadb_->Delete(leveldb::WriteOptions(), it->key());
+            remove(file_path.c_str());
+            continue;
+        } else {
+            if (access(file_path.c_str(), R_OK)) {
+                LOG(WARNING, "Corrupted block #%ld V%ld size %ld path %s can't access: %s'",
+                    block_id, meta.version, meta.block_size, file_path.c_str(),
+                    strerror(errno));
+                metadb_->Delete(leveldb::WriteOptions(), it->key());
+                remove(file_path.c_str());
+            } else {
+                LOG(DEBUG, "Load #%ld V%ld size %ld path %s",
+                    block_id, meta.version, meta.block_size, file_path.c_str());
+            }
+        }
         Block* block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
         block->AddRef();
         block_map_[block_id] = block;

@@ -83,6 +83,10 @@ public:
                        const BlockReportRequest* request,
                        BlockReportResponse* response,
                        ::google::protobuf::Closure* done);
+    void BlockReceived(::google::protobuf::RpcController* controller,
+                       const BlockReceivedRequest* request,
+                       BlockReceivedResponse* response,
+                       ::google::protobuf::Closure* done);
     void PullBlockReport(::google::protobuf::RpcController* controller,
                        const PullBlockReportRequest* request,
                        PullBlockReportResponse* response,

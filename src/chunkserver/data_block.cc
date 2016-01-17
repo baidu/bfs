@@ -52,11 +52,7 @@ Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* t
   file_cache_(file_cache) {
     assert(meta_.block_id < (1L<<40));
     g_data_size.Add(meta.block_size);
-    char file_path[16];
-    int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
-        meta_.block_id % 1000, meta_.block_id / 1000);
-    assert (len == 15);
-    disk_file_ = store_path + file_path;
+    disk_file_ = store_path + BuildFilePath(meta_.block_id);
     g_blocks.Inc();
     recv_window_ = new common::SlidingWindow<Buffer>(100,
                    boost::bind(&Block::WriteCallback, this, _1, _2));
@@ -140,6 +136,14 @@ void Block::SetVersion(int64_t version) {
 }
 int Block::GetVersion() {
     return meta_.version;
+}
+
+std::string Block::BuildFilePath(int64_t block_id) {
+    char file_path[16];
+    int len = snprintf(file_path, sizeof(file_path), "/%03ld/%010ld",
+        block_id % 1000, block_id / 1000);
+    assert (len == 15);
+    return file_path;
 }
 /// Open corresponding file for write.
 bool Block::OpenForWrite() {

@@ -56,6 +56,7 @@ NameSpace::NameSpace(): last_entry_id_(1) {
         }
         LOG(INFO, "Create new namespace version: %ld", version_);
     }
+    SetupRoot();
 }
 
 NameSpace::~NameSpace() {
@@ -92,6 +93,14 @@ bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
     }
     return true;
 }
+
+void NameSpace::SetupRoot() {
+    root_path_.set_entry_id(kRootEntryid);
+    root_path_.set_name("");
+    root_path_.set_parent_entry_id(kRootEntryid);
+    root_path_.set_type(01755);
+    root_path_.set_ctime(static_cast<uint32_t>(version_/1000000));
+}
 /// New SplitPath
 /// /home/dirx/filex
 ///       diry/filey
@@ -104,8 +113,12 @@ bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
 /// 4filex -> 7
 /// 5filey -> 8
 bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
+    if (path == "/") {
+        info->CopyFrom(root_path_);
+        return true;
+    }
     std::vector<std::string> paths;
-    if (!common::util::SplitPath(path, &paths) || paths.empty()) {
+    if (!common::util::SplitPath(path, &paths) || path.empty()) {
         return false;
     }
     int64_t parent_id = kRootEntryid;
@@ -116,7 +129,7 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
         }
         parent_id = entry_id;
         entry_id = info->entry_id();
-        LOG(INFO, "LookUp %s entry_id= %ld", paths[i].c_str(), entry_id);
+        LOG(DEBUG, "LookUp %s entry_id= %ld", paths[i].c_str(), entry_id);
     }
     info->set_name(paths[paths.size()-1]);
     info->set_parent_entry_id(parent_id);
@@ -131,7 +144,7 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
         LOG(INFO, "LookUp %ld %s return false", parent_id, name.c_str());
         return false;
     }
-    LOG(INFO, "LookUp %ld %s return true", parent_id, name.c_str());
+    LOG(DEBUG, "LookUp %ld %s return true", parent_id, name.c_str());
     return true;
 }
 
@@ -221,18 +234,17 @@ int NameSpace::ListDirectory(const std::string& dir,
     if (path[0] != '/') {
         return 403;
     }
+    /*
     if (path[path.size()-1] != '/') {
         path += '/';
+    }*/
+
+    FileInfo info;
+    if (!LookUp(path, &info)) {
+        return 404;
     }
-    int64_t entry_id = kRootEntryid;
-    if (path != "/") {
-        FileInfo info;
-        if (!LookUp(path, &info)) {
-            return 404;
-        }
-        entry_id = info.entry_id();
-    }
-    LOG(INFO, "entry_id= %ld", entry_id);
+    int64_t entry_id = info.entry_id();
+    LOG(DEBUG, "ListDirectory entry_id= %ld", entry_id);
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
@@ -260,6 +272,9 @@ int NameSpace::Rename(const std::string& old_path,
                       bool* need_unlink,
                       FileInfo* remove_file) {
     *need_unlink = false;
+    if (old_path == "/" || new_path == "/") {
+        return 403;
+    }
     FileInfo old_file;
     if (!LookUp(old_path, &old_file)) {
         LOG(WARNING, "Rename not found: %s\n", old_path.c_str());
@@ -335,6 +350,9 @@ int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
     if (LookUp(path, file_removed)) {
         // Only support file
         if ((file_removed->type() & (1<<9)) == 0) {
+            if (path == "/" || path.empty()) {
+                LOG(INFO, "root type= %d", file_removed->type());
+            }
             std::string file_key;
             EncodingStoreKey(file_removed->parent_entry_id(), file_removed->name(), &file_key);
             if (DeleteFileInfo(file_key)) {
@@ -358,18 +376,19 @@ int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
 int NameSpace::DeleteDirectory(const std::string& path, bool recursive,
                                std::vector<FileInfo>* files_removed) {
     files_removed->clear();
+    /*
     std::vector<std::string> keys;
     if (!common::util::SplitPath(path, &keys)) {
         LOG(WARNING, "Delete Directory SplitPath fail: %s\n", path.c_str());
         return 886;
-    }
+    }*/
     FileInfo info;
     std::string store_key;
     if (!LookUp(path, &info)) {
-       LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
-       return 404;
+        LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
+        return 404;
     } else if (!IsDir(info.type())) {
-        LOG(INFO, "Delete Directory, %s is not a dir.", path.c_str());
+        LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
         return 886;
     }
     return InternalDeleteDirectory(info, recursive, files_removed);
@@ -390,10 +409,6 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
             dir_info.name().c_str());
         delete it;
         return 886;
-    } else {
-        LOG(INFO, "not dir %d %s %s",
-            it->Valid(), common::DebugString(it->key().ToString()).c_str(),
-            common::DebugString(key_end).c_str());
     }
 
     int ret_status = 0;
@@ -408,6 +423,8 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
         bool ret = child_info.ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
         if (IsDir(child_info.type())) {
+            child_info.set_parent_entry_id(entry_id);
+            child_info.set_name(entry_name);
             LOG(INFO, "Recursive to path: %s", entry_name.c_str());
             ret_status = InternalDeleteDirectory(child_info, true, files_removed);
             if (ret_status != 0) {
@@ -415,11 +432,11 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
             }
         } else {
             batch.Delete(key);
+            child_info.set_parent_entry_id(entry_id);
             child_info.set_name(entry_name);
-            LOG(INFO, "DeleteDirectory Remove push %s", child_info.name().c_str());
+            LOG(DEBUG, "DeleteDirectory Remove push %s", entry_name.c_str());
             files_removed->push_back(child_info);
-            LOG(INFO, "Unlink file: %s",
-                std::string(key.data() + 2, key.size() - 2).c_str());
+            LOG(INFO, "Unlink file: %s", entry_name.c_str());
         }
     }
     delete it;
@@ -429,7 +446,7 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     batch.Delete(store_key);
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
-        LOG(INFO, "Unlink dentry done: %s[%s]",
+        LOG(INFO, "Delete directory done: %s[%s]",
             dir_info.name().c_str(), common::DebugString(store_key).c_str());
     } else {
         LOG(FATAL, "Namespace write to storage fail!");

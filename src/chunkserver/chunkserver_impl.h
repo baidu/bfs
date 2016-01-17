@@ -4,8 +4,8 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#ifndef  BFS_TRUNKSERVER_IMPL_H_
-#define  BFS_TRUNKSERVER_IMPL_H_
+#ifndef  BFS_CHUNKSERVER_IMPL_H_
+#define  BFS_CHUNKSERVER_IMPL_H_
 
 #include "proto/chunkserver.pb.h"
 #include "proto/nameserver.pb.h"
@@ -72,7 +72,7 @@ private:
                          WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
-    void PullNewBlocks(std::vector<ReplicaInfo> new_replica_info);
+    void PullNewBlock(const ReplicaInfo& new_replica_info);
     void GatherCounter();
     void StopBlockReport();
 private:
@@ -82,6 +82,7 @@ private:
     ThreadPool*     work_thread_pool_;
     ThreadPool*     read_thread_pool_;
     ThreadPool*     write_thread_pool_;
+    ThreadPool*     recover_thread_pool_;
     ThreadPool*     heartbeat_thread_;
     NameServer_Stub* nameserver_;
     int32_t chunkserver_id_;
@@ -93,6 +94,6 @@ private:
 } // namespace bfs
 } // namespace baidu
 
-#endif  //__TRUNKSERVER_IMPL_H_
+#endif  //__CHUNKSERVER_IMPL_H_
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
