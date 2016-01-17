@@ -4,7 +4,8 @@
 
 #include <fuse.h>
 #include <errno.h>
-
+#include <fcntl.h>
+#include <algorithm>
 #include <sdk/bfs.h>
 
 baidu::bfs::FS* g_fs;
@@ -12,6 +13,20 @@ std::string g_bfs_path;
 std::string g_bfs_cluster;
 
 #define BFS "\e[0;32m[BFS]\e[0m "
+
+struct MountFile {
+    baidu::bfs::File* bfs_file;
+    int64_t offset;
+    char* buf;
+    int32_t buf_len;
+    MountFile(baidu::bfs::File* bfile) : bfs_file(bfile), offset(0), buf(NULL), buf_len(0) {}
+};
+
+baidu::bfs::File* get_bfs_file(const struct fuse_file_info* finfo, MountFile** mount_file = NULL) {
+    MountFile* mfile = reinterpret_cast<MountFile*>(finfo->fh);
+    if (mount_file) *mount_file= mfile;
+    return mfile->bfs_file;
+}
 
 int bfs_getattr(const char* path, struct stat* st) {
     fprintf(stderr,BFS"bfs_getattr(%s)\n", path);
@@ -102,6 +117,12 @@ int bfs_truncate(const char* name, off_t offset) {
     return EPERM;
 }
 
+void prepare_write_buf(MountFile* mfile, baidu::bfs::File* file = NULL) {
+    const int init_write_buf_size = 4096;
+    mfile->buf = new char[init_write_buf_size];
+    memset(mfile->buf, 0, init_write_buf_size);
+    mfile->buf_len = init_write_buf_size;
+}
 int bfs_open(const char* path, struct fuse_file_info* finfo) {
     fprintf(stderr,BFS"open(%s, %o)\n", path, finfo->flags);
     baidu::bfs::File* file = NULL;
@@ -111,13 +132,17 @@ int bfs_open(const char* path, struct fuse_file_info* finfo) {
         return EACCES;
     }
     fprintf(stderr,BFS"open(%s) return %p\n", path, file);
-    finfo->fh = reinterpret_cast<uint64_t>(file);
+    MountFile* mfile = new MountFile(file);
+    if (finfo->flags & O_RDWR) {
+        prepare_write_buf(mfile, file);
+    }
+    finfo->fh = reinterpret_cast<uint64_t>(mfile);
     return 0;
 }
 
 int bfs_read(const char* path, char* buf, size_t len, off_t offset, struct fuse_file_info* finfo) {
     fprintf(stderr,BFS"read(%s, %ld, %lu)\n", path, offset, len);
-    baidu::bfs::File* file = reinterpret_cast<baidu::bfs::File*>(finfo->fh);
+    baidu::bfs::File* file = get_bfs_file(finfo);
     int ret = file->Pread(buf, len, offset, true);
     fprintf(stderr,BFS"read(%s, %ld, %lu) return %d\n", path, offset, len, ret);
     if (ret < 0) {
@@ -127,9 +152,60 @@ int bfs_read(const char* path, char* buf, size_t len, off_t offset, struct fuse_
 }
 
 int bfs_write(const char* path, const char* buf, size_t len, off_t offset, struct fuse_file_info* finfo) {
+    const int zero_buf_size = 256 * 1024;
+    const int max_random_write_size = 256 * 1024 * 1024;
+    static char zero_buf[zero_buf_size] = {0};
     fprintf(stderr,BFS"write(%s, %ld, %lu)\n", path, offset, len);
-    baidu::bfs::File* file = reinterpret_cast<baidu::bfs::File*>(finfo->fh);
+    MountFile* mfile = NULL;
+    baidu::bfs::File* file = get_bfs_file(finfo, &mfile);
+    if (mfile->buf || mfile->offset > offset) {
+        fprintf(stderr, BFS"random write(%s, %ld, %lu) old offset= %ld\n", path, offset, len, mfile->offset);
+        int64_t end_offset = offset + len;
+        if (end_offset > max_random_write_size || mfile->offset > max_random_write_size) {
+            return EACCES;
+        }
+        int new_buf_len = std::min(static_cast<int64_t>(max_random_write_size), std::max(mfile->offset, end_offset * 2));
+        if (mfile->buf == NULL) {
+            mfile->buf = new char[new_buf_len];
+            mfile->buf_len = new_buf_len;
+            int rlen = file->Pread(mfile->buf, mfile->offset, 0);
+            if (rlen < mfile->offset) {
+                fprintf(stderr, BFS"Read(%ld) for randmon write(%s, %ld, %lu) fail", mfile->offset, path, offset, len);
+                delete[] mfile->buf;
+                mfile->buf = NULL;
+                mfile->buf_len = 0;
+                return EACCES;
+            }
+        } else if (mfile->buf_len < end_offset) {
+            char* new_buf = new char[new_buf_len];
+            memcpy(new_buf, mfile->buf, mfile->buf_len);
+            delete[] mfile->buf;
+            mfile->buf = new_buf;
+            mfile->buf_len = new_buf_len;
+        }
+        memcpy(mfile->buf + offset, buf, len);
+        return len;
+    } else if (mfile->offset < offset) {
+        if (mfile)
+        // Padding if skip
+        fprintf(stderr, BFS"Write(%s, %ld, %lu) padding from %ld\n", path, offset, len, mfile->offset);
+        while (mfile->offset < offset) {
+            int blen = std::min(static_cast<int64_t>(zero_buf_size), offset - mfile->offset);
+            int wlen = file->Write(zero_buf, blen);
+            if (wlen > 0) {
+                mfile->offset += wlen;
+            }
+            if (wlen < blen) {
+                fprintf(stderr, BFS"Write(%s, %ld, %lu) padding at %ld fail w:%d b:%d\n",
+                        path, offset, len, mfile->offset, wlen, blen);
+                return EACCES;
+            }
+        }
+    }
     int ret = file->Write(buf, len);
+    if (ret > 0) {
+        mfile->offset += ret;
+    }
     fprintf(stderr,BFS"write(%s, %ld, %lu) return %d\n", path, offset, len, ret);
     if (ret < 0) {
         ret = EACCES;
@@ -148,15 +224,34 @@ int bfs_flush(const char* path, struct fuse_file_info* finfo) {
 }
 
 int bfs_release(const char* path, struct fuse_file_info* finfo) {
-    baidu::bfs::File* file = reinterpret_cast<baidu::bfs::File*>(finfo->fh);
+    MountFile* mfile = NULL;
+    baidu::bfs::File* file = get_bfs_file(finfo, &mfile);
     bool ret = file->Close();
     fprintf(stderr,BFS"release(%s, %p, %d)\n", path, file, ret);
     delete file;
-    return 0;
+
+    int retval = 0;
+    if (mfile->buf) {
+        g_fs->DeleteFile(path);
+        int flags = O_WRONLY;
+        if (!g_fs->OpenFile((g_bfs_path + path).c_str() , flags, 0755, -1, &file)) {
+            fprintf(stderr,BFS"create(%s) for release fail\n", path);
+            retval = EACCES;
+        }
+        int wlen = file->Write(mfile->buf, mfile->buf_len);
+        if (wlen < mfile->buf_len) {
+            fprintf(stderr,BFS"Write(%s, %ld) for release fail\n", path, mfile->buf_len);
+            retval = EACCES;
+        }
+        file->Close();
+        delete[] mfile->buf;
+    }
+    delete mfile;
+    return retval;
 }
 
 int bfs_fsync(const char* path, int datasync, struct fuse_file_info* finfo) {
-    baidu::bfs::File* file = reinterpret_cast<baidu::bfs::File*>(finfo->fh);
+    baidu::bfs::File* file = get_bfs_file(finfo);
     fprintf(stderr,BFS"fsync(%s, %p)\n", path, file);
     if (!file->Sync(60)) {
         fprintf(stderr,BFS"fsync(%s, %p) return timeout\n", path, file);
@@ -251,7 +346,11 @@ int bfs_create(const char* path, mode_t mode, struct fuse_file_info* finfo) {
         return EACCES;
     }
     fprintf(stderr,BFS"create(%s) return %p\n", path, file);
-    finfo->fh = reinterpret_cast<uint64_t>(file);
+    MountFile* mfile = new MountFile(file);
+    if (finfo->flags & O_RDWR) {
+        prepare_write_buf(mfile);
+    }
+    finfo->fh = reinterpret_cast<uint64_t>(mfile);
     return 0;
 }
 
