@@ -227,18 +227,9 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
     }
 }
 
-int NameSpace::ListDirectory(const std::string& dir,
+int NameSpace::ListDirectory(const std::string& path,
                              google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
-    std::string path = dir.empty() ? "/" : dir;
-    if (path[0] != '/') {
-        return 403;
-    }
-    /*
-    if (path[path.size()-1] != '/') {
-        path += '/';
-    }*/
-
     FileInfo info;
     if (!LookUp(path, &info)) {
         return 404;
@@ -272,7 +263,7 @@ int NameSpace::Rename(const std::string& old_path,
                       bool* need_unlink,
                       FileInfo* remove_file) {
     *need_unlink = false;
-    if (old_path == "/" || new_path == "/") {
+    if (old_path == "/" || new_path == "/" || old_path == new_path) {
         return 403;
     }
     FileInfo old_file;
@@ -376,12 +367,6 @@ int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
 int NameSpace::DeleteDirectory(const std::string& path, bool recursive,
                                std::vector<FileInfo>* files_removed) {
     files_removed->clear();
-    /*
-    std::vector<std::string> keys;
-    if (!common::util::SplitPath(path, &keys)) {
-        LOG(WARNING, "Delete Directory SplitPath fail: %s\n", path.c_str());
-        return 886;
-    }*/
     FileInfo info;
     std::string store_key;
     if (!LookUp(path, &info)) {
@@ -473,6 +458,28 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
     delete it;
     LOG(INFO, "RebuildBlockMap done. last_entry_id= E%ld", last_entry_id_);
     return true;
+}
+
+std::string NameSpace::NormalizePath(const std::string& path) {
+    // Is there a better implementation?
+    std::string ret;
+    if (path.empty() || path[0] != '/') {
+        ret = "/";
+    }
+    bool slash = false;
+    for (uint32_t i = 0; i < path.size(); i++) {
+        if (path[i] == '/') {
+            if (slash) continue;
+            slash = true;
+        } else {
+            slash = false;
+        }
+        ret.push_back(path[i]);
+    }
+    if (ret.size() > 1U && ret[ret.size() - 1] == '/') {
+        ret.resize(ret.size() - 1);
+    }
+    return ret;
 }
 
 } // namespace bfs

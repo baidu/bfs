@@ -210,13 +210,13 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                         ::google::protobuf::Closure* done) {
     g_create_file.Inc();
     response->set_sequence_id(request->sequence_id());
-    const std::string& file_name = request->file_name();
+    std::string path = NameSpace::NormalizePath(request->file_name());
     int flags = request->flags();
     int mode = request->mode();
     if (mode == 0) {
         mode = 0644;    // default mode
     }
-    int status = namespace_->CreateFile(file_name, flags, mode);
+    int status = namespace_->CreateFile(path, flags, mode);
     response->set_status(status);
     done->Run();
 }
@@ -227,7 +227,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                          ::google::protobuf::Closure* done) {
     g_add_block.Inc();
     response->set_sequence_id(request->sequence_id());
-    const std::string& path = request->file_name();
+    std::string path = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
     if (!namespace_->GetFileInfo(path, &file_info)) {
         LOG(WARNING, "AddBlock file not found: %s", path.c_str());
@@ -288,7 +288,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                       FileLocationResponse* response,
                       ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    const std::string& path = request->file_name();
+    std::string path = NameSpace::NormalizePath(request->file_name());
     LOG(INFO, "NameServerImpl::GetFileLocation: %s\n", request->file_name().c_str());
     // Get file_key
     g_get_location.Inc();
@@ -338,7 +338,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
                         ::google::protobuf::Closure* done) {
     g_list_dir.Inc();
     response->set_sequence_id(request->sequence_id());
-    std::string path = request->path();
+    std::string path = NameSpace::NormalizePath(request->path());
     common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
 
     int status = namespace_->ListDirectory(path, response->mutable_files());
@@ -351,7 +351,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
                           StatResponse* response,
                           ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    std::string path = request->path();
+    std::string path = NameSpace::NormalizePath(request->path());
     LOG(INFO, "Stat: %s\n", path.c_str());
 
     FileInfo info;
@@ -382,8 +382,8 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
                             RenameResponse* response,
                             ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    const std::string& oldpath = request->oldpath();
-    const std::string& newpath = request->newpath();
+    std::string oldpath = NameSpace::NormalizePath(request->oldpath());
+    std::string newpath = NameSpace::NormalizePath(request->newpath());
 
     bool need_unlink;
     FileInfo remove_file;
@@ -401,7 +401,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                             ::google::protobuf::Closure* done) {
     g_unlink.Inc();
     response->set_sequence_id(request->sequence_id());
-    const std::string& path = request->path();
+    std::string path = NameSpace::NormalizePath(request->path());
 
     FileInfo file_info;
     int status = namespace_->RemoveFile(path, &file_info);
@@ -418,7 +418,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
                                      DeleteDirectoryResponse* response,
                                      ::google::protobuf::Closure* done)  {
     response->set_sequence_id(request->sequence_id());
-    std::string path = request->path();
+    std::string path = NameSpace::NormalizePath(request->path());
     bool recursive = request->recursive();
     if (path.empty() || path[0] != '/') {
         response->set_status(886);
@@ -438,7 +438,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
                                       ChangeReplicaNumResponse* response,
                                       ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    std::string file_name = request->file_name();
+    std::string file_name = NameSpace::NormalizePath(request->file_name());
     int32_t replica_num = request->replica_num();
 
     int ret_status = 886;
