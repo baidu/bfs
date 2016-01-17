@@ -106,8 +106,7 @@ bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
 bfs_mount: $(FUSE_OBJ) $(LIBS)
-	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ $(LDFLAGS) -L$(FUSE_PATH)/lib -static -lfuse -ldl
-
+	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS) 
 $(LEVELDB):
 	cd thirdparty/leveldb; make -j4
 
