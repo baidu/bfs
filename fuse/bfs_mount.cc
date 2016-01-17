@@ -309,14 +309,17 @@ int parse_args(int* argc, char* argv[]) {
     for (int i = 1; i + 1 < *argc; i++) {
         if (strncmp(argv[i], "-c", 2) == 0) {
             g_bfs_cluster = argv[i + 1];
+            printf(BFS"Use cluster: %s\n", g_bfs_cluster.c_str());
         } else if (strncmp(argv[i], "-p", 2) == 0) {
             g_bfs_path = argv[i + 1];
+            printf(BFS"Use path: %s\n", g_bfs_path.c_str());
         } else {
             continue;
         }
         for (int j = i; j + 2 < *argc; j++) {
             argv[j] = argv[j + 2];
         }
+        i -= 2;
         *argc -= 2;
     }
     argv[*argc] = NULL;
