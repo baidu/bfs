@@ -212,7 +212,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
     }
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
-    file_info.set_replicas(replica_num == -1 ? FLAGS_default_replica_num : replica_num);
+    file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     std::string file_key;
