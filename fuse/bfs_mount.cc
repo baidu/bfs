@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
 #include <fuse.h>
 #include <errno.h>
 #include <fcntl.h>
