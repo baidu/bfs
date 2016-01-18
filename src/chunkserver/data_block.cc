@@ -174,19 +174,18 @@ bool Block::IsComplete() {
     return (slice_num_ == last_seq_ + 1);
 }
 /// Read operation.
-int32_t Block::Read(char* buf, int32_t len, int64_t offset) {
+int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
     if (offset > meta_.block_size) {
         return -1;
     }
 
     /// Read from disk
-    int readlen = 0;
+    int64_t readlen = 0;
     while (offset + readlen < disk_file_size_) {
-        int pread_len = std::min(len - readlen,
-                                 static_cast<int>(disk_file_size_ - offset - readlen));
+        int64_t pread_len = std::min(len - readlen, disk_file_size_ - offset - readlen);
         mu_.Unlock();
-        int ret = file_cache_->ReadFile(disk_file_,
+        int64_t ret = file_cache_->ReadFile(disk_file_,
                         buf + readlen, pread_len, offset + readlen);
         if (ret != pread_len) {
             return -2;
@@ -197,7 +196,7 @@ int32_t Block::Read(char* buf, int32_t len, int64_t offset) {
         // If disk_file_size change, read again.
     }
     // Read from block_buf_list
-    int mem_offset = offset + readlen - disk_file_size_;
+    int64_t mem_offset = offset + readlen - disk_file_size_;
     uint32_t buf_id = mem_offset / FLAGS_write_buf_size;
     mem_offset %= FLAGS_write_buf_size;
     while (buf_id < block_buf_list_.size()) {
@@ -222,7 +221,7 @@ int32_t Block::Read(char* buf, int32_t len, int64_t offset) {
 }
 /// Write operation.
 bool Block::Write(int32_t seq, int64_t offset, const char* data,
-           int32_t len, int64_t* add_use) {
+           int64_t len, int64_t* add_use) {
     if (offset < meta_.block_size) {
         assert (offset + len <= meta_.block_size);
         LOG(WARNING, "Write a finish block #%ld size %ld, seq: %d, offset: %ld",
@@ -335,7 +334,7 @@ void Block::DiskWrite() {
     this->DecRef();
 }
 /// Append to block buffer
-void Block::Append(int32_t seq, const char*buf, int32_t len) {
+void Block::Append(int32_t seq, const char*buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;

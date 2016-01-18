@@ -484,7 +484,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     int64_t block_id = request->block_id();
     int64_t offset = request->offset();
     int32_t read_len = request->read_len();
-    if (read_len <= 0 || offset < 0) {
+    if (read_len <= 0 || read_len > (64<<20) || offset < 0) {
         LOG(WARNING, "ReadBlock bad parameters %d %ld", read_len, offset);
         response->set_status(-1);
         done->Run();
@@ -510,14 +510,14 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     } else {
         int64_t read_start = common::timer::get_micros();
         char* buf = new char[read_len];
-        int32_t len = block->Read(buf, read_len, offset);
+        int64_t len = block->Read(buf, read_len, offset);
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
             if (request->require_block_version()) {
                 response->set_block_version(block->GetVersion());
             }
-            LOG(INFO, "ReadBlock #%ld offset: %ld len: %d return: %d "
+            LOG(INFO, "ReadBlock #%ld offset: %ld len: %ld return: %ld "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
                 (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time

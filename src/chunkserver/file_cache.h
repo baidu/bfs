@@ -16,7 +16,7 @@ class FileCache {
 public:
     FileCache(int32_t cache_size);
     ~FileCache();
-    int32_t ReadFile(const std::string& file_path, char* buf, int32_t count, int64_t offset);
+    int64_t ReadFile(const std::string& file_path, char* buf, int64_t count, int64_t offset);
     void EraseFileCache(const std::string& file_path);
 private:
     common::Cache::Handle* FindFile(const std::string& file_path);

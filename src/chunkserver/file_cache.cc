@@ -53,14 +53,14 @@ common::Cache::Handle* FileCache::FindFile(const std::string& file_path) {
     }
     return handle;
 }
-int32_t FileCache::ReadFile(const std::string& file_path, char* buf,
-                            int32_t len, int64_t offset) {
+int64_t FileCache::ReadFile(const std::string& file_path, char* buf,
+                            int64_t len, int64_t offset) {
     common::Cache::Handle* handle = FindFile(file_path);
     if (handle == NULL) {
         return -1;
     }
     int32_t fd = (reinterpret_cast<FileEntity*>(cache_->Value(handle)))->fd;
-    int32_t ret = pread(fd, buf, len, offset);
+    int64_t ret = pread(fd, buf, len, offset);
     cache_->Release(handle);
     return ret;
 }
