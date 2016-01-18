@@ -23,7 +23,7 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
 CXXFLAGS = -Wall -fPIC $(OPT)
-FUSEFLAGS = -D_FILE_OFFSET_BITS=64
+FUSEFLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_PATH)/include
 
 PROTO_FILE = $(wildcard src/proto/*.proto)
 PROTO_SRC = $(patsubst %.proto,%.pb.cc,$(PROTO_FILE))
@@ -46,9 +46,9 @@ UTILS_SRC = $(wildcard src/utils/*.cc)
 UTILS_OBJ = $(patsubst %.cc, %.o, $(UTILS_SRC))
 UTILS_HEADER = $(wildcard src/utils/*.h)
 
-FUSE_SRC = $(wildcard src/fuse/*.cc)
+FUSE_SRC = $(wildcard fuse/*.cc)
 FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
-FUSE_HEADER = $(wildcard src/fuse/*.h)
+FUSE_HEADER = $(wildcard fuse/*.h)
 
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
@@ -62,13 +62,11 @@ LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
 
 ifdef FUSE_PATH
-	INCLUDE_PATH += -I$(FUSE_PATH)/include
-	LDFLAGS += -L$(FUSE_PATH)/lib -lfuse 
-	BIN += fuse_util
+	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test
-TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o
+TESTS = namespace_test file_cache_test chunkserver_impl_test
+TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o src/chunkserver_impl_test.o
 UNITTEST_OUTPUT = test/
 
 all: $(BIN)
@@ -112,14 +110,15 @@ libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
-fuse_util: $(FUSE_OBJ) $(LIBS)
-	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ $(LDFLAGS)
-
+bfs_mount: $(FUSE_OBJ) $(LIBS)
+	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS) 
 $(LEVELDB):
 	cd thirdparty/leveldb; make -j4
 
 %.o: %.cc
-	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) $(FUSEFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+$(FUSE_OBJ): %.o: %.cc
+	$(CXX) $(CXXFLAGS) $(FUSEFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
