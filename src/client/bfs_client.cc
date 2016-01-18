@@ -354,7 +354,7 @@ int main(int argc, char* argv[]) {
             return ret;
         }
         baidu::bfs::File* file;
-        if (!fs->OpenFile(argv[2], O_WRONLY, 644, -1, &file)) {
+        if (!fs->OpenFile(argv[2], O_WRONLY, 644, 0, &file)) {
             fprintf(stderr, "Open %s fail\n", argv[2]);
         } else {
             ret = 0;

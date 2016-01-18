@@ -255,6 +255,16 @@ TEST_F(NameSpaceTest, GetFileInfo) {
     ASSERT_TRUE(ns.GetFileInfo("/", &info));
 }
 
+TEST_F(NameSpaceTest, NormalizePath) {
+    ASSERT_EQ(NameSpace::NormalizePath("home") , std::string("/home"));
+    ASSERT_EQ(NameSpace::NormalizePath("") , std::string("/"));
+    ASSERT_EQ(NameSpace::NormalizePath("/") , std::string("/"));
+    ASSERT_EQ(NameSpace::NormalizePath("///") , std::string("/"));
+    ASSERT_EQ(NameSpace::NormalizePath("//home") , std::string("/home"));
+    ASSERT_EQ(NameSpace::NormalizePath("/home//") , std::string("/home"));
+    ASSERT_EQ(NameSpace::NormalizePath("//home/") , std::string("/home"));
+    ASSERT_EQ(NameSpace::NormalizePath("//home/work/") , std::string("/home/work"));
+}
 }
 }
 

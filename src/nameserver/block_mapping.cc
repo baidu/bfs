@@ -95,7 +95,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
     NSBlockMap::iterator it = block_map_.find(id);
     if (it == block_map_.end()) {
         //have been removed
-        LOG(DEBUG, "UpdateBlockInfo(%ld) has been removed", id);
+        LOG(DEBUG, "UpdateBlockInfo #%ld has been removed", id);
         return false;
     } else {
         nsblock = it->second;
@@ -245,13 +245,13 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
     }
     if (recover_success) {
         b->replica.insert(cs_id);
-        LOG(DEBUG, "Recovered block #%ld at C%d", block_id, cs_id);
+        LOG(DEBUG, "Recovered block #%ld at C%d ", block_id, cs_id);
     } else {
         LOG(INFO, "Recover block #%ld at C%d fail", block_id, cs_id);
     }
     CheckList::iterator it = recover_check_.find(cs_id);
     if (it == recover_check_.end()) {
-        LOG(DEBUG, "Not in recover_check_ #%ld cs_id %d", block_id, cs_id);
+        LOG(DEBUG, "Not in recover_check_ #%ld C%d ", block_id, cs_id);
         return;
     }
     (it->second).erase(block_id);
@@ -295,7 +295,7 @@ void BlockMapping::TryRecover(NSBlock* block) {
 
 void BlockMapping::CheckRecover(int64_t cs_id, int64_t block_id) {
     MutexLock lock(&mu_);
-    LOG(DEBUG, "recover timeout check: #%ld C%d", block_id, cs_id);
+    LOG(DEBUG, "recover timeout check: #%ld C%d ", block_id, cs_id);
     CheckList::iterator it = recover_check_.find(cs_id);
     if (it == recover_check_.end()) return;
     std::set<int64_t>& block_set = it->second;
