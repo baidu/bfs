@@ -347,9 +347,6 @@ int bfs_create(const char* path, mode_t mode, struct fuse_file_info* finfo) {
     }
     fprintf(stderr,BFS"create(%s) return %p\n", path, file);
     MountFile* mfile = new MountFile(file);
-    if (finfo->flags & O_RDWR) {
-        prepare_write_buf(mfile);
-    }
     finfo->fh = reinterpret_cast<uint64_t>(mfile);
     return 0;
 }
