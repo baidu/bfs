@@ -41,8 +41,18 @@ int bfs_getattr(const char* path, struct stat* st) {
         st->st_size = 4096;
     } else {
         st->st_mode = (file.mode & 0777) | S_IFREG;
-        st->st_size = file.size;
+        if (file.size == 0) {
+            int64_t file_size = 0;
+            if (g_fs->GetFileSize(path, &file_size) && file_size > 0) {
+                st->st_size = file_size;
+            } else {
+                st->st_size = 0;
+            }
+        } else {
+            st->st_size = file.size;
+        }
     }
+    st->st_blocks = 1;
     fprintf(stderr, BFS"bfs_getattr(%s) ctime=%u size=%ld\n", path, file.ctime, st->st_size);
     st->st_atime = file.ctime;
     st->st_ctime = file.ctime;
@@ -219,7 +229,13 @@ int bfs_statfs(const char* path, struct statvfs*) {
 }
 
 int bfs_flush(const char* path, struct fuse_file_info* finfo) {
-    fprintf(stderr, BFS"flush(%s)\n", path);
+    baidu::bfs::File* file = get_bfs_file(finfo);
+    fprintf(stderr, BFS"flush(%s, %p)\n", path, file);
+    if (!file->Sync(60)) {
+        fprintf(stderr, BFS"fsync(%s, %p) return timeout\n", path, file);
+        return EIO;
+    }
+    fprintf(stderr, BFS"flush(%s, %p) return 0\n", path, file);
     return 0;
 }
 
