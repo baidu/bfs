@@ -21,6 +21,7 @@
 #include <common/logging.h>
 #include <common/string_util.h>
 #include <common/tprinter.h>
+#include <common/util.h>
 
 #include "bfs.h"
 
@@ -686,6 +687,8 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             AddBlockResponse response;
             request.set_sequence_id(0);
             request.set_file_name(name_);
+            std::string client_address = common::util::GetLocalHostName();
+            request.set_client_address(client_address);
             bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
                 &request, &response, 15, 3);
             if (!ret || !response.has_block()) {
