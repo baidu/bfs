@@ -26,7 +26,7 @@ public:
     int ListDirectory(const std::string& path,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
-    int CreateFile(const std::string& file_name, int flags, int mode);
+    int CreateFile(const std::string& file_name, int flags, int mode, int replica_num);
     /// Remove file by name
     int RemoveFile(const std::string& path, FileInfo* file_removed);
     /// Remove director.

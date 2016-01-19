@@ -9,8 +9,7 @@ message CreateFileRequest {
     optional string file_name = 2;
     optional int32 mode = 3;
     optional int32 flags = 4;
-    optional int32 replic_num = 5;
-    optional int32 replic_expect = 6;
+    optional int32 replica_num = 5;
     optional string user = 7;
 }
 
