@@ -216,7 +216,8 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     if (mode == 0) {
         mode = 0644;    // default mode
     }
-    int status = namespace_->CreateFile(path, flags, mode);
+    int replica_num = request->replica_num();
+    int status = namespace_->CreateFile(path, flags, mode, replica_num);
     response->set_status(status);
     done->Run();
 }
