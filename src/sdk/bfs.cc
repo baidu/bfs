@@ -165,6 +165,7 @@ private:
     LocatedBlocks located_blocks_;      ///< block meta for read
     ChunkServer_Stub* chunkserver_;     ///< located chunkserver
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
+    int32_t last_chunkserver_index_;
     int64_t read_offset_;               ///< 读取的偏移
     char* reada_buffer_;                ///< Read ahead buffer
     int32_t reada_buf_len_;             ///< Read ahead buffer length
@@ -504,7 +505,8 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
   : fs_(fs), rpc_client_(rpc_client), name_(name),
     open_flags_(flags), block_for_write_(NULL),
     write_buf_(NULL), last_seq_(-1), back_writing_(0),
-    chunkserver_(NULL), read_offset_(0), reada_buffer_(NULL),
+    chunkserver_(NULL), last_chunkserver_index_(-1),
+    read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
     last_read_offset_(-1), closed_(false),
     sync_signal_(&mu_), bg_error_(false) {
@@ -552,11 +554,11 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             return read_len;
         }
     }
+
     LocatedBlock lcblock;
     ChunkServer_Stub* chunk_server = NULL;
     std::string cs_addr;
-
-    int server_index = 0;
+    int64_t block_id;
     {
         MutexLock lock(&mu_, "Pread GetStub", 1000);
         if (located_blocks_.blocks_.empty()) {
@@ -567,14 +569,27 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             return -3;
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
-        server_index = rand() % lcblock.chains_size();
-        cs_addr = lcblock.chains(server_index).address();
-        if (chunkserver_ == NULL) {
+        if (last_chunkserver_index_ == -1 || !chunkserver_) {
+            std::string local_host_name = common::util::GetLocalHostName();
+            for (int i = 0; i < lcblock.chains_size(); i++) {
+                std::string addr = lcblock.chains(i).address();
+                std::string cs_name = std::string(addr, 0, addr.find_last_of(':'));
+                if (cs_name == local_host_name) {
+                    last_chunkserver_index_ = i;
+                    cs_addr = lcblock.chains(i).address();
+                    break;
+                }
+            }
+            if (last_chunkserver_index_ == -1) {
+                int server_index = rand() % lcblock.chains_size();
+                cs_addr = lcblock.chains(server_index).address();
+                last_chunkserver_index_ = server_index;
+            }
             fs_->rpc_client_->GetStub(cs_addr, &chunkserver_);
         }
         chunk_server = chunkserver_;
+        block_id = lcblock.block_id();
     }
-    int64_t block_id = lcblock.block_id();
 
     ReadBlockRequest request;
     ReadBlockResponse response;
@@ -599,7 +614,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
 
         if (!ret || response.status() != 0) {
             ///TODO: Add to _badchunkservers_
-            cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
+            cs_addr = lcblock.chains((++last_chunkserver_index_) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
             fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
             {
