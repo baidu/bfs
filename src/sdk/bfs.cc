@@ -29,6 +29,8 @@ DECLARE_string(nameserver_port);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
+DECLARE_string(user_name);
+DECLARE_string(user_token);
 
 namespace baidu {
 namespace bfs {
@@ -360,6 +362,7 @@ public:
             request.set_flags(flags);
             request.set_mode(mode&0777);
             request.set_replica_num(replica);
+            request.set_user(FLAGS_user_name);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != 0) {

@@ -23,22 +23,24 @@ public:
     NameSpace();
     ~NameSpace();
     /// List a directory
-    int ListDirectory(const std::string& path,
+    int ListDirectory(const std::string& path, int32_t user_id,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
-    int CreateFile(const std::string& file_name, int flags, int mode, int replica_num);
+    int CreateFile(const std::string& file_name, int flags, int mode, int replica_num,
+                   int32_t user_id = 0);
     /// Remove file by name
-    int RemoveFile(const std::string& path, FileInfo* file_removed);
+    int RemoveFile(const std::string& path, int32_t user_id, FileInfo* file_removed);
     /// Remove director.
-    int DeleteDirectory(const std::string& path, bool recursive,
+    int DeleteDirectory(const std::string& path, bool recursive, int32_t user_id,
                         std::vector<FileInfo>* files_removed);
     /// File rename
     int Rename(const std::string& old_path,
                const std::string& new_path,
+               int32_t user_id,
                bool* need_unlink,
                FileInfo* remove_file);
     /// Get file
-    bool GetFileInfo(const std::string& path, FileInfo* file_info);
+    bool GetFileInfo(const std::string& path, int32_t user_id, FileInfo* file_info);
     /// Update file
     bool UpdateFileInfo(const FileInfo& file_info);
     /// Delete file
@@ -50,16 +52,17 @@ public:
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
 private:
+    bool CheckPermission(const FileInfo& file_info, int32_t user_id, int op);
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,
                           std::string* key_str);
     bool GetFromStore(const std::string& key, FileInfo* info);
     void SetupRoot();
-    bool LookUp(const std::string& path, FileInfo* info);
+    bool LookUp(const std::string& path, int32_t user_id, FileInfo* info);
     bool LookUp(int64_t pid, const std::string& name, FileInfo* info);
     int InternalDeleteDirectory(const FileInfo& dir_info,
-                                bool recursive,
+                                bool recursive, int32_t user_id,
                                 std::vector<FileInfo>* files_removed);
 private:
     leveldb::DB* db_;   /// NameSpace storage
