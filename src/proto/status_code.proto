@@ -1,0 +1,21 @@
+package baidu.bfs;
+
+enum StatusCode {
+    kOK = 0;
+    kNotOK = 1;
+    kUnkownCs = 2;
+    kVersionError = 3;
+    kNotFound = 4;
+    kWriteError = 5;
+    kReadError = 6;
+    kBadParameter = 7;
+}
+
+enum ChunkServerStatus {
+    kUnknownChunkServerId = -1;
+    kCsActive = 101;
+    kCsWaitClean = 102;
+    kCsCleaning = 103;
+    kCsOffLine = 104;
+    kCsStandby = 105;
+}

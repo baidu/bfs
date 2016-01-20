@@ -22,6 +22,8 @@
 #include <common/string_util.h>
 #include <common/tprinter.h>
 
+#include "proto/status_code.pb.h"
+
 #include "bfs.h"
 
 DECLARE_string(nameserver);
@@ -596,7 +598,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         ret = fs_->rpc_client_->SendRequest(chunk_server, &ChunkServer_Stub::ReadBlock,
                     &request, &response, 15, 3);
 
-        if (!ret || response.status() != 0) {
+        if (!ret || response.status() != kOK) {
             ///TODO: Add to _badchunkservers_
             cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
