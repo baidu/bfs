@@ -184,6 +184,7 @@ class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
     FSImpl() : rpc_client_(NULL), nameserver_(NULL) {
+        local_host_name_ = common::util::GetLocalHostName();
     }
     ~FSImpl() {
         delete nameserver_;
@@ -498,6 +499,7 @@ private:
     RpcClient* rpc_client_;
     NameServer_Stub* nameserver_;
     std::string nameserver_address_;
+    std::string local_host_name_;
 };
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
@@ -570,7 +572,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
         if (last_chunkserver_index_ == -1 || !chunkserver_) {
-            std::string local_host_name = common::util::GetLocalHostName();
+            const std::string& local_host_name = fs_->local_host_name_;
             for (int i = 0; i < lcblock.chains_size(); i++) {
                 std::string addr = lcblock.chains(i).address();
                 std::string cs_name = std::string(addr, 0, addr.find_last_of(':'));
