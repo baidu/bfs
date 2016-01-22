@@ -18,6 +18,7 @@
 #include <common/string_util.h>
 
 #include "nameserver/namespace.h"
+#include "proto/status_code.pb.h"
 
 DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
@@ -71,7 +72,7 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
     if (version == namespace_->Version()) {
         chunkserver_manager_->HandleHeartBeat(request, response);
     } else {
-        response->set_status(-1);
+        response->set_status(kVersionError);
     }
     response->set_namespace_version(namespace_->Version());
     done->Run();
@@ -147,7 +148,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     if (cs_id != old_id) {
         LOG(WARNING, "Chunkserver %s id mismatch, old: %d new: %d",
             request->chunkserver_addr().c_str(), old_id, cs_id);
-        response->set_status(-1);
+        response->set_status(kUnkownCs);
         done->Run();
         return;
     }
@@ -186,6 +187,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
+    response->set_status(kOK);
     done->Run();
 }
 
