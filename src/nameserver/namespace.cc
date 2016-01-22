@@ -102,9 +102,10 @@ bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
 
 void NameSpace::SetupRoot() {
     root_path_.set_entry_id(kRootEntryid);
-    root_path_.set_name("");
+    root_path_.set_name("/");
     root_path_.set_parent_entry_id(kRootEntryid);
     root_path_.set_type(01755);
+    root_path_.set_owner(0);
     root_path_.set_ctime(static_cast<uint32_t>(version_/1000000));
 }
 /// New SplitPath
@@ -159,6 +160,7 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
         LOG(INFO, "LookUp %ld %s return false", parent_id, name.c_str());
         return false;
     }
+    info->set_name(name);
     LOG(DEBUG, "LookUp %ld %s return true", parent_id, name.c_str());
     return true;
 }
@@ -207,11 +209,15 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode,
     std::string info_value;
     for (int i=0; i < depth-1; ++i) {
         if (!CheckPermission(file_info, user_id, 0)) {
+            LOG(INFO, "CreateFile %s, check search permission %s fail",
+                path.c_str(), file_info.name().c_str());
             return 403;
         }
         bool create_permission = CheckPermission(file_info, user_id, 1);
         if (!LookUp(parent_id, paths[i], &file_info)) {
-            if (create_permission) {
+            if (!create_permission) {
+            LOG(INFO, "CreateFile %s, check write permission %s %d fail",
+                    path.c_str(), file_info.name().c_str(), user_id);
                 return 403;
             }
             file_info.set_type((1<<9)|0755);
@@ -224,6 +230,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode,
             LOG(INFO, "Put %s", common::DebugString(key_str).c_str());
             assert (s.ok());
             LOG(INFO, "Create path recursively: %s %ld", paths[i].c_str(), file_info.entry_id());
+            file_info.set_name(paths[i]);
         } else {
             if (!IsDir(file_info.type())) {
                 LOG(WARNING, "Create path fail: %s is not a directory", paths[i].c_str());
@@ -233,8 +240,9 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode,
         parent_id = file_info.entry_id();
     }
 
-    if (!CheckPermission(file_info, user_id, 0)
-        || !CheckPermission(file_info, user_id, 1)) {
+    if (!CheckPermission(file_info, user_id, 1)) {
+        LOG(INFO, "CreateFile %s, check write permission %s fail",
+                path.c_str(), file_info.name().c_str());
         return 403;
     }
 

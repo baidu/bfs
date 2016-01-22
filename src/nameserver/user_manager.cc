@@ -14,7 +14,7 @@ DECLARE_string(userdb_path);
 namespace baidu {
 namespace bfs {
 
-UserManager::UserManager() : last_user_id_(0) {
+UserManager::UserManager() : last_user_id_(-1) {
     leveldb::Options options;
     options.create_if_missing = true;
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_userdb_path, &db_);
@@ -22,6 +22,8 @@ UserManager::UserManager() : last_user_id_(0) {
         db_ = NULL;
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
     }
+    AddUser(0, "root", "bfs");
+    AddUser(0, "share", "");
     int num = 0;
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->SeekToFirst(); it->Valid(); it->Next()) {
@@ -71,6 +73,18 @@ int32_t UserManager::AddUser(int32_t user_id,
     return 0;
 }
 
+void UserManager::GetUserList(std::vector<std::pair<int32_t, std::string> >* list) {
+
+    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
+    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+        UserInfo user_info;
+        bool ret = user_info.ParseFromArray(it->value().data(), it->value().size());
+        if (ret) {
+            list->push_back(std::make_pair(user_info.user_id(), it->key().ToString()));
+        }
+    }
+}
+
 int32_t UserManager::GetUserId(const std::string& user, const std::string& token) {
     std::string key = user;
     std::string value;
@@ -85,7 +99,7 @@ int32_t UserManager::GetUserId(const std::string& user, const std::string& token
         return -1;
     }
     if (user_info.token() != token) {
-        LOG(INFO, "GetUserId wrong password: %s", user.c_str());
+        LOG(INFO, "GetUserId wrong password: %s %s %s", user.c_str(), user_info.token().c_str(), token.c_str());
         return -1;
     }
     return user_info.user_id();

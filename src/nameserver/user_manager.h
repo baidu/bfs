@@ -7,6 +7,9 @@
 #ifndef  BFS_USER_MANAGER_H_
 #define  BFS_USER_MANAGER_H_
 
+#include <map>
+#include <string>
+#include <vector>
 #include <leveldb/db.h>
 
 #include "proto/user.pb.h"
@@ -20,6 +23,7 @@ public:
     ~UserManager();
     /// User management
     int32_t GetUserId(const std::string& user, const std::string& token);
+    void GetUserList(std::vector<std::pair<int32_t, std::string> >* list);
     int32_t AddUser(int32_t user_id, const std::string& user_name, const std::string& token);
 private:
     leveldb::DB* db_;

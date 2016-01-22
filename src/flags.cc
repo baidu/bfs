@@ -40,7 +40,7 @@ DEFINE_bool(chunkserver_auto_clean, true, "If namespace version mismatch, chunks
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
 DEFINE_string(sdk_write_mode, "chains", "Sdk write mode: chains/fan-out");
-DEFINE_string(user_name, "user_name", "User name");
-DEFINE_string(user_token, "user_token", "User token");
+DEFINE_string(user_name, "share", "User name");
+DEFINE_string(user_token, "", "User token");
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

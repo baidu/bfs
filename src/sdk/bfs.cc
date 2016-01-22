@@ -22,6 +22,8 @@
 #include <common/string_util.h>
 #include <common/tprinter.h>
 
+#include "proto/status_code.pb.h"
+
 #include "bfs.h"
 
 DECLARE_string(nameserver);
@@ -205,6 +207,8 @@ public:
         request.set_file_name(path);
         request.set_mode(0755|(1<<9));
         request.set_sequence_id(0);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
             &request, &response, 15, 3);
         if (!ret || response.status() != 0) {
@@ -220,6 +224,8 @@ public:
         ListDirectoryRequest request;
         ListDirectoryResponse response;
         request.set_path(path);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ListDirectory,
             &request, &response, 15, 3);
@@ -247,6 +253,8 @@ public:
         request.set_sequence_id(0);
         request.set_path(path);
         request.set_recursive(recursive);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::DeleteDirectory,
                 &request, &response, 15, 3);
         if (!ret) {
@@ -263,6 +271,8 @@ public:
         StatResponse response;
         request.set_path(path);
         request.set_sequence_id(0);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Stat,
             &request, &response, 15, 3);
         if (!ret) {
@@ -275,6 +285,8 @@ public:
         StatRequest request;
         StatResponse response;
         request.set_path(path);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Stat,
             &request, &response, 15, 3);
@@ -300,6 +312,8 @@ public:
         FileLocationResponse response;
         request.set_file_name(path);
         request.set_sequence_id(0);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         bool ret = rpc_client_->SendRequest(nameserver_,
             &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
         if (!ret || response.status() != 0) {
@@ -363,6 +377,7 @@ public:
             request.set_mode(mode&0777);
             request.set_replica_num(replica);
             request.set_user(FLAGS_user_name);
+            request.set_token(FLAGS_user_token);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != 0) {
@@ -378,6 +393,8 @@ public:
             FileLocationResponse response;
             request.set_file_name(path);
             request.set_sequence_id(0);
+            request.set_user(FLAGS_user_name);
+            request.set_token(FLAGS_user_token);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::GetFileLocation,
                 &request, &response, 15, 3);
             if (ret && response.status() == 0) {
@@ -403,6 +420,8 @@ public:
         UnlinkRequest request;
         UnlinkResponse response;
         request.set_path(path);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         int64_t seq = common::timer::get_micros();
         request.set_sequence_id(seq);
         // printf("Delete file: %s\n", path);
@@ -423,6 +442,8 @@ public:
         RenameResponse response;
         request.set_oldpath(oldpath);
         request.set_newpath(newpath);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Rename,
             &request, &response, 15, 3);
@@ -443,6 +464,8 @@ public:
         request.set_file_name(file_name);
         request.set_replica_num(replica_num);
         request.set_sequence_id(0);
+        request.set_user(FLAGS_user_name);
+        request.set_token(FLAGS_user_token);
         bool ret = rpc_client_->SendRequest(nameserver_,
                 &NameServer_Stub::ChangeReplicaNum,
                 &request, &response, 15, 3);
@@ -599,7 +622,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         ret = fs_->rpc_client_->SendRequest(chunk_server, &ChunkServer_Stub::ReadBlock,
                     &request, &response, 15, 3);
 
-        if (!ret || response.status() != 0) {
+        if (!ret || response.status() != kOK) {
             ///TODO: Add to _badchunkservers_
             cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
