@@ -13,9 +13,14 @@
 #include <common/mutex.h>
 #include <common/thread_pool.h>
 #include <common/sliding_window.h>
+#include <boost/function.hpp>
+
+#include "proto/chunkserver.pb.h"
 
 namespace baidu {
 namespace bfs {
+
+typedef boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, ::google::protobuf::Closure*)> LocalWriteCallback;
 
 struct Buffer {
     const char* data_;
@@ -67,7 +72,7 @@ public:
     int64_t Read(char* buf, int64_t len, int64_t offset);
     /// Write operation.
     bool Write(int32_t seq, int64_t offset, const char* data,
-               int64_t len, int64_t* add_use = NULL);
+               int64_t len, LocalWriteCallback callback, int64_t* add_use = NULL);
     /// Flush block to disk.
     bool Close();
     void AddRef();

@@ -221,7 +221,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
 }
 /// Write operation.
 bool Block::Write(int32_t seq, int64_t offset, const char* data,
-           int64_t len, int64_t* add_use) {
+           int64_t len, LocalWriteCallback callback, int64_t* add_use) {
     if (offset < meta_.block_size) {
         assert (offset + len <= meta_.block_size);
         LOG(WARNING, "Write a finish block #%ld size %ld, seq: %d, offset: %ld",

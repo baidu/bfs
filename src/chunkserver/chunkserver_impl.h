@@ -71,6 +71,9 @@ private:
     void LocalWriteBlock(const WriteBlockRequest* request,
                          WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
+    void LocalWriteBlockCallback(const WriteBlockRequest* request,
+                                 WriteBlockResponse* response,
+                                 ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlock(const ReplicaInfo& new_replica_info);
     void GatherCounter();
@@ -89,6 +92,7 @@ private:
     CounterManager* counter_manager_;
     int64_t heartbeat_task_id_;
     volatile int64_t blockreport_task_id_;
+    int32_t last_report_blockid_;
 };
 
 } // namespace bfs
