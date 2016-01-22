@@ -119,7 +119,7 @@ $(FUSE_OBJ): %.o: %.cc
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
 
 clean:
-	rm -rf $(BIN)
+	rm -rf $(BIN) $(LIBS)
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)

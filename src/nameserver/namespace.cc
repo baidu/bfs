@@ -27,6 +27,12 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
+enum OpType {
+    kOpSearch = 0,
+    kOpWrite = 1,
+    kOpRead = 2,
+};
+
 NameSpace::NameSpace(): last_entry_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
@@ -96,9 +102,10 @@ bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
 
 void NameSpace::SetupRoot() {
     root_path_.set_entry_id(kRootEntryid);
-    root_path_.set_name("");
+    root_path_.set_name("/");
     root_path_.set_parent_entry_id(kRootEntryid);
     root_path_.set_type(01755);
+    root_path_.set_owner(0);
     root_path_.set_ctime(static_cast<uint32_t>(version_/1000000));
 }
 /// New SplitPath
@@ -112,7 +119,10 @@ void NameSpace::SetupRoot() {
 /// 3filez -> 6
 /// 4filex -> 7
 /// 5filey -> 8
-bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
+bool NameSpace::LookUp(const std::string& path, int32_t user_id, FileInfo* info) {
+    if (!CheckPermission(root_path_, user_id, kOpSearch)) {
+        return false;
+    }
     if (path == "/") {
         info->CopyFrom(root_path_);
         return true;
@@ -124,12 +134,18 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
     int64_t parent_id = kRootEntryid;
     int64_t entry_id = kRootEntryid;
     for (size_t i = 0; i < paths.size(); i++) {
+        if (!CheckPermission(root_path_, user_id, kOpSearch)) {
+            return false;
+        }
         if (!LookUp(entry_id, paths[i], info)) {
             return false;
         }
         parent_id = entry_id;
         entry_id = info->entry_id();
         LOG(DEBUG, "LookUp %s entry_id= %ld", paths[i].c_str(), entry_id);
+    }
+    if (!CheckPermission(root_path_, user_id, kOpRead)) {
+        return false;
     }
     info->set_name(paths[paths.size()-1]);
     info->set_parent_entry_id(parent_id);
@@ -144,6 +160,7 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
         LOG(INFO, "LookUp %ld %s return false", parent_id, name.c_str());
         return false;
     }
+    info->set_name(name);
     LOG(DEBUG, "LookUp %ld %s return true", parent_id, name.c_str());
     return true;
 }
@@ -161,24 +178,48 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
     return s.ok();
 };
 
-bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
-    return LookUp(path, file_info);
+bool NameSpace::GetFileInfo(const std::string& path, int32_t user_id, FileInfo* file_info) {
+    return LookUp(path, user_id, file_info);
 }
 
-int NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
+bool NameSpace::CheckPermission(const FileInfo& file_info, int32_t user_id, int op) {
+    if (user_id == 0) {
+        return true;
+    }
+    int type = file_info.type();
+    int owner = file_info.owner();
+    if (owner == user_id) {
+        return (type >> 6) & (1 << op);
+    } else {
+        return type & (1 << op);
+    }
+}
+
+int NameSpace::CreateFile(const std::string& path, int flags, int mode,
+                          int replica_num, int32_t user_id) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "CreateFile split fail %s", path.c_str());
         return 886;
     }
-
     /// Find parent directory, create if not exist.
-    FileInfo file_info;
     int64_t parent_id = kRootEntryid;
+    FileInfo file_info = root_path_;
     int depth = paths.size();
     std::string info_value;
     for (int i=0; i < depth-1; ++i) {
+        if (!CheckPermission(file_info, user_id, 0)) {
+            LOG(INFO, "CreateFile %s, check search permission %s fail",
+                path.c_str(), file_info.name().c_str());
+            return 403;
+        }
+        bool create_permission = CheckPermission(file_info, user_id, 1);
         if (!LookUp(parent_id, paths[i], &file_info)) {
+            if (!create_permission) {
+            LOG(INFO, "CreateFile %s, check write permission %s %d fail",
+                    path.c_str(), file_info.name().c_str(), user_id);
+                return 403;
+            }
             file_info.set_type((1<<9)|0755);
             file_info.set_ctime(time(NULL));
             file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
@@ -189,6 +230,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
             LOG(INFO, "Put %s", common::DebugString(key_str).c_str());
             assert (s.ok());
             LOG(INFO, "Create path recursively: %s %ld", paths[i].c_str(), file_info.entry_id());
+            file_info.set_name(paths[i]);
         } else {
             if (!IsDir(file_info.type())) {
                 LOG(WARNING, "Create path fail: %s is not a directory", paths[i].c_str());
@@ -198,6 +240,12 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
         parent_id = file_info.entry_id();
     }
 
+    if (!CheckPermission(file_info, user_id, 1)) {
+        LOG(INFO, "CreateFile %s, check write permission %s fail",
+                path.c_str(), file_info.name().c_str());
+        return 403;
+    }
+
     const std::string& fname = paths[depth-1];
     if ((flags & O_TRUNC) == 0) {
         if (LookUp(parent_id, fname, &file_info)) {
@@ -205,13 +253,14 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
             return 1;
         }
     }
-    if (mode) {
+    if (mode && user_id != -1) {
         file_info.set_type(((1 << 10) - 1) & mode);
     } else {
         file_info.set_type(0755);
     }
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
+    file_info.set_owner(user_id);
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
@@ -227,11 +276,11 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
     }
 }
 
-int NameSpace::ListDirectory(const std::string& path,
+int NameSpace::ListDirectory(const std::string& path, int32_t user_id,
                              google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
     FileInfo info;
-    if (!LookUp(path, &info)) {
+    if (!LookUp(path, user_id, &info)) {
         return 404;
     }
     int64_t entry_id = info.entry_id();
@@ -260,6 +309,7 @@ int NameSpace::ListDirectory(const std::string& path,
 
 int NameSpace::Rename(const std::string& old_path,
                       const std::string& new_path,
+                      int32_t user_id,
                       bool* need_unlink,
                       FileInfo* remove_file) {
     *need_unlink = false;
@@ -267,7 +317,7 @@ int NameSpace::Rename(const std::string& old_path,
         return 403;
     }
     FileInfo old_file;
-    if (!LookUp(old_path, &old_file)) {
+    if (!LookUp(old_path, user_id, &old_file)) {
         LOG(WARNING, "Rename not found: %s\n", old_path.c_str());
         return 404;
     }
@@ -336,9 +386,9 @@ int NameSpace::Rename(const std::string& old_path,
     return 1;
 }
 
-int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
+int NameSpace::RemoveFile(const std::string& path, int32_t user_id, FileInfo* file_removed) {
     int ret_status = 0;
-    if (LookUp(path, file_removed)) {
+    if (LookUp(path, user_id, file_removed)) {
         // Only support file
         if ((file_removed->type() & (1<<9)) == 0) {
             if (path == "/" || path.empty()) {
@@ -364,23 +414,23 @@ int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
     return ret_status;
 }
 
-int NameSpace::DeleteDirectory(const std::string& path, bool recursive,
+int NameSpace::DeleteDirectory(const std::string& path, bool recursive, int32_t user_id,
                                std::vector<FileInfo>* files_removed) {
     files_removed->clear();
     FileInfo info;
     std::string store_key;
-    if (!LookUp(path, &info)) {
+    if (!LookUp(path, user_id, &info)) {
         LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
         return 404;
     } else if (!IsDir(info.type())) {
         LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
         return 886;
     }
-    return InternalDeleteDirectory(info, recursive, files_removed);
+    return InternalDeleteDirectory(info, recursive, user_id, files_removed);
 }
 
 int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
-                                       bool recursive,
+                                       bool recursive, int32_t user_id,
                                        std::vector<FileInfo>* files_removed) {
     int entry_id = dir_info.entry_id();
     std::string key_start, key_end;
@@ -411,7 +461,7 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
             child_info.set_parent_entry_id(entry_id);
             child_info.set_name(entry_name);
             LOG(INFO, "Recursive to path: %s", entry_name.c_str());
-            ret_status = InternalDeleteDirectory(child_info, true, files_removed);
+            ret_status = InternalDeleteDirectory(child_info, true, user_id, files_removed);
             if (ret_status != 0) {
                 break;
             }

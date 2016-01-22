@@ -199,7 +199,9 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     std::vector<std::pair<int64_t, int64_t> > tmp_holder;
     CheckList::iterator check_it = recover_check_.insert(std::make_pair(cs_id, std::set<int64_t>())).first;
     int32_t quota = FLAGS_recover_speed - (check_it->second).size();
-    LOG(DEBUG, "C%d has %lu pending_recover blocks", cs_id, (check_it->second).size());
+    if ((check_it->second).size()) {
+        LOG(DEBUG, "C%d has %lu pending_recover blocks", cs_id, (check_it->second).size());
+    }
     quota = quota < block_num ? quota : block_num;
     while (static_cast<int>(recover_blocks->size()) < quota && !recover_q_.empty()) {
         std::pair<int64_t, int64_t> recover_item = recover_q_.top();
@@ -233,7 +235,9 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
          it != tmp_holder.end(); ++it) {
         recover_q_.push(*it);
     }
-    LOG(DEBUG, "recover_q_ size = %lu", recover_q_.size());
+    if (!recover_q_.empty()) {
+        LOG(DEBUG, "recover_q_ size = %lu", recover_q_.size());
+    }
 }
 
 void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success) {
