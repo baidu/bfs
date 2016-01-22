@@ -71,7 +71,7 @@ extern common::Counter g_rpc_count;
 extern common::Counter g_data_size;
 
 ChunkServerImpl::ChunkServerImpl()
-    : chunkserver_id_(kUnknownChunkServerId),
+    : chunkserver_id_(-1),
      heartbeat_task_id_(-1),
      blockreport_task_id_(-1),
      last_report_blockid_(-1) {
@@ -142,7 +142,7 @@ void ChunkServerImpl::Register() {
         return;
     }
     if (response.status() != kOK) {
-        LOG(FATAL, "Block report return %d", response.status());
+        LOG(FATAL, "Block report return %s", StatusCode_Name(response.status()).c_str());
         work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
         return;
     }
@@ -164,7 +164,7 @@ void ChunkServerImpl::Register() {
         work_thread_pool_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
         return;
     }
-    assert (response.chunkserver_id() != kUnknownChunkServerId);
+    assert (response.chunkserver_id() != -1);
     chunkserver_id_ = response.chunkserver_id();
     LOG(INFO, "Connect to nameserver version= %ld, cs_id = %d",
         block_manager_->NameSpaceVersion(), chunkserver_id_);

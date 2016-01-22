@@ -12,7 +12,6 @@ enum StatusCode {
 }
 
 enum ChunkServerStatus {
-    kUnknownChunkServerId = -1;
     kCsActive = 101;
     kCsWaitClean = 102;
     kCsCleaning = 103;

@@ -117,8 +117,8 @@ int32_t ChunkServerManager::GetChunkServerNum() {
 void ChunkServerManager::HandleRegister(const RegisterRequest* request,
                                         RegisterResponse* response) {
     const std::string& address = request->chunkserver_addr();
-    int status = kOK;
-    int cs_id = kUnknownChunkServerId;
+    StatusCode status = kOK;
+    int cs_id = -1;
     MutexLock lock(&mu_);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
@@ -148,7 +148,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     int32_t id = request->chunkserver_id();
     const std::string& address = request->chunkserver_addr();
     int cs_id = GetChunkserverId(address);
-    if (id == kUnknownChunkServerId || cs_id != id) {
+    if (id == -1 || cs_id != id) {
         //reconnect after DeadCheck()
         LOG(WARNING, "Unknown chunkserver %s with namespace version %ld",
             address.c_str(), request->namespace_version());
