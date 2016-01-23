@@ -605,6 +605,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
             {
                 MutexLock lock(&mu_, "Pread change chunkserver_", 1000);
+                delete chunkserver_;
                 chunkserver_ = chunk_server;
             }
         } else {
