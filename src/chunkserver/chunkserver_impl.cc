@@ -609,6 +609,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
             LOG(INFO, "Change src chunkserver to %s for pull block #%ld ",
                     new_replica_info.chunkserver_address(pre_index).c_str(), block_id);
             if (pre_index == init_index) {
+                LOG(INFO, "Pull block #%ld read fail", block_id);
                 success = false;
                 break;
             } else {
@@ -620,6 +621,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         const char* buf = response.databuf().data();
         if (len) {
             if (!block->Write(seq, offset, buf, len)) {
+                LOG(INFO, "Pull block #%ld write fail", block_id);
                 success = false;
                 break;
             }
@@ -642,15 +644,15 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     } else {
         report_request.add_blocks(block_id);
     }
-    LOG(INFO, "done pull : #%ld %ld bytes", block_id, offset);
+    LOG(INFO, "Done pull : #%ld V%d %ld bytes", block_id, block->GetVersion(), offset);
 
 REPORT:
     PullBlockReportResponse report_response;
     if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::PullBlockReport,
                 &report_request, &report_response, 15, 3)) {
-        LOG(WARNING, "Report pull finish fail, chunkserver id: %d\n", chunkserver_id_);
+        LOG(WARNING, "Report pull finish fail #%ld ", block_id);
     } else {
-        LOG(INFO, "Report pull finish dnne, %d blocks", report_request.blocks_size());
+        LOG(INFO, "Report pull finish done #%ld ", block_id);
     }
 }
 

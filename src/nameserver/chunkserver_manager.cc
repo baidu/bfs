@@ -77,7 +77,7 @@ void ChunkServerManager::DeadCheck() {
         while (node != it->second.end()) {
             ChunkServerInfo* cs = *node;
             it->second.erase(node++);
-            LOG(INFO, "[DeadCheck] Chunkserver[%d] %s dead, cs_num=%d",
+            LOG(INFO, "[DeadCheck] Chunkserver dead C%d %s, cs_num=%d",
                 cs->id(), cs->address().c_str(), chunkserver_num_);
             cs->set_is_dead(true);
             if (cs->status() == kCsActive) {

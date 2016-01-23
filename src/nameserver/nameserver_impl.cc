@@ -126,6 +126,8 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         int64_t cur_block_id = block.block_id();
         int64_t cur_block_size = block.block_size();
 
+        // update cs -> block
+        chunkserver_manager_->AddBlock(cs_id, cur_block_id);
         // update block -> cs
         int64_t block_version = block.version();
         block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
@@ -255,7 +257,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0, false);
+            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, -1, false);
         }
         block->set_block_id(new_block_id);
         response->set_status(0);
@@ -557,8 +559,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t recover_num, pending_num, urgent_num;
-    block_mapping_->GetStat(&recover_num, &pending_num, &urgent_num);
+    int64_t recover_num, pending_num, urgent_num, incomplete_num;
+    block_mapping_->GetStat(&recover_num, &pending_num, &urgent_num, &incomplete_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
 
     str += "<div class=\"row\">";
@@ -578,7 +580,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-3 col-md-3\">";
     str += "Recover: " + common::NumToString(recover_num) + "</br>";
     str += "Pending: " + common::NumToString(pending_num) + "</br>";
-    str += "urgent: " + common::NumToString(urgent_num) + "</br>";
+    str += "Urgent: " + common::NumToString(urgent_num) + "</br>";
+    str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
     str += "</div>"; // <div class="col-sm-3 col-md-3">
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="row">

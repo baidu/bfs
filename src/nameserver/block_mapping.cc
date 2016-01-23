@@ -18,15 +18,15 @@ namespace bfs {
 
 NSBlock::NSBlock()
     : id(-1), version(-1), block_size(-1),
-      expect_replica_num(0), pending_recover(false) {
+      expect_replica_num(0), pending_recover(false), incomplete(false) {
 }
 NSBlock::NSBlock(int64_t block_id, int32_t replica,
                  int64_t block_version, int64_t block_size)
     : id(block_id), version(block_version), block_size(block_size),
-      expect_replica_num(replica), pending_recover(false) {
+      expect_replica_num(replica), pending_recover(false), incomplete(false) {
 }
 
-BlockMapping::BlockMapping() : next_block_id_(1) {}
+BlockMapping::BlockMapping() : next_block_id_(1), incomplete_blocks_(0) {}
 
 int64_t BlockMapping::NewBlockID() {
     MutexLock lock(&mu_, "BlockMapping::NewBlockID", 1000);
@@ -155,7 +155,11 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
         LOG(WARNING, "RemoveBlock(%ld) not found", block_id);
         return;
     }
-    delete it->second;
+    NSBlock* block = it->second;
+    if (block->incomplete) {
+        --incomplete_blocks_;
+    }
+    delete block;
     block_map_.erase(it);
 }
 
@@ -186,6 +190,18 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
         block->replica.erase(cs_id);
         int32_t rep_num = block->replica.size();
         if (rep_num < block->expect_replica_num) {
+            if (block->version == -1) {
+                LOG(INFO, "Incomplete block #%ld at C%d, don't recover",
+                    block_id, cs_id);
+                if (!block->incomplete) {
+                    block->incomplete = true;
+                    incomplete_blocks_++;
+                } else {
+                    LOG(WARNING, "Urgent incomplete block #%ld replica= %lu",
+                        block_id, block->replica.size());
+                }
+                continue;
+            }
             LOG(DEBUG, "DeadBlock #%ld at C%d , add to recover rep_num: %d",
                 block_id, cs_id, rep_num);
             AddToRecover(block);
@@ -238,16 +254,18 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
 
 void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success) {
     MutexLock lock(&mu_);
-    NSBlock* b = NULL;
-    if (!GetBlockPtr(block_id, &b)) {
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
         LOG(DEBUG, "ProcessRecoveredBlock for C%d can't find block: #%ld ", cs_id, block_id);
-        return;
+        block = NULL;
     }
     if (recover_success) {
-        b->replica.insert(cs_id);
+        if (block) {
+            block->replica.insert(cs_id);
+        }
         LOG(DEBUG, "Recovered block #%ld at C%d ", block_id, cs_id);
     } else {
-        LOG(INFO, "Recover block #%ld at C%d fail", block_id, cs_id);
+        LOG(INFO, "Recover block fail #%ld at C%d", block_id, cs_id);
     }
     CheckList::iterator it = recover_check_.find(cs_id);
     if (it == recover_check_.end()) {
@@ -255,10 +273,13 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
         return;
     }
     (it->second).erase(block_id);
-    TryRecover(b);
+    if (block) {
+        TryRecover(block);
+    }
 }
 
-void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num, int64_t* urgent_num) {
+void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num,
+                           int64_t* urgent_num, int64_t* incomplete_num) {
     MutexLock lock(&mu_);
     if (recover_num) {
         *recover_num = recover_q_.size();
@@ -271,6 +292,9 @@ void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num, int64_t* 
     }
     if (urgent_num) {
         *urgent_num = hi_pri_recover_.size();
+    }
+    if (incomplete_num) {
+        *incomplete_num = incomplete_blocks_;
     }
 }
 
