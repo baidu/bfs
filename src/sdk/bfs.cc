@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <list>
 #include <queue>
+#include <set>
 #include <sstream>
 
 #include "proto/nameserver.pb.h"
@@ -166,6 +167,7 @@ private:
     LocatedBlocks located_blocks_;      ///< block meta for read
     ChunkServer_Stub* chunkserver_;     ///< located chunkserver
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
+    std::set<ChunkServer_Stub*> bad_chunkservers_;
     int64_t read_offset_;               ///< 读取的偏移
     char* reada_buffer_;                ///< Read ahead buffer
     int32_t reada_buf_len_;             ///< Read ahead buffer length
@@ -527,6 +529,11 @@ BfsFileImpl::~BfsFileImpl () {
         delete it->second;
         it->second = NULL;
     }
+    std::set<ChunkServer_Stub*>::iterator bad_cs_it;
+    for (bad_cs_it = bad_chunkservers_.begin();
+            bad_cs_it != bad_chunkservers_.end(); ++bad_cs_it) {
+        delete *bad_cs_it;
+    }
 }
 
 int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada) {
@@ -599,13 +606,18 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
                     &request, &response, 15, 3);
 
         if (!ret || response.status() != kOK) {
-            ///TODO: Add to _badchunkservers_
             cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
-            fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
             {
-                MutexLock lock(&mu_, "Pread change chunkserver_", 1000);
-                chunkserver_ = chunk_server;
+                ChunkServer_Stub* old_cs = chunk_server;
+                MutexLock lock(&mu_, "Pread change chunkserver", 1000);
+                if (old_cs != chunkserver_) {
+                    chunk_server = chunkserver_;
+                } else {
+                    fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
+                    chunkserver_ = chunk_server;
+                }
+                bad_chunkservers_.insert(old_cs);
             }
         } else {
             break;
