@@ -616,8 +616,8 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
                 } else {
                     fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
                     chunkserver_ = chunk_server;
+                    bad_chunkservers_.insert(old_cs);
                 }
-                bad_chunkservers_.insert(old_cs);
             }
         } else {
             break;
