@@ -18,6 +18,7 @@
 #include <common/string_util.h>
 
 #include "nameserver/namespace.h"
+#include "chunkserver_manager.h"
 #include "proto/status_code.pb.h"
 
 DECLARE_int32(nameserver_safemode_time);
