@@ -9,6 +9,7 @@
 
 #include <common/logging.h>
 #include "proto/status_code.pb.h"
+#include "nameserver/block_mapping.h"
 
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);
