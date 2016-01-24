@@ -643,10 +643,11 @@ int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
     if (open_flags_ != O_RDONLY) {
         return -2;
     }
+    MutexLock lock(&read_offset_mu_);
     if (whence == SEEK_SET) {
         read_offset_ = offset;
     } else if (whence == SEEK_CUR) {
-        common::atomic_add64(&read_offset_, offset);
+        read_offset_ += offset;
     } else {
         return -1;
     }
