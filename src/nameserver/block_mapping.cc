@@ -190,9 +190,9 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
 }
 
 void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& blocks) {
-    MutexLock lock(&mu_);
-    NSBlock* block = NULL;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        MutexLock lock(&mu_);
+        NSBlock* block = NULL;
         int64_t block_id = *it;
         if (!GetBlockPtr(block_id, &block)) {
             LOG(DEBUG, "DealWithDeadBlocks for C%d can't find block: #%ld ", cs_id, block_id);
