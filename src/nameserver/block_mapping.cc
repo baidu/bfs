@@ -26,7 +26,7 @@ NSBlock::NSBlock(int64_t block_id, int32_t replica,
       expect_replica_num(replica), pending_recover(false), incomplete(false) {
 }
 
-BlockMapping::BlockMapping() : next_block_id_(1), incomplete_blocks_(0) {}
+BlockMapping::BlockMapping() : next_block_id_(1) {}
 
 int64_t BlockMapping::NewBlockID() {
     MutexLock lock(&mu_, "BlockMapping::NewBlockID", 1000);
@@ -74,22 +74,32 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
 }
 
 void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
-                               int64_t version, int64_t size) {
-    MutexLock lock(&mu_);
+                               int64_t version, int64_t size,
+                               const std::vector<int32_t>* init_replicas) {
     NSBlock* nsblock = NULL;
-    NSBlockMap::iterator it = block_map_.find(block_id);
-    //Don't suppport soft link now
-    assert(it == block_map_.end());
     nsblock = new NSBlock(block_id, replica, version, size);
-    block_map_[block_id] = nsblock;
-    LOG(DEBUG, "Init block info: #%ld ", block_id);
+    if (init_replicas) {
+        for (uint32_t i = 0; i < init_replicas->size(); i++) {
+            nsblock->replica.insert(init_replicas->at(i));
+        }
+    }
+    if (init_replicas) {
+        LOG(DEBUG, "Init block info: #%ld ", block_id);
+    } else {
+        LOG(DEBUG, "Rebuild block info: #%ld ", block_id);
+    }
+
+    MutexLock lock(&mu_);
+    std::pair<NSBlockMap::iterator, bool> ret =
+        block_map_.insert(std::make_pair(block_id,nsblock));
+    assert(ret.second == true);
     if (next_block_id_ <= block_id) {
         next_block_id_ = block_id + 1;
     }
 }
 
 bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                     int64_t block_version, bool need_recovery) {
+                     int64_t block_version, bool safe_mode) {
     MutexLock lock(&mu_);
     NSBlock* nsblock = NULL;
     NSBlockMap::iterator it = block_map_.find(id);
@@ -97,44 +107,62 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
         //have been removed
         LOG(DEBUG, "UpdateBlockInfo #%ld has been removed", id);
         return false;
-    } else {
-        nsblock = it->second;
-        if (nsblock->version >= 0 && block_version >= 0 &&
-                nsblock->version != block_version) {
+    }
+    nsblock = it->second;
+    if (nsblock->version >= 0) {
+        if (block_version >= 0 && nsblock->version != block_version) {
             LOG(INFO, "block #%ld on slow chunkserver: %d,"
                     " Ns: V%ld cs: V%ld drop it",
                     id, server_id, nsblock->version, block_version);
+            nsblock->replica.erase(server_id);
             return false;
-        }
-        if (nsblock->block_size !=  block_size && block_size) {
-            // update
-            if (nsblock->block_size) {
-                LOG(WARNING, "block #%ld size mismatch", id);
-                assert(0);
-                return false;
-            } else {
-                LOG(INFO, "block #%ld size update by C%d V%ld ,%ld to %ld",
-                    id, server_id, block_version, nsblock->block_size, block_size);
-                nsblock->block_size = block_size;
-            }
+        } else if (block_version < 0) {
+            /// pulling block?
+            return true;
         } else {
-            //LOG(DEBUG, "UpdateBlockInfo(%ld) ignored, from %ld to %ld",
-            //    id, nsblock->block_size, block_size);
+            assert(block_version >= 0 && block_version == nsblock->version);
+            /// another received block
         }
+    }
+    if (nsblock->block_size !=  block_size && block_size) {
+        // update
+        if (nsblock->block_size) {
+            LOG(WARNING, "block #%ld size mismatch", id);
+            assert(0);
+            nsblock->replica.erase(server_id);
+            return false;
+        } else {
+            LOG(INFO, "block #%ld size update by C%d V%ld ,%ld to %ld",
+                id, server_id, block_version, nsblock->block_size, block_size);
+            nsblock->block_size = block_size;
+        }
+    } else {
+        //LOG(DEBUG, "UpdateBlockInfo(%ld) ignored, from %ld to %ld",
+        //    id, nsblock->block_size, block_size);
+    }
+    if (nsblock->replica.size() == 0) {
+        lost_blocks_.erase(id);
     }
     std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
     int32_t cur_replica_num = nsblock->replica.size();
     int32_t expect_replica_num = nsblock->expect_replica_num;
-    if (cur_replica_num > expect_replica_num) {
+    bool clean_redundancy = false;
+    if (clean_redundancy && cur_replica_num > expect_replica_num) {
         LOG(INFO, "Too much replica #%ld cur=%d expect=%d server=C%d ",
             id, cur_replica_num, expect_replica_num, server_id);
         nsblock->replica.erase(ret.first);
         return false;
-    } else if (cur_replica_num < expect_replica_num) {
-        if (need_recovery && !nsblock->pending_recover) {
-            LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
-                id, server_id, cur_replica_num);
-            AddToRecover(nsblock);
+    } else {
+        if (ret.second) {
+            LOG(DEBUG, "New replica C%d for #%ld total: %d",
+                server_id, id, cur_replica_num);
+        }
+        if (cur_replica_num < expect_replica_num && nsblock->version >= 0) {
+            if (!safe_mode && !nsblock->pending_recover) {
+                LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
+                    id, server_id, cur_replica_num);
+                AddToRecover(nsblock);
+            }
         }
     }
     return true;
@@ -157,7 +185,13 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     }
     NSBlock* block = it->second;
     if (block->incomplete) {
-        --incomplete_blocks_;
+        incomplete_blocks_.erase(block_id);
+    }
+    if (block->replica.size() == 0) {
+        lost_blocks_.erase(block_id);
+    }
+    if (block->replica.size() == 1) {
+        hi_pri_recover_.erase(block_id);
     }
     delete block;
     block_map_.erase(it);
@@ -179,9 +213,9 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
 }
 
 void BlockMapping::DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& blocks) {
-    MutexLock lock(&mu_);
-    NSBlock* block = NULL;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        MutexLock lock(&mu_);
+        NSBlock* block = NULL;
         int64_t block_id = *it;
         if (!GetBlockPtr(block_id, &block)) {
             LOG(DEBUG, "DealWithDeadBlocks for C%d can't find block: #%ld ", cs_id, block_id);
@@ -190,12 +224,18 @@ void BlockMapping::DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& bl
         block->replica.erase(cs_id);
         int32_t rep_num = block->replica.size();
         if (rep_num < block->expect_replica_num) {
+            if (rep_num == 0) {
+                hi_pri_recover_.erase(block_id);
+                lost_blocks_.insert(block_id);
+                LOG(INFO, "Block #%ld lost all replica", block_id);
+                continue;
+            }
             if (block->version == -1) {
                 LOG(INFO, "Incomplete block #%ld at C%d, don't recover",
                     block_id, cs_id);
                 if (!block->incomplete) {
                     block->incomplete = true;
-                    incomplete_blocks_++;
+                    incomplete_blocks_.insert(block_id);
                 } else {
                     LOG(WARNING, "Urgent incomplete block #%ld replica= %lu",
                         block_id, block->replica.size());
@@ -226,7 +266,14 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
             recover_q_.pop();
             continue;
         }
-        if (static_cast<int32_t>(cur_block->replica.size()) == cur_block->expect_replica_num) {
+        if (static_cast<int32_t>(cur_block->replica.size()) >= cur_block->expect_replica_num) {
+            LOG(DEBUG, "Replica num enough #%ld %lu", cur_block->id, cur_block->replica.size());
+            cur_block->pending_recover = false;
+            recover_q_.pop();
+            continue;
+        }
+        if (cur_block->replica.size() == 0) {
+            LOG(DEBUG, "All Replica lost #%ld , give up recover.", cur_block->id);
             cur_block->pending_recover = false;
             recover_q_.pop();
             continue;
@@ -279,7 +326,8 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
 }
 
 void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num,
-                           int64_t* urgent_num, int64_t* incomplete_num) {
+                           int64_t* urgent_num, int64_t* lost_num,
+                           int64_t* incomplete_num) {
     MutexLock lock(&mu_);
     if (recover_num) {
         *recover_num = recover_q_.size();
@@ -293,8 +341,11 @@ void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num,
     if (urgent_num) {
         *urgent_num = hi_pri_recover_.size();
     }
+    if (lost_num) {
+        *lost_num = lost_blocks_.size();
+    }
     if (incomplete_num) {
-        *incomplete_num = incomplete_blocks_;
+        *incomplete_num = incomplete_blocks_.size();
     }
 }
 

@@ -133,7 +133,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                         cur_block_size,
                                         block_version,
-                                        !safe_mode_);
+                                        safe_mode_);
     }
     done->Run();
 }
@@ -167,7 +167,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
                                              block_version,
-                                             !safe_mode_ && block_version >= 0)) {
+                                             safe_mode_)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
@@ -252,13 +252,14 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         LOG(INFO, "[AddBlock] new block for %s id= #%ld ",
             path.c_str(), new_block_id);
         LocatedBlock* block = response->mutable_block();
-        block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0);
+        std::vector<int32_t> replicas;
         for (int i =0; i<replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, -1, false);
+            replicas.push_back(chains[i].first);
         }
+        block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);
         response->set_status(0);
         file_info.add_blocks(new_block_id);
@@ -474,7 +475,7 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
         block_mapping_->AddNewBlock(block_id, file_info.replicas(),
-                                    version, file_info.size());
+                                    version, file_info.size(), NULL);
     }
 }
 
@@ -559,8 +560,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t recover_num, pending_num, urgent_num, incomplete_num;
-    block_mapping_->GetStat(&recover_num, &pending_num, &urgent_num, &incomplete_num);
+    int64_t recover_num, pending_num, urgent_num, lost_num, incomplete_num;
+    block_mapping_->GetStat(&recover_num, &pending_num, &urgent_num,
+                            &lost_num, &incomplete_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
 
     str += "<div class=\"row\">";
@@ -581,6 +583,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Recover: " + common::NumToString(recover_num) + "</br>";
     str += "Pending: " + common::NumToString(pending_num) + "</br>";
     str += "Urgent: " + common::NumToString(urgent_num) + "</br>";
+    str += "Lost: " + common::NumToString(lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
     str += "</div>"; // <div class="col-sm-3 col-md-3">
     str += "</div>"; // <div class="col-sm-6 col-md-6">

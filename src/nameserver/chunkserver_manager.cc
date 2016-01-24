@@ -317,8 +317,8 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(it->second, &cs)) {
-            LOG(WARNING, "PickRecoverBlocks for %ld can't find chunkserver C%d",
-                it->second, cs_id);
+            LOG(WARNING, "PickRecoverBlocks for C%d can't find chunkserver C%d",
+                cs_id, it->second);
             continue;
         }
         recover_blocks->insert(std::make_pair(it->first, cs->address()));
