@@ -99,12 +99,16 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
         return false;
     } else {
         nsblock = it->second;
-        if (nsblock->version >= 0 && block_version >= 0 &&
-                nsblock->version != block_version) {
-            LOG(INFO, "block #%ld on slow chunkserver: %d,"
-                    " Ns: V%ld cs: V%ld drop it",
-                    id, server_id, nsblock->version, block_version);
-            return false;
+        if (nsblock->version >= 0) {
+            if (block_version >= 0 && nsblock->version != block_version) {
+                LOG(INFO, "block #%ld on slow chunkserver: %d,"
+                        " Ns: V%ld cs: V%ld drop it",
+                        id, server_id, nsblock->version, block_version);
+                return false;
+            } else if (block_version < 0) {
+                /// pulling block?
+                return true;
+            }
         }
         if (nsblock->block_size !=  block_size && block_size) {
             // update
