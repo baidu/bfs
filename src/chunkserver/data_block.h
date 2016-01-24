@@ -47,6 +47,7 @@ public:
     Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool,
           FileCache* file_cache);
     ~Block();
+    static std::string BuildFilePath(int64_t block_id);
     /// Getter
     int64_t Id() const;
     int64_t Size() const;
@@ -63,10 +64,10 @@ public:
     /// Is all slice is arrival(Notify by the sliding window)
     bool IsComplete();
     /// Read operation.
-    int32_t Read(char* buf, int32_t len, int64_t offset);
+    int64_t Read(char* buf, int64_t len, int64_t offset);
     /// Write operation.
     bool Write(int32_t seq, int64_t offset, const char* data,
-               int32_t len, int64_t* add_use = NULL);
+               int64_t len, int64_t* add_use = NULL);
     /// Flush block to disk.
     bool Close();
     void AddRef();
@@ -76,7 +77,7 @@ private:
     void WriteCallback(int32_t seq, Buffer buffer);
     void DiskWrite();
     /// Append to block buffer
-    void Append(int32_t seq, const char*buf, int32_t len);
+    void Append(int32_t seq, const char*buf, int64_t len);
 private:
     enum Type {
         InDisk,
@@ -87,12 +88,12 @@ private:
     int32_t     last_seq_;
     int32_t     slice_num_;
     char*       blockbuf_;
-    int32_t     buflen_;
-    int32_t     bufdatalen_;
+    int64_t     buflen_;
+    int64_t     bufdatalen_;
     std::vector<std::pair<const char*,int> > block_buf_list_;
     bool        disk_writing_;
     std::string disk_file_;
-    int32_t     disk_file_size_;
+    int64_t     disk_file_size_;
     int         file_desc_; ///< disk file fd
     volatile int refs_;
     Mutex       mu_;

@@ -18,6 +18,9 @@
 #include <common/string_util.h>
 
 #include "nameserver/namespace.h"
+#include "nameserver/chunkserver_manager.h"
+#include "nameserver/block_mapping.h"
+#include "proto/status_code.pb.h"
 
 DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
@@ -71,7 +74,7 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
     if (version == namespace_->Version()) {
         chunkserver_manager_->HandleHeartBeat(request, response);
     } else {
-        response->set_status(-1);
+        response->set_status(kVersionError);
     }
     response->set_namespace_version(namespace_->Version());
     done->Run();
@@ -123,6 +126,8 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         int64_t cur_block_id = block.block_id();
         int64_t cur_block_size = block.block_size();
 
+        // update cs -> block
+        chunkserver_manager_->AddBlock(cs_id, cur_block_id);
         // update block -> cs
         int64_t block_version = block.version();
         block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
@@ -147,7 +152,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     if (cs_id != old_id) {
         LOG(WARNING, "Chunkserver %s id mismatch, old: %d new: %d",
             request->chunkserver_addr().c_str(), old_id, cs_id);
-        response->set_status(-1);
+        response->set_status(kUnkownCs);
         done->Run();
         return;
     }
@@ -165,7 +170,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                              !safe_mode_ && block_version >= 0)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
-            LOG(INFO, "BlockReport remove obsolete block: #%ld C%d", cur_block_id, cs_id);
+            LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
             continue;
         }
 
@@ -186,6 +191,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
+    response->set_status(kOK);
     done->Run();
 }
 
@@ -210,10 +216,14 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                         ::google::protobuf::Closure* done) {
     g_create_file.Inc();
     response->set_sequence_id(request->sequence_id());
-    const std::string& file_name = request->file_name();
+    std::string path = NameSpace::NormalizePath(request->file_name());
     int flags = request->flags();
     int mode = request->mode();
-    int status = namespace_->CreateFile(file_name, flags, mode);
+    if (mode == 0) {
+        mode = 0644;    // default mode
+    }
+    int replica_num = request->replica_num();
+    int status = namespace_->CreateFile(path, flags, mode, replica_num);
     response->set_status(status);
     done->Run();
 }
@@ -224,7 +234,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                          ::google::protobuf::Closure* done) {
     g_add_block.Inc();
     response->set_sequence_id(request->sequence_id());
-    const std::string& path = request->file_name();
+    std::string path = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
     if (!namespace_->GetFileInfo(path, &file_info)) {
         LOG(WARNING, "AddBlock file not found: %s", path.c_str());
@@ -247,7 +257,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0, false);
+            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, -1, false);
         }
         block->set_block_id(new_block_id);
         response->set_status(0);
@@ -285,7 +295,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                       FileLocationResponse* response,
                       ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    const std::string& path = request->file_name();
+    std::string path = NameSpace::NormalizePath(request->file_name());
     LOG(INFO, "NameServerImpl::GetFileLocation: %s\n", request->file_name().c_str());
     // Get file_key
     g_get_location.Inc();
@@ -335,7 +345,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
                         ::google::protobuf::Closure* done) {
     g_list_dir.Inc();
     response->set_sequence_id(request->sequence_id());
-    std::string path = request->path();
+    std::string path = NameSpace::NormalizePath(request->path());
     common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
 
     int status = namespace_->ListDirectory(path, response->mutable_files());
@@ -348,7 +358,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
                           StatResponse* response,
                           ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    std::string path = request->path();
+    std::string path = NameSpace::NormalizePath(request->path());
     LOG(INFO, "Stat: %s\n", path.c_str());
 
     FileInfo info;
@@ -379,8 +389,8 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
                             RenameResponse* response,
                             ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    const std::string& oldpath = request->oldpath();
-    const std::string& newpath = request->newpath();
+    std::string oldpath = NameSpace::NormalizePath(request->oldpath());
+    std::string newpath = NameSpace::NormalizePath(request->newpath());
 
     bool need_unlink;
     FileInfo remove_file;
@@ -398,7 +408,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                             ::google::protobuf::Closure* done) {
     g_unlink.Inc();
     response->set_sequence_id(request->sequence_id());
-    const std::string& path = request->path();
+    std::string path = NameSpace::NormalizePath(request->path());
 
     FileInfo file_info;
     int status = namespace_->RemoveFile(path, &file_info);
@@ -415,7 +425,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
                                      DeleteDirectoryResponse* response,
                                      ::google::protobuf::Closure* done)  {
     response->set_sequence_id(request->sequence_id());
-    std::string path = request->path();
+    std::string path = NameSpace::NormalizePath(request->path());
     bool recursive = request->recursive();
     if (path.empty() || path[0] != '/') {
         response->set_status(886);
@@ -435,7 +445,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
                                       ChangeReplicaNumResponse* response,
                                       ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    std::string file_name = request->file_name();
+    std::string file_name = NameSpace::NormalizePath(request->file_name());
     int32_t replica_num = request->replica_num();
 
     int ret_status = 886;
@@ -549,22 +559,32 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t recover_num, pending_num;
-    block_mapping_->GetStat(&recover_num, &pending_num);
+    int64_t recover_num, pending_num, urgent_num, incomplete_num;
+    block_mapping_->GetStat(&recover_num, &pending_num, &urgent_num, &incomplete_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
 
     str += "<div class=\"row\">";
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h3 align=left>Nameserver status</h2>";
+
+    str += "<div class=\"row\">";
+    str += "<div class=\"col-sm-3 col-md-3\">";
     str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Recover: " + common::NumToString(recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(pending_num) + "</br>";
     str += "Safemode: " + common::NumToString(safe_mode_) + "</br>";
     str += "Pending tasks: "
         + common::NumToString(thread_pool_.PendingNum()) + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
-    str += "</div>";
+    str += "</div>"; // <div class="col-sm-3 col-md-3">
+
+    str += "<div class=\"col-sm-3 col-md-3\">";
+    str += "Recover: " + common::NumToString(recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(pending_num) + "</br>";
+    str += "Urgent: " + common::NumToString(urgent_num) + "</br>";
+    str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
+    str += "</div>"; // <div class="col-sm-3 col-md-3">
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
+    str += "</div>"; // <div class="row">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h3 align=left>Chunkserver status</h2>";
@@ -572,8 +592,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
     str += "Dead: " + common::NumToString(dead_num)+"</br>";
     str += "Overload: " + common::NumToString(overladen_num)+"</p>";
-    str += "</div>";
-    str += "</div>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
+    str += "</div>"; // <div class="row">
 
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
@@ -586,7 +606,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
            "<input onclick=\"javascript:check(this)\" "
            "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
     str += table_str;
-    str += "</div></body></html>";
+    str += "</body></html>";
     delete chunkservers;
     response.content = str;
     return true;

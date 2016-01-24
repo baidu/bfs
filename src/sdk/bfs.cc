@@ -22,6 +22,8 @@
 #include <common/string_util.h>
 #include <common/tprinter.h>
 
+#include "proto/status_code.pb.h"
+
 #include "bfs.h"
 
 DECLARE_string(nameserver);
@@ -33,7 +35,7 @@ DECLARE_string(sdk_write_mode);
 namespace baidu {
 namespace bfs {
 
-ThreadPool g_thread_pool(FLAGS_sdk_thread_num);
+ThreadPool* g_thread_pool = NULL;
 
 struct LocatedBlocks {
     int64_t file_length_;
@@ -345,6 +347,10 @@ public:
         return true;
     }
     bool OpenFile(const char* path, int32_t flags, File** file) {
+        return OpenFile(path, flags, 0, -1, file);
+    }
+    bool OpenFile(const char* path, int32_t flags, int32_t mode,
+                  int32_t replica, File** file) {
         common::timer::AutoTimer at(100, "OpenFile", path);
         bool ret = false;
         *file = NULL;
@@ -354,7 +360,8 @@ public:
             request.set_file_name(path);
             request.set_sequence_id(0);
             request.set_flags(flags);
-            request.set_mode(0644);
+            request.set_mode(mode&0777);
+            request.set_replica_num(replica);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != 0) {
@@ -383,7 +390,7 @@ public:
                 ret = false;
             }
         } else {
-            LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY\n");
+            LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY, but %d", flags);
             ret = false;
         }
         return ret;
@@ -591,7 +598,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         ret = fs_->rpc_client_->SendRequest(chunk_server, &ChunkServer_Stub::ReadBlock,
                     &request, &response, 15, 3);
 
-        if (!ret || response.status() != 0) {
+        if (!ret || response.status() != kOK) {
             ///TODO: Add to _badchunkservers_
             cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
@@ -737,7 +744,7 @@ void BfsFileImpl::StartWrite() {
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
     common::atomic_inc(&back_writing_);
     mu_.Unlock();
-    g_thread_pool.AddTask(task);
+    g_thread_pool->AddTask(task);
     mu_.Lock("StartWrite relock", 1000);
 }
 
@@ -808,7 +815,7 @@ void BfsFileImpl::BackgroundWrite() {
                     buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
             common::atomic_inc(&back_writing_);
             if (delay) {
-                g_thread_pool.DelayTask(5,
+                g_thread_pool->DelayTask(5,
                         boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, max_retry_times, cs_addr));
             } else {
@@ -885,7 +892,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         }
         if (!bg_error_) {
             common::atomic_inc(&back_writing_);
-            g_thread_pool.DelayTask(5,
+            g_thread_pool->DelayTask(5,
                 boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, retry_times, cs_addr));
         }
@@ -913,7 +920,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
 
     boost::function<void ()> task =
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
-    g_thread_pool.AddTask(task);
+    g_thread_pool->AddTask(task);
 }
 
 void BfsFileImpl::OnWriteCommit(int32_t, int) {
@@ -1003,7 +1010,8 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
         return false;
     }
     *fs = impl;
-    g_thread_pool.Start();
+    g_thread_pool = new ThreadPool(FLAGS_sdk_thread_num);
+    g_thread_pool->Start();
     return true;
 }
 

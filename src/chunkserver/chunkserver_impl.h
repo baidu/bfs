@@ -4,8 +4,8 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#ifndef  BFS_TRUNKSERVER_IMPL_H_
-#define  BFS_TRUNKSERVER_IMPL_H_
+#ifndef  BFS_CHUNKSERVER_IMPL_H_
+#define  BFS_CHUNKSERVER_IMPL_H_
 
 #include "proto/chunkserver.pb.h"
 #include "proto/nameserver.pb.h"
@@ -89,11 +89,12 @@ private:
     CounterManager* counter_manager_;
     int64_t heartbeat_task_id_;
     volatile int64_t blockreport_task_id_;
+    int64_t last_report_blockid_;
 };
 
 } // namespace bfs
 } // namespace baidu
 
-#endif  //__TRUNKSERVER_IMPL_H_
+#endif  //__CHUNKSERVER_IMPL_H_
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

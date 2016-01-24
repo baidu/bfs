@@ -99,6 +99,7 @@ void NameSpace::SetupRoot() {
     root_path_.set_name("");
     root_path_.set_parent_entry_id(kRootEntryid);
     root_path_.set_type(01755);
+    root_path_.set_ctime(static_cast<uint32_t>(version_/1000000));
 }
 /// New SplitPath
 /// /home/dirx/filex
@@ -164,7 +165,7 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return LookUp(path, file_info);
 }
 
-int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
+int NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "CreateFile split fail %s", path.c_str());
@@ -211,14 +212,14 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
     }
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
-    file_info.set_replicas(FLAGS_default_replica_num);
+    file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     std::string file_key;
     EncodingStoreKey(parent_id, fname, &file_key);
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
-        LOG(INFO, "CreateFile %s %ld", path.c_str(), file_info.entry_id());
+        LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
         return 0;
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail", path.c_str());
@@ -226,18 +227,9 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
     }
 }
 
-int NameSpace::ListDirectory(const std::string& dir,
+int NameSpace::ListDirectory(const std::string& path,
                              google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
-    std::string path = dir.empty() ? "/" : dir;
-    if (path[0] != '/') {
-        return 403;
-    }
-    /*
-    if (path[path.size()-1] != '/') {
-        path += '/';
-    }*/
-
     FileInfo info;
     if (!LookUp(path, &info)) {
         return 404;
@@ -271,7 +263,7 @@ int NameSpace::Rename(const std::string& old_path,
                       bool* need_unlink,
                       FileInfo* remove_file) {
     *need_unlink = false;
-    if (old_path == "/" || new_path == "/") {
+    if (old_path == "/" || new_path == "/" || old_path == new_path) {
         return 403;
     }
     FileInfo old_file;
@@ -375,12 +367,6 @@ int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
 int NameSpace::DeleteDirectory(const std::string& path, bool recursive,
                                std::vector<FileInfo>* files_removed) {
     files_removed->clear();
-    /*
-    std::vector<std::string> keys;
-    if (!common::util::SplitPath(path, &keys)) {
-        LOG(WARNING, "Delete Directory SplitPath fail: %s\n", path.c_str());
-        return 886;
-    }*/
     FileInfo info;
     std::string store_key;
     if (!LookUp(path, &info)) {
@@ -472,6 +458,28 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
     delete it;
     LOG(INFO, "RebuildBlockMap done. last_entry_id= E%ld", last_entry_id_);
     return true;
+}
+
+std::string NameSpace::NormalizePath(const std::string& path) {
+    // Is there a better implementation?
+    std::string ret;
+    if (path.empty() || path[0] != '/') {
+        ret = "/";
+    }
+    bool slash = false;
+    for (uint32_t i = 0; i < path.size(); i++) {
+        if (path[i] == '/') {
+            if (slash) continue;
+            slash = true;
+        } else {
+            slash = false;
+        }
+        ret.push_back(path[i]);
+    }
+    if (ret.size() > 1U && ret[ret.size() - 1] == '/') {
+        ret.resize(ret.size() - 1);
+    }
+    return ret;
 }
 
 } // namespace bfs

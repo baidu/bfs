@@ -1,4 +1,5 @@
 import "file.proto";
+import "status_code.proto";
 
 package baidu.bfs;
 
@@ -9,8 +10,8 @@ message CreateFileRequest {
     optional string file_name = 2;
     optional int32 mode = 3;
     optional int32 flags = 4;
-    optional int32 replic_num = 5;
-    optional int32 replic_expect = 6;
+    optional int32 replica_num = 5;
+    optional string user = 7;
 }
 
 message CreateFileResponse {
@@ -29,6 +30,7 @@ message FileLocationRequest {
     required string file_name = 2;
     optional int64 offset = 3;
     optional int32 block_num = 4 [default = 10];
+    optional string user = 5;
 }
 
 message FileLocationResponse {
@@ -151,7 +153,7 @@ message RegisterRequest {
 }
 message RegisterResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional int32 chunkserver_id = 5;
     optional int64 namespace_version = 6;
 }
