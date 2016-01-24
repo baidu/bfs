@@ -41,7 +41,7 @@ public:
                      int64_t version, int64_t block_size,
                      const std::vector<int32_t>* init_replicas);
     bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                         int64_t block_version, bool need_recovery);
+                         int64_t block_version, bool safe_mode);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& blocks);

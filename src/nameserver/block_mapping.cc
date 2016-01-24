@@ -99,7 +99,7 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
 }
 
 bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                     int64_t block_version, bool need_recovery) {
+                     int64_t block_version, bool safe_mode) {
     MutexLock lock(&mu_);
     NSBlock* nsblock = NULL;
     NSBlockMap::iterator it = block_map_.find(id);
@@ -114,6 +114,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
             LOG(INFO, "block #%ld on slow chunkserver: %d,"
                     " Ns: V%ld cs: V%ld drop it",
                     id, server_id, nsblock->version, block_version);
+            nsblock->replica.erase(server_id);
             return false;
         } else if (block_version < 0) {
             /// pulling block?
@@ -123,15 +124,12 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
             /// another received block
         }
     }
-    if (block_version < 0) {
-        /// Writing block
-        return false;
-    }
-    if (nsblock->block_size !=  block_size) {
+    if (nsblock->block_size !=  block_size && block_size) {
         // update
         if (nsblock->block_size) {
             LOG(WARNING, "block #%ld size mismatch", id);
             assert(0);
+            nsblock->replica.erase(server_id);
             return false;
         } else {
             LOG(INFO, "block #%ld size update by C%d V%ld ,%ld to %ld",
@@ -159,8 +157,8 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
             LOG(DEBUG, "New replica C%d for #%ld total: %d",
                 server_id, id, cur_replica_num);
         }
-        if (cur_replica_num < expect_replica_num) {
-            if (need_recovery && !nsblock->pending_recover) {
+        if (cur_replica_num < expect_replica_num && nsblock->version >= 0) {
+            if (!safe_mode && !nsblock->pending_recover) {
                 LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
                     id, server_id, cur_replica_num);
                 AddToRecover(nsblock);
