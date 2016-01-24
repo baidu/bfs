@@ -26,7 +26,7 @@ NSBlock::NSBlock(int64_t block_id, int32_t replica,
       expect_replica_num(replica), pending_recover(false), incomplete(false) {
 }
 
-BlockMapping::BlockMapping() : next_block_id_(1), incomplete_blocks_(0) {}
+BlockMapping::BlockMapping() : next_block_id_(1) {}
 
 int64_t BlockMapping::NewBlockID() {
     MutexLock lock(&mu_, "BlockMapping::NewBlockID", 1000);
@@ -168,7 +168,10 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     }
     NSBlock* block = it->second;
     if (block->incomplete) {
-        --incomplete_blocks_;
+        incomplete_blocks_.erase(block_id);
+    }
+    if (block->replica.size() == 1) {
+        hi_pri_recover_.erase(block_id);
     }
     delete block;
     block_map_.erase(it);
@@ -206,7 +209,7 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
                     block_id, cs_id);
                 if (!block->incomplete) {
                     block->incomplete = true;
-                    incomplete_blocks_++;
+                    incomplete_blocks_.insert(block_id);
                 } else {
                     LOG(WARNING, "Urgent incomplete block #%ld replica= %lu",
                         block_id, block->replica.size());
@@ -306,7 +309,7 @@ void BlockMapping::GetStat(int64_t* recover_num, int64_t* pending_num,
         *urgent_num = hi_pri_recover_.size();
     }
     if (incomplete_num) {
-        *incomplete_num = incomplete_blocks_;
+        *incomplete_num = incomplete_blocks_.size();
     }
 }
 

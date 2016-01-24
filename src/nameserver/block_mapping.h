@@ -67,7 +67,7 @@ private:
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     CheckList recover_check_;
     std::set<int64_t> hi_pri_recover_;
-    int64_t incomplete_blocks_;
+    std::set<int64_t> incomplete_blocks_;
 };
 
 } // namespace bfs
