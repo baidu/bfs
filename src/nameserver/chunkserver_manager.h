@@ -2,15 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "block_mapping.h"
-
 #include <set>
 #include <map>
 
 #include <common/thread_pool.h>
+#include "proto/nameserver.pb.h"
 
 namespace baidu {
 namespace bfs {
+
+class BlockMapping;
 
 class ChunkServerManager {
 public:

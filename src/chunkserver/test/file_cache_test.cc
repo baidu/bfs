@@ -24,8 +24,8 @@ protected:
 TEST_F(FileCacheTest, ReadFile) {
     FileCache fcache(1024);
     char buf[1024];
-    ASSERT_NE(0, fcache.ReadFile("/test", buf, 1024, 0));
-    ASSERT_NE(0, fcache.ReadFile("/test", buf, 1024, 1024));
+    ASSERT_NE(0, fcache.ReadFile("/test", buf, 1024L, 0L));
+    ASSERT_NE(0, fcache.ReadFile("/test", buf, 1024L, 1024L));
 }
 
 }

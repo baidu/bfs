@@ -2,12 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chunckserver_manager.h"
+#include "chunkserver_manager.h"
 
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
 #include <common/logging.h>
+#include "proto/status_code.pb.h"
+#include "nameserver/block_mapping.h"
 
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);
@@ -15,15 +17,6 @@ DECLARE_int32(recover_speed);
 
 namespace baidu {
 namespace bfs {
-
-enum ChunkServerStatus {
-    //kCsInit = 0,
-    kCsActive = 1,
-    kCsWaitClean = 2,
-    kCsCleaning = 3,
-    kCsOffLine = 4,
-    kCsStandby = 5,
-};
 
 ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping)
     : thread_pool_(thread_pool),
@@ -84,7 +77,7 @@ void ChunkServerManager::DeadCheck() {
         while (node != it->second.end()) {
             ChunkServerInfo* cs = *node;
             it->second.erase(node++);
-            LOG(INFO, "[DeadCheck] Chunkserver[%d] %s dead, cs_num=%d",
+            LOG(INFO, "[DeadCheck] Chunkserver dead C%d %s, cs_num=%d",
                 cs->id(), cs->address().c_str(), chunkserver_num_);
             cs->set_is_dead(true);
             if (cs->status() == kCsActive) {
@@ -125,7 +118,7 @@ int32_t ChunkServerManager::GetChunkServerNum() {
 void ChunkServerManager::HandleRegister(const RegisterRequest* request,
                                         RegisterResponse* response) {
     const std::string& address = request->chunkserver_addr();
-    int status = 0;
+    StatusCode status = kOK;
     int cs_id = -1;
     MutexLock lock(&mu_);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
@@ -139,7 +132,7 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
         bool ret = GetChunkServerPtr(cs_id, &cs_info);
         assert(ret);
         if (cs_info->status() == kCsWaitClean || cs_info->status() == kCsCleaning) {
-            status = -1;
+            status = kNotOK;
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d, internal cleaning",
                 cs_id, address.c_str(), chunkserver_num_);
         } else {
@@ -156,13 +149,14 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     int32_t id = request->chunkserver_id();
     const std::string& address = request->chunkserver_addr();
     int cs_id = GetChunkserverId(address);
-    if (id < 0 || cs_id != id) {
+    if (id == -1 || cs_id != id) {
         //reconnect after DeadCheck()
         LOG(WARNING, "Unknown chunkserver %s with namespace version %ld",
             address.c_str(), request->namespace_version());
-        response->set_status(-2);
+        response->set_status(kUnkownCs);
         return;
     }
+    response->set_status(kOK);
 
     MutexLock lock(&mu_);
     ChunkServerInfo* info = NULL;

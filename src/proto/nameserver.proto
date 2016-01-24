@@ -1,4 +1,5 @@
 import "file.proto";
+import "status_code.proto";
 
 package baidu.bfs;
 
@@ -153,7 +154,7 @@ message RegisterRequest {
 }
 message RegisterResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional int32 chunkserver_id = 5;
     optional int64 namespace_version = 6;
 }
