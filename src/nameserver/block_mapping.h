@@ -37,7 +37,9 @@ public:
     bool GetBlock(int64_t block_id, NSBlock* block);
     bool GetReplicaLocation(int64_t id, std::set<int32_t>* chunkserver_id);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
-    void AddNewBlock(int64_t block_id, int32_t replica, int64_t version, int64_t block_size);
+    void AddNewBlock(int64_t block_id, int32_t replica,
+                     int64_t version, int64_t block_size,
+                     const std::vector<int32_t>* init_replicas);
     bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
                          int64_t block_version, bool need_recovery);
     void RemoveBlocksForFile(const FileInfo& file_info);
@@ -48,7 +50,8 @@ public:
                            std::map<int64_t, int32_t>* recover_blocks);
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success);
     void GetStat(int64_t* recover_num, int64_t* pending_num,
-                 int64_t* urgent_num, int64_t* incomplete_num);
+                 int64_t* urgent_num, int64_t* lost_num,
+                 int64_t* incomplete_num);
 
 private:
     void AddToRecover(NSBlock* block);
@@ -67,6 +70,7 @@ private:
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     CheckList recover_check_;
     std::set<int64_t> hi_pri_recover_;
+    std::set<int64_t> lost_blocks_;
     std::set<int64_t> incomplete_blocks_;
 };
 
