@@ -125,16 +125,23 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
     std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
     int32_t cur_replica_num = nsblock->replica.size();
     int32_t expect_replica_num = nsblock->expect_replica_num;
-    if (cur_replica_num > expect_replica_num) {
+    bool clean_redundancy = false;
+    if (clean_redundancy && cur_replica_num > expect_replica_num) {
         LOG(INFO, "Too much replica #%ld cur=%d expect=%d server=C%d ",
             id, cur_replica_num, expect_replica_num, server_id);
         nsblock->replica.erase(ret.first);
         return false;
-    } else if (cur_replica_num < expect_replica_num) {
-        if (need_recovery && !nsblock->pending_recover) {
-            LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
-                id, server_id, cur_replica_num);
-            AddToRecover(nsblock);
+    } else {
+        if (ret.second) {
+            LOG(DEBUG, "New replica C%d for #%ld total: %d",
+                server_id, id, cur_replica_num);
+        }
+        if (cur_replica_num < expect_replica_num) {
+            if (need_recovery && !nsblock->pending_recover) {
+                LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
+                    id, server_id, cur_replica_num);
+                AddToRecover(nsblock);
+            }
         }
     }
     return true;
@@ -226,7 +233,8 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
             recover_q_.pop();
             continue;
         }
-        if (static_cast<int64_t>(cur_block->replica.size()) == cur_block->expect_replica_num) {
+        if (static_cast<int64_t>(cur_block->replica.size()) >= cur_block->expect_replica_num) {
+            LOG(DEBUG, "Replica num enough #%ld %lu", cur_block->id, cur_block->replica.size());
             cur_block->pending_recover = false;
             recover_q_.pop();
             continue;
