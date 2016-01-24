@@ -645,7 +645,7 @@ int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
     if (whence == SEEK_SET) {
         read_offset_ = offset;
     } else if (whence == SEEK_CUR) {
-        read_offset_ += offset;
+        common::atomic_add64(&read_offset_, offset);
     } else {
         return -1;
     }
@@ -661,7 +661,7 @@ int32_t BfsFileImpl::Read(char* buf, int32_t read_len) {
     int32_t ret = Pread(buf, read_len, read_offset_, true);
     //LOG(INFO, "Read[%s:%ld,%ld] return %d", _name.c_str(), read_offset_, read_len, ret);
     if (ret >= 0) {
-        read_offset_ += ret;
+        common::atomic_add64(&read_offset_, ret);
     }
     return ret;
 }
@@ -927,7 +927,7 @@ void BfsFileImpl::OnWriteCommit(int32_t, int) {
 }
 
 bool BfsFileImpl::Flush() {
-    // Not impliment
+    // Not implement
     return true;
 }
 bool BfsFileImpl::Sync(int32_t timeout) {
