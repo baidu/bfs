@@ -167,6 +167,7 @@ private:
     ChunkServer_Stub* chunkserver_;     ///< located chunkserver
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
     int64_t read_offset_;               ///< 读取的偏移
+    Mutex read_offset_mu_;
     char* reada_buffer_;                ///< Read ahead buffer
     int32_t reada_buf_len_;             ///< Read ahead buffer length
     int64_t reada_base_;                ///< Read ahead base offset
@@ -658,10 +659,11 @@ int32_t BfsFileImpl::Read(char* buf, int32_t read_len) {
     if (open_flags_ != O_RDONLY) {
         return -2;
     }
+    MutexLock lock(&read_offset_mu_);
     int32_t ret = Pread(buf, read_len, read_offset_, true);
     //LOG(INFO, "Read[%s:%ld,%ld] return %d", _name.c_str(), read_offset_, read_len, ret);
     if (ret >= 0) {
-        common::atomic_add64(&read_offset_, ret);
+        read_offset_ += ret;
     }
     return ret;
 }
