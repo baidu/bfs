@@ -21,7 +21,6 @@ struct NSBlock {
     std::set<int32_t> replica;
     int64_t block_size;
     int32_t expect_replica_num;
-    bool pending_recover;
     bool incomplete;
     NSBlock();
     NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size);

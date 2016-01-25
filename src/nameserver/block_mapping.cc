@@ -18,12 +18,12 @@ namespace bfs {
 
 NSBlock::NSBlock()
     : id(-1), version(-1), block_size(-1),
-      expect_replica_num(0), pending_recover(false), incomplete(false) {
+      expect_replica_num(0), incomplete(false) {
 }
 NSBlock::NSBlock(int64_t block_id, int32_t replica,
                  int64_t block_version, int64_t block_size)
     : id(block_id), version(block_version), block_size(block_size),
-      expect_replica_num(replica), pending_recover(false), incomplete(false) {
+      expect_replica_num(replica), incomplete(false) {
 }
 
 BlockMapping::BlockMapping() : next_block_id_(1) {}
@@ -158,7 +158,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
                 server_id, id, cur_replica_num);
         }
         if (cur_replica_num < expect_replica_num && nsblock->version >= 0) {
-            if (!safe_mode && !nsblock->pending_recover) {
+            if (!safe_mode) {
                 LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
                     id, server_id, cur_replica_num);
                 AddToRecover(nsblock);
@@ -256,9 +256,10 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     int32_t quota = FLAGS_recover_speed - (check_it->second).size();
     LOG(DEBUG, "C%d has %lu pending_recover blocks", cs_id, (check_it->second).size());
     quota = quota < block_num ? quota : block_num;
+    LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     PickRecoverFromSet(cs_id, quota, true, recover_blocks, &(check_it->second));
     PickRecoverFromSet(cs_id, quota, false, recover_blocks, &(check_it->second));
-    LOG(DEBUG, "recover size (hi/lo) = %lu/%lu", hi_pri_recover_.size(), lo_pri_recover_.size());
+    LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
 }
 
 void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success) {
@@ -317,21 +318,14 @@ void BlockMapping::AddToRecover(NSBlock* block) {
     bool is_hi_priority = block->replica.size() == 1;
     std::set<int64_t>* insert_to = is_hi_priority ? &hi_pri_recover_ : &lo_pri_recover_;
     std::set<int64_t>* erase_from = is_hi_priority ? &lo_pri_recover_ : &hi_pri_recover_;
-    if (!block->pending_recover) {
-        insert_to->insert(block_id);
-        block->pending_recover = true;
-    } else {
-        insert_to->insert(block_id);
-        erase_from->erase(block_id);
-        LOG(DEBUG, "Pending recover #%ld replica=%ld", block_id, block->replica.size());
-    }
+    insert_to->insert(block_id);
+    erase_from->erase(block_id);
 }
 
 void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, bool process_hi_pri,
                                       std::map<int64_t, int32_t>* recover_blocks,
                                       std::set<int64_t>* check_set) {
     mu_.AssertHeld();
-    LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     std::set<int64_t>* recover_set = process_hi_pri ? &hi_pri_recover_ : &lo_pri_recover_;
     std::set<int64_t>::iterator it = recover_set->begin();
     while (static_cast<int>(recover_blocks->size()) < quota && it != recover_set->end()) {
@@ -343,13 +337,11 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, bool process
         }
         if (static_cast<int32_t>(cur_block->replica.size()) >= cur_block->expect_replica_num) {
             LOG(DEBUG, "Replica num enough #%ld %lu", cur_block->id, cur_block->replica.size());
-            cur_block->pending_recover = false;
             recover_set->erase(it++);
             continue;
         }
         if (cur_block->replica.size() == 0) {
             LOG(DEBUG, "All Replica lost #%ld , give up recover.", cur_block->id);
-            cur_block->pending_recover = false;
             recover_set->erase(it++);
             continue;
         }
@@ -365,7 +357,6 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, bool process
             boost::bind(&BlockMapping::CheckRecover, this, cs_id, cur_block->id));
         recover_set->erase(it++);
     }
-    LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
 }
 
 void BlockMapping::TryRecover(NSBlock* block) {
@@ -377,9 +368,8 @@ void BlockMapping::TryRecover(NSBlock* block) {
         } else {
             lo_pri_recover_.insert(block_id);
         }
-        LOG(DEBUG, "need more recover: #%ld pending %d", block_id, block->pending_recover);
+        LOG(DEBUG, "need more recover: #%ld", block_id);
     } else {
-        block->pending_recover = false;
         LOG(DEBUG, "recover done: #%ld ", block_id);
     }
 }
