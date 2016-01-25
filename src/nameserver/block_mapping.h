@@ -55,6 +55,8 @@ public:
 
 private:
     void AddToRecover(NSBlock* block);
+    void PickRecoverFromSet(int32_t cs_id, int32_t quota, bool process_hi_pri,
+                            std::map<int64_t, int32_t>* recover_blocks, std::set<int64_t>* check_set);
     void TryRecover(NSBlock* block);
     void CheckRecover(int64_t cs_id, int64_t block_id);
     bool GetBlockPtr(int64_t block_id, NSBlock** block);
@@ -66,9 +68,9 @@ private:
     NSBlockMap block_map_;
     int64_t next_block_id_;
 
-    std::priority_queue<std::pair<int64_t, int64_t> > recover_q_;
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     CheckList recover_check_;
+    std::set<int64_t> lo_pri_recover_;
     std::set<int64_t> hi_pri_recover_;
     std::set<int64_t> lost_blocks_;
     std::set<int64_t> incomplete_blocks_;
