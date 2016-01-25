@@ -431,14 +431,27 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
 
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
-    boost::function func = boost::bind(&ChunkServerImpl::LocalWriteBlockCallback, this, request, response, done);
-    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), func, &add_used)) {
+    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(),
+        boost::bind(&ChunkServerImpl::LocalWriteBlockCallback, this, block, find_start,
+                    write_start, request, response, done), &add_used)) {
         block->DecRef();
         response->set_status(kWriteError);
         done->Run();
         return;
     }
+    LOG(INFO, "[WriteBlock] add to sliding_window use %ld ms, sync use %ld ms, find use %ld",
+        add_used / 1000, sync_time / 1000, (write_start - find_start - sync_time) / 1000);
+}
+
+void ChunkServerImpl::LocalWriteBlockCallback(Block* block, int64_t find_start, int64_t write_start,
+                                              const WriteBlockRequest* request,
+                                              WriteBlockResponse* response,
+                                              ::google::protobuf::Closure* done) {
     int64_t write_end = common::timer::get_micros();
+    int64_t block_id = request->block_id();
+    const std::string& databuf = request->databuf();
+    int64_t offset = request->offset();
+    int32_t packet_seq = request->packet_seq();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
         block->SetVersion(packet_seq);
@@ -454,14 +467,11 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
 
     int64_t time_end = common::timer::get_micros();
     LOG(INFO, "[WriteBlock] done #%ld seq:%d, offset:%ld, len:%lu "
-              "use %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld ms",
+              "use %ld %ld %ld %ld %ld %ld %ld ms",
         block_id, packet_seq, offset, databuf.size(),
         (response->timestamp(0) - request->sequence_id()) / 1000, // recv
         (response->timestamp(1) - response->timestamp(0)) / 1000, // dispatch time
         (find_start - response->timestamp(1)) / 1000, // async time
-        (write_start - find_start - sync_time) / 1000,  // find time
-        sync_time / 1000, // create sync time
-        add_used / 1000, // sliding window add
         (write_end - write_start) / 1000,    // write time
         (report_start - write_end) / 1000, // close time
         (time_end - report_start) / 1000, // report time
@@ -620,10 +630,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         int32_t len = response.databuf().size();
         const char* buf = response.databuf().data();
         if (len) {
-            if (!block->Write(seq, offset, buf, len)) {
-                success = false;
-                break;
-            }
+            block->Append(seq, buf, len);
             g_recover_bytes.Add(len);
         } else {
             block->SetSliceNum(seq);
@@ -654,7 +661,6 @@ REPORT:
         LOG(INFO, "Report pull finish dnne, %d blocks", report_request.blocks_size());
     }
 }
-
 
 void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller,
                                    const GetBlockInfoRequest* request,

@@ -16,6 +16,7 @@
 #include <common/counter.h>
 #include <common/thread_pool.h>
 #include <common/sliding_window.h>
+#include <common/string_util.h>
 
 #include <common/logging.h>
 
@@ -221,7 +222,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
 }
 /// Write operation.
 bool Block::Write(int32_t seq, int64_t offset, const char* data,
-           int64_t len, LocalWriteCallback callback, int64_t* add_use) {
+                  int64_t len, Callback callback, int64_t* add_use) {
     if (offset < meta_.block_size) {
         assert (offset + len <= meta_.block_size);
         LOG(WARNING, "Write a finish block #%ld size %ld, seq: %d, offset: %ld",
@@ -234,6 +235,14 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
         memcpy(buf, data, len);
         g_writing_bytes.Add(len);
     }
+    mu_.Lock();
+    bool insert_ret = slide_window_callbacks_.insert(std::make_pair(seq, callback)).second;
+    if (insert_ret) {
+        LOG(INFO, "LL: insert seq window success %d", seq);
+    } else {
+        assert(0);
+    }
+    mu_.Unlock();
     int64_t add_start = common::timer::get_micros();
     int ret = recv_window_->Add(seq, Buffer(buf, len));
     if (add_use) *add_use = common::timer::get_micros() - add_start;
@@ -244,6 +253,9 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
             LOG(WARNING, "Write block #%ld seq: %d, offset: %ld, block_size: %ld"
                          " out of range %d",
                 meta_.block_id, seq, offset, meta_.block_size, recv_window_->UpBound());
+            mu_.Lock();
+            slide_window_callbacks_.erase(seq);
+            mu_.Unlock();
             return false;
         }
     }
@@ -287,8 +299,21 @@ void Block::DecRef() {
 /// Invoke by slidingwindow, when next buffer arrive.
 void Block::WriteCallback(int32_t seq, Buffer buffer) {
     Append(seq, buffer.data_, buffer.len_);
+    std::string debug_str = "";
+    mu_.Lock();
+    for (std::map<int32_t, Callback>::iterator it = slide_window_callbacks_.begin(); it != slide_window_callbacks_.end(); ++it) {
+        debug_str += " " + common::NumToString(it->first);
+    }
+    LOG(INFO, "LL: current callbacks %s size=%d", debug_str.c_str(), int(slide_window_callbacks_.size()));
+    std::map<int32_t, Callback>::iterator it = slide_window_callbacks_.find(seq);
+    assert(it != slide_window_callbacks_.end());
+    mu_.Unlock();
     delete[] buffer.data_;
     g_writing_bytes.Sub(buffer.len_);
+    (it->second)();
+    mu_.Lock();
+    slide_window_callbacks_.erase(it);
+    mu_.Unlock();
 }
 void Block::DiskWrite() {
     MutexLock lock(&mu_, "Block::DiskWrite", 1000);
