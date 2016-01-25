@@ -283,7 +283,23 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     int64_t block_id = request->block_id();
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
+    std::string file_name = request->file_name();
+    FileInfo file_info;
+    if (!namespace_->GetFileInfo(file_name, &file_info)) {
+        LOG(WARNING, "FinishBlock file not found: %s", file_name.c_str());
+        response->set_status(404);
+        done->Run();
+        return;
+    }
+    file_info.set_version(block_version);
+    if (!namespace_->UpdateFileInfo(file_info)) {
+        LOG(WARNING, "Update file info fail: %s", file_name.c_str());
+        response->set_status(886);
+        done->Run();
+        return;
+    }
     if (!block_mapping_->SetBlockVersion(block_id, block_version)) {
+        LOG(WARNING, "Set block version fail: %s", file_name.c_str());
         response->set_status(886);
         done->Run();
         return;
