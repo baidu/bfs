@@ -18,3 +18,10 @@ enum ChunkServerStatus {
     kCsOffLine = 104;
     kCsStandby = 105;
 }
+
+enum RecoverStat {
+    kNotInRecover = 0;
+    kLoRecover = 1;
+    kHiRecover = 2;
+    kCheck = 3;
+}
