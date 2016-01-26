@@ -146,6 +146,7 @@ public:
     };
     friend class FSImpl;
 private:
+    int32_t AddBlock();
     bool CheckWriteWindows();
 private:
     FSImpl* fs_;                        ///< 文件系统
@@ -670,6 +671,52 @@ int32_t BfsFileImpl::Read(char* buf, int32_t read_len) {
     return ret;
 }
 
+int32_t BfsFileImpl::AddBlock() {
+    AddBlockRequest request;
+    AddBlockResponse response;
+    request.set_sequence_id(0);
+    request.set_file_name(name_);
+    bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
+        &request, &response, 15, 3);
+    if (!ret || !response.has_block()) {
+        return -1;
+    }
+    block_for_write_ = new LocatedBlock(response.block());
+    int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 :
+                                            block_for_write_->chains_size();
+    for (int i = 0; i < cs_size; i++) {
+        const std::string& addr = block_for_write_->chains(i).address();
+        rpc_client_->GetStub(addr, &chunkservers_[addr]);
+        write_windows_[addr] = new common::SlidingWindow<int>(100,
+                               boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
+        cs_errors_[addr] = false;
+        WriteBlockRequest create_request;
+        int64_t seq = common::timer::get_micros();
+        create_request.set_sequence_id(seq);
+        create_request.set_block_id(block_for_write_->block_id());
+        create_request.set_databuf("", 0);
+        create_request.set_offset(0);
+        create_request.set_is_last(false);
+        create_request.set_packet_seq(0);
+        WriteBlockResponse create_response;
+        bool ret = rpc_client_->SendRequest(chunkservers_[addr],
+                                            &ChunkServer_Stub::WriteBlock,
+                                            &create_request, &create_response,
+                                            25, 1);
+        if (ret != 0 || create_response.status() != 0) {
+            for (int j = 0; j <= i; j++) {
+                delete write_windows_[addr];
+            }
+            write_windows_.clear();
+            delete block_for_write_;
+            block_for_write_ = NULL;
+            return 5;
+        }
+        write_windows_[addr]->Add(0, 0);
+    }
+    last_seq_ = 0;
+    return 0;
+}
 int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
     common::timer::AutoTimer at(100, "Write", name_.c_str());
 
@@ -685,29 +732,18 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
         common::atomic_inc(&back_writing_);
     }
     if (open_flags_ & O_WRONLY) {
-        MutexLock lock(&mu_, "Write AddBlock", 1000);
         // Add block
+        MutexLock lock(&mu_, "Write AddBlock", 1000);
         if (chunkservers_.empty()) {
-            AddBlockRequest request;
-            AddBlockResponse response;
-            request.set_sequence_id(0);
-            request.set_file_name(name_);
-            bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
-                &request, &response, 15, 3);
-            if (!ret || !response.has_block()) {
+            int ret = 0;
+            for (int i = 0; i < 3; i++) {
+                ret = AddBlock();
+                if (ret == 0) break;
+            }
+            if (ret < 0) {
                 LOG(WARNING, "AddBlock fail for %s\n", name_.c_str());
                 common::atomic_dec(&back_writing_);
-                return -1;
-            }
-            block_for_write_ = new LocatedBlock(response.block());
-            int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 :
-                                                    block_for_write_->chains_size();
-            for (int i = 0; i < cs_size; i++) {
-                const std::string& addr = block_for_write_->chains(i).address();
-                rpc_client_->GetStub(addr, &chunkservers_[addr]);
-                write_windows_[addr] = new common::SlidingWindow<int>(100,
-                                       boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
-                cs_errors_[addr] = false;
+                return ret;
             }
         }
     }

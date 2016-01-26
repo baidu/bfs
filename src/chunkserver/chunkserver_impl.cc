@@ -421,7 +421,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t find_start = common::timer::get_micros();
     /// search;
     int64_t sync_time = 0;
-    Block* block = block_manager_->FindBlock(block_id, true, &sync_time);
+    Block* block = block_manager_->FindBlock(block_id, packet_seq == 0, &sync_time);
     if (!block) {
         LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
         response->set_status(kNotFound);
