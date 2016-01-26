@@ -257,8 +257,8 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     LOG(DEBUG, "C%d has %lu pending_recover blocks", cs_id, (check_it->second).size());
     quota = quota < block_num ? quota : block_num;
     LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
-    PickRecoverFromSet(cs_id, quota, true, recover_blocks, &(check_it->second));
-    PickRecoverFromSet(cs_id, quota, false, recover_blocks, &(check_it->second));
+    PickRecoverFromSet(cs_id, quota, &hi_pri_recover_, recover_blocks, &(check_it->second));
+    PickRecoverFromSet(cs_id, quota, &lo_pri_recover_, recover_blocks, &(check_it->second));
     LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
 }
 
@@ -322,11 +322,10 @@ void BlockMapping::AddToRecover(NSBlock* block) {
     erase_from->erase(block_id);
 }
 
-void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, bool process_hi_pri,
+void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
                                       std::map<int64_t, int32_t>* recover_blocks,
                                       std::set<int64_t>* check_set) {
     mu_.AssertHeld();
-    std::set<int64_t>* recover_set = process_hi_pri ? &hi_pri_recover_ : &lo_pri_recover_;
     std::set<int64_t>::iterator it = recover_set->begin();
     while (static_cast<int>(recover_blocks->size()) < quota && it != recover_set->end()) {
         NSBlock* cur_block = NULL;
@@ -342,6 +341,7 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, bool process
         }
         if (cur_block->replica.size() == 0) {
             LOG(DEBUG, "All Replica lost #%ld , give up recover.", cur_block->id);
+            lost_blocks_.insert(cur_block->id);
             recover_set->erase(it++);
             continue;
         }

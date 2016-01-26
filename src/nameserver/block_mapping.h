@@ -54,8 +54,9 @@ public:
 
 private:
     void AddToRecover(NSBlock* block);
-    void PickRecoverFromSet(int32_t cs_id, int32_t quota, bool process_hi_pri,
-                            std::map<int64_t, int32_t>* recover_blocks, std::set<int64_t>* check_set);
+    void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
+                            std::map<int64_t, int32_t>* recover_blocks,
+                            std::set<int64_t>* check_set);
     void TryRecover(NSBlock* block);
     void CheckRecover(int64_t cs_id, int64_t block_id);
     bool GetBlockPtr(int64_t block_id, NSBlock** block);
