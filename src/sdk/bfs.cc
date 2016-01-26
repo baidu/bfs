@@ -31,6 +31,7 @@ DECLARE_string(nameserver_port);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
+DECLARE_int32(sdk_createblock_retry);
 
 namespace baidu {
 namespace bfs {
@@ -736,7 +737,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
         MutexLock lock(&mu_, "Write AddBlock", 1000);
         if (chunkservers_.empty()) {
             int ret = 0;
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < FLAGS_sdk_createblock_retry; i++) {
                 ret = AddBlock();
                 if (ret == 0) break;
             }
