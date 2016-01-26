@@ -312,7 +312,9 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
     if (!GetChunkServerPtr(cs_id, &cs)) {
         return;
     }
-
+    if (cs->buffers() > FLAGS_chunkserver_max_pending_buffers * 0.5) {
+        return;
+    }
     std::map<int64_t, int32_t> blocks;
     block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
