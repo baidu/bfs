@@ -86,7 +86,7 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
     if (init_replicas) {
         LOG(DEBUG, "Init block info: #%ld ", block_id);
     } else {
-        LOG(DEBUG, "Rebuild block info: #%ld ", block_id);
+        LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
     }
 
     MutexLock lock(&mu_);
@@ -101,45 +101,40 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
 bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
                      int64_t block_version, bool safe_mode) {
     MutexLock lock(&mu_);
-    NSBlock* nsblock = NULL;
     NSBlockMap::iterator it = block_map_.find(id);
     if (it == block_map_.end()) {
         //have been removed
         LOG(DEBUG, "UpdateBlockInfo #%ld has been removed", id);
         return false;
     }
-    nsblock = it->second;
-    if (nsblock->version >= 0) {
-        if (block_version >= 0 && nsblock->version != block_version) {
-            LOG(INFO, "block #%ld on slow chunkserver: %d,"
-                    " Ns: V%ld cs: V%ld drop it",
-                    id, server_id, nsblock->version, block_version);
-            nsblock->replica.erase(server_id);
-            return false;
-        } else if (block_version < 0) {
-            /// pulling block?
+    NSBlock* nsblock = it->second;
+    if (block_version < 0) {
+        if (nsblock->version >= 0) { // Pulling block
             return true;
-        } else {
-            assert(block_version >= 0 && block_version == nsblock->version);
-            /// another received block
-        }
-    }
-    if (nsblock->block_size !=  block_size && block_size) {
-        // update
-        if (nsblock->block_size) {
-            LOG(WARNING, "block #%ld size mismatch", id);
-            assert(0);
+        } // else writing block
+    } else {
+        if (block_version > nsblock->version) { // Block received
+            LOG(INFO, "block #%ld update by C%d from V%ld %ld to V%ld %ld",
+                id, server_id, nsblock->version, nsblock->block_size,
+                block_version, block_size);
+            nsblock->version = block_version;
+            nsblock->block_size = block_size;
+        } else if (block_version == nsblock->version) { // another received block
+            if (block_size != nsblock->block_size) {
+                LOG(WARNING, "Block #%ld V%ld size mismatch, old: %ld new: %ld",
+                    id, block_version, nsblock->block_size, block_size);
+                nsblock->replica.erase(server_id);
+                return false;
+            }
+        } else if (block_version < nsblock->version) {
+            LOG(WARNING, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld",
+                id, server_id, nsblock->version, nsblock->block_size,
+                block_version, block_size);
             nsblock->replica.erase(server_id);
             return false;
-        } else {
-            LOG(INFO, "block #%ld size update by C%d V%ld ,%ld to %ld",
-                id, server_id, block_version, nsblock->block_size, block_size);
-            nsblock->block_size = block_size;
         }
-    } else {
-        //LOG(DEBUG, "UpdateBlockInfo(%ld) ignored, from %ld to %ld",
-        //    id, nsblock->block_size, block_size);
     }
+
     if (nsblock->replica.size() == 0) {
         lost_blocks_.erase(id);
     }

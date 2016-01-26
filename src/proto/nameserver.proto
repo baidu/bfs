@@ -84,6 +84,7 @@ message FinishBlockRequest {
     optional int64 block_id = 2;
     optional int64 block_version = 3;
     optional string file_name = 4;
+    optional int64 block_size = 5;
 }
 message FinishBlockResponse {
     required int64 sequence_id = 1;

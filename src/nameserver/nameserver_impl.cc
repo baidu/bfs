@@ -287,11 +287,12 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(WARNING, "FinishBlock file not found: %s", file_name.c_str());
-        response->set_status(404);
+        response->set_status(kNotFound);
         done->Run();
         return;
     }
     file_info.set_version(block_version);
+    file_info.set_size(request->block_size());
     if (!namespace_->UpdateFileInfo(file_info)) {
         LOG(WARNING, "Update file info fail: %s", file_name.c_str());
         response->set_status(886);
