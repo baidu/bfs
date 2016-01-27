@@ -154,6 +154,7 @@ private:
     int32_t open_flags_;                ///< 打开使用的flag
 
     /// for write
+    volatile int64_t write_offset_;     ///< user write offset
     LocatedBlock* block_for_write_;     ///< 正在写的block
     WriteBuffer* write_buf_;            ///< 本地写缓冲
     int32_t last_seq_;                  ///< last sequence number
@@ -167,6 +168,7 @@ private:
     ChunkServer_Stub* chunkserver_;     ///< located chunkserver
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
     int64_t read_offset_;               ///< 读取的偏移
+    Mutex read_offset_mu_;
     char* reada_buffer_;                ///< Read ahead buffer
     int32_t reada_buf_len_;             ///< Read ahead buffer length
     int64_t reada_base_;                ///< Read ahead base offset
@@ -503,7 +505,7 @@ private:
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
                          const std::string name, int32_t flags)
   : fs_(fs), rpc_client_(rpc_client), name_(name),
-    open_flags_(flags), block_for_write_(NULL),
+    open_flags_(flags), write_offset_(0), block_for_write_(NULL),
     write_buf_(NULL), last_seq_(-1), back_writing_(0),
     chunkserver_(NULL), read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
@@ -642,6 +644,7 @@ int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
     if (open_flags_ != O_RDONLY) {
         return -2;
     }
+    MutexLock lock(&read_offset_mu_);
     if (whence == SEEK_SET) {
         read_offset_ = offset;
     } else if (whence == SEEK_CUR) {
@@ -658,6 +661,7 @@ int32_t BfsFileImpl::Read(char* buf, int32_t read_len) {
     if (open_flags_ != O_RDONLY) {
         return -2;
     }
+    MutexLock lock(&read_offset_mu_);
     int32_t ret = Pread(buf, read_len, read_offset_, true);
     //LOG(INFO, "Read[%s:%ld,%ld] return %d", _name.c_str(), read_offset_, read_len, ret);
     if (ret >= 0) {
@@ -730,6 +734,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
         }
     }
     // printf("Write return %d, buf_size=%d\n", w, file->write_buf_->Size());
+    common::atomic_add64(&write_offset_, w);
     common::atomic_dec(&back_writing_);
     return w;
 }
@@ -927,7 +932,7 @@ void BfsFileImpl::OnWriteCommit(int32_t, int) {
 }
 
 bool BfsFileImpl::Flush() {
-    // Not impliment
+    // Not implement
     return true;
 }
 bool BfsFileImpl::Sync(int32_t timeout) {
@@ -991,12 +996,15 @@ bool BfsFileImpl::Close() {
         FinishBlockRequest request;
         FinishBlockResponse response;
         request.set_sequence_id(0);
+        request.set_file_name(name_);
         request.set_block_id(block_id);
         request.set_block_version(last_seq_);
+        request.set_block_size(write_offset_);
         ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
-        if (!(ret && response.status() == 0 && (!bg_error_)))  {
-            LOG(WARNING, "Close file fail: %s", name_.c_str());
+        if (!(ret && response.status() == 0))  {
+            LOG(WARNING, "Close file %s fail, finish report returns %d",
+                    name_.c_str(), response.status());
             ret = false;
         }
     }

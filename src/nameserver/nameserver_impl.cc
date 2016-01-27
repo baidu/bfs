@@ -283,7 +283,24 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     int64_t block_id = request->block_id();
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
+    std::string file_name = request->file_name();
+    FileInfo file_info;
+    if (!namespace_->GetFileInfo(file_name, &file_info)) {
+        LOG(WARNING, "FinishBlock file not found: %s", file_name.c_str());
+        response->set_status(kNotFound);
+        done->Run();
+        return;
+    }
+    file_info.set_version(block_version);
+    file_info.set_size(request->block_size());
+    if (!namespace_->UpdateFileInfo(file_info)) {
+        LOG(WARNING, "Update file info fail: %s", file_name.c_str());
+        response->set_status(886);
+        done->Run();
+        return;
+    }
     if (!block_mapping_->SetBlockVersion(block_id, block_version)) {
+        LOG(WARNING, "Set block version fail: %s", file_name.c_str());
         response->set_status(886);
         done->Run();
         return;
@@ -560,8 +577,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t recover_num, pending_num, urgent_num, lost_num, incomplete_num;
-    block_mapping_->GetStat(&recover_num, &pending_num, &urgent_num,
+    int64_t lo_recover_num, pending_num, hi_recover_num, lost_num, incomplete_num;
+    block_mapping_->GetStat(&lo_recover_num, &pending_num, &hi_recover_num,
                             &lost_num, &incomplete_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
 
@@ -580,9 +597,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-3 col-md-3">
 
     str += "<div class=\"col-sm-3 col-md-3\">";
-    str += "Recover: " + common::NumToString(recover_num) + "</br>";
+    str += "Recover: " + common::NumToString(hi_recover_num) + "/" + common::NumToString(lo_recover_num) + "</br>";
     str += "Pending: " + common::NumToString(pending_num) + "</br>";
-    str += "Urgent: " + common::NumToString(urgent_num) + "</br>";
     str += "Lost: " + common::NumToString(lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
     str += "</div>"; // <div class="col-sm-3 col-md-3">
