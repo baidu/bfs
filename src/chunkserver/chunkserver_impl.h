@@ -73,7 +73,7 @@ private:
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlock(const ReplicaInfo& new_replica_info);
-    void GatherCounter();
+    void CloseIncompleteBlock(int64_t block_id);
     void StopBlockReport();
 private:
     BlockManager*   block_manager_;

@@ -40,7 +40,7 @@ public:
     Block* FindBlock(int64_t block_id, bool create_if_missing, int64_t* sync_time = NULL);
     std::string BlockId2Str(int64_t block_id);
     bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time);
-    bool CloseBlock(Block* block);
+    bool CloseBlock(Block* block, bool is_complete);
     bool RemoveBlock(int64_t block_id);
     bool RemoveAllBlocksAsync();
     bool RemoveAllBlocks();

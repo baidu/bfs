@@ -48,7 +48,7 @@ Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* t
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size), file_desc_(-1), refs_(0),
-  recv_window_(NULL), finished_(false), deleted_(false),
+  recv_window_(NULL), finished_(false), closed_(false), deleted_(false),
   file_cache_(file_cache) {
     assert(meta_.block_id < (1L<<40));
     g_data_size.Add(meta.block_size);
@@ -273,6 +273,28 @@ bool Block::Close() {
     }
     return true;
 }
+
+bool  Block::CloseIncomplete() {
+    MutexLock lock(&mu_);
+    if (finished_) {
+        return false;
+    }
+    finished_ = true;
+    if (!disk_writing_) {
+        this->AddRef();
+        thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
+    }
+    closed_ = true;
+    SetSliceNum(last_seq_ + 1);
+    std::vector<std::pair<int32_t, Buffer> > fragments;
+    recv_window_->GetFragments(&fragments);
+    for (std::vector<std::pair<int32_t, Buffer> >::iterator it = fragments.begin();
+            it != fragments.end(); ++it) {
+        delete (it->second).data_;
+    }
+    return true;
+}
+
 void Block::AddRef() {
     common::atomic_inc(&refs_);
     assert (refs_ > 0);
@@ -292,6 +314,9 @@ void Block::WriteCallback(int32_t seq, Buffer buffer) {
 }
 void Block::DiskWrite() {
     MutexLock lock(&mu_, "Block::DiskWrite", 1000);
+    if (closed_) {
+        return;
+    }
     if (!disk_writing_ && !deleted_) {
         disk_writing_ = true;
         while (!block_buf_list_.empty() && !deleted_) {
@@ -336,6 +361,9 @@ void Block::DiskWrite() {
 /// Append to block buffer
 void Block::Append(int32_t seq, const char*buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
+    if (closed_) {
+        return;
+    }
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;
         blockbuf_ = new char[buflen_];

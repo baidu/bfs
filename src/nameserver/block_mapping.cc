@@ -180,7 +180,10 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     }
     NSBlock* block = it->second;
     if (block->incomplete) {
-        incomplete_blocks_.erase(block_id);
+        for (std::set<int32_t>::iterator it = block->replica.begin(); it != block->replica.end(); ++it) {
+            IncompleteList::iterator c_it = incomplete_.find(*it);
+            (c_it->second).erase(block_id);
+        }
     }
     if (block->replica.size() == 0) {
         lost_blocks_.erase(block_id);
@@ -230,7 +233,9 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
                     block_id, cs_id);
                 if (!block->incomplete) {
                     block->incomplete = true;
-                    incomplete_blocks_.insert(block_id);
+                    IncompleteList::iterator incomplete_it =
+                        incomplete_.insert(make_pair(cs_id, std::set<int64_t>())).first;
+                    (incomplete_it->second).insert(block_id);
                 } else {
                     LOG(WARNING, "Urgent incomplete block #%ld replica= %lu",
                         block_id, block->replica.size());
@@ -283,6 +288,15 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
     }
 }
 
+void BlockMapping::GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks) {
+    MutexLock lock(&mu_);
+    const std::set<int64_t>& blocks = (incomplete_.find(cs_id))->second;
+    for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        close_blocks->Add(*it);
+    }
+    close_blocks->Add(0);
+}
+
 void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* pending_num,
                            int64_t* hi_recover_num, int64_t* lost_num,
                            int64_t* incomplete_num) {
@@ -303,7 +317,10 @@ void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* pending_num,
         *lost_num = lost_blocks_.size();
     }
     if (incomplete_num) {
-        *incomplete_num = incomplete_blocks_.size();
+        *incomplete_num = 0;
+        for (IncompleteList::iterator it = incomplete_.begin(); it != incomplete_.end(); ++it) {
+            *incomplete_num += (it->second).size();
+        }
     }
 }
 

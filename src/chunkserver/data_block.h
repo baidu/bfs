@@ -57,8 +57,6 @@ public:
     bool SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion();
-    /// Open corresponding file for write.
-    bool OpenForWrite();
     /// Set expected slice num, for IsComplete.
     void SetSliceNum(int32_t num);
     /// Is all slice is arrival(Notify by the sliding window)
@@ -70,9 +68,12 @@ public:
                int64_t len, int64_t* add_use = NULL);
     /// Flush block to disk.
     bool Close();
+    bool CloseIncomplete();
     void AddRef();
     void DecRef();
 private:
+    /// Open corresponding file for write.
+    bool OpenForWrite();
     /// Invoke by slidingwindow, when next buffer arrive.
     void WriteCallback(int32_t seq, Buffer buffer);
     void DiskWrite();
@@ -99,6 +100,7 @@ private:
     Mutex       mu_;
     common::SlidingWindow<Buffer>* recv_window_;
     bool        finished_;
+    bool        closed_;
     volatile int deleted_;
 
     FileCache*  file_cache_;
