@@ -716,8 +716,10 @@ int32_t BfsFileImpl::AddBlock() {
                 name_.c_str(), ret, create_response.status());
             for (int j = 0; j <= i; j++) {
                 delete write_windows_[addr];
+                delete chunkservers_[addr];
             }
             write_windows_.clear();
+            chunkservers_.clear();
             delete block_for_write_;
             block_for_write_ = NULL;
             return kCsCreateError;
@@ -750,7 +752,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
                 ret = AddBlock();
                 if (ret == 0) break;
             }
-            if (ret < 0) {
+            if (ret != kOK) {
                 LOG(WARNING, "AddBlock fail for %s\n", name_.c_str());
                 common::atomic_dec(&back_writing_);
                 return ret;
