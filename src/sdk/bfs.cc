@@ -680,7 +680,8 @@ int32_t BfsFileImpl::AddBlock() {
     bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
         &request, &response, 15, 3);
     if (!ret || !response.has_block()) {
-        return -1;
+        LOG(WARNING, "Nameserver AddBlock fail: %s", name_.c_str());
+        return kNsCreateError;
     }
     block_for_write_ = new LocatedBlock(response.block());
     int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 :
@@ -700,23 +701,31 @@ int32_t BfsFileImpl::AddBlock() {
         create_request.set_is_last(false);
         create_request.set_packet_seq(0);
         WriteBlockResponse create_response;
+        if (FLAGS_sdk_write_mode == "chains") {
+            for (int i = 1; i < block_for_write_->chains_size(); i++) {
+                std::string addr = block_for_write_->chains(i).address();
+                create_request.add_chunkservers(addr);
+            }
+        }
         bool ret = rpc_client_->SendRequest(chunkservers_[addr],
                                             &ChunkServer_Stub::WriteBlock,
                                             &create_request, &create_response,
                                             25, 1);
-        if (ret != 0 || create_response.status() != 0) {
+        if (!ret || create_response.status() != 0) {
+            LOG(WARNING, "Chunkserver AddBlock fail: %s %d %d",
+                name_.c_str(), ret, create_response.status());
             for (int j = 0; j <= i; j++) {
                 delete write_windows_[addr];
             }
             write_windows_.clear();
             delete block_for_write_;
             block_for_write_ = NULL;
-            return 5;
+            return kCsCreateError;
         }
         write_windows_[addr]->Add(0, 0);
     }
     last_seq_ = 0;
-    return 0;
+    return kOK;
 }
 int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
     common::timer::AutoTimer at(100, "Write", name_.c_str());

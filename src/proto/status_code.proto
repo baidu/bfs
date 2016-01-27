@@ -9,6 +9,8 @@ enum StatusCode {
     kWriteError = 5;
     kReadError = 6;
     kBadParameter = 7;
+    kNsCreateError = 8;
+    kCsCreateError = 9;
 }
 
 enum ChunkServerStatus {
