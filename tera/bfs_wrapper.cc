@@ -19,7 +19,8 @@ namespace bfs {
 int32_t BfsFile::Write(const char* buf, int32_t len) {
     common::timer::AutoTimer ac(0.1, "BfsFile::Write", _name.c_str());
     int ret = _file->Write(buf, len);
-    LOG(INFO, "Write(%s, len: %d) return %d", _name.c_str(), len, ret);
+    LOG(INFO, "Write(%s, len: %d) return %d use %.3f ms",
+        _name.c_str(), len, ret, ac.TimeUsed() / 1000.0);
     if (ret != len) {
         LOG(INFO, "Write(%s, len: %d) return %d",
             _name.c_str(), len, ret);
@@ -33,7 +34,8 @@ int32_t BfsFile::Flush() {
     if (_file->Flush()) {
         ret = 0;
     }
-    LOG(INFO, "Flush(%s) return %d", _name.c_str(), ret);
+    LOG(INFO, "Flush(%s) return %d use %.3f ms",
+        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Sync() {
@@ -43,13 +45,15 @@ int32_t BfsFile::Sync() {
     if (_file->Sync()) {
         ret = 0;
     }
-    LOG(INFO, "Sync(%s) return %d", _name.c_str(), ret);
+    LOG(INFO, "Sync(%s) return %d usd %.3f ms",
+        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Read(char* buf, int32_t len) {
     common::timer::AutoTimer ac(1, "Read", _name.c_str());
     int32_t ret = _file->Read(buf, len);
-    LOG(INFO, "Read(%s, len: %d) return %d", _name.c_str(), len, ret);
+    LOG(INFO, "Read(%s, len: %d) return %d use %.3f ms",
+        _name.c_str(), len, ret, ac.TimeUsed() / 1000.0);
     if (ret != len) {
         //LOG(INFO, "Read(%s, len: %d) return %d",
         //    _name.c_str(), len, ret);
@@ -59,14 +63,15 @@ int32_t BfsFile::Read(char* buf, int32_t len) {
 int32_t BfsFile::Pread(int64_t offset, char* buf, int32_t len) {
     common::timer::AutoTimer ac(1, "Pread", _name.c_str());
     int32_t ret = _file->Pread(buf, len, offset, true);
-    LOG(INFO, "Pread(%s, offset: %ld, len: %d) return %d",
-        _name.c_str(), offset, len, ret);
+    LOG(INFO, "Pread(%s, offset: %ld, len: %d) return %d use %.3f ms",
+        _name.c_str(), offset, len, ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int64_t BfsFile::Tell() {
     common::timer::AutoTimer ac(1, "Tell", _name.c_str());
     int64_t ret = _file->Seek(0, SEEK_CUR);
-    LOG(INFO, "Tell(%s) return %ld", _name.c_str(), ret);
+    LOG(INFO, "Tell(%s) return %ld use %.3f ms",
+        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Seek(int64_t offset) {
@@ -127,26 +132,31 @@ int32_t BfsImpl::Delete(const std::string& filename) {
         LOG(INFO, "Delete(%s) fail", filename.c_str());
         return -1;
     }
-    LOG(INFO, "Delete(%s) succeed", filename.c_str());
+    LOG(INFO, "Delete(%s) succeed use %.3f ms",
+        filename.c_str(), ac.TimeUsed() / 1000.0);
     return 0;
 }
 int32_t BfsImpl::GetFileSize(const std::string& filename, uint64_t* size) {
+    common::timer::AutoTimer ac(1, "GetFileSize", filename.c_str());
     int64_t file_size = 0;
     if (!_fs->GetFileSize(filename.c_str(), &file_size)) {
         LOG(INFO, "GetFileSize(%s) fail", filename.c_str());
         return -1;
     }
     *size = file_size;
-    LOG(INFO, "GetFileSize(%s) return %lu", filename.c_str(), *size);
+    LOG(INFO, "GetFileSize(%s) return %lu use %.3f",
+        filename.c_str(), *size, ac.TimeUsed() / 1000.0);
     return 0;
 }
 int32_t BfsImpl::Rename(const std::string& from, const std::string& to) {
+    common::timer::AutoTimer ac(1, "Rename", from.c_str());
     Delete(to);
     if (!_fs->Rename(from.c_str(), to.c_str())) {
         LOG(INFO, "Rename(%s, %s) fail", from.c_str(), to.c_str());
         return -1;
     }
-    LOG(INFO, "Rename(%s, %s) succeed", from.c_str(), to.c_str());
+    LOG(INFO, "Rename(%s, %s) succeed use %.3f ms",
+        from.c_str(), to.c_str(), ac.TimeUsed() / 1000.0);
     return 0;
 }
 int32_t BfsImpl::Copy(const std::string& from, const std::string& to) {
@@ -177,7 +187,8 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
         }
     }
     delete[] files;
-    LOG(INFO, "ListDirectory(%s) return %lu items", path.c_str(), result->size());    
+    LOG(INFO, "ListDirectory(%s) return %lu items use %.3f ms",
+        path.c_str(), result->size(), ac.TimeUsed() / 1000.0);
     return 0;
 }
 
@@ -192,7 +203,8 @@ leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) 
     if (!_fs->OpenFile(filename.c_str(), openflag, &file)) {
         return NULL;
     }
-    LOG(INFO, "OpenFile(%s,%d) succeed", filename.c_str(), flags);
+    LOG(INFO, "OpenFile(%s,%d) succeed use %.3f ms",
+        filename.c_str(), flags, ac.TimeUsed() / 1000.0);
     return new BfsFile(filename, file);
 }
 
