@@ -314,9 +314,6 @@ void Block::WriteCallback(int32_t seq, Buffer buffer) {
 }
 void Block::DiskWrite() {
     MutexLock lock(&mu_, "Block::DiskWrite", 1000);
-    if (closed_) {
-        return;
-    }
     if (!disk_writing_ && !deleted_) {
         disk_writing_ = true;
         while (!block_buf_list_.empty() && !deleted_) {
