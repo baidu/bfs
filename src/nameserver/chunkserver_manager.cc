@@ -29,7 +29,7 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
 void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
     MutexLock lock(&mu_);
     chunkserver_num_--;
-    LOG(INFO, "Remove Chunkserver[%d] %s %s, cs_num=%d",
+    LOG(INFO, "Remove Chunkserver C%d %s %s, cs_num=%d",
         cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     int32_t id = cs->id();
     std::set<int64_t> blocks;
@@ -87,7 +87,7 @@ void ChunkServerManager::DeadCheck() {
                                 this, cs, std::string("Dead"));
                 thread_pool_->AddTask(task);
             } else {
-                LOG(INFO, "[DeadCheck] Chunkserver[%d] %s is being clean",
+                LOG(INFO, "[DeadCheck] Chunkserver C%d %s is being clean",
                     cs->id(), cs->address().c_str());
             }
         }
@@ -119,7 +119,7 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
                                         RegisterResponse* response) {
     const std::string& address = request->chunkserver_addr();
     StatusCode status = kOK;
-    int cs_id = -1;
+    int cs_id = kUnkownCs;
     MutexLock lock(&mu_);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
@@ -149,7 +149,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     int32_t id = request->chunkserver_id();
     const std::string& address = request->chunkserver_addr();
     int cs_id = GetChunkserverId(address);
-    if (id == -1 || cs_id != id) {
+    if (id == kUnkownCs || cs_id != id) {
         //reconnect after DeadCheck()
         LOG(WARNING, "Unknown chunkserver %s with namespace version %ld",
             address.c_str(), request->namespace_version());
@@ -292,7 +292,7 @@ int32_t ChunkServerManager::GetChunkserverId(const std::string& addr) {
     if (it != address_map_.end()) {
         return it->second;
     }
-    return -1;
+    return kUnkownCs;
 }
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
