@@ -479,6 +479,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
             LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
         } else {
             LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
+            ret_status = kNotOK;
         }
     } else {
         LOG(WARNING, "Change replica num not found: %s", file_name.c_str());

@@ -119,7 +119,7 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
                                         RegisterResponse* response) {
     const std::string& address = request->chunkserver_addr();
     StatusCode status = kOK;
-    int cs_id = kUnkownCs;
+    int cs_id = -1;
     MutexLock lock(&mu_);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
