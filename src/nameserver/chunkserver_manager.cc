@@ -292,7 +292,7 @@ int32_t ChunkServerManager::GetChunkserverId(const std::string& addr) {
     if (it != address_map_.end()) {
         return it->second;
     }
-    return kUnkownCs;
+    return -1;
 }
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
