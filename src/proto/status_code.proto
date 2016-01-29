@@ -3,7 +3,7 @@ package baidu.bfs;
 enum StatusCode {
     kOK = 0;
     kNotOK = 1;
-    kUnkownCs = 2;
+    kUnknownCs = 2;
     kVersionError = 3;
     kNotFound = 4;
     kWriteError = 5;

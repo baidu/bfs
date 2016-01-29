@@ -116,7 +116,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
     if (cs_id != old_id) {
         LOG(INFO, "Chunkserver %s id mismatch, old: C%d new: C%d",
             request->chunkserver_addr().c_str(), old_id, cs_id);
-        response->set_status(kUnkownCs);
+        response->set_status(kUnknownCs);
         done->Run();
         return;
     }
@@ -153,7 +153,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     if (cs_id != old_id) {
         LOG(WARNING, "Chunkserver %s id mismatch, old: C%d new: C%d",
             request->chunkserver_addr().c_str(), old_id, cs_id);
-        response->set_status(kUnkownCs);
+        response->set_status(kUnknownCs);
         done->Run();
         return;
     }
