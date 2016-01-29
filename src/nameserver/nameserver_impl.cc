@@ -587,24 +587,22 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h3 align=left>Nameserver status</h2>";
 
-    str += "<div class=\"row\">";
-    str += "<div class=\"col-sm-3 col-md-3\">";
-    str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</br>";
+    str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
     str += "Safemode: " + common::NumToString(safe_mode_) + "</br>";
     str += "Pending tasks: "
         + common::NumToString(thread_pool_.PendingNum()) + "</br>";
-    str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
-    str += "</div>"; // <div class="col-sm-3 col-md-3">
+    str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
 
-    str += "<div class=\"col-sm-3 col-md-3\">";
-    str += "Recover: " + common::NumToString(hi_recover_num) + "/" + common::NumToString(lo_recover_num) + "</br>";
+    str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "Recover(hi/lo): " + common::NumToString(hi_recover_num) + "/" + common::NumToString(lo_recover_num) + "</br>";
     str += "Pending: " + common::NumToString(pending_num) + "</br>";
     str += "Lost: " + common::NumToString(lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
-    str += "</div>"; // <div class="col-sm-3 col-md-3">
     str += "</div>"; // <div class="col-sm-6 col-md-6">
-    str += "</div>"; // <div class="row">
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h3 align=left>Chunkserver status</h2>";
