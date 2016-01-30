@@ -29,7 +29,7 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
 void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
     MutexLock lock(&mu_);
     chunkserver_num_--;
-    LOG(INFO, "Remove Chunkserver[%d] %s %s, cs_num=%d",
+    LOG(INFO, "Remove Chunkserver C%d %s %s, cs_num=%d",
         cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     int32_t id = cs->id();
     std::set<int64_t> blocks;
@@ -87,7 +87,7 @@ void ChunkServerManager::DeadCheck() {
                                 this, cs, std::string("Dead"));
                 thread_pool_->AddTask(task);
             } else {
-                LOG(INFO, "[DeadCheck] Chunkserver[%d] %s is being clean",
+                LOG(INFO, "[DeadCheck] Chunkserver C%d %s is being clean",
                     cs->id(), cs->address().c_str());
             }
         }
@@ -153,7 +153,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
         //reconnect after DeadCheck()
         LOG(WARNING, "Unknown chunkserver %s with namespace version %ld",
             address.c_str(), request->namespace_version());
-        response->set_status(kUnkownCs);
+        response->set_status(kUnknownCs);
         return;
     }
     response->set_status(kOK);

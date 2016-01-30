@@ -65,7 +65,8 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
     MutexLock lock(&mu_);
     NSBlockMap::iterator it = block_map_.find(block_id);
     if (it == block_map_.end()) {
-        assert(0);
+        LOG(WARNING, "Can't find block: #%ld ", block_id);
+        return false;
     } else {
         NSBlock* nsblock = it->second;
         nsblock->expect_replica_num = replica_num;
@@ -175,18 +176,23 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     MutexLock lock(&mu_);
     NSBlockMap::iterator it = block_map_.find(block_id);
     if (it == block_map_.end()) {
-        LOG(WARNING, "RemoveBlock(%ld) not found", block_id);
+        LOG(WARNING, "RemoveBlock #%ld not found", block_id);
         return;
     }
     NSBlock* block = it->second;
     if (block->incomplete) {
         incomplete_blocks_.erase(block_id);
     }
-    if (block->replica.size() == 0) {
-        lost_blocks_.erase(block_id);
-    }
-    if (block->replica.size() == 1) {
-        hi_pri_recover_.erase(block_id);
+    if (block->replica.size() != block->expect_replica_num) {
+        if (block->replica.size() == 0) {
+            lost_blocks_.erase(block_id);
+        } else {
+            if (block->replica.size() == 1) {
+                hi_pri_recover_.erase(block_id);
+            } else {
+                lo_pri_recover_.erase(block_id);
+            }
+        }
     }
     delete block;
     block_map_.erase(it);
@@ -200,7 +206,7 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
         LOG(WARNING, "Can't find block: #%ld ", block_id);
         ret = false;
     } else {
-        LOG(INFO, "FinishBlock update version from %ld to %ld",
+        LOG(INFO, "FinishBlock update version from V%ld to V%ld",
             it->second->version, version);
         it->second->version = version;
     }
