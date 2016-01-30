@@ -145,13 +145,13 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    ::google::protobuf::Closure* done) {
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
-    LOG(INFO, "Report from C%d, %s, %d blocks\n",
+    LOG(INFO, "Report from C%d %s %d blocks\n",
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
     int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
     if (cs_id != old_id) {
-        LOG(WARNING, "Chunkserver %s id mismatch, old: C%d new: C%d",
+        LOG(WARNING, "Chunkserver %s id mismatch, old: C%d new: C%d ",
             request->chunkserver_addr().c_str(), old_id, cs_id);
         response->set_status(kUnknownCs);
         done->Run();
