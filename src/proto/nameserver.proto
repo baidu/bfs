@@ -205,6 +205,30 @@ message SysStatResponse {
     optional int64 data_size = 5;
 }
 
+message VoteRequest {
+    optional int64 term = 2;
+    optional string candidate = 3;
+    optional int64 last_log_index = 4;
+    optional int64 last_log_term = 5;
+}
+message VoteResponse {
+    optional int64 term = 2;
+    optional bool vote_garanted = 3;
+}
+
+message AppendEntriesRequest {
+    optional int64 term = 2;
+    optional string leader = 3;
+    optional int64 prev_log_index = 4;
+    optional int64 prev_log_term = 5;
+    repeated bytes entries = 6;
+    optional int64 lead_commit = 7;
+}
+message AppendEntriesResponse {
+    optional int64 term = 2;
+    optional bool success = 3;
+}
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
@@ -224,5 +248,7 @@ service NameServer {
     rpc PullBlockReport(PullBlockReportRequest) returns(PullBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
+    rpc Vote(VoteRequest) returns(VoteResponse);
+    rpc AppendEntries(AppendEntriesRequest) returns(AppendEntriesResponse);
 }
 

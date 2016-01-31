@@ -94,6 +94,14 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void Vote(::google::protobuf::RpcController* controller,
+                       const ::baidu::bfs::VoteRequest* request,
+                       ::baidu::bfs::VoteResponse* response,
+                       ::google::protobuf::Closure* done);
+    void AppendEntries(::google::protobuf::RpcController* controller,
+                       const ::baidu::bfs::AppendEntriesRequest* request,
+                       ::baidu::bfs::AppendEntriesResponse* response,
+                       ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
