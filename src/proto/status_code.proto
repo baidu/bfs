@@ -3,14 +3,16 @@ package baidu.bfs;
 enum StatusCode {
     kOK = 0;
     kNotOK = 1;
-    kUnkownCs = 2;
+    kUnknownCs = 2;
     kVersionError = 3;
     kNotFound = 4;
     kWriteError = 5;
     kReadError = 6;
     kBadParameter = 7;
-    kNsCreateError = 8;
-    kCsCreateError = 9;
+    kUpdateError = 8;
+    kGetChunkserverError = 9;
+    kNsCreateError = 10;
+    kCsCreateError = 11;
 }
 
 enum ChunkServerStatus {
@@ -20,3 +22,11 @@ enum ChunkServerStatus {
     kCsOffLine = 104;
     kCsStandby = 105;
 }
+
+enum RecoverStat {
+    kNotInRecover = 0;
+    kLoRecover = 1;
+    kHiRecover = 2;
+    kCheck = 3;
+}
+

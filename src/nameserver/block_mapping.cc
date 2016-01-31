@@ -18,12 +18,12 @@ namespace bfs {
 
 NSBlock::NSBlock()
     : id(-1), version(-1), block_size(-1),
-      expect_replica_num(0), incomplete(false) {
+      expect_replica_num(0), recover_stat(kNotInRecover), incomplete(false) {
 }
 NSBlock::NSBlock(int64_t block_id, int32_t replica,
                  int64_t block_version, int64_t block_size)
     : id(block_id), version(block_version), block_size(block_size),
-      expect_replica_num(replica), incomplete(false) {
+      expect_replica_num(replica), recover_stat(kNotInRecover), incomplete(false) {
 }
 
 BlockMapping::BlockMapping() : next_block_id_(1) {}
@@ -65,7 +65,8 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
     MutexLock lock(&mu_);
     NSBlockMap::iterator it = block_map_.find(block_id);
     if (it == block_map_.end()) {
-        assert(0);
+        LOG(WARNING, "Can't find block: #%ld ", block_id);
+        return false;
     } else {
         NSBlock* nsblock = it->second;
         nsblock->expect_replica_num = replica_num;
@@ -153,7 +154,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
                 server_id, id, cur_replica_num);
         }
         if (cur_replica_num < expect_replica_num && nsblock->version >= 0) {
-            if (!safe_mode) {
+            if (!safe_mode && nsblock->recover_stat != kCheck) {
                 LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
                     id, server_id, cur_replica_num);
                 AddToRecover(nsblock);
@@ -175,18 +176,23 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     MutexLock lock(&mu_);
     NSBlockMap::iterator it = block_map_.find(block_id);
     if (it == block_map_.end()) {
-        LOG(WARNING, "RemoveBlock(%ld) not found", block_id);
+        LOG(WARNING, "RemoveBlock #%ld not found", block_id);
         return;
     }
     NSBlock* block = it->second;
     if (block->incomplete) {
         incomplete_blocks_.erase(block_id);
     }
-    if (block->replica.size() == 0) {
-        lost_blocks_.erase(block_id);
-    }
-    if (block->replica.size() == 1) {
-        hi_pri_recover_.erase(block_id);
+    if (block->replica.size() != block->expect_replica_num) {
+        if (block->replica.size() == 0) {
+            lost_blocks_.erase(block_id);
+        } else {
+            if (block->replica.size() == 1) {
+                hi_pri_recover_.erase(block_id);
+            } else {
+                lo_pri_recover_.erase(block_id);
+            }
+        }
     }
     delete block;
     block_map_.erase(it);
@@ -200,7 +206,7 @@ bool BlockMapping::SetBlockVersion(int64_t block_id, int64_t version) {
         LOG(WARNING, "Can't find block: #%ld ", block_id);
         ret = false;
     } else {
-        LOG(INFO, "FinishBlock update version from %ld to %ld",
+        LOG(INFO, "FinishBlock update version from V%ld to V%ld",
             it->second->version, version);
         it->second->version = version;
     }
@@ -309,12 +315,34 @@ void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* pending_num,
 
 void BlockMapping::AddToRecover(NSBlock* block) {
     mu_.AssertHeld();
+    if (block->recover_stat == kCheck) {
+        return;
+    }
     int64_t block_id = block->id;
     bool is_hi_priority = block->replica.size() == 1;
-    std::set<int64_t>* insert_to = is_hi_priority ? &hi_pri_recover_ : &lo_pri_recover_;
-    std::set<int64_t>* erase_from = is_hi_priority ? &lo_pri_recover_ : &hi_pri_recover_;
-    insert_to->insert(block_id);
-    erase_from->erase(block_id);
+    if (block->recover_stat == kNotInRecover) {
+        if (is_hi_priority) {
+            hi_pri_recover_.insert(block_id);
+            block->recover_stat = kHiRecover;
+            LOG(INFO, "AddToRecover #%ld kNotInRecover->kHiRecover", block_id);
+        } else {
+            lo_pri_recover_.insert(block_id);
+            block->recover_stat = kLoRecover;
+            LOG(INFO, "AddToRecover #%ld kNotInRecover->kLoRecover", block_id);
+        }
+    } else { // adjust priority
+        if (block->recover_stat == kLoRecover && is_hi_priority) {
+            hi_pri_recover_.insert(block_id);
+            lo_pri_recover_.erase(block_id);
+            block->recover_stat = kHiRecover;
+            LOG(INFO, "AddToRecover add #%ld kLoRecover->kHiRecover", block_id);
+        } else if (block->recover_stat == kHiRecover && !is_hi_priority) {
+            lo_pri_recover_.insert(block_id);
+            hi_pri_recover_.erase(block_id);
+            block->recover_stat = kLoRecover;
+            LOG(INFO, "AddToRecover #%ld kHiRecover->kLoRecover", block_id);
+        }
+    }
 }
 
 void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
@@ -332,12 +360,14 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
         if (static_cast<int32_t>(cur_block->replica.size()) >= cur_block->expect_replica_num) {
             LOG(DEBUG, "Replica num enough #%ld %lu", cur_block->id, cur_block->replica.size());
             recover_set->erase(it++);
+            cur_block->recover_stat = kNotInRecover;
             continue;
         }
         if (cur_block->replica.size() == 0) {
             LOG(DEBUG, "All Replica lost #%ld , give up recover.", cur_block->id);
             lost_blocks_.insert(cur_block->id);
             recover_set->erase(it++);
+            cur_block->recover_stat = kNotInRecover;
             continue;
         }
         if (cur_block->replica.find(cs_id) != cur_block->replica.end()) {
@@ -347,6 +377,7 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
         int src_id = *(cur_block->replica.begin());
         recover_blocks->insert(std::make_pair(cur_block->id, src_id));
         check_set->insert(cur_block->id);
+        cur_block->recover_stat = kCheck;
         LOG(INFO, "PickRecoverBlocks for C%d #%ld source: C%d ", cs_id, cur_block->id, src_id);
         thread_pool_.DelayTask(FLAGS_recover_timeout * 1000,
             boost::bind(&BlockMapping::CheckRecover, this, cs_id, cur_block->id));
@@ -360,11 +391,15 @@ void BlockMapping::TryRecover(NSBlock* block) {
     if (static_cast<int32_t>(block->replica.size()) < block->expect_replica_num) {
         if (block->replica.size() == 1) {
             hi_pri_recover_.insert(block_id);
+            block->recover_stat = kHiRecover;
+            LOG(INFO, "need more recover: #%ld kCheck->kHiRecover", block_id);
         } else {
             lo_pri_recover_.insert(block_id);
+            block->recover_stat = kLoRecover;
+            LOG(INFO, "need more recover: #%ld kCheck->kLoRecover", block_id);
         }
-        LOG(DEBUG, "need more recover: #%ld", block_id);
     } else {
+        block->recover_stat = kNotInRecover;
         LOG(DEBUG, "recover done: #%ld ", block_id);
     }
 }
