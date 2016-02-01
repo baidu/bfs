@@ -16,7 +16,7 @@ message CreateFileRequest {
 
 message CreateFileResponse {
     optional int64 sequence_id = 1;
-    required int32 status = 2;
+    required StatusCode status = 2;
 }
 
 message LocatedBlock {
@@ -35,7 +35,7 @@ message FileLocationRequest {
 
 message FileLocationResponse {
     required int64 sequence_id = 1;
-    required int32 status = 2;
+    required StatusCode status = 2;
     repeated LocatedBlock blocks = 3;
 }
 
@@ -45,7 +45,7 @@ message ListDirectoryRequest {
 }
 message ListDirectoryResponse {
     required int64 sequence_id = 1;
-    required int32 status = 2;
+    required StatusCode status = 2;
     repeated FileInfo files = 3;
 }
 
@@ -55,7 +55,7 @@ message StatRequest {
 }
 message StatResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional FileInfo file_info = 3;
 }
 
@@ -66,7 +66,7 @@ message RenameRequest {
 }
 message RenameResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message AddBlockRequest {
@@ -75,7 +75,7 @@ message AddBlockRequest {
 }
 message AddBlockResponse {
     required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional LocatedBlock block = 3;
 }
 
@@ -88,7 +88,7 @@ message FinishBlockRequest {
 }
 message FinishBlockResponse {
     required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message UnlinkRequest {
@@ -97,7 +97,7 @@ message UnlinkRequest {
 }
 message UnlinkResponse {
     required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message DeleteDirectoryRequest {
@@ -107,7 +107,7 @@ message DeleteDirectoryRequest {
 }
 message DeleteDirectoryResponse {
     required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message ChangeReplicaNumRequest {
@@ -117,7 +117,7 @@ message ChangeReplicaNumRequest {
 }
 message ChangeReplicaNumResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message HeartBeatRequest {
@@ -131,7 +131,7 @@ message HeartBeatRequest {
 }
 message HeartBeatResponse {
     optional int64 sequence_id = 1;
-    optional int64 status = 2;
+    optional StatusCode status = 2;
     optional int64 namespace_version = 3;
 }
 
@@ -168,7 +168,7 @@ message BlockReportRequest {
 }
 message BlockReportResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     repeated int64 obsolete_blocks = 3;
     repeated ReplicaInfo new_replicas = 4;
 }
@@ -180,7 +180,7 @@ message BlockReceivedRequest {
 }
 
 message BlockReceivedResponse {
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message PullBlockReportRequest {
@@ -191,7 +191,7 @@ message PullBlockReportRequest {
 }
 message PullBlockReportResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message SysStatRequest {
@@ -199,7 +199,7 @@ message SysStatRequest {
 }
 
 message SysStatResponse {
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     repeated ChunkServerInfo chunkservers = 3;
     optional int64 block_num = 4;
     optional int64 data_size = 5;

@@ -209,7 +209,7 @@ public:
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
             &request, &response, 15, 3);
-        if (!ret || response.status() != 0) {
+        if (!ret || response.status() != kOK) {
             return false;
         } else {
             return true;
@@ -225,7 +225,7 @@ public:
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ListDirectory,
             &request, &response, 15, 3);
-        if (!ret || response.status() != 0) {
+        if (!ret || response.status() != kOK) {
             LOG(WARNING, "List fail: %s\n", path);
             return false;
         }
@@ -255,10 +255,10 @@ public:
             LOG(WARNING, "DeleteDirectory fail: %s\n", path);
             return false;
         }
-        if (response.status() == 404) {
+        if (response.status() == kNotFound) {
             LOG(WARNING, "%s is not found.", path);
         }
-        return response.status() == 0;
+        return response.status() == kOK;
     }
     bool Access(const char* path, int32_t mode) {
         StatRequest request;
@@ -271,7 +271,7 @@ public:
             LOG(WARNING, "Stat fail: %s\n", path);
             return false;
         }
-        return (response.status() == 0);
+        return (response.status() == kOK);
     }
     bool Stat(const char* path, BfsFileInfo* fileinfo) {
         StatRequest request;
@@ -284,7 +284,7 @@ public:
             fprintf(stderr, "Stat rpc fail: %s\n", path);
             return false;
         }
-        if (response.status() == 0) {
+        if (response.status() == kOK) {
             const FileInfo& info = response.file_info();
             fileinfo->ctime = info.ctime();
             fileinfo->mode = info.type();
@@ -304,7 +304,7 @@ public:
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_,
             &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
-        if (!ret || response.status() != 0) {
+        if (!ret || response.status() != kOK) {
             LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
             return false;
         }
@@ -331,7 +331,7 @@ public:
                     ret = rpc_client_->SendRequest(chunkserver,
                         &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
                     delete chunkserver;
-                    if (!ret || gbi_response.status() != 0) {
+                    if (!ret || gbi_response.status() != kOK) {
                         LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail",
                             path, addr.c_str());
                         continue;
@@ -366,7 +366,7 @@ public:
             request.set_replica_num(replica);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
-            if (!ret || response.status() != 0) {
+            if (!ret || response.status() != kOK) {
                 LOG(WARNING, "Open file for write fail: %s, status= %d\n",
                     path, response.status());
                 ret = false;
@@ -381,7 +381,7 @@ public:
             request.set_sequence_id(0);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::GetFileLocation,
                 &request, &response, 15, 3);
-            if (ret && response.status() == 0) {
+            if (ret && response.status() == kOK) {
                 BfsFileImpl* f = new BfsFileImpl(this, rpc_client_, path, flags);
                 f->located_blocks_.CopyFrom(response.blocks());
                 *file = f;
@@ -413,7 +413,7 @@ public:
             fprintf(stderr, "Unlink rpc fail: %s\n", path);
             return false;
         }
-        if (response.status() != 0) {
+        if (response.status() != kOK) {
             fprintf(stderr, "Unlink %s return: %d\n", path, response.status());
             return false;
         }
@@ -431,7 +431,7 @@ public:
             fprintf(stderr, "Rename rpc fail: %s to %s\n", oldpath, newpath);
             return false;
         }
-        if (response.status() != 0) {
+        if (response.status() != kOK) {
             fprintf(stderr, "Rename %s to %s return: %d\n",
                 oldpath, newpath, response.status());
             return false;
@@ -452,7 +452,7 @@ public:
                     file_name, replica_num);
             return false;
         }
-        if (response.status() != 0) {
+        if (response.status() != kOK) {
             fprintf(stderr, "Change %s replica num to %d return: %d\n",
                     file_name, replica_num, response.status());
             return false;
@@ -614,7 +614,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         }
     }
 
-    if (!ret || response.status() != 0) {
+    if (!ret || response.status() != kOK) {
         printf("Read block %ld fail, status= %d\n", block_id, response.status());
         return -4;
     }
@@ -854,9 +854,9 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      int retry_times,
                                      WriteBuffer* buffer,
                                      std::string cs_addr) {
-    if (failed || response->status() != 0) {
+    if (failed || response->status() != kOK) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
-                && response->status() != 500) {
+                && response->status() != kCsTooMuchPendingBuffer) {
             if (retry_times < 5) {
                 LOG(INFO, "BackgroundWrite failed %s"
                     " #%ld seq:%d, offset:%ld, len:%d"
@@ -1002,7 +1002,7 @@ bool BfsFileImpl::Close() {
         request.set_block_size(write_offset_);
         ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
-        if (!(ret && response.status() == 0))  {
+        if (!(ret && response.status() == kOK))  {
             LOG(WARNING, "Close file %s fail, finish report returns %d",
                     name_.c_str(), response.status());
             ret = false;
