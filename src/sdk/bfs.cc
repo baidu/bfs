@@ -703,8 +703,8 @@ int32_t BfsFileImpl::AddBlock() {
         WriteBlockResponse create_response;
         if (FLAGS_sdk_write_mode == "chains") {
             for (int i = 1; i < block_for_write_->chains_size(); i++) {
-                std::string addr = block_for_write_->chains(i).address();
-                create_request.add_chunkservers(addr);
+                const std::string& cs_addr = block_for_write_->chains(i).address();
+                create_request.add_chunkservers(cs_addr);
             }
         }
         bool ret = rpc_client_->SendRequest(chunkservers_[addr],
@@ -715,8 +715,9 @@ int32_t BfsFileImpl::AddBlock() {
             LOG(WARNING, "Chunkserver AddBlock fail: %s %d %d",
                 name_.c_str(), ret, create_response.status());
             for (int j = 0; j <= i; j++) {
-                delete write_windows_[addr];
-                delete chunkservers_[addr];
+                const std::string& cs_addr = block_for_write_->chains(j).address();
+                delete write_windows_[cs_addr];
+                delete chunkservers_[cs_addr];
             }
             write_windows_.clear();
             chunkservers_.clear();
@@ -750,7 +751,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             int ret = 0;
             for (int i = 0; i < FLAGS_sdk_createblock_retry; i++) {
                 ret = AddBlock();
-                if (ret == 0) break;
+                if (ret == kOK) break;
             }
             if (ret != kOK) {
                 LOG(WARNING, "AddBlock fail for %s\n", name_.c_str());
