@@ -435,7 +435,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     if (status == kOK) {
         block_mapping_->RemoveBlocksForFile(file_info);
     }
-    LOG(INFO, "Unlink: %s return %d", path.c_str(), status);
+    LOG(INFO, "Unlink: %s return %s", path.c_str(), StatusCode_Name(status).c_str());
     response->set_status(status);
     done->Run();
 }

@@ -305,7 +305,7 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_,
             &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
         if (!ret || response.status() != kOK) {
-            LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
+            LOG(WARNING, "GetFileSize(%s) return %s", path, StatusCode_Name(response.status()).c_str());
             return false;
         }
         *file_size = 0;
@@ -367,8 +367,8 @@ public:
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != kOK) {
-                LOG(WARNING, "Open file for write fail: %s, status= %d\n",
-                    path, response.status());
+                LOG(WARNING, "Open file for write fail: %s, status= %s\n",
+                    path, StatusCode_Name(response.status()).c_str());
                 ret = false;
             } else {
                 //printf("Open file %s\n", path);
@@ -388,7 +388,7 @@ public:
                 //printf("OpenFile success: %s\n", path);
             } else {
                 //printf("GetFileLocation return %d\n", response.blocks_size());
-                LOG(WARNING, "OpenFile return %d\n", response.status());
+                LOG(WARNING, "OpenFile return %s\n", StatusCode_Name(response.status()).c_str());
                 ret = false;
             }
         } else {
@@ -414,7 +414,7 @@ public:
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Unlink %s return: %d\n", path, response.status());
+            fprintf(stderr, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
             return false;
         }
         return true;
@@ -432,8 +432,8 @@ public:
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Rename %s to %s return: %d\n",
-                oldpath, newpath, response.status());
+            fprintf(stderr, "Rename %s to %s return: %s\n",
+                oldpath, newpath, StatusCode_Name(response.status()).c_str());
             return false;
         }
         return true;
@@ -453,8 +453,8 @@ public:
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Change %s replica num to %d return: %d\n",
-                    file_name, replica_num, response.status());
+            fprintf(stderr, "Change %s replida num to %d return: %s\n",
+                    file_name, replica_num, StatusCode_Name(response.status()).c_str());
             return false;
         }
         return true;
@@ -466,7 +466,7 @@ public:
                 &NameServer_Stub::SysStat,
                 &request, &response, 15, 3);
         if (!ret) {
-            LOG(WARNING, "SysStat fail %d", response.status());
+            LOG(WARNING, "SysStat fail %s", StatusCode_Name(response.status()).c_str());
             return false;
         }
         bool stat_all = (stat_name == "StatAll");
@@ -615,7 +615,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     }
 
     if (!ret || response.status() != kOK) {
-        printf("Read block %ld fail, status= %d\n", block_id, response.status());
+        printf("Read block %ld fail, status= %s\n", block_id, StatusCode_Name(response.status()).c_str());
         return -4;
     }
 
@@ -860,20 +860,20 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
             if (retry_times < 5) {
                 LOG(INFO, "BackgroundWrite failed %s"
                     " #%ld seq:%d, offset:%ld, len:%d"
-                    " status: %d, retry_times: %d",
+                    " status: %s, retry_times: %d",
                     name_.c_str(),
                     buffer->block_id(), buffer->Sequence(),
                     buffer->offset(), buffer->Size(),
-                    response->status(), retry_times);
+                    StatusCode_Name(response->status()).c_str(), retry_times);
             }
             if (--retry_times == 0) {
                 LOG(WARNING, "BackgroundWrite error %s"
                     "#%ld seq:%d, offset:%ld, len:%d]"
-                    " status: %d, retry_times: %d",
+                    " status: %s, retry_times: %d",
                     name_.c_str(),
                     buffer->block_id(), buffer->Sequence(),
                     buffer->offset(), buffer->Size(),
-                    response->status(), retry_times);
+                    StatusCode_Name(response->status()).c_str(), retry_times);
                 ///TODO: SetFaild & handle it
                 if (FLAGS_sdk_write_mode == "chains") {
                     bg_error_ = true;
@@ -1003,8 +1003,8 @@ bool BfsFileImpl::Close() {
         ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
         if (!(ret && response.status() == kOK))  {
-            LOG(WARNING, "Close file %s fail, finish report returns %d",
-                    name_.c_str(), response.status());
+            LOG(WARNING, "Close file %s fail, finish report returns %s",
+                    name_.c_str(), StatusCode_Name(response.status()).c_str());
             ret = false;
         }
     }

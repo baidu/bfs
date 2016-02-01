@@ -240,7 +240,7 @@ void ChunkServerImpl::SendBlockReport() {
     } else {
         if (response.status() != kOK) {
             last_report_blockid_ = -1;
-            LOG(WARNING, "BlockReport return %d, Pause to report", response.status());
+            LOG(WARNING, "BlockReport return %s, Pause to report", StatusCode_Name(response.status()).c_str());
             return;
         }
         //LOG(INFO, "Report return old: %d new: %d", chunkserver_id_, response.chunkserver_id());
@@ -385,9 +385,9 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     int32_t packet_seq = request->packet_seq();
     if (failed || next_response->status() != kOK) {
         LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu], "
-                     "status= %d, error= %d\n",
+                     "status= %s, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
-            next_response->status(), error);
+            StatusCode_Name(next_response->status()).c_str(), error);
         if (next_response->status() == kOK) {
             response->set_status(kNotOK);
         } else {
