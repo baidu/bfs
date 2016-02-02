@@ -17,6 +17,9 @@ DEFINE_int32(nameserver_log_level, 4, "Nameserver log level");
 DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in ms");
 DEFINE_int32(recover_speed, 100, "max num of block to recover for one chunkserver");
 DEFINE_int32(recover_timeout, 180, "Recover timeout for one chunkserver");
+DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
+DEFINE_string(raft_nodes,"127.0.0.1:8828", "Raft nodes list");
+DEFINE_int32(raft_node_index, 0, "Raft nodes index");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
