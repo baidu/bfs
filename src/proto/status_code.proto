@@ -11,6 +11,8 @@ enum StatusCode {
     kBadParameter = 7;
     kUpdateError = 8;
     kGetChunkserverError = 9;
+    kNsCreateError = 10;
+    kCsCreateError = 11;
 }
 
 enum ChunkServerStatus {
@@ -27,3 +29,4 @@ enum RecoverStat {
     kHiRecover = 2;
     kCheck = 3;
 }
+

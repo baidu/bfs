@@ -244,6 +244,10 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         return;
     }
 
+    if (file_info.blocks_size() > 0) {
+        block_mapping_->RemoveBlocksForFile(file_info);
+        file_info.clear_blocks();
+    }
     /// replica num
     int replica_num = file_info.replicas();
     /// check lease for write
