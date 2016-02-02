@@ -71,6 +71,9 @@ private:
     void LocalWriteBlock(const WriteBlockRequest* request,
                          WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
+    void LocalWriteBlockCallback(Block* block, int64_t, int64_t, const WriteBlockRequest* request,
+                                 WriteBlockResponse* response,
+                                 ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PullNewBlock(const ReplicaInfo& new_replica_info);
     void CloseIncompleteBlock(int64_t block_id);

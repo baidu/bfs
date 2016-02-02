@@ -142,7 +142,7 @@ void ChunkServerImpl::Register() {
         return;
     }
     if (response.status() != kOK) {
-        LOG(FATAL, "Block report return %s", StatusCode_Name(response.status()).c_str());
+        LOG(FATAL, "Register return %s", StatusCode_Name(response.status()).c_str());
         work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
         return;
     }
@@ -427,23 +427,42 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t find_start = common::timer::get_micros();
     /// search;
     int64_t sync_time = 0;
-    Block* block = block_manager_->FindBlock(block_id, true, &sync_time);
+    Block* block = NULL;
+    if (packet_seq == 0) {
+        block = block_manager_->CreateBlock(block_id, &sync_time);
+    } else {
+        block = block_manager_->FindBlock(block_id);
+    }
     if (!block) {
         LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
         response->set_status(kNotFound);
         done->Run();
         return;
     }
-
+    LOG(INFO, "[WriteBlock] local write #%ld %d", block_id, packet_seq);
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
-    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), &add_used)) {
+    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(),
+        boost::bind(&ChunkServerImpl::LocalWriteBlockCallback, this, block, find_start,
+                    write_start, request, response, done), &add_used)) {
         block->DecRef();
         response->set_status(kWriteError);
         done->Run();
         return;
     }
+    LOG(INFO, "[WriteBlock] add to sliding_window use %ld ms, sync use %ld ms, find use %ld",
+        add_used / 1000, sync_time / 1000, (write_start - find_start - sync_time) / 1000);
+}
+
+void ChunkServerImpl::LocalWriteBlockCallback(Block* block, int64_t find_start, int64_t write_start,
+                                              const WriteBlockRequest* request,
+                                              WriteBlockResponse* response,
+                                              ::google::protobuf::Closure* done) {
     int64_t write_end = common::timer::get_micros();
+    int64_t block_id = request->block_id();
+    const std::string& databuf = request->databuf();
+    int64_t offset = request->offset();
+    int32_t packet_seq = request->packet_seq();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
         block->SetVersion(packet_seq);
@@ -459,14 +478,11 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
 
     int64_t time_end = common::timer::get_micros();
     LOG(INFO, "[WriteBlock] done #%ld seq:%d, offset:%ld, len:%lu "
-              "use %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld ms",
+              "use %ld %ld %ld %ld %ld %ld %ld ms",
         block_id, packet_seq, offset, databuf.size(),
         (response->timestamp(0) - request->sequence_id()) / 1000, // recv
         (response->timestamp(1) - response->timestamp(0)) / 1000, // dispatch time
         (find_start - response->timestamp(1)) / 1000, // async time
-        (write_start - find_start - sync_time) / 1000,  // find time
-        sync_time / 1000, // create sync time
-        add_used / 1000, // sliding window add
         (write_end - write_start) / 1000,    // write time
         (report_start - write_end) / 1000, // close time
         (time_end - report_start) / 1000, // report time
@@ -482,7 +498,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
 
 void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
     LOG(INFO, "[CloseIncompleteBlock] #%ld ", block_id);
-    Block* block = block_manager_->FindBlock(block_id, false, NULL);
+    Block* block = block_manager_->FindBlock(block_id);
     if (!block) {
         LOG(WARNING, "[CloseIncompleteBlock] Block not found: #%ld ", block_id);
         return;
@@ -516,7 +532,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     int status = kOK;
 
     int64_t find_start = common::timer::get_micros();
-    Block* block = block_manager_->FindBlock(block_id, false);
+    Block* block = block_manager_->FindBlock(block_id);
     if (block == NULL) {
         status = kNotFound;
         LOG(WARNING, "ReadBlock not found: #%ld offset: %ld len: %d\n",
@@ -574,14 +590,14 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     int init_index = 0;
     int pre_index = -1;
     ChunkServer_Stub* chunkserver = NULL;
-    Block* block = block_manager_->FindBlock(block_id, false);
+    Block* block = block_manager_->FindBlock(block_id);
     if (block) {
         block->DecRef();
         LOG(INFO, "already has #%ld , skip pull", block_id);
         report_request.add_failed(block_id);
         goto REPORT;
     }
-    block = block_manager_->FindBlock(block_id, true);
+    block = block_manager_->CreateBlock(block_id, NULL);
     if (!block) {
         LOG(WARNING, "Cant't create block: #%ld ", block_id);
         //ignore this block
@@ -637,11 +653,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         int32_t len = response.databuf().size();
         const char* buf = response.databuf().data();
         if (len) {
-            if (!block->Write(seq, offset, buf, len)) {
-                LOG(INFO, "Pull block #%ld write fail", block_id);
-                success = false;
-                break;
-            }
+            block->Append(seq, buf, len);
             g_recover_bytes.Add(len);
         } else {
             block->SetSliceNum(seq);
@@ -673,7 +685,6 @@ REPORT:
     }
 }
 
-
 void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller,
                                    const GetBlockInfoRequest* request,
                                    GetBlockInfoResponse* response,
@@ -690,7 +701,7 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
     int status = kOK;
 
     int64_t find_start = common::timer::get_micros();
-    Block* block = block_manager_->FindBlock(block_id, false);
+    Block* block = block_manager_->FindBlock(block_id);
     int64_t find_end = common::timer::get_micros();
     if (block == NULL) {
         status = kNotFound;

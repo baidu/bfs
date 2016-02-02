@@ -1,4 +1,5 @@
 [The Baidu File System](http://github.com/bluebore/dfs)
+
 ======
 
 Travis [![Build Status](https://travis-ci.org/bluebore/dfs.svg)](https://travis-ci.org/bluebore/dfs)
@@ -24,7 +25,8 @@ small_test.sh 简单的自动化测试脚本，会调用上面三个脚本，并
 为了简化日志打印，并便于grep,  
 所有block id的打印使用“#%ld "的格式（即前加#，后加空格）  
 所有chunkserver id打印使用"C%d "的格式  
-所有entry id打印使用"E%ld "的格式
+所有entry id打印使用"E%ld "的格式  
+所有block version打印使用"V%ld "的格式
 
 ##前世
 突然想写个分布式文件系统~
@@ -38,4 +40,5 @@ small_test.sh 简单的自动化测试脚本，会调用上面三个脚本，并
 yanshiguang~  
 yuanyi~  
 yuyangquan~  
-leiliyuan~
+leiliyuan~  
+yangce~
