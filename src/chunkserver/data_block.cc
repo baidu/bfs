@@ -305,7 +305,7 @@ void Block::DiskWrite() {
             while (wlen < len) {
                 int w = write(file_desc_, buf + wlen, len - wlen);
                 if (w < 0) {
-                    LOG(WARNING, "IOEroro write #%ld %s return %s",
+                    LOG(WARNING, "IOError write #%ld %s return %s",
                         meta_.block_id, disk_file_.c_str(), strerror(errno));
                     assert(0);
                     break;
@@ -334,7 +334,7 @@ void Block::DiskWrite() {
     this->DecRef();
 }
 /// Append to block buffer
-void Block::Append(int32_t seq, const char*buf, int64_t len) {
+void Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;
@@ -342,9 +342,9 @@ void Block::Append(int32_t seq, const char*buf, int64_t len) {
         g_block_buffers.Inc();
         g_buffers_new.Inc();
     }
-    int ap_len = len;
+    int64_t ap_len = len;
     while (bufdatalen_ + ap_len > buflen_) {
-        int wlen = buflen_ - bufdatalen_;
+        int64_t wlen = buflen_ - bufdatalen_;
         memcpy(blockbuf_ + bufdatalen_, buf, wlen);
         block_buf_list_.push_back(std::make_pair(blockbuf_, FLAGS_write_buf_size));
         this->AddRef();
