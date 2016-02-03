@@ -224,6 +224,9 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
+            if (!chains->empty() && cs->id() == (*(chains->begin())).first) {
+                continue;
+            }
             if (cs->data_size() < cs->disk_quota()
                 && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
                 loads.push_back(
