@@ -298,7 +298,7 @@ void BlockMapping::GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField
     MutexLock lock(&mu_);
     const std::set<int64_t>& blocks = (incomplete_.find(cs_id))->second;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        LOG(INFO, "GetCloseBlocks #%ld at C%d", *it, cs_id);
+        LOG(INFO, "GetCloseBlocks #%ld at C%d ", *it, cs_id);
         close_blocks->Add(*it);
     }
 }
