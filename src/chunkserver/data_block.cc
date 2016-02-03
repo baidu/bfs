@@ -238,7 +238,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
     mu_.Lock();
     bool insert_ret = slide_window_callbacks_.insert(std::make_pair(seq, callback)).second;
     if (!insert_ret) {
-        assert(0);
+        LOG(INFO, "[Write] insert to slide_window_callbacks_ return false");
     }
     mu_.Unlock();
     int64_t add_start = common::timer::get_micros();
@@ -296,12 +296,6 @@ bool  Block::CloseIncomplete() {
     }
     closed_ = true;
     SetSliceNum(last_seq_ + 1);
-    std::vector<std::pair<int32_t, Buffer> > fragments;
-    recv_window_->GetFragments(&fragments);
-    for (std::vector<std::pair<int32_t, Buffer> >::iterator it = fragments.begin();
-            it != fragments.end(); ++it) {
-        delete (it->second).data_;
-    }
     return true;
 }
 
@@ -319,14 +313,7 @@ void Block::DecRef() {
 /// Invoke by slidingwindow, when next buffer arrive.
 void Block::WriteCallback(int32_t seq, Buffer buffer) {
     Append(seq, buffer.data_, buffer.len_);
-    std::string debug_str = "";
     mu_.Lock();
-    for (std::map<int32_t, Callback>::iterator it = slide_window_callbacks_.begin();
-         it != slide_window_callbacks_.end(); ++it) {
-        debug_str += " " + common::NumToString(it->first);
-    }
-    LOG(INFO, "[WriteCallback] current callbacks %s size=%d", debug_str.c_str(),
-        int(slide_window_callbacks_.size()));
     std::map<int32_t, Callback>::iterator it = slide_window_callbacks_.find(seq);
     assert(it != slide_window_callbacks_.end());
     mu_.Unlock();
@@ -381,9 +368,10 @@ void Block::DiskWrite() {
     this->DecRef();
 }
 /// Append to block buffer
-void Block::Append(int32_t seq, const char*buf, int64_t len) {
+void Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
     if (closed_) {
+        LOG(INFO, "[Append] block closed, do not append to blockbuf_");
         return;
     }
     if (blockbuf_ == NULL) {

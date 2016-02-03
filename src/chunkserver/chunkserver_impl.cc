@@ -442,9 +442,10 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     LOG(INFO, "[WriteBlock] local write #%ld %d", block_id, packet_seq);
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
-    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(),
+    boost::function<void ()> callback =
         boost::bind(&ChunkServerImpl::LocalWriteBlockCallback, this, block, find_start,
-                    write_start, request, response, done), &add_used)) {
+                    write_start, request, response, done);
+    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), callback, &add_used)) {
         block->DecRef();
         response->set_status(kWriteError);
         done->Run();

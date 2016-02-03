@@ -105,8 +105,8 @@ private:
     volatile int refs_;
     Mutex       mu_;
     common::SlidingWindow<Buffer>* recv_window_;
-    bool        finished_;
-    bool        closed_;
+    bool        finished_;  // finished by user
+    bool        closed_;    // incomplete block closed by nameesrver
     volatile int deleted_;
 
     FileCache*  file_cache_;
