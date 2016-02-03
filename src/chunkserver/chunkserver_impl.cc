@@ -421,14 +421,19 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t find_start = common::timer::get_micros();
     /// search;
     int64_t sync_time = 0;
-    Block* block = block_manager_->FindBlock(block_id, true, &sync_time);
+    Block* block = NULL;
+    if (packet_seq == 0) {
+        block = block_manager_->CreateBlock(block_id, &sync_time);
+    } else {
+        block = block_manager_->FindBlock(block_id);
+    }
     if (!block) {
         LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
         response->set_status(kNotFound);
         done->Run();
         return;
     }
-
+    LOG(INFO, "[WriteBlock] local write #%ld %d", block_id, packet_seq);
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
     if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), &add_used)) {
@@ -499,7 +504,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     StatusCode status = kOK;
 
     int64_t find_start = common::timer::get_micros();
-    Block* block = block_manager_->FindBlock(block_id, false);
+    Block* block = block_manager_->FindBlock(block_id);
     if (block == NULL) {
         status = kNotFound;
         LOG(WARNING, "ReadBlock not found: #%ld offset: %ld len: %d\n",
@@ -557,14 +562,14 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     int init_index = 0;
     int pre_index = -1;
     ChunkServer_Stub* chunkserver = NULL;
-    Block* block = block_manager_->FindBlock(block_id, false);
+    Block* block = block_manager_->FindBlock(block_id);
     if (block) {
         block->DecRef();
         LOG(INFO, "already has #%ld , skip pull", block_id);
         report_request.add_failed(block_id);
         goto REPORT;
     }
-    block = block_manager_->FindBlock(block_id, true);
+    block = block_manager_->CreateBlock(block_id, NULL);
     if (!block) {
         LOG(WARNING, "Cant't create block: #%ld ", block_id);
         //ignore this block
@@ -673,7 +678,7 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
     StatusCode status = kOK;
 
     int64_t find_start = common::timer::get_micros();
-    Block* block = block_manager_->FindBlock(block_id, false);
+    Block* block = block_manager_->FindBlock(block_id);
     int64_t find_end = common::timer::get_micros();
     if (block == NULL) {
         status = kNotFound;

@@ -183,7 +183,7 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     if (block->incomplete) {
         incomplete_blocks_.erase(block_id);
     }
-    if (block->replica.size() != block->expect_replica_num) {
+    if (static_cast<int32_t>(block->replica.size()) != block->expect_replica_num) {
         if (block->replica.size() == 0) {
             lost_blocks_.erase(block_id);
         } else {

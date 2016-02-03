@@ -158,7 +158,11 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
     std::string infobuf;
     file_info.SerializeToString(&infobuf);
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf);
-    return s.ok();
+    if (!s.ok()) {
+        LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
+        return false;
+    }
+    return true;
 };
 
 bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
