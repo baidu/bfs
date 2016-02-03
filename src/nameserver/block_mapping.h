@@ -63,6 +63,7 @@ private:
     void TryRecover(NSBlock* block);
     void CheckRecover(int64_t cs_id, int64_t block_id);
     bool GetBlockPtr(int64_t block_id, NSBlock** block);
+    bool SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to);
 
 private:
     Mutex mu_;
