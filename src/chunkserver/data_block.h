@@ -110,7 +110,7 @@ private:
     volatile int deleted_;
 
     FileCache*  file_cache_;
-    std::map<int32_t, Callback> slide_window_callbacks_;
+    std::map<int32_t, Callback> sliding_window_callbacks_;
 };
 
 }

@@ -506,6 +506,7 @@ void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
     }
     block_manager_->CloseBlock(block, false);
     ReportFinish(block);
+    block->DecRef();
 }
 
 void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,

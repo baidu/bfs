@@ -236,9 +236,9 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
         g_writing_bytes.Add(len);
     }
     mu_.Lock();
-    bool insert_ret = slide_window_callbacks_.insert(std::make_pair(seq, callback)).second;
+    bool insert_ret = sliding_window_callbacks_.insert(std::make_pair(seq, callback)).second;
     if (!insert_ret) {
-        LOG(INFO, "[Write] insert to slide_window_callbacks_ return false");
+        LOG(INFO, "[Write] insert to sliding_window_callbacks_ return false");
     }
     mu_.Unlock();
     int64_t add_start = common::timer::get_micros();
@@ -252,7 +252,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
                          " out of range %d",
                 meta_.block_id, seq, offset, meta_.block_size, recv_window_->UpBound());
             mu_.Lock();
-            slide_window_callbacks_.erase(seq);
+            sliding_window_callbacks_.erase(seq);
             mu_.Unlock();
             return false;
         }
@@ -314,14 +314,14 @@ void Block::DecRef() {
 void Block::WriteCallback(int32_t seq, Buffer buffer) {
     Append(seq, buffer.data_, buffer.len_);
     mu_.Lock();
-    std::map<int32_t, Callback>::iterator it = slide_window_callbacks_.find(seq);
-    assert(it != slide_window_callbacks_.end());
+    std::map<int32_t, Callback>::iterator it = sliding_window_callbacks_.find(seq);
+    assert(it != sliding_window_callbacks_.end());
     mu_.Unlock();
     delete[] buffer.data_;
     g_writing_bytes.Sub(buffer.len_);
     (it->second)();
     mu_.Lock();
-    slide_window_callbacks_.erase(it);
+    sliding_window_callbacks_.erase(it);
     mu_.Unlock();
 }
 void Block::DiskWrite() {
