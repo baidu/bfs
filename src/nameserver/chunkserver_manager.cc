@@ -225,6 +225,8 @@ bool ChunkServerManager::GetChunkServerChains(int num,
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
             if (!chains->empty() && cs->id() == (*(chains->begin())).first) {
+                // we have selected this chunkserver as it's local for this client,
+                // skip it.
                 continue;
             }
             if (cs->data_size() < cs->disk_quota()
