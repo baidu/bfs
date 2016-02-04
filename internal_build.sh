@@ -63,7 +63,8 @@ if [ ! -f "${FLAG_DIR}/sofa-pbrpc_1_0_0" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libsofa-pbrpc.a" ] \
     || [ ! -d "${DEPS_PREFIX}/include/sofa/pbrpc" ]; then
     rm -rf sofa-pbrpc
-    git clone --depth=1 https://github.com/cyshi/sofa-pbrpc.git sofa-pbrpc
+#    git clone --depth=1 https://github.com/cyshi/sofa-pbrpc.git sofa-pbrpc
+    git clone --depth=1 https://github.com/baidu/sofa-pbrpc.git sofa-pbrpc
     cd sofa-pbrpc
     sed -i '/BOOST_HEADER_DIR=/ d' depends.mk
     sed -i '/PROTOBUF_DIR=/ d' depends.mk
