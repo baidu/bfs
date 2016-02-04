@@ -1,4 +1,5 @@
 import "file.proto";
+import "status_code.proto";
 
 package baidu.bfs;
 
@@ -9,8 +10,8 @@ message CreateFileRequest {
     optional string file_name = 2;
     optional int32 mode = 3;
     optional int32 flags = 4;
-    optional int32 replic_num = 5;
-    optional int32 replic_expect = 6;
+    optional int32 replica_num = 5;
+    optional string user = 7;
 }
 
 message CreateFileResponse {
@@ -29,6 +30,7 @@ message FileLocationRequest {
     required string file_name = 2;
     optional int64 offset = 3;
     optional int32 block_num = 4 [default = 10];
+    optional string user = 5;
 }
 
 message FileLocationResponse {
@@ -70,6 +72,7 @@ message RenameResponse {
 message AddBlockRequest {
     required int64 sequence_id = 1;
     required string file_name = 2;
+    optional string client_address = 3;
 }
 message AddBlockResponse {
     required int64 sequence_id = 1;
@@ -81,6 +84,8 @@ message FinishBlockRequest {
     optional int64 sequence_id = 1;
     optional int64 block_id = 2;
     optional int64 block_version = 3;
+    optional string file_name = 4;
+    optional int64 block_size = 5;
 }
 message FinishBlockResponse {
     required int64 sequence_id = 1;
@@ -151,7 +156,7 @@ message RegisterRequest {
 }
 message RegisterResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional int32 chunkserver_id = 5;
     optional int64 namespace_version = 6;
 }
@@ -166,7 +171,8 @@ message BlockReportResponse {
     optional int64 sequence_id = 1;
     optional int32 status = 2;
     repeated int64 obsolete_blocks = 3;
-    repeated ReplicaInfo new_replicas = 4;
+    repeated int64 close_blocks = 4;
+    repeated ReplicaInfo new_replicas = 5;
 }
 
 message BlockReceivedRequest {

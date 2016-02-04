@@ -18,6 +18,9 @@
 #include <common/string_util.h>
 
 #include "nameserver/namespace.h"
+#include "nameserver/chunkserver_manager.h"
+#include "nameserver/block_mapping.h"
+#include "proto/status_code.pb.h"
 
 DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
@@ -71,7 +74,7 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
     if (version == namespace_->Version()) {
         chunkserver_manager_->HandleHeartBeat(request, response);
     } else {
-        response->set_status(-1);
+        response->set_status(kVersionError);
     }
     response->set_namespace_version(namespace_->Version());
     done->Run();
@@ -105,15 +108,15 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
                        ::google::protobuf::Closure* done) {
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
-    LOG(INFO, "BlockReceived from %d, %s, %d blocks",
+    LOG(INFO, "BlockReceived from C%d, %s, %d blocks",
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
     int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
     if (cs_id != old_id) {
-        LOG(INFO, "Chunkserver %s id mismatch, old: %d new: %d",
+        LOG(INFO, "Chunkserver %s id mismatch, old: C%d new: C%d",
             request->chunkserver_addr().c_str(), old_id, cs_id);
-        response->set_status(-1);
+        response->set_status(kUnknownCs);
         done->Run();
         return;
     }
@@ -123,13 +126,16 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         int64_t cur_block_id = block.block_id();
         int64_t cur_block_size = block.block_size();
 
+        // update cs -> block
+        chunkserver_manager_->AddBlock(cs_id, cur_block_id);
         // update block -> cs
         int64_t block_version = block.version();
         block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                         cur_block_size,
                                         block_version,
-                                        !safe_mode_);
+                                        safe_mode_);
     }
+    response->set_status(kOK);
     done->Run();
 }
 
@@ -139,15 +145,15 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    ::google::protobuf::Closure* done) {
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
-    LOG(INFO, "Report from %d, %s, %d blocks\n",
+    LOG(INFO, "Report from C%d %s %d blocks\n",
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
     int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
     if (cs_id != old_id) {
-        LOG(WARNING, "Chunkserver %s id mismatch, old: %d new: %d",
+        LOG(WARNING, "Chunkserver %s id mismatch, old: C%d new: C%d ",
             request->chunkserver_addr().c_str(), old_id, cs_id);
-        response->set_status(-1);
+        response->set_status(kUnknownCs);
         done->Run();
         return;
     }
@@ -162,7 +168,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
                                              block_version,
-                                             !safe_mode_ && block_version >= 0)) {
+                                             safe_mode_)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
@@ -186,6 +192,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
+    block_mapping_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
+    response->set_status(kOK);
     done->Run();
 }
 
@@ -194,7 +202,7 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
                    PullBlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
-    response->set_status(0);
+    response->set_status(kOK);
     for (int i = 0; i < request->blocks_size(); i++) {
         block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->blocks(i), true);
     }
@@ -216,7 +224,8 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     if (mode == 0) {
         mode = 0644;    // default mode
     }
-    int status = namespace_->CreateFile(path, flags, mode);
+    int replica_num = request->replica_num();
+    int status = namespace_->CreateFile(path, flags, mode, replica_num);
     response->set_status(status);
     done->Run();
 }
@@ -231,39 +240,44 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     if (!namespace_->GetFileInfo(path, &file_info)) {
         LOG(WARNING, "AddBlock file not found: %s", path.c_str());
-        response->set_status(404);
+        response->set_status(kNotFound);
         done->Run();
         return;
     }
 
+    if (file_info.blocks_size() > 0) {
+        block_mapping_->RemoveBlocksForFile(file_info);
+        file_info.clear_blocks();
+    }
     /// replica num
     int replica_num = file_info.replicas();
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
-    if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains)) {
+    if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
         int64_t new_block_id = block_mapping_->NewBlockID();
         LOG(INFO, "[AddBlock] new block for %s id= #%ld ",
             path.c_str(), new_block_id);
         LocatedBlock* block = response->mutable_block();
-        block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0);
-        for (int i =0; i<replica_num; i++) {
+        std::vector<int32_t> replicas;
+        for (int i = 0; i < replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
             info->set_address(chains[i].second);
             LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            block_mapping_->UpdateBlockInfo(new_block_id, chains[i].first, 0, 0, false);
+            replicas.push_back(chains[i].first);
         }
+        block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);
-        response->set_status(0);
+        response->set_status(kOK);
         file_info.add_blocks(new_block_id);
         file_info.set_version(-1);
         ///TODO: Lost update? Get&Update not atomic.
         if (!namespace_->UpdateFileInfo(file_info)) {
             LOG(WARNING, "Update file info fail: %s", path.c_str());
-            response->set_status(826);
+            response->set_status(kUpdateError);
         }
     } else {
         LOG(INFO, "AddBlock for %s failed.", path.c_str());
-        response->set_status(886);
+        response->set_status(kGetChunkserverError);
     }
     done->Run();
 }
@@ -275,11 +289,29 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     int64_t block_id = request->block_id();
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
-    if (!block_mapping_->SetBlockVersion(block_id, block_version)) {
-        response->set_status(886);
+    std::string file_name = request->file_name();
+    FileInfo file_info;
+    if (!namespace_->GetFileInfo(file_name, &file_info)) {
+        LOG(WARNING, "FinishBlock file not found: %s", file_name.c_str());
+        response->set_status(kNotFound);
         done->Run();
         return;
     }
+    file_info.set_version(block_version);
+    file_info.set_size(request->block_size());
+    if (!namespace_->UpdateFileInfo(file_info)) {
+        LOG(WARNING, "Update file info fail: %s", file_name.c_str());
+        response->set_status(kUpdateError);
+        done->Run();
+        return;
+    }
+    if (!block_mapping_->SetBlockVersion(block_id, block_version)) {
+        LOG(WARNING, "Set block version fail: %s", file_name.c_str());
+        response->set_status(kUpdateError);
+        done->Run();
+        return;
+    }
+    response->set_status(kOK);
     done->Run();
 }
 
@@ -298,9 +330,9 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
         // No this file
         LOG(INFO, "NameServerImpl::GetFileLocation: NotFound: %s",
             request->file_name().c_str());
-        response->set_status(404);
+        response->set_status(kNotFound);
     } else {
-        for (int i=0; i<info.blocks_size(); i++) {
+        for (int i = 0; i < info.blocks_size(); i++) {
             int64_t block_id = info.blocks(i);
             NSBlock nsblock;
             if (!block_mapping_->GetBlock(block_id, &nsblock)) {
@@ -315,10 +347,10 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                     int32_t server_id = *it;
                     std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
                     if (addr == "") {
-                        LOG(INFO, "GetChunkServerAddr from id:%d fail.", server_id);
+                        LOG(INFO, "GetChunkServerAddr from id: C%d fail.", server_id);
                         continue;
                     }
-                    LOG(INFO, "return server %d %s for #%ld ", server_id, addr.c_str(), block_id);
+                    LOG(INFO, "return server C%d %s for #%ld ", server_id, addr.c_str(), block_id);
                     ChunkServerInfo* cs_info = lcblock->add_chains();
                     cs_info->set_address(addr);
                 }
@@ -327,7 +359,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
         LOG(INFO, "NameServerImpl::GetFileLocation: %s return %d",
             request->file_name().c_str(), info.blocks_size());
         // success if file exist
-        response->set_status(0);
+        response->set_status(kOK);
     }
     done->Run();
 }
@@ -368,11 +400,11 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
             file_size += nsblock.block_size;
         }
         out_info->set_size(file_size);
-        response->set_status(0);
+        response->set_status(kOK);
         LOG(INFO, "Stat: %s return: %ld", path.c_str(), file_size);
     } else {
         LOG(WARNING, "Stat: %s return: not found", path.c_str());
-        response->set_status(404);
+        response->set_status(kNotFound);
     }
     done->Run();
 }
@@ -421,7 +453,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     std::string path = NameSpace::NormalizePath(request->path());
     bool recursive = request->recursive();
     if (path.empty() || path[0] != '/') {
-        response->set_status(886);
+        response->set_status(kBadParameter);
         done->Run();
     }
     std::vector<FileInfo> removed;
@@ -441,7 +473,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     std::string file_name = NameSpace::NormalizePath(request->file_name());
     int32_t replica_num = request->replica_num();
 
-    int ret_status = 886;
+    int ret_status = kOK;
 
     FileInfo file_info;
     if (namespace_->GetFileInfo(file_name, &file_info)) {
@@ -450,13 +482,13 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         assert(ret);
         if (block_mapping_->ChangeReplicaNum(file_info.entry_id(), replica_num)) {
             LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
-            ret_status = 0;
         } else {
             LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
+            ret_status = kNotOK;
         }
     } else {
         LOG(WARNING, "Change replica num not found: %s", file_name.c_str());
-        ret_status = 404;
+        ret_status = kNotFound;
     }
     response->set_status(ret_status);
     done->Run();
@@ -467,7 +499,7 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
         block_mapping_->AddNewBlock(block_id, file_info.replicas(),
-                                    version, file_info.size());
+                                    version, file_info.size(), NULL);
     }
 }
 
@@ -478,7 +510,7 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "SysStat from %s", ctl->RemoteAddress().c_str());
     chunkserver_manager_->ListChunkServers(response->mutable_chunkservers());
-    response->set_status(0);
+    response->set_status(kOK);
     done->Run();
 }
 
@@ -552,22 +584,31 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t recover_num, pending_num;
-    block_mapping_->GetStat(&recover_num, &pending_num);
+    int64_t lo_recover_num, pending_num, hi_recover_num, lost_num, incomplete_num;
+    block_mapping_->GetStat(&lo_recover_num, &pending_num, &hi_recover_num,
+                            &lost_num, &incomplete_num);
     str += "<h1>分布式文件系统控制台 - NameServer</h1>";
 
     str += "<div class=\"row\">";
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h3 align=left>Nameserver status</h2>";
-    str += "<p align=left>Total: " + common::HumanReadableString(total_quota) + "B</br>";
+
+    str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Recover: " + common::NumToString(recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(pending_num) + "</br>";
     str += "Safemode: " + common::NumToString(safe_mode_) + "</br>";
     str += "Pending tasks: "
         + common::NumToString(thread_pool_.PendingNum()) + "</br>";
-    str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a></p>";
-    str += "</div>";
+    str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
+
+    str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "Recover(hi/lo): " + common::NumToString(hi_recover_num) + "/" + common::NumToString(lo_recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(pending_num) + "</br>";
+    str += "Lost: " + common::NumToString(lost_num) + "</br>";
+    str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h3 align=left>Chunkserver status</h2>";
@@ -575,8 +616,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
     str += "Dead: " + common::NumToString(dead_num)+"</br>";
     str += "Overload: " + common::NumToString(overladen_num)+"</p>";
-    str += "</div>";
-    str += "</div>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
+    str += "</div>"; // <div class="row">
 
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
@@ -589,7 +630,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
            "<input onclick=\"javascript:check(this)\" "
            "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
     str += table_str;
-    str += "</div></body></html>";
+    str += "</body></html>";
     delete chunkservers;
     response.content = str;
     return true;

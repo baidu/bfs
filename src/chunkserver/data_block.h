@@ -57,27 +57,28 @@ public:
     bool SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion();
-    /// Open corresponding file for write.
-    bool OpenForWrite();
     /// Set expected slice num, for IsComplete.
     void SetSliceNum(int32_t num);
     /// Is all slice is arrival(Notify by the sliding window)
     bool IsComplete();
     /// Read operation.
-    int32_t Read(char* buf, int32_t len, int64_t offset);
+    int64_t Read(char* buf, int64_t len, int64_t offset);
     /// Write operation.
     bool Write(int32_t seq, int64_t offset, const char* data,
-               int32_t len, int64_t* add_use = NULL);
+               int64_t len, int64_t* add_use = NULL);
+    /// Append to block buffer
+    void Append(int32_t seq, const char*buf, int64_t len);
     /// Flush block to disk.
     bool Close();
+    bool CloseIncomplete();
     void AddRef();
     void DecRef();
 private:
+    /// Open corresponding file for write.
+    bool OpenForWrite();
     /// Invoke by slidingwindow, when next buffer arrive.
     void WriteCallback(int32_t seq, Buffer buffer);
     void DiskWrite();
-    /// Append to block buffer
-    void Append(int32_t seq, const char*buf, int32_t len);
 private:
     enum Type {
         InDisk,
@@ -88,17 +89,18 @@ private:
     int32_t     last_seq_;
     int32_t     slice_num_;
     char*       blockbuf_;
-    int32_t     buflen_;
-    int32_t     bufdatalen_;
+    int64_t     buflen_;
+    int64_t     bufdatalen_;
     std::vector<std::pair<const char*,int> > block_buf_list_;
     bool        disk_writing_;
     std::string disk_file_;
-    int32_t     disk_file_size_;
+    int64_t     disk_file_size_;
     int         file_desc_; ///< disk file fd
     volatile int refs_;
     Mutex       mu_;
     common::SlidingWindow<Buffer>* recv_window_;
-    bool        finished_;
+    bool        finished_;  // finished by user
+    bool        closed_;    // incomplete block closed by nameesrver
     volatile int deleted_;
 
     FileCache*  file_cache_;

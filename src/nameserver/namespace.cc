@@ -158,14 +158,18 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
     std::string infobuf;
     file_info.SerializeToString(&infobuf);
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf);
-    return s.ok();
+    if (!s.ok()) {
+        LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
+        return false;
+    }
+    return true;
 };
 
 bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return LookUp(path, file_info);
 }
 
-int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
+int NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "CreateFile split fail %s", path.c_str());
@@ -212,7 +216,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode) {
     }
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
-    file_info.set_replicas(FLAGS_default_replica_num);
+    file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     std::string file_key;

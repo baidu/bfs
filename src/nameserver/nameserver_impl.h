@@ -7,9 +7,8 @@
 #ifndef  BFS_NAMESERVER_IMPL_H_
 #define  BFS_NAMESERVER_IMPL_H_
 
-#include "chunckserver_manager.h"
-
 #include <common/mutex.h>
+#include <common/thread_pool.h>
 
 #include "proto/nameserver.pb.h"
 

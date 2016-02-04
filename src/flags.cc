@@ -15,8 +15,8 @@ DEFINE_int32(keepalive_timeout, 10, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 4, "Nameserver log level");
 DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in ms");
-DEFINE_int32(recover_speed, 30, "max num of block to recover for one chunkserver");
-DEFINE_int32(recover_timeout, 60, "Recover timeout for one chunkserver");
+DEFINE_int32(recover_speed, 100, "max num of block to recover for one chunkserver");
+DEFINE_int32(recover_timeout, 180, "Recover timeout for one chunkserver");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
@@ -42,5 +42,6 @@ DEFINE_int32(max_request_wait_time, 1000, "Max request wait time threeshold in d
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
 DEFINE_string(sdk_write_mode, "chains", "Sdk write mode: chains/fan-out");
+DEFINE_int32(sdk_createblock_retry, 3, "Create block retry times before fail");
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

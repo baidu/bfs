@@ -1,12 +1,13 @@
 [The Baidu File System](http://github.com/bluebore/dfs)
+
 ======
 
-Travis [![Build Status](https://travis-ci.org/bluebore/dfs.svg)](https://travis-ci.org/bluebore/dfs)
+Travis [![Build Status](https://travis-ci.org/bluebore/bfs.svg)](https://travis-ci.org/bluebore/bfs)
 
 Jenkins [![Build Status](http://220.181.7.231/buildStatus/icon?job=bfs_master)](http://220.181.7.231/view/bfs/job/bfs_master/)
 
 ##背景
-百度的核心数据库[Tera](http://github.com/baidu/tera)将数据持久化在分布式文件系统上，文件系统的性能、稳定性和扩展性意义重大，当前使用中的文件系统无法满足Tera在这几方面的需求，所以我们从Tera需求出发，开发了百度自己的分布式文件系统。
+百度的核心数据库[Tera](http://github.com/baidu/tera)将数据持久化在分布式文件系统上，分布式文件系统的性能、可用性和扩展性对整个上层搜索业务的稳定性与效果有着至关重要的影响。现有的分布式文件系统无法很好地满足这几方面的要求，所以我们从Tera需求出发，开发了百度自己的分布式文件系统。
 
 ## 构建
 在百度内部，可以直接运行：  
@@ -24,7 +25,8 @@ small_test.sh 简单的自动化测试脚本，会调用上面三个脚本，并
 为了简化日志打印，并便于grep,  
 所有block id的打印使用“#%ld "的格式（即前加#，后加空格）  
 所有chunkserver id打印使用"C%d "的格式  
-所有entry id打印使用"E%ld "的格式
+所有entry id打印使用"E%ld "的格式  
+所有block version打印使用"V%ld "的格式
 
 ##前世
 突然想写个分布式文件系统~
@@ -38,4 +40,5 @@ small_test.sh 简单的自动化测试脚本，会调用上面三个脚本，并
 yanshiguang~  
 yuanyi~  
 yuyangquan~  
-leiliyuan~
+leiliyuan~  
+yangce~
