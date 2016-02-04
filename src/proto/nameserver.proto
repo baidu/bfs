@@ -72,6 +72,7 @@ message RenameResponse {
 message AddBlockRequest {
     required int64 sequence_id = 1;
     required string file_name = 2;
+    optional string client_address = 3;
 }
 message AddBlockResponse {
     required int64 sequence_id = 1;

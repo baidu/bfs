@@ -191,12 +191,30 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 }
 
 bool ChunkServerManager::GetChunkServerChains(int num,
-                          std::vector<std::pair<int32_t,std::string> >* chains) {
+                          std::vector<std::pair<int32_t,std::string> >* chains,
+                          const std::string& client_address) {
     MutexLock lock(&mu_);
     if (num > chunkserver_num_) {
         LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
             chunkserver_num_, num);
         return false;
+    }
+    //first take local cs of client
+    std::map<std::string, int32_t>::iterator client_it = address_map_.lower_bound(client_address);
+    if (client_it != address_map_.end()) {
+        std::string tmp_address(client_it->first, 0, client_it->first.find_last_of(':'));
+        if (tmp_address == client_address) {
+            ChunkServerInfo* cs = NULL;
+            if (GetChunkServerPtr(client_it->second, &cs)) {
+                if (cs->data_size() < cs->disk_quota()
+                        && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
+                    chains->push_back(std::make_pair(cs->id(), cs->address()));
+                    if (--num == 0) {
+                        return true;
+                    }
+                }
+            }
+        }
     }
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<int64_t, ChunkServerInfo*> > loads;
@@ -206,6 +224,9 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
+            if (!chains->empty() && cs->id() == (*(chains->begin())).first) {
+                continue;
+            }
             if (cs->data_size() < cs->disk_quota()
                 && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
                 loads.push_back(

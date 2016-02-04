@@ -252,7 +252,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     int replica_num = file_info.replicas();
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
-    if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains)) {
+    if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
         int64_t new_block_id = block_mapping_->NewBlockID();
         LOG(INFO, "[AddBlock] new block for %s id= #%ld ",
             path.c_str(), new_block_id);
