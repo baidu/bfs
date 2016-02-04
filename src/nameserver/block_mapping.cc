@@ -271,8 +271,7 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         hi_pri_recover_.size(), lo_pri_recover_.size());
     PickRecoverFromSet(cs_id, quota, &hi_pri_recover_, recover_blocks, &(check_it->second));
     PickRecoverFromSet(cs_id, quota, &lo_pri_recover_, recover_blocks, &(check_it->second));
-    LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ",
-        hi_pri_recover_.size(), lo_pri_recover_.size());
+    LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
 }
 
 void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success) {
@@ -306,7 +305,7 @@ void BlockMapping::GetCloseBlocks(int32_t cs_id,
     MutexLock lock(&mu_);
     const std::set<int64_t>& blocks = (incomplete_.find(cs_id))->second;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        LOG(INFO, "GetCloseBlocks #%ld at C%d", *it, cs_id);
+        LOG(INFO, "GetCloseBlocks #%ld at C%d ", *it, cs_id);
         close_blocks->Add(*it);
     }
 }
