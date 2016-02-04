@@ -18,12 +18,12 @@ namespace bfs {
 
 NSBlock::NSBlock()
     : id(-1), version(-1), block_size(-1),
-      expect_replica_num(0), recover_stat(kNotInRecover), incomplete(false) {
+      expect_replica_num(0), recover_stat(kNotInRecover) {
 }
 NSBlock::NSBlock(int64_t block_id, int32_t replica,
                  int64_t block_version, int64_t block_size)
     : id(block_id), version(block_version), block_size(block_size),
-      expect_replica_num(replica), recover_stat(kNotInRecover), incomplete(false) {
+      expect_replica_num(replica), recover_stat(kNotInRecover) {
 }
 
 BlockMapping::BlockMapping() : next_block_id_(1) {}
@@ -138,7 +138,18 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
 
     if (SetStateIf(nsblock, kLost, kNotInRecover)) {
         lost_blocks_.erase(id);
+    } else if (nsblock->recover_stat == kIncomplete) {
+        IncompleteList::iterator incomplete_it = incomplete_.find(server_id);
+        if (incomplete_it != incomplete_.end()) {
+            (incomplete_it->second).erase(id);
+            nsblock->incomplete_replica.erase(server_id);
+            LOG(INFO, "Closed incomplete block #%ld at C%d ", id, server_id);
+            if (nsblock->incomplete_replica.size() == 0) {
+                SetStateIf(nsblock, kIncomplete, kNotInRecover);
+            }
+        }
     }
+
     std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
     int32_t cur_replica_num = nsblock->replica.size();
     int32_t expect_replica_num = nsblock->expect_replica_num;
@@ -240,13 +251,14 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
                 LOG(INFO, "Incomplete block #%ld at C%d, don't recover",
                     block_id, cs_id);
                 if (SetStateIf(block, kNotInRecover, kIncomplete)) {
-                    block->incomplete = true;
                     IncompleteList::iterator incomplete_it =
                         incomplete_.insert(make_pair(cs_id, std::set<int64_t>())).first;
                     (incomplete_it->second).insert(block_id);
+                    block->incomplete_replica.insert(cs_id);
                 } else if (block->recover_stat == kIncomplete) {
                     LOG(WARNING, "Urgent incomplete block #%ld replica= %lu",
                         block_id, block->replica.size());
+                    block->incomplete_replica.insert(cs_id);
                 } else {
                     assert(0);
                 }
@@ -417,7 +429,7 @@ void BlockMapping::TryRecover(NSBlock* block) {
         if (block->replica.size() == 0) {
             lost_blocks_.insert(block_id);
             block->recover_stat = kLost;
-            LGO(INFO, "[TryRecover] lost block #%ld ", block_id);
+            LOG(INFO, "[TryRecover] lost block #%ld ", block_id);
         } else if (block->replica.size() == 1) {
             hi_pri_recover_.insert(block_id);
             block->recover_stat = kHiRecover;

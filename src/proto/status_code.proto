@@ -32,4 +32,3 @@ enum RecoverStat {
     kLost = 5;
     kAny = 6;
 }
-
