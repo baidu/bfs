@@ -214,39 +214,46 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
     return true;
 }
 
-Block* BlockManager::FindBlock(int64_t block_id, bool create_if_missing, int64_t* sync_time) {
-    Block* block = NULL;
-    {
-        MutexLock lock(&mu_, "BlockManger::Find", 1000);
-        g_find_ops.Inc();
-        BlockMap::iterator it = block_map_.find(block_id);
-        if (it != block_map_.end()) {
-            block = it->second;
-        } else if (create_if_missing) {
-            BlockMeta meta;
-            meta.block_id = block_id;
-            block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
-            // for block_map
-            block->AddRef();
-            block_map_[block_id] = block;
-            // Unlock for write meta & sync
-            mu_.Unlock();
-            if (!SyncBlockMeta(meta, sync_time)) {
-                delete block;
-                block = NULL;
-            }
-            mu_.Lock();
-            if (!block) {
-                block_map_.erase(block_id);
-            }
-        } else {
-            // not found
-        }
+Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
+    BlockMeta meta;
+    meta.block_id = block_id;
+    Block* block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
+    // for block_map
+    MutexLock lock(&mu_, "BlockManger::AddBlock", 1000);
+    BlockMap::iterator it = block_map_.find(block_id);
+    if (it != block_map_.end()) {
+        delete block;
+        return NULL;
     }
-    // for user
-    if (block) {
+    block->AddRef();
+    block_map_[block_id] = block;
+    // Unlock for write meta & sync
+    mu_.Unlock();
+    if (!SyncBlockMeta(meta, sync_time)) {
+        delete block;
+        block = NULL;
+    }
+    mu_.Lock();
+    if (!block) {
+        block_map_.erase(block_id);
+    } else {
+        // for user
         block->AddRef();
     }
+    return block;
+}
+
+Block* BlockManager::FindBlock(int64_t block_id) {
+    g_find_ops.Inc();
+    MutexLock lock(&mu_, "BlockManger::Find", 1000);
+    BlockMap::iterator it = block_map_.find(block_id);
+    if (it == block_map_.end()) {
+        // not found
+        return NULL;
+    }
+    Block* block = it->second;
+    // for user
+    block->AddRef();
     return block;
 }
 std::string BlockManager::BlockId2Str(int64_t block_id) {
@@ -269,9 +276,15 @@ bool BlockManager::SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
     }
     return true;
 }
-bool BlockManager::CloseBlock(Block* block) {
-    if (!block->Close()) {
-        return false;
+bool BlockManager::CloseBlock(Block* block, bool is_complete) {
+    if (is_complete) {
+        if (!block->Close()) {
+            return false;
+        }
+    } else {
+        if (!block->CloseIncomplete()) {
+            return false;
+        }
     }
 
     // Update meta

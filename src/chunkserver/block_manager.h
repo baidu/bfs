@@ -37,10 +37,11 @@ public:
     int64_t NameSpaceVersion() const;
     bool SetNameSpaceVersion(int64_t version);
     bool ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num);
-    Block* FindBlock(int64_t block_id, bool create_if_missing, int64_t* sync_time = NULL);
+    Block* CreateBlock(int64_t block_id, int64_t* sync_time);
+    Block* FindBlock(int64_t block_id);
     std::string BlockId2Str(int64_t block_id);
     bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time);
-    bool CloseBlock(Block* block);
+    bool CloseBlock(Block* block, bool is_complete);
     bool RemoveBlock(int64_t block_id);
     bool RemoveAllBlocksAsync();
     bool RemoveAllBlocks();

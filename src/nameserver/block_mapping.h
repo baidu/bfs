@@ -10,6 +10,7 @@
 
 #include <common/mutex.h>
 #include <common/thread_pool.h>
+#include "proto/status_code.pb.h"
 #include "proto/nameserver.pb.h"
 
 namespace baidu {
@@ -21,6 +22,7 @@ struct NSBlock {
     std::set<int32_t> replica;
     int64_t block_size;
     int32_t expect_replica_num;
+    RecoverStat recover_stat;
     bool incomplete;
     NSBlock();
     NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size);
@@ -48,6 +50,7 @@ public:
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::map<int64_t, int32_t>* recover_blocks);
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success);
+    void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int64_t* recover_num, int64_t* pending_num,
                  int64_t* urgent_num, int64_t* lost_num,
                  int64_t* incomplete_num);
@@ -70,10 +73,11 @@ private:
 
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     CheckList recover_check_;
+    typedef std::map<int32_t, std::set<int64_t> > IncompleteList;
+    IncompleteList incomplete_;
     std::set<int64_t> lo_pri_recover_;
     std::set<int64_t> hi_pri_recover_;
     std::set<int64_t> lost_blocks_;
-    std::set<int64_t> incomplete_blocks_;
 };
 
 } // namespace bfs

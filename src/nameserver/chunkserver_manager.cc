@@ -29,7 +29,7 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
 void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
     MutexLock lock(&mu_);
     chunkserver_num_--;
-    LOG(INFO, "Remove Chunkserver[%d] %s %s, cs_num=%d",
+    LOG(INFO, "Remove Chunkserver C%d %s %s, cs_num=%d",
         cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     int32_t id = cs->id();
     std::set<int64_t> blocks;
@@ -87,7 +87,7 @@ void ChunkServerManager::DeadCheck() {
                                 this, cs, std::string("Dead"));
                 thread_pool_->AddTask(task);
             } else {
-                LOG(INFO, "[DeadCheck] Chunkserver[%d] %s is being clean",
+                LOG(INFO, "[DeadCheck] Chunkserver C%d %s is being clean",
                     cs->id(), cs->address().c_str());
             }
         }
@@ -153,7 +153,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
         //reconnect after DeadCheck()
         LOG(WARNING, "Unknown chunkserver %s with namespace version %ld",
             address.c_str(), request->namespace_version());
-        response->set_status(kUnkownCs);
+        response->set_status(kUnknownCs);
         return;
     }
     response->set_status(kOK);
@@ -191,12 +191,30 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 }
 
 bool ChunkServerManager::GetChunkServerChains(int num,
-                          std::vector<std::pair<int32_t,std::string> >* chains) {
+                          std::vector<std::pair<int32_t,std::string> >* chains,
+                          const std::string& client_address) {
     MutexLock lock(&mu_);
     if (num > chunkserver_num_) {
         LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
             chunkserver_num_, num);
         return false;
+    }
+    //first take local cs of client
+    std::map<std::string, int32_t>::iterator client_it = address_map_.lower_bound(client_address);
+    if (client_it != address_map_.end()) {
+        std::string tmp_address(client_it->first, 0, client_it->first.find_last_of(':'));
+        if (tmp_address == client_address) {
+            ChunkServerInfo* cs = NULL;
+            if (GetChunkServerPtr(client_it->second, &cs)) {
+                if (cs->data_size() < cs->disk_quota()
+                        && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
+                    chains->push_back(std::make_pair(cs->id(), cs->address()));
+                    if (--num == 0) {
+                        return true;
+                    }
+                }
+            }
+        }
     }
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<int64_t, ChunkServerInfo*> > loads;
@@ -206,6 +224,11 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
+            if (!chains->empty() && cs->id() == (*(chains->begin())).first) {
+                // we have selected this chunkserver as it's local for this client,
+                // skip it.
+                continue;
+            }
             if (cs->data_size() < cs->disk_quota()
                 && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
                 loads.push_back(
@@ -307,9 +330,16 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
                                            std::map<int64_t, std::string>* recover_blocks) {
+    MutexLock lock(&mu_);
+    ChunkServerInfo* cs = NULL;
+    if (!GetChunkServerPtr(cs_id, &cs)) {
+        return;
+    }
+    if (cs->buffers() > FLAGS_chunkserver_max_pending_buffers * 0.5) {
+        return;
+    }
     std::map<int64_t, int32_t> blocks;
     block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
-    MutexLock lock(&mu_);
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(it->second, &cs)) {
