@@ -132,6 +132,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
                 id, server_id, nsblock->version, nsblock->block_size,
                 block_version, block_size);
             nsblock->replica.erase(server_id);
+            RemoveFromIncomplete(nsblock, server_id, id);
             return false;
         }
     }
@@ -139,15 +140,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
     if (SetStateIf(nsblock, kLost, kNotInRecover)) {
         lost_blocks_.erase(id);
     } else if (nsblock->recover_stat == kIncomplete) {
-        IncompleteList::iterator incomplete_it = incomplete_.find(server_id);
-        if (incomplete_it != incomplete_.end()) {
-            (incomplete_it->second).erase(id);
-            nsblock->incomplete_replica.erase(server_id);
-            LOG(INFO, "Closed incomplete block #%ld at C%d ", id, server_id);
-            if (nsblock->incomplete_replica.size() == 0) {
-                SetStateIf(nsblock, kIncomplete, kNotInRecover);
-            }
-        }
+        RemoveFromIncomplete(nsblock, server_id, id);
     }
 
     std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
@@ -445,7 +438,7 @@ void BlockMapping::TryRecover(NSBlock* block) {
     }
 }
 
-void BlockMapping::CheckRecover(int64_t cs_id, int64_t block_id) {
+void BlockMapping::CheckRecover(int32_t cs_id, int64_t block_id) {
     MutexLock lock(&mu_);
     LOG(DEBUG, "recover timeout check: #%ld C%d ", block_id, cs_id);
     CheckList::iterator it = recover_check_.find(cs_id);
@@ -463,6 +456,19 @@ void BlockMapping::CheckRecover(int64_t cs_id, int64_t block_id) {
     }
     block_set.erase(block_id);
     TryRecover(block);
+}
+
+void BlockMapping::RemoveFromIncomplete(NSBlock* block, int32_t cs_id, int64_t block_id) {
+    mu_.AssertHeld();
+    IncompleteList::iterator incomplete_it = incomplete_.find(cs_id);
+    if (incomplete_it != incomplete_.end()) {
+        (incomplete_it->second).erase(block_id);
+        block->incomplete_replica.erase(cs_id);
+        LOG(INFO, "Closed incomplete block #%ld at C%d ", block_id, cs_id);
+        if (block->incomplete_replica.size() == 0) {
+            SetStateIf(block, kIncomplete, kNotInRecover);
+        }
+    }
 }
 
 bool BlockMapping::GetBlockPtr(int64_t block_id, NSBlock** block) {
