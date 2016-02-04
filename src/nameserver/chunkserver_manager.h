@@ -2,15 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "block_mapping.h"
-
 #include <set>
 #include <map>
 
 #include <common/thread_pool.h>
+#include "proto/nameserver.pb.h"
 
 namespace baidu {
 namespace bfs {
+
+class BlockMapping;
 
 class ChunkServerManager {
 public:
@@ -21,7 +22,7 @@ public:
     void HandleRegister(const RegisterRequest* request, RegisterResponse* response);
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response);
     void ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers);
-    bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains);
+    bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains, const std::string& client_address);
     int32_t AddChunkServer(const std::string& address, int64_t quota);
     bool UpdateChunkServer(int cs_id, int64_t quota);
     bool RemoveChunkServer(const std::string& address);

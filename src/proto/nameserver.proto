@@ -72,6 +72,7 @@ message RenameResponse {
 message AddBlockRequest {
     required int64 sequence_id = 1;
     required string file_name = 2;
+    optional string client_address = 3;
 }
 message AddBlockResponse {
     required int64 sequence_id = 1;
@@ -83,6 +84,8 @@ message FinishBlockRequest {
     optional int64 sequence_id = 1;
     optional int64 block_id = 2;
     optional int64 block_version = 3;
+    optional string file_name = 4;
+    optional int64 block_size = 5;
 }
 message FinishBlockResponse {
     required int64 sequence_id = 1;
@@ -168,7 +171,8 @@ message BlockReportResponse {
     optional int64 sequence_id = 1;
     optional int32 status = 2;
     repeated int64 obsolete_blocks = 3;
-    repeated ReplicaInfo new_replicas = 4;
+    repeated int64 close_blocks = 4;
+    repeated ReplicaInfo new_replicas = 5;
 }
 
 message BlockReceivedRequest {
