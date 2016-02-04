@@ -203,7 +203,8 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     std::map<std::string, int32_t>::iterator client_it = address_map_.lower_bound(client_address);
     if (client_it != address_map_.end()) {
         std::string tmp_address(client_it->first, 0, client_it->first.find_last_of(':'));
-        if (tmp_address == client_address) {
+        if (tmp_address == client_address &&
+            heartbeat_list_.find(client_it->second) != heartbeat_list_.end()) {
             ChunkServerInfo* cs = NULL;
             if (GetChunkServerPtr(client_it->second, &cs)) {
                 if (cs->data_size() < cs->disk_quota()
@@ -225,6 +226,8 @@ bool ChunkServerManager::GetChunkServerChains(int num,
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
             if (!chains->empty() && cs->id() == (*(chains->begin())).first) {
+                // we have selected this chunkserver as it's local for this client,
+                // skip it.
                 continue;
             }
             if (cs->data_size() < cs->disk_quota()
