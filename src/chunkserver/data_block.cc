@@ -48,7 +48,7 @@ Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* t
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size), file_desc_(-1), refs_(0),
-  recv_window_(NULL), finished_(false), deleted_(false),
+  recv_window_(NULL), finished_(false), closed_(false), deleted_(false),
   file_cache_(file_cache) {
     assert(meta_.block_id < (1L<<40));
     g_data_size.Add(meta.block_size);
@@ -221,7 +221,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
 }
 /// Write operation.
 bool Block::Write(int32_t seq, int64_t offset, const char* data,
-           int64_t len, int64_t* add_use) {
+                  int64_t len, int64_t* add_use) {
     if (offset < meta_.block_size) {
         assert (offset + len <= meta_.block_size);
         LOG(WARNING, "Write a finish block #%ld size %ld, seq: %d, offset: %ld",
@@ -273,6 +273,22 @@ bool Block::Close() {
     }
     return true;
 }
+
+bool  Block::CloseIncomplete() {
+    MutexLock lock(&mu_);
+    if (finished_) {
+        return false;
+    }
+    finished_ = true;
+    if (!disk_writing_) {
+        this->AddRef();
+        thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
+    }
+    closed_ = true;
+    SetSliceNum(last_seq_ + 1);
+    return true;
+}
+
 void Block::AddRef() {
     common::atomic_inc(&refs_);
     assert (refs_ > 0);
@@ -334,8 +350,12 @@ void Block::DiskWrite() {
     this->DecRef();
 }
 /// Append to block buffer
-void Block::Append(int32_t seq, const char*buf, int64_t len) {
+void Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
+    if (closed_) {
+        LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_", meta_.block_id);
+        return;
+    }
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;
         blockbuf_ = new char[buflen_];

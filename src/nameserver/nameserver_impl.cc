@@ -192,6 +192,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
+    block_mapping_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     response->set_status(kOK);
     done->Run();
 }

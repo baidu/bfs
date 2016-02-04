@@ -276,9 +276,15 @@ bool BlockManager::SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
     }
     return true;
 }
-bool BlockManager::CloseBlock(Block* block) {
-    if (!block->Close()) {
-        return false;
+bool BlockManager::CloseBlock(Block* block, bool is_complete) {
+    if (is_complete) {
+        if (!block->Close()) {
+            return false;
+        }
+    } else {
+        if (!block->CloseIncomplete()) {
+            return false;
+        }
     }
 
     // Update meta
