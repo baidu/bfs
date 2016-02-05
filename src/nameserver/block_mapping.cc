@@ -188,7 +188,12 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
         for (std::set<int32_t>::iterator it = block->replica.begin();
              it != block->replica.end(); ++it) {
             IncompleteList::iterator c_it = incomplete_.find(*it);
-            (c_it->second).erase(block_id);
+            assert(c_it != incomplete_.end());
+            std::set<int64_t>& cs = c_it->second;
+            cs.erase(block_id);
+            if (cs.empty()) {
+                incomplete_.erase(c_it);
+            }
         }
     }
     if (static_cast<int32_t>(block->replica.size()) != block->expect_replica_num) {
@@ -244,9 +249,7 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
                 LOG(INFO, "Incomplete block #%ld at C%d, don't recover",
                     block_id, cs_id);
                 if (SetStateIf(block, kNotInRecover, kIncomplete)) {
-                    IncompleteList::iterator incomplete_it =
-                        incomplete_.insert(make_pair(cs_id, std::set<int64_t>())).first;
-                    (incomplete_it->second).insert(block_id);
+                    incomplete_[cs_id].insert(block_id);
                     block->incomplete_replica.insert(cs_id);
                 } else if (block->recover_stat == kIncomplete) {
                     LOG(WARNING, "Urgent incomplete block #%ld replica= %lu",
@@ -308,10 +311,13 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
 void BlockMapping::GetCloseBlocks(int32_t cs_id,
                                   google::protobuf::RepeatedField<int64_t>* close_blocks) {
     MutexLock lock(&mu_);
-    const std::set<int64_t>& blocks = (incomplete_.find(cs_id))->second;
-    for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        LOG(INFO, "GetCloseBlocks #%ld at C%d ", *it, cs_id);
-        close_blocks->Add(*it);
+    IncompleteList::iterator c_it = incomplete_.find(cs_id);
+    if (c_it != incomplete_.end()) {
+        const std::set<int64_t>& blocks = c_it->second;
+        for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+            LOG(INFO, "GetCloseBlocks #%ld at C%d ", *it, cs_id);
+            close_blocks->Add(*it);
+        }
     }
 }
 
@@ -486,7 +492,7 @@ bool BlockMapping::GetBlockPtr(int64_t block_id, NSBlock** block) {
 
 bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) {
     mu_.AssertHeld();
-    if (block->recover_stat == from || block->recover_stat == kAny) {
+    if (block->recover_stat == from || from == kAny) {
         block->recover_stat = to;
         LOG(INFO, "SetStateIf #%ld %s->%s", block->id, RecoverStat_Name(from).c_str(),
             RecoverStat_Name(to).c_str());
