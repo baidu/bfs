@@ -313,6 +313,9 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    if (request->close_with_error()) {
+        block_mapping_->AddToIncomplete(block_id);
+    }
     response->set_status(kOK);
     done->Run();
 }

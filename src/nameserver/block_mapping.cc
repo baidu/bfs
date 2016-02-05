@@ -528,6 +528,19 @@ void BlockMapping::RemoveFromIncomplete(NSBlock* block, int32_t cs_id, int64_t b
         LOG(DEBUG, "RemoveFromIncomplete not find, C%d #%ld", cs_id, block_id);
     }
 }
+void BlockMapping::AddToIncomplete(int64_t block_id) {
+    MutexLock lock(&mu_);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        return;
+    }
+    for (std::set<int32_t>::iterator it = block->replica.begin();
+            it != block->replica.end(); ++it) {
+        incomplete_[*it].insert(block_id);
+        block->incomplete_replica.insert(*it);
+    }
+    SetStateIf(block, kAny, kIncomplete);
+}
 
 bool BlockMapping::GetBlockPtr(int64_t block_id, NSBlock** block) {
     mu_.AssertHeld();

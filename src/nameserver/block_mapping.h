@@ -57,6 +57,7 @@ public:
                  int64_t* incomplete_num);
     void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                      std::string* check, std::string* incomplete);
+    void AddToIncomplete(int64_t block_id);
 
 private:
     void AddToRecover(NSBlock* block);
