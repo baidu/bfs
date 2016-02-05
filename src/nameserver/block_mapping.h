@@ -5,6 +5,7 @@
 #include <set>
 #include <map>
 #include <queue>
+#include <string>
 
 #include <gflags/gflags.h>
 
@@ -54,6 +55,8 @@ public:
     void GetStat(int64_t* recover_num, int64_t* pending_num,
                  int64_t* urgent_num, int64_t* lost_num,
                  int64_t* incomplete_num);
+    void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
+                     std::string* check, std::string* incomplete);
 
 private:
     void AddToRecover(NSBlock* block);
