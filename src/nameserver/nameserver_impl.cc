@@ -514,15 +514,42 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
-void NameServerImpl::ListRecover(::google::protobuf::RpcController* controller,
-                       const ListRecoverRequest* request,
-                       ListRecoverResponse* response,
-                       ::google::protobuf::Closure* done) {
+void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
+    std::string hi_recover, lo_recover, lost, check, incomplete;
+    block_mapping_->ListRecover(&hi_recover, &lo_recover, &lost, &check, &incomplete);
+    std::string str =
+            "<html><head><title>Recover Details</title>\n"
+            "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
+            "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
+            "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" rel=\"stylesheet\">\n"
+            "</head>\n";
+    str += "<body><div class=\"col-sm-12  col-md-12\">";
+    str += "<h1>分布式文件系统控制台 - RecoverDetails</h1>";
 
+    str += "<table class=\"table\"><tr><td>lo_recover</td></tr>";
+    str += "<tr><td>" + lo_recover + "</td></tr>";
+    str += "<tr><td>hi_recover</td></tr>";
+    str += "<tr><td>" + hi_recover + "</td></tr>";
+    str += "<tr><td>lost_</td></tr>";
+    str += "<tr><td>" + lost + "</td></tr>";
+    str += "<tr><td>check</td></tr>";
+    str += "<tr><td>" + check + "</td></tr>";
+    str += "<tr><td>incomplete</td></tr>";
+    str += "<tr><td>" + incomplete + "</td></tr></table>";
+
+    str += "</div></body><html>";
+    response->content->Append(str);
+    return;
 }
 
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
+    const std::string& path = request.path;
+    if (path == "/dfs/details") {
+        ListRecover(&response);
+        return true;
+    }
+
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
         = new ::google::protobuf::RepeatedPtrField<ChunkServerInfo>;
     chunkserver_manager_->ListChunkServers(chunkservers);
@@ -614,6 +641,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Pending: " + common::NumToString(pending_num) + "</br>";
     str += "Lost: " + common::NumToString(lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
+    str += "<a href=\"/dfs/details\">Details</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 

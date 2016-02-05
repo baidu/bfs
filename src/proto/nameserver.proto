@@ -207,17 +207,6 @@ message SysStatResponse {
     optional int64 data_size = 5;
 }
 
-message ListRecoverRequest {
-}
-
-message ListRecoverResponse {
-    optional string hi_recover = 1;
-    optional string lo_recover = 2;
-    optional string lost = 3;
-    repeated string check = 4;
-    repeated string incomplete = 5;
-}
-
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
@@ -237,6 +226,5 @@ service NameServer {
     rpc PullBlockReport(PullBlockReportRequest) returns(PullBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
-    rpc ListRecover(ListRecoverRequest) returns(ListRecoverResponse);
 }
 

@@ -351,39 +351,36 @@ void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* pending_num,
 void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                                std::string* check, std::string* incomplete) {
     MutexLock lock(&mu_);
-    lo_recover->append("lo_pri_recover_ ");
     for (std::set<int64_t>::iterator it = lo_pri_recover_.begin(); it != lo_pri_recover_.end(); ++it) {
         lo_recover->append(common::NumToString(*it) + " ");
     }
 
-    hi_recover->append("hi_pri_recover_ ");
     for (std::set<int64_t>::iterator it = hi_pri_recover_.begin(); it != hi_pri_recover_.end(); ++it) {
         hi_recover->append(common::NumToString(*it) + " ");
     }
 
-    lost->append("lost_blocks_ ");
     for (std::set<int64_t>::iterator it = lost_blocks_.begin(); it != lost_blocks_.end(); ++it) {
         lost->append(common::NumToString(*it) + " ");
     }
 
-    check->append("recover_check_\n");
     for (CheckList::iterator it = recover_check_.begin(); it != recover_check_.end(); ++it) {
         check->append(common::NumToString(it->first) + ": ");
         const std::set<int64_t>& block_set = it->second;
         for (std::set<int64_t>::iterator block_it = block_set.begin(); block_it != block_set.end();
-             ++block_set);
+             ++block_it) {
             check->append(common::NumToString(*block_it) + " ");
-        check->append("\n");
+        }
+        check->append("<br>");
     }
 
-    incomplete->append("incomplete_\n");
     for (CheckList::iterator it = incomplete_.begin(); it != incomplete_.end(); ++it) {
         incomplete->append(common::NumToString(it->first) + ": ");
         const std::set<int64_t>& block_set = it->second;
         for (std::set<int64_t>::iterator block_it = block_set.begin(); block_it != block_set.end();
-             ++block_set);
+             ++block_it) {
             incomplete->append(common::NumToString(*block_it) + " ");
-        incomplete->append("\n");
+        }
+        incomplete->append("<br>");
     }
 }
 
