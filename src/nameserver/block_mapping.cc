@@ -139,7 +139,8 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
 
     if (SetStateIf(nsblock, kLost, kNotInRecover)) {
         lost_blocks_.erase(id);
-    } else if (nsblock->recover_stat == kIncomplete) {
+    } else if (nsblock->recover_stat == kIncomplete && block_version >= 0) {
+        LOG(INFO, "Closed incomplete block #%ld at C%d V%ld", id, server_id, block_version);
         RemoveFromIncomplete(nsblock, server_id, id);
     }
 
@@ -187,7 +188,9 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     if (block->recover_stat == kIncomplete) {
         for (std::set<int32_t>::iterator it = block->replica.begin();
              it != block->replica.end(); ++it) {
-            IncompleteList::iterator c_it = incomplete_.find(*it);
+            int32_t cs_id = *it;
+            LOG(DEBUG, "Erase C%d #%ld from incomplete_", cs_id, block_id);
+            IncompleteList::iterator c_it = incomplete_.find(cs_id);
             assert(c_it != incomplete_.end());
             std::set<int64_t>& cs = c_it->second;
             cs.erase(block_id);
@@ -249,12 +252,21 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
                 LOG(INFO, "Incomplete block #%ld at C%d, don't recover",
                     block_id, cs_id);
                 if (SetStateIf(block, kNotInRecover, kIncomplete)) {
-                    incomplete_[cs_id].insert(block_id);
-                    block->incomplete_replica.insert(cs_id);
+                    for (std::set<int32_t>::iterator cs_it = block->replica.begin();
+                         cs_it != block->replica.end(); ++cs_it) {
+                        incomplete_[*cs_it].insert(block_id);
+                        block->incomplete_replica.insert(*cs_it);
+                        LOG(INFO, "Insert C%d #%ld to incomplete_", *cs_it, block_id);
+                    }
                 } else if (block->recover_stat == kIncomplete) {
                     LOG(WARNING, "Urgent incomplete block #%ld replica= %lu",
                         block_id, block->replica.size());
-                    block->incomplete_replica.insert(cs_id);
+                    block->incomplete_replica.erase(cs_id);
+                    incomplete_[cs_id].erase(block_id);
+                    if (incomplete_[cs_id].empty()) {
+                        incomplete_.erase(cs_id);
+                    }
+                    LOG(INFO, "Erase C%d #%ld from incomplete_", cs_id, block_id);
                 } else {
                     assert(0);
                 }
@@ -470,10 +482,11 @@ void BlockMapping::RemoveFromIncomplete(NSBlock* block, int32_t cs_id, int64_t b
     if (incomplete_it != incomplete_.end()) {
         (incomplete_it->second).erase(block_id);
         block->incomplete_replica.erase(cs_id);
-        LOG(INFO, "Closed incomplete block #%ld at C%d ", block_id, cs_id);
         if (block->incomplete_replica.size() == 0) {
             SetStateIf(block, kIncomplete, kNotInRecover);
         }
+    } else {
+        LOG(DEBUG, "RemoveFromIncomplete not find, C%d #%ld", cs_id, block_id);
     }
 }
 
