@@ -28,5 +28,7 @@ enum RecoverStat {
     kLoRecover = 1;
     kHiRecover = 2;
     kCheck = 3;
+    kIncomplete = 4;
+    kLost = 5;
+    kAny = 6;
 }
-

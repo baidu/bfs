@@ -23,7 +23,7 @@ struct NSBlock {
     int64_t block_size;
     int32_t expect_replica_num;
     RecoverStat recover_stat;
-    bool incomplete;
+    std::set<int32_t> incomplete_replica;
     NSBlock();
     NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size);
     bool operator<(const NSBlock &b) const {
@@ -61,8 +61,10 @@ private:
                             std::map<int64_t, int32_t>* recover_blocks,
                             std::set<int64_t>* check_set);
     void TryRecover(NSBlock* block);
-    void CheckRecover(int64_t cs_id, int64_t block_id);
+    void CheckRecover(int32_t cs_id, int64_t block_id);
+    void RemoveFromIncomplete(NSBlock* block, int32_t cs_id, int64_t block_id);
     bool GetBlockPtr(int64_t block_id, NSBlock** block);
+    bool SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to);
 
 private:
     Mutex mu_;

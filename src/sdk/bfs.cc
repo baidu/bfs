@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <list>
 #include <queue>
+#include <set>
 #include <sstream>
 
 #include "proto/nameserver.pb.h"
@@ -170,6 +171,7 @@ private:
     LocatedBlocks located_blocks_;      ///< block meta for read
     ChunkServer_Stub* chunkserver_;     ///< located chunkserver
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
+    std::set<ChunkServer_Stub*> bad_chunkservers_;
     int32_t last_chunkserver_index_;
     int64_t read_offset_;               ///< 读取的偏移
     Mutex read_offset_mu_;
@@ -393,7 +395,7 @@ public:
                 //printf("OpenFile success: %s\n", path);
             } else {
                 //printf("GetFileLocation return %d\n", response.blocks_size());
-                LOG(WARNING, "OpenFile return %d\n", response.status());
+                LOG(WARNING, "OpenFile return %d, %d\n", ret, response.status());
                 ret = false;
             }
         } else {
@@ -536,6 +538,11 @@ BfsFileImpl::~BfsFileImpl () {
         delete it->second;
         it->second = NULL;
     }
+    std::set<ChunkServer_Stub*>::iterator bad_cs_it;
+    for (bad_cs_it = bad_chunkservers_.begin();
+            bad_cs_it != bad_chunkservers_.end(); ++bad_cs_it) {
+        delete *bad_cs_it;
+    }
 }
 
 int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada) {
@@ -621,13 +628,18 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
                     &request, &response, 15, 3);
 
         if (!ret || response.status() != kOK) {
-            ///TODO: Add to _badchunkservers_
             cs_addr = lcblock.chains((++last_chunkserver_index_) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
-            fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
             {
-                MutexLock lock(&mu_, "Pread change chunkserver_", 1000);
-                chunkserver_ = chunk_server;
+                ChunkServer_Stub* old_cs = chunk_server;
+                MutexLock lock(&mu_, "Pread change chunkserver", 1000);
+                if (old_cs != chunkserver_) {
+                    chunk_server = chunkserver_;
+                } else {
+                    fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
+                    chunkserver_ = chunk_server;
+                    bad_chunkservers_.insert(old_cs);
+                }
             }
         } else {
             break;
@@ -772,6 +784,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             for (int i = 0; i < FLAGS_sdk_createblock_retry; i++) {
                 ret = AddBlock();
                 if (ret == kOK) break;
+                sleep(3);
             }
             if (ret != kOK) {
                 LOG(WARNING, "AddBlock fail for %s\n", name_.c_str());

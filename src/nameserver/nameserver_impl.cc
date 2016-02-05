@@ -130,6 +130,8 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         chunkserver_manager_->AddBlock(cs_id, cur_block_id);
         // update block -> cs
         int64_t block_version = block.version();
+        LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
+            cs_id, cur_block_id, block_version, cur_block_size);
         block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                         cur_block_size,
                                         block_version,
