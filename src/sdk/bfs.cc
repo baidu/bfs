@@ -393,7 +393,7 @@ public:
                 //printf("OpenFile success: %s\n", path);
             } else {
                 //printf("GetFileLocation return %d\n", response.blocks_size());
-                LOG(WARNING, "OpenFile return %d\n", response.status());
+                LOG(WARNING, "OpenFile return %d, %d\n", ret, response.status());
                 ret = false;
             }
         } else {
@@ -772,6 +772,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             for (int i = 0; i < FLAGS_sdk_createblock_retry; i++) {
                 ret = AddBlock();
                 if (ret == kOK) break;
+                sleep(3);
             }
             if (ret != kOK) {
                 LOG(WARNING, "AddBlock fail for %s\n", name_.c_str());
