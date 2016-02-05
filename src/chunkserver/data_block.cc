@@ -247,7 +247,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
             return false;
         }
     }
-    if (ret >= 0) {
+    if (ret == 0) {
         g_write_bytes.Add(len);
     }
     return true;
@@ -315,7 +315,11 @@ void Block::WriteCallback(int32_t seq, Buffer buffer) {
 }
 void Block::DiskWrite() {
     MutexLock lock(&mu_, "Block::DiskWrite", 1000);
-    if (!disk_writing_ && !deleted_) {
+    if (disk_writing_) {
+        this->DecRef();
+        return;
+    }
+    if (!deleted_) {
         disk_writing_ = true;
         while (!block_buf_list_.empty() && !deleted_) {
             if (!OpenForWrite())assert(0);
@@ -345,7 +349,8 @@ void Block::DiskWrite() {
         }
         disk_writing_ = false;
     }
-    if (!disk_writing_ && (finished_ || deleted_)) {
+    if (finished_ || deleted_) {
+        assert (deleted_ || block_buf_list_.empty());
         if (file_desc_ != -1) {
             int ret = close(file_desc_);
             LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
@@ -354,7 +359,6 @@ void Block::DiskWrite() {
         }
         file_desc_ = -1;
     }
-    this->DecRef();
 }
 /// Append to block buffer
 void Block::Append(int32_t seq, const char* buf, int64_t len) {

@@ -106,7 +106,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
     NSBlockMap::iterator it = block_map_.find(id);
     if (it == block_map_.end()) {
         //have been removed
-        LOG(DEBUG, "UpdateBlockInfo #%ld has been removed", id);
+        LOG(DEBUG, "UpdateBlockInfo C%d #%ld has been removed", server_id, id);
         return false;
     }
     NSBlock* nsblock = it->second;
