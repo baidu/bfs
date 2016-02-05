@@ -514,6 +514,13 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+void NameServerImpl::ListRecover(::google::protobuf::RpcController* controller,
+                       const ListRecoverRequest* request,
+                       ListRecoverResponse* response,
+                       ::google::protobuf::Closure* done) {
+
+}
+
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers

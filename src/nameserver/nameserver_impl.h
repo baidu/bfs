@@ -94,6 +94,10 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void ListRecover(::google::protobuf::RpcController* controller,
+                       const ListRecoverRequest* request,
+                       ListRecoverResponse* response,
+                       ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
