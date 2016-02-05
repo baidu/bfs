@@ -754,7 +754,7 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
            "<input onclick=\"javascript:check(this)\" "
            "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
     str += "</body></html>";
-    response.content = str;
+    response.content->Append(str);
     return true;
 }
 } // namespace bfs

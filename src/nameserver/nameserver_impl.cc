@@ -639,7 +639,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += table_str;
     str += "</body></html>";
     delete chunkservers;
-    response.content = str;
+    response.content->Append(str);
     return true;
 }
 
