@@ -286,6 +286,7 @@ bool  Block::CloseIncomplete() {
     }
     closed_ = true;
     SetSliceNum(last_seq_ + 1);
+    SetVersion(last_seq_);
     return true;
 }
 

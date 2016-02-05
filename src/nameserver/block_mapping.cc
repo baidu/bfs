@@ -159,7 +159,9 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
                 server_id, id, cur_replica_num);
         }
         if (cur_replica_num < expect_replica_num && nsblock->version >= 0) {
-            if (!safe_mode && nsblock->recover_stat != kCheck) {
+            if (!safe_mode
+                && nsblock->recover_stat != kCheck
+                && nsblock->recover_stat != kIncomplete) {
                 LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
                     id, server_id, cur_replica_num);
                 AddToRecover(nsblock);
@@ -191,11 +193,12 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
             int32_t cs_id = *it;
             LOG(DEBUG, "Erase C%d #%ld from incomplete_", cs_id, block_id);
             IncompleteList::iterator c_it = incomplete_.find(cs_id);
-            assert(c_it != incomplete_.end());
-            std::set<int64_t>& cs = c_it->second;
-            cs.erase(block_id);
-            if (cs.empty()) {
-                incomplete_.erase(c_it);
+            if (c_it != incomplete_.end()) {
+                std::set<int64_t>& cs = c_it->second;
+                cs.erase(block_id);
+                if (cs.empty()) {
+                    incomplete_.erase(c_it);
+                }
             }
         }
     }
@@ -261,12 +264,6 @@ void BlockMapping::DealWithDeadBlocks(int64_t cs_id, const std::set<int64_t>& bl
                 } else if (block->recover_stat == kIncomplete) {
                     LOG(WARNING, "Urgent incomplete block #%ld replica= %lu",
                         block_id, block->replica.size());
-                    block->incomplete_replica.erase(cs_id);
-                    incomplete_[cs_id].erase(block_id);
-                    if (incomplete_[cs_id].empty()) {
-                        incomplete_.erase(cs_id);
-                    }
-                    LOG(INFO, "Erase C%d #%ld from incomplete_", cs_id, block_id);
                 } else {
                     assert(0);
                 }
