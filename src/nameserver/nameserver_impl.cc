@@ -528,16 +528,16 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     str += "<body><div class=\"col-sm-12  col-md-12\">";
     str += "<h1>分布式文件系统控制台 - RecoverDetails</h1>";
 
-    str += "<table class=\"table\"><tr><td>lo_recover</td></tr>";
-    str += "<tr><td>" + lo_recover + "</td></tr>";
-    str += "<tr><td>hi_recover</td></tr>";
+    str += "<table class=\"table\"><tr><td>hi_recover</td></tr>";
     str += "<tr><td>" + hi_recover + "</td></tr>";
-    str += "<tr><td>lost_</td></tr>";
+    str += "<tr><td>incomplete</td></tr>";
+    str += "<tr><td>" + incomplete + "</td></tr>";
+    str += "<tr><td>lost</td></tr>";
     str += "<tr><td>" + lost + "</td></tr>";
     str += "<tr><td>check</td></tr>";
     str += "<tr><td>" + check + "</td></tr>";
-    str += "<tr><td>incomplete</td></tr>";
-    str += "<tr><td>" + incomplete + "</td></tr></table>";
+    str += "<tr><td>lo_recover</td></tr>";
+    str += "<tr><td>" + lo_recover + "</td></tr></table>";
 
     str += "</div></body><html>";
     response->content->Append(str);
