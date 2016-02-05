@@ -489,8 +489,13 @@ void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
     LOG(INFO, "[CloseIncompleteBlock] #%ld ", block_id);
     Block* block = block_manager_->FindBlock(block_id);
     if (!block) {
-        LOG(WARNING, "[CloseIncompleteBlock] Block not found: #%ld ", block_id);
-        return;
+        LOG(INFO, "[CloseIncompleteBlock] Block not found: #%ld ", block_id);
+        block = block_manager_->CreateBlock(block_id, NULL);
+        if (!block) {
+            LOG(WARNING, "[CloseIncompleteBlock] create block fail: #%ld ", block_id);
+            return;
+        }
+        block->Write(0, 0, NULL, 0, NULL);
     }
     block_manager_->CloseBlock(block, false);
     ReportFinish(block);

@@ -263,9 +263,13 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         std::vector<int32_t> replicas;
         for (int i = 0; i < replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
+            int32_t cs_id = chains[i].first;
             info->set_address(chains[i].second);
-            LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            replicas.push_back(chains[i].first);
+            LOG(INFO, "Add C%d %s to #%ld response",
+                cs_id, chains[i].second.c_str(), new_block_id);
+            replicas.push_back(cs_id);
+            // update cs -> block
+            chunkserver_manager_->AddBlock(cs_id, new_block_id);
         }
         block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);

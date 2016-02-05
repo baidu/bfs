@@ -279,6 +279,12 @@ bool  Block::CloseIncomplete() {
     if (finished_) {
         return false;
     }
+    LOG(INFO, "Block #%ld flush to %s", meta_.block_id, disk_file_.c_str());
+    if (bufdatalen_) {
+        block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
+        blockbuf_ = NULL;
+        bufdatalen_ = 0;
+    }
     finished_ = true;
     if (!disk_writing_) {
         this->AddRef();
