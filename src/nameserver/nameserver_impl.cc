@@ -130,6 +130,8 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         chunkserver_manager_->AddBlock(cs_id, cur_block_id);
         // update block -> cs
         int64_t block_version = block.version();
+        LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
+            cs_id, cur_block_id, block_version, cur_block_size);
         block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                         cur_block_size,
                                         block_version,
@@ -192,6 +194,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
+    block_mapping_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     response->set_status(kOK);
     done->Run();
 }
@@ -252,7 +255,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     int replica_num = file_info.replicas();
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
-    if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains)) {
+    if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
         int64_t new_block_id = block_mapping_->NewBlockID();
         LOG(INFO, "[AddBlock] new block for %s id= #%ld ",
             path.c_str(), new_block_id);
@@ -260,9 +263,13 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         std::vector<int32_t> replicas;
         for (int i = 0; i < replica_num; i++) {
             ChunkServerInfo* info = block->add_chains();
+            int32_t cs_id = chains[i].first;
             info->set_address(chains[i].second);
-            LOG(INFO, "Add %s to #%ld response", chains[i].second.c_str(), new_block_id);
-            replicas.push_back(chains[i].first);
+            LOG(INFO, "Add C%d %s to #%ld response",
+                cs_id, chains[i].second.c_str(), new_block_id);
+            replicas.push_back(cs_id);
+            // update cs -> block
+            chunkserver_manager_->AddBlock(cs_id, new_block_id);
         }
         block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);
@@ -513,8 +520,42 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
+    std::string hi_recover, lo_recover, lost, check, incomplete;
+    block_mapping_->ListRecover(&hi_recover, &lo_recover, &lost, &check, &incomplete);
+    std::string str =
+            "<html><head><title>Recover Details</title>\n"
+            "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
+            "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
+            "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" rel=\"stylesheet\">\n"
+            "</head>\n";
+    str += "<body><div class=\"col-sm-12  col-md-12\">";
+    str += "<h1>分布式文件系统控制台 - RecoverDetails</h1>";
+
+    str += "<table class=\"table\"><tr><td>hi_recover</td></tr>";
+    str += "<tr><td>" + hi_recover + "</td></tr>";
+    str += "<tr><td>incomplete</td></tr>";
+    str += "<tr><td>" + incomplete + "</td></tr>";
+    str += "<tr><td>lost</td></tr>";
+    str += "<tr><td>" + lost + "</td></tr>";
+    str += "<tr><td>check</td></tr>";
+    str += "<tr><td>" + check + "</td></tr>";
+    str += "<tr><td>lo_recover</td></tr>";
+    str += "<tr><td>" + lo_recover + "</td></tr></table>";
+
+    str += "</div></body><html>";
+    response->content->Append(str);
+    return;
+}
+
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
+    const std::string& path = request.path;
+    if (path == "/dfs/details") {
+        ListRecover(&response);
+        return true;
+    }
+
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
         = new ::google::protobuf::RepeatedPtrField<ChunkServerInfo>;
     chunkserver_manager_->ListChunkServers(chunkservers);
@@ -606,6 +647,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Pending: " + common::NumToString(pending_num) + "</br>";
     str += "Lost: " + common::NumToString(lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
+    str += "<a href=\"/dfs/details\">Details</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
@@ -631,7 +673,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += table_str;
     str += "</body></html>";
     delete chunkservers;
-    response.content = str;
+    response.content->Append(str);
     return true;
 }
 

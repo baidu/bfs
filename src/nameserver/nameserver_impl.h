@@ -100,6 +100,7 @@ private:
     void LogStatus();
     void Register();
     void LeaveSafemode();
+    void ListRecover(sofa::pbrpc::HTTPResponse* response);
 private:
     /// Global thread pool
     ThreadPool thread_pool_;

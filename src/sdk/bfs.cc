@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <list>
 #include <queue>
+#include <set>
 #include <sstream>
 
 #include "proto/nameserver.pb.h"
@@ -21,6 +22,7 @@
 #include <common/logging.h>
 #include <common/string_util.h>
 #include <common/tprinter.h>
+#include <common/util.h>
 
 #include "proto/status_code.pb.h"
 
@@ -169,6 +171,8 @@ private:
     LocatedBlocks located_blocks_;      ///< block meta for read
     ChunkServer_Stub* chunkserver_;     ///< located chunkserver
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
+    std::set<ChunkServer_Stub*> bad_chunkservers_;
+    int32_t last_chunkserver_index_;
     int64_t read_offset_;               ///< 读取的偏移
     Mutex read_offset_mu_;
     char* reada_buffer_;                ///< Read ahead buffer
@@ -188,6 +192,7 @@ class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
     FSImpl() : rpc_client_(NULL), nameserver_(NULL) {
+        local_host_name_ = common::util::GetLocalHostName();
     }
     ~FSImpl() {
         delete nameserver_;
@@ -390,7 +395,7 @@ public:
                 //printf("OpenFile success: %s\n", path);
             } else {
                 //printf("GetFileLocation return %d\n", response.blocks_size());
-                LOG(WARNING, "OpenFile return %s\n", StatusCode_Name(response.status()).c_str());
+                LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
                 ret = false;
             }
         } else {
@@ -502,6 +507,7 @@ private:
     RpcClient* rpc_client_;
     NameServer_Stub* nameserver_;
     std::string nameserver_address_;
+    std::string local_host_name_;
 };
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
@@ -509,7 +515,8 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
   : fs_(fs), rpc_client_(rpc_client), name_(name),
     open_flags_(flags), write_offset_(0), block_for_write_(NULL),
     write_buf_(NULL), last_seq_(-1), back_writing_(0),
-    chunkserver_(NULL), read_offset_(0), reada_buffer_(NULL),
+    chunkserver_(NULL), last_chunkserver_index_(-1),
+    read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
     last_read_offset_(-1), closed_(false),
     sync_signal_(&mu_), bg_error_(false) {
@@ -530,6 +537,11 @@ BfsFileImpl::~BfsFileImpl () {
     for (it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
         delete it->second;
         it->second = NULL;
+    }
+    std::set<ChunkServer_Stub*>::iterator bad_cs_it;
+    for (bad_cs_it = bad_chunkservers_.begin();
+            bad_cs_it != bad_chunkservers_.end(); ++bad_cs_it) {
+        delete *bad_cs_it;
     }
 }
 
@@ -557,11 +569,11 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             return read_len;
         }
     }
+
     LocatedBlock lcblock;
     ChunkServer_Stub* chunk_server = NULL;
     std::string cs_addr;
-
-    int server_index = 0;
+    int64_t block_id;
     {
         MutexLock lock(&mu_, "Pread GetStub", 1000);
         if (located_blocks_.blocks_.empty()) {
@@ -572,14 +584,27 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             return -3;
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
-        server_index = rand() % lcblock.chains_size();
-        cs_addr = lcblock.chains(server_index).address();
-        if (chunkserver_ == NULL) {
+        if (last_chunkserver_index_ == -1 || !chunkserver_) {
+            const std::string& local_host_name = fs_->local_host_name_;
+            for (int i = 0; i < lcblock.chains_size(); i++) {
+                std::string addr = lcblock.chains(i).address();
+                std::string cs_name = std::string(addr, 0, addr.find_last_of(':'));
+                if (cs_name == local_host_name) {
+                    last_chunkserver_index_ = i;
+                    cs_addr = lcblock.chains(i).address();
+                    break;
+                }
+            }
+            if (last_chunkserver_index_ == -1) {
+                int server_index = rand() % lcblock.chains_size();
+                cs_addr = lcblock.chains(server_index).address();
+                last_chunkserver_index_ = server_index;
+            }
             fs_->rpc_client_->GetStub(cs_addr, &chunkserver_);
         }
         chunk_server = chunkserver_;
+        block_id = lcblock.block_id();
     }
-    int64_t block_id = lcblock.block_id();
 
     ReadBlockRequest request;
     ReadBlockResponse response;
@@ -603,13 +628,17 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
                     &request, &response, 15, 3);
 
         if (!ret || response.status() != kOK) {
-            ///TODO: Add to _badchunkservers_
-            cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
+            cs_addr = lcblock.chains((++last_chunkserver_index_) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
-            fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
             {
-                MutexLock lock(&mu_, "Pread change chunkserver_", 1000);
-                chunkserver_ = chunk_server;
+                MutexLock lock(&mu_, "Pread change chunkserver", 1000);
+                if (chunk_server != chunkserver_) {
+                    chunk_server = chunkserver_;
+                } else {
+                    bad_chunkservers_.insert(chunk_server);
+                    fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
+                    chunkserver_ = chunk_server;
+                }
             }
         } else {
             break;
@@ -677,6 +706,8 @@ int32_t BfsFileImpl::AddBlock() {
     AddBlockResponse response;
     request.set_sequence_id(0);
     request.set_file_name(name_);
+    const std::string& local_host_name = fs_->local_host_name_;
+    request.set_client_address(local_host_name);
     bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
         &request, &response, 15, 3);
     if (!ret || !response.has_block()) {
@@ -752,6 +783,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             for (int i = 0; i < FLAGS_sdk_createblock_retry; i++) {
                 ret = AddBlock();
                 if (ret == kOK) break;
+                sleep(3);
             }
             if (ret != kOK) {
                 LOG(WARNING, "AddBlock fail for %s\n", name_.c_str());

@@ -257,10 +257,16 @@ void ChunkServerImpl::SendBlockReport() {
         }
 
         LOG(INFO, "Block report done. %d replica blocks", response.new_replicas_size());
-        for (int i = 0; i < response.new_replicas_size(); i++) {
+        for (int i = 0; i < response.new_replicas_size(); ++i) {
             boost::function<void ()> new_replica_task =
                 boost::bind(&ChunkServerImpl::PullNewBlock, this, response.new_replicas(i));
             recover_thread_pool_->AddTask(new_replica_task);
+        }
+
+        for (int i = 0; i < response.close_blocks_size(); ++i) {
+            boost::function<void ()> close_block_task = // TODO
+                boost::bind(&ChunkServerImpl::CloseIncompleteBlock, this, response.close_blocks(i));
+            recover_thread_pool_->AddTask(close_block_task);
         }
     }
     blockreport_task_id_ = work_thread_pool_->DelayTask(FLAGS_blockreport_interval* 1000,
@@ -450,7 +456,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
 
     // If complete, close block, and report only once(close block return true).
     int64_t report_start = write_end;
-    if (block->IsComplete() && block_manager_->CloseBlock(block)) {
+    if (block->IsComplete() && block_manager_->CloseBlock(block, true)) {
         LOG(INFO, "[WriteBlock] block finish #%ld size:%ld", block_id, block->Size());
         report_start = common::timer::get_micros();
         ReportFinish(block);
@@ -477,6 +483,23 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     done->Run();
     block->DecRef();
     block = NULL;
+}
+
+void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
+    LOG(INFO, "[CloseIncompleteBlock] #%ld ", block_id);
+    Block* block = block_manager_->FindBlock(block_id);
+    if (!block) {
+        LOG(INFO, "[CloseIncompleteBlock] Block not found: #%ld ", block_id);
+        block = block_manager_->CreateBlock(block_id, NULL);
+        if (!block) {
+            LOG(WARNING, "[CloseIncompleteBlock] create block fail: #%ld ", block_id);
+            return;
+        }
+        block->Write(0, 0, NULL, 0, NULL);
+    }
+    block_manager_->CloseBlock(block, false);
+    ReportFinish(block);
+    block->DecRef();
 }
 
 void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
@@ -625,17 +648,13 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         int32_t len = response.databuf().size();
         const char* buf = response.databuf().data();
         if (len) {
-            if (!block->Write(seq, offset, buf, len)) {
-                LOG(INFO, "Pull block #%ld write fail", block_id);
-                success = false;
-                break;
-            }
+            block->Append(seq, buf, len);
             g_recover_bytes.Add(len);
         } else {
             block->SetSliceNum(seq);
             block->SetVersion(response.block_version());
         }
-        if (block->IsComplete() && block_manager_->CloseBlock(block)) {
+        if (block->IsComplete() && block_manager_->CloseBlock(block, true)) {
             LOG(INFO, "Pull block: #%ld finish\n", block_id);
             break;
         }
@@ -660,7 +679,6 @@ REPORT:
         LOG(INFO, "Report pull finish done #%ld ", block_id);
     }
 }
-
 
 void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller,
                                    const GetBlockInfoRequest* request,
@@ -741,7 +759,7 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
            "<input onclick=\"javascript:check(this)\" "
            "checked=\"checked\" type=\"checkbox\">自动刷新</input>";
     str += "</body></html>";
-    response.content = str;
+    response.content->Append(str);
     return true;
 }
 } // namespace bfs

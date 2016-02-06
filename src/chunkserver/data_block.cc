@@ -48,7 +48,7 @@ Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* t
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size), file_desc_(-1), refs_(0),
-  recv_window_(NULL), finished_(false), deleted_(false),
+  recv_window_(NULL), finished_(false), closed_(false), deleted_(false),
   file_cache_(file_cache) {
     assert(meta_.block_id < (1L<<40));
     g_data_size.Add(meta.block_size);
@@ -221,7 +221,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
 }
 /// Write operation.
 bool Block::Write(int32_t seq, int64_t offset, const char* data,
-           int64_t len, int64_t* add_use) {
+                  int64_t len, int64_t* add_use) {
     if (offset < meta_.block_size) {
         assert (offset + len <= meta_.block_size);
         LOG(WARNING, "Write a finish block #%ld size %ld, seq: %d, offset: %ld",
@@ -247,7 +247,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
             return false;
         }
     }
-    if (ret >= 0) {
+    if (ret == 0) {
         g_write_bytes.Add(len);
     }
     return true;
@@ -273,6 +273,29 @@ bool Block::Close() {
     }
     return true;
 }
+
+bool  Block::CloseIncomplete() {
+    MutexLock lock(&mu_);
+    if (finished_) {
+        return false;
+    }
+    LOG(INFO, "Block #%ld flush to %s", meta_.block_id, disk_file_.c_str());
+    if (bufdatalen_) {
+        block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
+        blockbuf_ = NULL;
+        bufdatalen_ = 0;
+    }
+    finished_ = true;
+    if (!disk_writing_) {
+        this->AddRef();
+        thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
+    }
+    closed_ = true;
+    SetSliceNum(last_seq_ + 1);
+    SetVersion(last_seq_);
+    return true;
+}
+
 void Block::AddRef() {
     common::atomic_inc(&refs_);
     assert (refs_ > 0);
@@ -292,7 +315,11 @@ void Block::WriteCallback(int32_t seq, Buffer buffer) {
 }
 void Block::DiskWrite() {
     MutexLock lock(&mu_, "Block::DiskWrite", 1000);
-    if (!disk_writing_ && !deleted_) {
+    if (disk_writing_) {
+        this->DecRef();
+        return;
+    }
+    if (!deleted_) {
         disk_writing_ = true;
         while (!block_buf_list_.empty() && !deleted_) {
             if (!OpenForWrite())assert(0);
@@ -305,7 +332,7 @@ void Block::DiskWrite() {
             while (wlen < len) {
                 int w = write(file_desc_, buf + wlen, len - wlen);
                 if (w < 0) {
-                    LOG(WARNING, "IOEroro write #%ld %s return %s",
+                    LOG(WARNING, "IOError write #%ld %s return %s",
                         meta_.block_id, disk_file_.c_str(), strerror(errno));
                     assert(0);
                     break;
@@ -322,7 +349,8 @@ void Block::DiskWrite() {
         }
         disk_writing_ = false;
     }
-    if (!disk_writing_ && (finished_ || deleted_)) {
+    if (finished_ || deleted_) {
+        assert (deleted_ || block_buf_list_.empty());
         if (file_desc_ != -1) {
             int ret = close(file_desc_);
             LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
@@ -331,20 +359,23 @@ void Block::DiskWrite() {
         }
         file_desc_ = -1;
     }
-    this->DecRef();
 }
 /// Append to block buffer
-void Block::Append(int32_t seq, const char*buf, int64_t len) {
+void Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
+    if (closed_) {
+        LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_", meta_.block_id);
+        return;
+    }
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;
         blockbuf_ = new char[buflen_];
         g_block_buffers.Inc();
         g_buffers_new.Inc();
     }
-    int ap_len = len;
+    int64_t ap_len = len;
     while (bufdatalen_ + ap_len > buflen_) {
-        int wlen = buflen_ - bufdatalen_;
+        int64_t wlen = buflen_ - bufdatalen_;
         memcpy(blockbuf_ + bufdatalen_, buf, wlen);
         block_buf_list_.push_back(std::make_pair(blockbuf_, FLAGS_write_buf_size));
         this->AddRef();
