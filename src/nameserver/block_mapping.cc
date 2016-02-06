@@ -534,12 +534,21 @@ void BlockMapping::AddToIncomplete(int64_t block_id) {
     if (!GetBlockPtr(block_id, &block)) {
         return;
     }
+    if (block->recover_stat == kIncomplete) {
+        LOG(INFO, "Block #%ld has been closed", block_id);
+        return;
+    } else if (block->recover_stat == kLost) {
+        LOG(INFO, "Block #%ld has lost all replicas, ignore it", block_id);
+        return;
+    } else {
+        assert(block->recover_stat == kNotInRecover);
+    }
     for (std::set<int32_t>::iterator it = block->replica.begin();
             it != block->replica.end(); ++it) {
         incomplete_[*it].insert(block_id);
         block->incomplete_replica.insert(*it);
     }
-    SetStateIf(block, kAny, kIncomplete);
+    SetStateIf(block, kNotInRecover, kIncomplete);
 }
 
 bool BlockMapping::GetBlockPtr(int64_t block_id, NSBlock** block) {
