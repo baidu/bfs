@@ -153,6 +153,7 @@ bool BlockManager::LoadStorage() {
                     strerror(errno));
                 metadb_->Delete(leveldb::WriteOptions(), it->key());
                 remove(file_path.c_str());
+                continue;
             } else {
                 LOG(DEBUG, "Load #%ld V%ld size %ld path %s",
                     block_id, meta.version, meta.block_size, file_path.c_str());
