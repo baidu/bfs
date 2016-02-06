@@ -631,14 +631,13 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             cs_addr = lcblock.chains((++last_chunkserver_index_) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
             {
-                ChunkServer_Stub* old_cs = chunk_server;
                 MutexLock lock(&mu_, "Pread change chunkserver", 1000);
-                if (old_cs != chunkserver_) {
+                if (chunk_server != chunkserver_) {
                     chunk_server = chunkserver_;
                 } else {
+                    bad_chunkservers_.insert(chunk_server);
                     fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
                     chunkserver_ = chunk_server;
-                    bad_chunkservers_.insert(old_cs);
                 }
             }
         } else {
