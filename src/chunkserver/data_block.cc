@@ -48,7 +48,7 @@ Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* t
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size), file_desc_(-1), refs_(0),
-  recv_window_(NULL), finished_(false), closed_(false), deleted_(false),
+  recv_window_(NULL), finished_(false), deleted_(false),
   file_cache_(file_cache) {
     assert(meta_.block_id < (1L<<40));
     g_data_size.Add(meta.block_size);
@@ -259,7 +259,6 @@ bool Block::Close() {
         return false;
     }
 
-    LOG(INFO, "Block #%ld flush to %s", meta_.block_id, disk_file_.c_str());
     if (bufdatalen_) {
         block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
         blockbuf_ = NULL;
@@ -271,28 +270,11 @@ bool Block::Close() {
         this->AddRef();
         thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
     }
-    return true;
-}
-
-bool  Block::CloseIncomplete() {
-    MutexLock lock(&mu_);
-    if (finished_) {
-        return false;
+    if (meta_.version == -1) {
+        SetVersion(last_seq_);
     }
-    LOG(INFO, "Block #%ld flush to %s", meta_.block_id, disk_file_.c_str());
-    if (bufdatalen_) {
-        block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
-        blockbuf_ = NULL;
-        bufdatalen_ = 0;
-    }
-    finished_ = true;
-    if (!disk_writing_) {
-        this->AddRef();
-        thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
-    }
-    closed_ = true;
-    SetSliceNum(last_seq_ + 1);
-    SetVersion(last_seq_);
+    LOG(INFO, "Block #%ld closed %s V%ld %ld",
+        meta_.block_id, disk_file_.c_str(), meta_.version, meta_.block_size);
     return true;
 }
 
@@ -306,7 +288,9 @@ void Block::DecRef() {
         delete this;
     }
 }
-
+int Block::GetRef() {
+    return refs_;
+}
 /// Invoke by slidingwindow, when next buffer arrive.
 void Block::WriteCallback(int32_t seq, Buffer buffer) {
     Append(seq, buffer.data_, buffer.len_);
@@ -359,11 +343,12 @@ void Block::DiskWrite() {
         }
         file_desc_ = -1;
     }
+    this->DecRef();
 }
 /// Append to block buffer
 void Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
-    if (closed_) {
+    if (finished_) {
         LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_", meta_.block_id);
         return;
     }

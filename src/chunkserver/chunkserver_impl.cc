@@ -451,12 +451,11 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
         block->SetSliceNum(packet_seq + 1);
-        block->SetVersion(packet_seq);
     }
 
     // If complete, close block, and report only once(close block return true).
     int64_t report_start = write_end;
-    if (block->IsComplete() && block_manager_->CloseBlock(block, true)) {
+    if (block->IsComplete() && block_manager_->CloseBlock(block)) {
         LOG(INFO, "[WriteBlock] block finish #%ld size:%ld", block_id, block->Size());
         report_start = common::timer::get_micros();
         ReportFinish(block);
@@ -497,7 +496,7 @@ void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
         }
         block->Write(0, 0, NULL, 0, NULL);
     }
-    block_manager_->CloseBlock(block, false);
+    block_manager_->CloseBlock(block);
     ReportFinish(block);
     block->DecRef();
 }
@@ -654,7 +653,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
             block->SetSliceNum(seq);
             block->SetVersion(response.block_version());
         }
-        if (block->IsComplete() && block_manager_->CloseBlock(block, true)) {
+        if (block->IsComplete() && block_manager_->CloseBlock(block)) {
             LOG(INFO, "Pull block: #%ld finish\n", block_id);
             break;
         }
