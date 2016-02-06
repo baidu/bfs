@@ -276,36 +276,37 @@ bool BlockManager::SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
     }
     return true;
 }
-bool BlockManager::CloseBlock(Block* block, bool is_complete) {
-    if (is_complete) {
-        if (!block->Close()) {
-            return false;
-        }
-    } else {
-        if (!block->CloseIncomplete()) {
-            return false;
-        }
+bool BlockManager::CloseBlock(Block* block) {
+    if (!block->Close()) {
+        return false;
     }
 
     // Update meta
     BlockMeta meta = block->GetMeta();
     return SyncBlockMeta(meta, NULL);
 }
+
+bool BlockManager::RemoveBlockMeta(int64_t block_id) {
+    char idstr[14];
+    snprintf(idstr, sizeof(idstr), "%13ld", block_id);
+    leveldb::Status s = metadb_->Delete(leveldb::WriteOptions(), idstr);
+    if (!s.ok()) {
+        LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
+        return false;
+    }
+    return true;
+}
 bool BlockManager::RemoveBlock(int64_t block_id) {
-    Block* block = NULL;
-    {
-        MutexLock lock(&mu_, "BlockManager::RemoveBlock", 1000);
-        BlockMap::iterator it = block_map_.find(block_id);
-        if (it == block_map_.end()) {
-            LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
-            return false;
-        }
-        block = it->second;
-        if (!block->SetDeleted()) {
-            LOG(INFO, "Block #%ld deleted by other thread", block_id);
-            return false;
-        }
-        block->AddRef();
+    bool meta_removed = RemoveBlockMeta(block_id);
+    Block* block = FindBlock(block_id);
+    if (block == NULL) {
+        LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
+        return false;
+    }
+    if (!block->SetDeleted()) {
+        LOG(INFO, "Block #%ld deleted by other thread", block_id);
+        block->DecRef();
+        return false;
     }
 
     int64_t du = block->DiskUsed();
@@ -324,20 +325,13 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
     snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
     // Rmdir, ignore error when not empty.
     // rmdir((GetStorePath(block_id) + dir_name).c_str());
-    char idstr[14];
-    snprintf(idstr, sizeof(idstr), "%13ld", block_id);
-
-    leveldb::Status s = metadb_->Delete(leveldb::WriteOptions(), idstr);
-    if (s.ok()) {
-        LOG(INFO, "Remove #%ld meta info done", block_id);
-        {
-            MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
-            block_map_.erase(block_id);
-        }
+    if (meta_removed) {
+        MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
+        block_map_.erase(block_id);
         block->DecRef();
+        LOG(INFO, "Remove #%ld meta info done, ref= %ld", block_id, block->GetRef());
         ret = true;
     } else {
-        LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
         ret = false;
     }
     block->DecRef();

@@ -130,8 +130,8 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
             }
         } else if (block_version < nsblock->version) {
             LOG(WARNING, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld",
-                id, server_id, nsblock->version, nsblock->block_size,
-                block_version, block_size);
+                id, server_id, block_version, block_size,
+                nsblock->version, nsblock->block_size);
             nsblock->replica.erase(server_id);
             RemoveFromIncomplete(nsblock, server_id, id);
             return false;
