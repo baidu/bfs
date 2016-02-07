@@ -142,7 +142,7 @@ void ChunkServerImpl::Register() {
         return;
     }
     if (response.status() != kOK) {
-        LOG(FATAL, "Register return %s", StatusCode_Name(response.status()).c_str());
+        LOG(WARNING, "Register return %s", StatusCode_Name(response.status()).c_str());
         work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
         return;
     }
