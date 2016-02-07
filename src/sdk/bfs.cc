@@ -783,7 +783,7 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             for (int i = 0; i < FLAGS_sdk_createblock_retry; i++) {
                 ret = AddBlock();
                 if (ret == kOK) break;
-                sleep(3);
+                sleep(10);
             }
             if (ret != kOK) {
                 LOG(WARNING, "AddBlock fail for %s\n", name_.c_str());

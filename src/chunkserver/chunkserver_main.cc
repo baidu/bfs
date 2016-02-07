@@ -34,19 +34,19 @@ int main(int argc, char* argv[])
 
     sofa::pbrpc::RpcServerOptions options;
     options.work_thread_num = 8;
-    sofa::pbrpc::RpcServer rpc_server(options);
+    sofa::pbrpc::RpcServer* rpc_server = new sofa::pbrpc::RpcServer(options);
 
     baidu::bfs::ChunkServerImpl* chunkserver_service = new baidu::bfs::ChunkServerImpl();
 
-    if (!rpc_server.RegisterService(chunkserver_service)) {
+    if (!rpc_server->RegisterService(chunkserver_service, false)) {
             return EXIT_FAILURE;
     }
     sofa::pbrpc::Servlet webservice =
         sofa::pbrpc::NewPermanentExtClosure(chunkserver_service, &baidu::bfs::ChunkServerImpl::WebService);
-    rpc_server.RegisterWebServlet("/dfs", webservice);
+    rpc_server->RegisterWebServlet("/dfs", webservice);
 
     std::string server_host = std::string("0.0.0.0:") + FLAGS_chunkserver_port;
-    if (!rpc_server.Start(server_host)) {
+    if (!rpc_server->Start(server_host)) {
             return EXIT_FAILURE;
     }
 
@@ -56,6 +56,10 @@ int main(int argc, char* argv[])
         sleep(1);
     }
 
+    delete rpc_server;
+    LOG(baidu::common::INFO, "RpcServer stop.");
+    delete chunkserver_service;
+    LOG(baidu::common::INFO, "ChunkServer stop.");
     return EXIT_SUCCESS;
 }
 

@@ -8,6 +8,7 @@
 
 #include <errno.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/vfs.h>
 #include <boost/bind.hpp>
 
@@ -23,6 +24,7 @@
 
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_use_root_partition);
+DECLARE_int32(chunkserver_io_thread_num);
 
 namespace baidu {
 namespace bfs {
@@ -31,18 +33,23 @@ extern common::Counter g_blocks;
 extern common::Counter g_data_size;
 extern common::Counter g_find_ops;
 
-BlockManager::BlockManager(ThreadPool* thread_pool, const std::string& store_path)
-    :thread_pool_(thread_pool),
-     metadb_(NULL),
+BlockManager::BlockManager(const std::string& store_path)
+   : metadb_(NULL),
      namespace_version_(0), disk_quota_(0) {
      CheckStorePath(store_path);
+     thread_pool_ = new ThreadPool(FLAGS_chunkserver_io_thread_num);
      file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
 }
 BlockManager::~BlockManager() {
+    MutexLock lock(&mu_);
     for (BlockMap::iterator it = block_map_.begin();
             it != block_map_.end(); ++it) {
-        it->second->DecRef();
+        Block* block = it->second;
+        CloseBlock(block);
+        block->DecRef();
     }
+    thread_pool_->Stop(true);
+    delete thread_pool_;
     block_map_.clear();
     delete metadb_;
     metadb_ = NULL;
@@ -110,6 +117,7 @@ const std::string& BlockManager::GetStorePath(int64_t block_id) {
 /// Load meta from disk
 bool BlockManager::LoadStorage() {
     MutexLock lock(&mu_);
+    int64_t start_load_time = common::timer::get_micros();
     leveldb::Options options;
     options.create_if_missing = true;
     leveldb::Status s = leveldb::DB::Open(options, store_path_list_[0] + "meta/", &metadb_);
@@ -147,7 +155,10 @@ bool BlockManager::LoadStorage() {
             remove(file_path.c_str());
             continue;
         } else {
-            if (access(file_path.c_str(), R_OK)) {
+            struct stat st;
+            if (stat(file_path.c_str(), &st) ||
+                st.st_size != meta.block_size ||
+                access(file_path.c_str(), R_OK)) {
                 LOG(WARNING, "Corrupted block #%ld V%ld size %ld path %s can't access: %s'",
                     block_id, meta.version, meta.block_size, file_path.c_str(),
                     strerror(errno));
@@ -165,7 +176,9 @@ bool BlockManager::LoadStorage() {
         block_num ++;
     }
     delete it;
-    LOG(INFO, "Load %ld blocks, namespace version: %ld", block_num, namespace_version_);
+    int64_t end_load_time = common::timer::get_micros();
+    LOG(INFO, "Load %ld blocks, use %ld ms, namespace version: %ld",
+        block_num, (end_load_time - start_load_time) / 1000, namespace_version_);
     if (namespace_version_ == 0 && block_num > 0) {
         LOG(WARNING, "Namespace version lost!");
     }

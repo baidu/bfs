@@ -27,7 +27,7 @@ class FileCache;
 
 class BlockManager {
 public:
-    BlockManager(ThreadPool* thread_pool, const std::string& store_path);
+    BlockManager(const std::string& store_path);
     ~BlockManager();
     int64_t DiskQuota()  const;
     void CheckStorePath(const std::string& store_path);
