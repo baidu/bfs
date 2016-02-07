@@ -74,7 +74,8 @@ ChunkServerImpl::ChunkServerImpl()
     : chunkserver_id_(-1),
      heartbeat_task_id_(-1),
      blockreport_task_id_(-1),
-     last_report_blockid_(-1) {
+     last_report_blockid_(-1),
+     service_stop_(false) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     work_thread_pool_ = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     read_thread_pool_ = new ThreadPool(FLAGS_chunkserver_read_thread_num);
@@ -95,6 +96,8 @@ ChunkServerImpl::ChunkServerImpl()
 }
 
 ChunkServerImpl::~ChunkServerImpl() {
+    service_stop_ = true;
+    recover_thread_pool_->Stop(true);
     work_thread_pool_->Stop(true);
     read_thread_pool_->Stop(true);
     write_thread_pool_->Stop(true);
@@ -103,6 +106,7 @@ ChunkServerImpl::~ChunkServerImpl() {
     delete block_manager_;
     LogStatus(false);
     delete counter_manager_;
+    delete recover_thread_pool_;
     delete work_thread_pool_;
     delete read_thread_pool_;
     delete write_thread_pool_;
@@ -580,7 +584,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
 
     int64_t seq = -1;
     int64_t offset = 0;
-    bool success = true;
+    bool success = false;
     int init_index = 0;
     int pre_index = -1;
     ChunkServer_Stub* chunkserver = NULL;
@@ -615,7 +619,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         goto REPORT;
     }
     pre_index = init_index;
-    while (1) {
+    while (!service_stop_) {
         ReadBlockRequest request;
         ReadBlockResponse response;
         request.set_sequence_id(++seq);
@@ -637,7 +641,6 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
                     new_replica_info.chunkserver_address(pre_index).c_str(), block_id);
             if (pre_index == init_index) {
                 LOG(INFO, "Pull block #%ld read fail", block_id);
-                success = false;
                 break;
             } else {
                 rpc_client_->GetStub(new_replica_info.chunkserver_address(pre_index), &chunkserver);
@@ -655,6 +658,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         }
         if (block->IsComplete() && block_manager_->CloseBlock(block)) {
             LOG(INFO, "Pull block: #%ld finish\n", block_id);
+            success = true;
             break;
         }
         offset += len;

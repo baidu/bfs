@@ -57,7 +57,9 @@ int main(int argc, char* argv[])
     }
 
     delete rpc_server;
+    LOG(baidu::common::INFO, "RpcServer stop.");
     delete chunkserver_service;
+    LOG(baidu::common::INFO, "ChunkServer stop.");
     return EXIT_SUCCESS;
 }
 
