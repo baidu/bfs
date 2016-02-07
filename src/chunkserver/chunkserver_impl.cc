@@ -81,7 +81,7 @@ ChunkServerImpl::ChunkServerImpl()
     write_thread_pool_ = new ThreadPool(FLAGS_chunkserver_write_thread_num);
     recover_thread_pool_ = new ThreadPool(FLAGS_chunkserver_recover_thread_num);
     heartbeat_thread_ = new ThreadPool(1);
-    block_manager_ = new BlockManager(write_thread_pool_, FLAGS_block_store_path);
+    block_manager_ = new BlockManager(FLAGS_block_store_path);
     bool s_ret = block_manager_->LoadStorage();
     assert(s_ret == true);
     rpc_client_ = new RpcClient();
@@ -99,14 +99,14 @@ ChunkServerImpl::~ChunkServerImpl() {
     read_thread_pool_->Stop(true);
     write_thread_pool_->Stop(true);
     heartbeat_thread_->Stop(true);
+    delete rpc_client_;
+    delete block_manager_;
+    LogStatus(false);
+    delete counter_manager_;
     delete work_thread_pool_;
     delete read_thread_pool_;
     delete write_thread_pool_;
     delete heartbeat_thread_;
-    delete block_manager_;
-    delete rpc_client_;
-    LogStatus(false);
-    delete counter_manager_;
 }
 
 void ChunkServerImpl::LogStatus(bool routine) {

@@ -98,6 +98,7 @@ private:
     int         file_desc_; ///< disk file fd
     volatile int refs_;
     Mutex       mu_;
+    CondVar     close_cv_;
     common::SlidingWindow<Buffer>* recv_window_;
     bool        finished_;
     volatile int deleted_;

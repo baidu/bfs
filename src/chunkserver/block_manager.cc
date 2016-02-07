@@ -23,6 +23,7 @@
 
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_use_root_partition);
+DECLARE_int32(chunkserver_io_thread_num);
 
 namespace baidu {
 namespace bfs {
@@ -31,18 +32,23 @@ extern common::Counter g_blocks;
 extern common::Counter g_data_size;
 extern common::Counter g_find_ops;
 
-BlockManager::BlockManager(ThreadPool* thread_pool, const std::string& store_path)
-    :thread_pool_(thread_pool),
-     metadb_(NULL),
+BlockManager::BlockManager(const std::string& store_path)
+   : metadb_(NULL),
      namespace_version_(0), disk_quota_(0) {
      CheckStorePath(store_path);
+     thread_pool_ = new ThreadPool(FLAGS_chunkserver_io_thread_num);
      file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
 }
 BlockManager::~BlockManager() {
+    MutexLock lock(&mu_);
     for (BlockMap::iterator it = block_map_.begin();
             it != block_map_.end(); ++it) {
-        it->second->DecRef();
+        Block* block = it->second;
+        CloseBlock(block);
+        block->DecRef();
     }
+    thread_pool_->Stop(true);
+    delete thread_pool_;
     block_map_.clear();
     delete metadb_;
     metadb_ = NULL;
