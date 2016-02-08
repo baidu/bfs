@@ -111,7 +111,6 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
         return false;
     }
     NSBlock* nsblock = it->second;
-    uint32_t expect_replica_num = nsblock->expect_replica_num;
     if (block_version < 0) {
         if (nsblock->version >= 0) { // Pulling block
             return true;
@@ -147,7 +146,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
                     nsblock->version, nsblock->block_size);
                 nsblock->version = block_version;
                 nsblock->block_size = block_size;
-            } else if (nsblock->replica.size() >= expect_replica_num) {
+            } else if (nsblock->replica.size() >= 2) {
                 return false;
             } else {
                 if (!safe_mode
@@ -167,7 +166,8 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
     }
 
     std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
-    uint32_t cur_replica_num = nsblock->replica.size();
+    int32_t cur_replica_num = nsblock->replica.size();
+    int32_t expect_replica_num = nsblock->expect_replica_num;
     bool clean_redundancy = false;
     if (clean_redundancy && cur_replica_num > expect_replica_num) {
         LOG(INFO, "Too much replica #%ld cur=%d expect=%d server=C%d ",
@@ -183,7 +183,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
             if (!safe_mode
                 && nsblock->recover_stat != kCheck
                 && nsblock->recover_stat != kIncomplete) {
-                LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %u, add to recover",
+                LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
                     id, server_id, cur_replica_num);
                 AddToRecover(nsblock);
             }
