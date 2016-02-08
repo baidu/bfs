@@ -6,6 +6,8 @@
 
 #include <gflags/gflags.h>
 
+// global
+DEFINE_bool(bfs_bug_tolerant, true, "Tolerate minor bug");
 // nameserver
 DEFINE_string(namedb_path, "./db", "Namespace database");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");

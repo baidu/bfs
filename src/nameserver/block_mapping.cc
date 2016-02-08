@@ -13,6 +13,7 @@
 
 DECLARE_int32(recover_speed);
 DECLARE_int32(recover_timeout);
+DECLARE_bool(bfs_bug_tolerant);
 
 namespace baidu {
 namespace bfs {
@@ -110,11 +111,17 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
         return false;
     }
     NSBlock* nsblock = it->second;
+    uint32_t expect_replica_num = nsblock->expect_replica_num;
     if (block_version < 0) {
         if (nsblock->version >= 0) { // Pulling block
             return true;
         } // else writing block
     } else {
+        if (nsblock->recover_stat == kIncomplete) {
+            LOG(INFO, "Closed incomplete block #%ld at C%d V%ld",
+                id, server_id, block_version);
+            RemoveFromIncomplete(nsblock, server_id, id);
+        }
         if (block_version > nsblock->version) { // Block received
             LOG(INFO, "block #%ld update by C%d from V%ld %ld to V%ld %ld",
                 id, server_id, nsblock->version, nsblock->block_size,
@@ -125,29 +132,42 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
             if (block_size != nsblock->block_size) {
                 LOG(WARNING, "Block #%ld V%ld size mismatch, old: %ld new: %ld",
                     id, block_version, nsblock->block_size, block_size);
+                if (!FLAGS_bfs_bug_tolerant) abort();
                 nsblock->replica.erase(server_id);
                 return false;
             }
         } else if (block_version < nsblock->version) {
-            LOG(WARNING, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld",
-                id, server_id, block_version, block_size,
-                nsblock->version, nsblock->block_size);
             nsblock->replica.erase(server_id);
-            RemoveFromIncomplete(nsblock, server_id, id);
-            return false;
+            LOG(INFO, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld replica= %lu",
+                id, server_id, block_version, block_size,
+                nsblock->version, nsblock->block_size, nsblock->replica.size());
+            if (nsblock->replica.empty() && !safe_mode) {
+                LOG(WARNING, "Data lost #%ld C%d V%ld %ld -> V%ld %ld",
+                    id, server_id, block_version, block_size,
+                    nsblock->version, nsblock->block_size);
+                nsblock->version = block_version;
+                nsblock->block_size = block_size;
+            } else if (nsblock->replica.size() >= expect_replica_num) {
+                return false;
+            } else {
+                if (!safe_mode
+                    && nsblock->recover_stat != kCheck
+                    && nsblock->recover_stat != kIncomplete) {
+                    LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %lu, add to recover",
+                        id, server_id, nsblock->replica.size());
+                    AddToRecover(nsblock);
+                }
+                return true;
+            }
         }
     }
 
     if (SetStateIf(nsblock, kLost, kNotInRecover)) {
         lost_blocks_.erase(id);
-    } else if (nsblock->recover_stat == kIncomplete && block_version >= 0) {
-        LOG(INFO, "Closed incomplete block #%ld at C%d V%ld", id, server_id, block_version);
-        RemoveFromIncomplete(nsblock, server_id, id);
     }
 
     std::pair<std::set<int32_t>::iterator, bool> ret = nsblock->replica.insert(server_id);
-    int32_t cur_replica_num = nsblock->replica.size();
-    int32_t expect_replica_num = nsblock->expect_replica_num;
+    uint32_t cur_replica_num = nsblock->replica.size();
     bool clean_redundancy = false;
     if (clean_redundancy && cur_replica_num > expect_replica_num) {
         LOG(INFO, "Too much replica #%ld cur=%d expect=%d server=C%d ",
@@ -156,14 +176,14 @@ bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_
         return false;
     } else {
         if (ret.second) {
-            LOG(DEBUG, "New replica C%d for #%ld total: %d",
-                server_id, id, cur_replica_num);
+            LOG(DEBUG, "New replica C%d V%ld %ld for #%ld total: %d",
+                server_id, block_version, block_size, id, cur_replica_num);
         }
         if (cur_replica_num < expect_replica_num && nsblock->version >= 0) {
             if (!safe_mode
                 && nsblock->recover_stat != kCheck
                 && nsblock->recover_stat != kIncomplete) {
-                LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %d, add to recover",
+                LOG(DEBUG, "UpdateBlock #%ld by C%d rep_num %u, add to recover",
                     id, server_id, cur_replica_num);
                 AddToRecover(nsblock);
             }
