@@ -332,17 +332,20 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
                                            std::map<int64_t, std::string>* recover_blocks) {
-    MutexLock lock(&mu_);
-    ChunkServerInfo* cs = NULL;
-    if (!GetChunkServerPtr(cs_id, &cs)) {
-        return;
-    }
-    if (cs->buffers() > FLAGS_chunkserver_max_pending_buffers * 0.5) {
-        return;
+    {
+        MutexLock lock(&mu_);
+        ChunkServerInfo* cs = NULL;
+        if (!GetChunkServerPtr(cs_id, &cs)) {
+            return;
+        }
+        if (cs->buffers() > FLAGS_chunkserver_max_pending_buffers * 0.5) {
+            return;
+        }
     }
     std::map<int64_t, int32_t> blocks;
     block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks);
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        MutexLock lock(&mu_);
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(it->second, &cs)) {
             LOG(WARNING, "PickRecoverBlocks for C%d can't find chunkserver C%d",
