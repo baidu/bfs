@@ -37,7 +37,7 @@ public:
     BlockMapping();
     int64_t NewBlockID();
     bool GetBlock(int64_t block_id, NSBlock* block);
-    bool GetReplicaLocation(int64_t id, std::set<int32_t>* chunkserver_id);
+    bool GetBlockReplica(int64_t id, std::vector<int32_t>* replica);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,

@@ -205,11 +205,12 @@ void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controll
                    ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     response->set_status(kOK);
+    int32_t cs_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->blocks(i), true);
+        block_mapping_->ProcessRecoveredBlock(cs_id, request->blocks(i), true);
     }
     for (int i = 0; i < request->failed_size(); i++) {
-        block_mapping_->ProcessRecoveredBlock(request->chunkserver_id(), request->failed(i), false);
+        block_mapping_->ProcessRecoveredBlock(cs_id, request->failed(i), false);
     }
     done->Run();
 }
@@ -340,26 +341,24 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
     } else {
         for (int i = 0; i < info.blocks_size(); i++) {
             int64_t block_id = info.blocks(i);
-            NSBlock nsblock;
-            if (!block_mapping_->GetBlock(block_id, &nsblock)) {
-                LOG(WARNING, "GetFileLocation GetBlock fail #%ld ", block_id);
-                continue;
-            } else {
-                LocatedBlock* lcblock = response->add_blocks();
-                lcblock->set_block_id(block_id);
-                lcblock->set_block_size(nsblock.block_size);
-                for (std::set<int32_t>::iterator it = nsblock.replica.begin();
-                        it != nsblock.replica.end(); ++it) {
-                    int32_t server_id = *it;
-                    std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
-                    if (addr == "") {
-                        LOG(INFO, "GetChunkServerAddr from id: C%d fail.", server_id);
-                        continue;
-                    }
-                    LOG(INFO, "return server C%d %s for #%ld ", server_id, addr.c_str(), block_id);
-                    ChunkServerInfo* cs_info = lcblock->add_chains();
-                    cs_info->set_address(addr);
+            std::vector<int32_t> replica;
+            if (!block_mapping_->GetBlockReplica(block_id, &replica)) {
+                LOG(WARNING, "GetFileLocation GetBlockReplica fail #%ld ", block_id);
+                break;
+            }
+            LocatedBlock* lcblock = response->add_blocks();
+            lcblock->set_block_id(block_id);
+            lcblock->set_block_size(nsblock.block_size);
+            for (uint32_t i = 0; i < replica.size(); i++
+                int32_t server_id = replica[i];
+                std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
+                if (addr == "") {
+                    LOG(WARING, "GetChunkServerAddr from id: C%d fail.", server_id);
+                    continue;
                 }
+                LOG(INFO, "return server C%d %s for #%ld ", server_id, addr.c_str(), block_id);
+                ChunkServerInfo* cs_info = lcblock->add_chains();
+                cs_info->set_address(addr);
             }
         }
         LOG(INFO, "NameServerImpl::GetFileLocation: %s return %d",
