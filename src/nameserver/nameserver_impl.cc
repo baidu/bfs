@@ -342,18 +342,19 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
         for (int i = 0; i < info.blocks_size(); i++) {
             int64_t block_id = info.blocks(i);
             std::vector<int32_t> replica;
-            if (!block_mapping_->GetBlockReplica(block_id, &replica)) {
+            int64_t block_size = 0;
+            if (!block_mapping_->GetLocatedBlock(block_id, &replica, &block_size)) {
                 LOG(WARNING, "GetFileLocation GetBlockReplica fail #%ld ", block_id);
                 break;
             }
             LocatedBlock* lcblock = response->add_blocks();
             lcblock->set_block_id(block_id);
-            lcblock->set_block_size(nsblock.block_size);
-            for (uint32_t i = 0; i < replica.size(); i++
+            lcblock->set_block_size(block_size);
+            for (uint32_t i = 0; i < replica.size(); i++) {
                 int32_t server_id = replica[i];
                 std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
                 if (addr == "") {
-                    LOG(WARING, "GetChunkServerAddr from id: C%d fail.", server_id);
+                    LOG(WARNING, "GetChunkServerAddr from id: C%d fail.", server_id);
                     continue;
                 }
                 LOG(INFO, "return server C%d %s for #%ld ", server_id, addr.c_str(), block_id);
