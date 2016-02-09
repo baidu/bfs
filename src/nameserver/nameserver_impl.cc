@@ -307,17 +307,18 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
     if (!namespace_->UpdateFileInfo(file_info)) {
-        LOG(WARNING, "Update file info fail: %s", file_name.c_str());
+        LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
         response->set_status(kUpdateError);
         done->Run();
         return;
     }
-    if (!block_mapping_->SetBlockVersion(block_id, block_version)) {
-        LOG(WARNING, "Set block version fail: %s", file_name.c_str());
+    if (!block_mapping_->CheckBlockVersion(block_id, block_version)) {
+        LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
         response->set_status(kUpdateError);
         done->Run();
         return;
     }
+    LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
     response->set_status(kOK);
     done->Run();
 }
@@ -361,9 +362,9 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                 ChunkServerInfo* cs_info = lcblock->add_chains();
                 cs_info->set_address(addr);
             }
+            LOG(INFO, "NameServerImpl::GetFileLocation: %s return #%ld R%lu",
+                request->file_name().c_str(), block_id, replica.size());
         }
-        LOG(INFO, "NameServerImpl::GetFileLocation: %s return %d",
-            request->file_name().c_str(), info.blocks_size());
         // success if file exist
         response->set_status(kOK);
     }

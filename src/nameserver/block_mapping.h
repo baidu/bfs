@@ -47,7 +47,7 @@ public:
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& blocks);
-    bool SetBlockVersion(int64_t block_id, int64_t version);
+    bool CheckBlockVersion(int64_t block_id, int64_t version);
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::map<int64_t, int32_t>* recover_blocks);
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success);
@@ -64,7 +64,8 @@ private:
                             std::set<int64_t>* check_set);
     void TryRecover(NSBlock* block);
     void CheckRecover(int32_t cs_id, int64_t block_id);
-    void RemoveFromIncomplete(NSBlock* block, int32_t cs_id, int64_t block_id);
+    void InsertToIncomplete(int64_t block_id, const std::set<int32_t>& inc_replica);
+    void RemoveFromIncomplete(int64_t block_id, int32_t cs_id);
     bool GetBlockPtr(int64_t block_id, NSBlock** block);
     void SetState(NSBlock* block, RecoverStat stat);
     bool SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to);

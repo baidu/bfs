@@ -310,6 +310,7 @@ int NameSpace::Rename(const std::string& old_path,
             }
             *need_unlink = true;
             remove_file->CopyFrom(dst_file);
+            remove_file->set_name(dst_name);
         }
     }
 
