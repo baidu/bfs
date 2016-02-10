@@ -47,7 +47,7 @@ public:
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& blocks);
-    bool CheckBlockVersion(int64_t block_id, int64_t version);
+    int CheckBlockVersion(int64_t block_id, int64_t version);
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::map<int64_t, int32_t>* recover_blocks);
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success);

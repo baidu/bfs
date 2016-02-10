@@ -195,9 +195,11 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
             return true;
         } else {
             ///TODO: handle out-of-order message
+            if (replica.find(cs_id) != replica.end()) {
+                return true;
+            }
             LOG(WARNING, "Incomplete block #%ld from C%d drop it, now V%ld %ld R%lu",
                 block_id, cs_id, nsblock->version, nsblock->block_size, replica.size());
-            replica.erase(cs_id);
             return false;
         }
     }
@@ -461,21 +463,19 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     block_map_.erase(it);
 }
 
-bool BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
-    bool ret = true;
+int BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
     MutexLock lock(&mu_);
     NSBlockMap::iterator it = block_map_.find(block_id);
     if (it == block_map_.end()) {
         LOG(WARNING, "CheckBlockVersion can not find block: #%ld ", block_id);
-        return false;
+        return kNotFound;
     }
     if (it->second->version != version) {
         LOG(WARNING, "CheckBlockVersion fail #%ld V%ld to V%ld",
             block_id, it->second->version, version);
-        if (!FLAGS_bfs_bug_tolerant) abort();
-        return false;
+        return kSafeMode;
     }
-    return ret;
+    return kOK;
 }
 
 void BlockMapping::DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& blocks) {
@@ -490,7 +490,9 @@ void BlockMapping::DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& bl
         std::set<int32_t>& inc_replica = block->incomplete_replica;
         std::set<int32_t>& replica = block->replica;
         if (inc_replica.erase(cs_id)) {
-            RemoveFromIncomplete(block_id, cs_id);
+            if (block->recover_stat == kIncomplete) {
+                RemoveFromIncomplete(block_id, cs_id);
+            }
         } else {
             int32_t ret = replica.erase(cs_id);
             assert(ret);
@@ -498,7 +500,6 @@ void BlockMapping::DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& bl
         if (block->recover_stat == kIncomplete) {
             LOG(INFO, "Incomplete block C%d #%ld dead replica= %lu",
                 cs_id, block_id, replica.size());
-            RemoveFromIncomplete(block_id, cs_id);
             ///TODO: if safe_mode, don't change stat
             if (inc_replica.empty()) SetState(block, kNotInRecover);
         } else if (block->recover_stat == kBlockWriting) {

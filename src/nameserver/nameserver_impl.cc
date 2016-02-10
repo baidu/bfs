@@ -258,8 +258,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::vector<std::pair<int32_t, std::string> > chains;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
         int64_t new_block_id = block_mapping_->NewBlockID();
-        LOG(INFO, "[AddBlock] new block for %s id= #%ld ",
-            path.c_str(), new_block_id);
+        LOG(INFO, "[AddBlock] new block for %s #%ld R%d",
+            path.c_str(), new_block_id, replica_num);
         LocatedBlock* block = response->mutable_block();
         std::vector<int32_t> replicas;
         for (int i = 0; i < replica_num; i++) {
@@ -312,9 +312,10 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    if (!block_mapping_->CheckBlockVersion(block_id, block_version)) {
+    int ret = block_mapping_->CheckBlockVersion(block_id, block_version);
+    if (ret != kOK) {
         LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
-        response->set_status(kUpdateError);
+        response->set_status(ret);
         done->Run();
         return;
     }
@@ -628,11 +629,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     int64_t lo_recover_num, pending_num, hi_recover_num, lost_num, incomplete_num;
     block_mapping_->GetStat(&lo_recover_num, &pending_num, &hi_recover_num,
                             &lost_num, &incomplete_num);
-    str += "<h1>分布式文件系统控制台 - NameServer</h1>";
+    str += "<h1 style=\"margin-top: 10px; margin-bottom: 0px;\">分布式文件系统控制台 - NameServer</h1>";
 
     str += "<div class=\"row\">";
     str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "<h3 align=left>Nameserver status</h2>";
+    str += "<h4 align=left>Nameserver status</h4>";
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
@@ -653,7 +654,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "<h3 align=left>Chunkserver status</h2>";
+    str += "<h4 align=left>Chunkserver status</h4>";
     str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
     str += "Dead: " + common::NumToString(dead_num)+"</br>";
