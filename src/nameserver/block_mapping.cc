@@ -471,7 +471,7 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     block_map_.erase(it);
 }
 
-int BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
+StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
     MutexLock lock(&mu_);
     NSBlockMap::iterator it = block_map_.find(block_id);
     if (it == block_map_.end()) {

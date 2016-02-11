@@ -320,7 +320,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    int ret = block_mapping_->CheckBlockVersion(block_id, block_version);
+    StatusCode ret = block_mapping_->CheckBlockVersion(block_id, block_version);
     if (ret != kOK) {
         LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
         response->set_status(ret);
