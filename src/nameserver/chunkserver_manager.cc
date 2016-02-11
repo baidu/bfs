@@ -196,7 +196,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
                           const std::string& client_address) {
     MutexLock lock(&mu_);
     if (num > chunkserver_num_) {
-        LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
+        LOG(INFO, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
             chunkserver_num_, num);
         return false;
     }
@@ -354,7 +354,6 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         }
         recover_blocks->insert(std::make_pair(it->first, cs->address()));
     }
-    LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
 
 bool ChunkServerManager::GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs) {

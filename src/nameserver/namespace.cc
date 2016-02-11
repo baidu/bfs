@@ -84,7 +84,8 @@ bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
     std::string value;
     leveldb::Status s = db_->Get(leveldb::ReadOptions(), key, &value);
     if (!s.ok()) {
-        LOG(DEBUG, "GetFromStore get fail %s", key.substr(8).c_str());
+        LOG(DEBUG, "GetFromStore get fail %s %s",
+            key.substr(8).c_str(), s.ToString().c_str());
         return false;
     }
     if (!info->ParseFromString(value)) {
@@ -195,7 +196,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
             LOG(INFO, "Create path recursively: %s %ld", paths[i].c_str(), file_info.entry_id());
         } else {
             if (!IsDir(file_info.type())) {
-                LOG(WARNING, "Create path fail: %s is not a directory", paths[i].c_str());
+                LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
                 return 886;
             }
         }
@@ -205,7 +206,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
     const std::string& fname = paths[depth-1];
     if ((flags & O_TRUNC) == 0) {
         if (LookUp(parent_id, fname, &file_info)) {
-            LOG(WARNING, "CreateFile %s fail: already exist!\n", fname.c_str());
+            LOG(INFO, "CreateFile %s fail: already exist!\n", fname.c_str());
             return 1;
         }
     }
@@ -226,7 +227,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
         LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
         return 0;
     } else {
-        LOG(WARNING, "CreateFile %s fail: db put fail", path.c_str());
+        LOG(WARNING, "CreateFile %s fail: db put fail %s", path.c_str(), s.ToString().c_str());
         return 2;
     }
 }
@@ -272,7 +273,7 @@ int NameSpace::Rename(const std::string& old_path,
     }
     FileInfo old_file;
     if (!LookUp(old_path, &old_file)) {
-        LOG(WARNING, "Rename not found: %s\n", old_path.c_str());
+        LOG(INFO, "Rename not found: %s\n", old_path.c_str());
         return 404;
     }
 
@@ -290,7 +291,7 @@ int NameSpace::Rename(const std::string& old_path,
             return 404;
         }
         if (!IsDir(path_file.type())) {
-            LOG(WARNING, "Rename %s to %s fail: %s is not a directory",
+            LOG(INFO, "Rename %s to %s fail: %s is not a directory",
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
             return 886;
         }
@@ -310,6 +311,7 @@ int NameSpace::Rename(const std::string& old_path,
             }
             *need_unlink = true;
             remove_file->CopyFrom(dst_file);
+            remove_file->set_name(dst_name);
         }
     }
 
@@ -333,7 +335,7 @@ int NameSpace::Rename(const std::string& old_path,
             common::DebugString(new_key).c_str(), *need_unlink);
         return 0;
     } else {
-        LOG(WARNING, "Rename write leveldb fail: %s", old_path.c_str());
+        LOG(WARNING, "Rename write leveldb fail: %s %s", old_path.c_str(), s.ToString().c_str());
         return 1;
     }
 
@@ -358,11 +360,11 @@ int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
                 ret_status = 400;
             }
         } else {
-            LOG(WARNING, "Unlink not support directory: %s\n", path.c_str());
+            LOG(INFO, "Unlink not support directory: %s\n", path.c_str());
             ret_status = 403;
         }
     } else {
-        LOG(WARNING, "Unlink not found: %s\n", path.c_str());
+        LOG(INFO, "Unlink not found: %s\n", path.c_str());
         ret_status = 404;
     }
     return ret_status;
@@ -394,7 +396,7 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     it->Seek(key_start);
     if (it->Valid() && it->key().compare(key_end) < 0 && recursive == false) {
-        LOG(WARNING, "Try to delete an unempty directory unrecursively: %s",
+        LOG(INFO, "Try to delete an unempty directory unrecursively: %s",
             dir_info.name().c_str());
         delete it;
         return 886;

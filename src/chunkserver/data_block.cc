@@ -192,11 +192,11 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
         mu_.Unlock();
         int64_t ret = file_cache_->ReadFile(disk_file_,
                         buf + readlen, pread_len, offset + readlen);
+        mu_.Lock("Block::Read relock", 1000);
         if (ret != pread_len) {
             return -2;
         }
         readlen += ret;
-        mu_.Lock("Block::Read relock", 1000);
         if (readlen >= len) return readlen;
         // If disk_file_size change, read again.
     }
