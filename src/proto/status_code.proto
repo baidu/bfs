@@ -13,6 +13,7 @@ enum StatusCode {
     kGetChunkserverError = 9;
     kNsCreateError = 10;
     kCsCreateError = 11;
+    kCsTooMuchPendingBuffer = 12;
     kSafeMode = 20;
 }
 

@@ -244,7 +244,7 @@ void ChunkServerImpl::SendBlockReport() {
     } else {
         if (response.status() != kOK) {
             last_report_blockid_ = -1;
-            LOG(WARNING, "BlockReport return %d, Pause to report", response.status());
+            LOG(WARNING, "BlockReport return %s, Pause to report", StatusCode_Name(response.status()).c_str());
             return;
         }
         //LOG(INFO, "Report return old: %d new: %d", chunkserver_id_, response.chunkserver_id());
@@ -311,7 +311,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         /// Flow control
         if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers
             || work_thread_pool_->PendingNum() > FLAGS_chunkserver_max_pending_buffers) {
-            response->set_status(500);
+            response->set_status(kCsTooMuchPendingBuffer);
             LOG(WARNING, "[WriteBlock] pending buf[%ld] req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
                 g_block_buffers.Get(), work_thread_pool_->PendingNum(),
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
@@ -393,13 +393,13 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
-    if (failed || next_response->status() != 0) {
+    if (failed || next_response->status() != kOK) {
         LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu], "
-                     "status= %d, error= %d\n",
+                     "status= %s, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
-            next_response->status(), error);
-        if (next_response->status() == 0) {
-            response->set_status(error);
+            StatusCode_Name(next_response->status()).c_str(), error);
+        if (next_response->status() == kOK) {
+            response->set_status(kNotOK);
         } else {
             response->set_status(next_response->status());
         }
@@ -527,7 +527,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         return;
     }
 
-    int status = kOK;
+    StatusCode status = kOK;
 
     int64_t find_start = common::timer::get_micros();
     Block* block = block_manager_->FindBlock(block_id);
@@ -696,7 +696,7 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
         return;
     }
     int64_t block_id = request->block_id();
-    int status = kOK;
+    StatusCode status = kOK;
 
     int64_t find_start = common::timer::get_micros();
     Block* block = block_manager_->FindBlock(block_id);
