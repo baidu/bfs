@@ -117,7 +117,7 @@ bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
     if (block_version < 0) {
         if (replica.find(cs_id) != replica.end()) return true; // out-of-order message
         if (inc_replica.insert(cs_id).second) {
-            LOG(INFO, "New replica C%d V%ld %ld for writing block #%ld R%lu",
+            LOG(INFO, "New replica C%d V%ld %ld for writing block #%ld IR%lu",
                 cs_id, block_version, block_size, block_id, inc_replica.size());
         }
         return true;
@@ -194,7 +194,7 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         if (nsblock->recover_stat == kCheck) {
             return true;
         } else {
-            ///TODO: handle out-of-order message
+            // handle out-of-order message
             if (replica.find(cs_id) != replica.end()) {
                 return true;
             }
@@ -254,7 +254,15 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
     std::set<int32_t>& inc_replica = nsblock->incomplete_replica;
     std::set<int32_t>& replica = nsblock->replica;
     if (block_version < 0) {
-        inc_replica.insert(cs_id);
+        // handle out-of-order message
+        if (replica.find(cs_id) == replica.end()) {
+            if (inc_replica.insert(cs_id).second) {
+                LOG(INFO, "New incomplete replica #%ld C%d V%ld %ld R%lu IR%lu",
+                    block_id, cs_id, block_version, block_size,
+                    replica.size(), inc_replica.size());
+                incomplete_[cs_id].insert(block_id);
+            }
+        }
         return true;
     }
     /// Then block_version >= 0
@@ -494,8 +502,11 @@ void BlockMapping::DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& bl
                 RemoveFromIncomplete(block_id, cs_id);
             }
         } else {
-            int32_t ret = replica.erase(cs_id);
-            assert(ret);
+            if (replica.erase(cs_id) == 0) {
+                LOG(INFO, "Dead replica C%d #%ld not in blockmapping, ignore it R%lu IR%lu",
+                    cs_id, block_id, replica.size(), inc_replica.size());
+                continue;
+            }
         }
         if (block->recover_stat == kIncomplete) {
             LOG(INFO, "Incomplete block C%d #%ld dead replica= %lu",
@@ -503,8 +514,8 @@ void BlockMapping::DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& bl
             ///TODO: if safe_mode, don't change stat
             if (inc_replica.empty()) SetState(block, kNotInRecover);
         } else if (block->recover_stat == kBlockWriting) {
-            LOG(INFO, "Writing block C%d #%ld dead replica= %lu",
-                cs_id, block_id, replica.size());
+            LOG(INFO, "Writing block C%d #%ld dead R%lu IR%lu",
+                cs_id, block_id, replica.size(), inc_replica.size());
             if (inc_replica.size() > 0) {
                 SetState(block, kIncomplete);
                 InsertToIncomplete(block_id, inc_replica);
@@ -692,7 +703,7 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota,
 
 void BlockMapping::TryRecover(NSBlock* block) {
     mu_.AssertHeld();
-    assert (block->recover_stat == kIncomplete != kBlockWriting);
+    assert (block->recover_stat != kBlockWriting);
     if (block->recover_stat == kCheck || block->recover_stat == kIncomplete) {
         return;
     }

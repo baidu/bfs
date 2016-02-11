@@ -196,7 +196,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
                           const std::string& client_address) {
     MutexLock lock(&mu_);
     if (num > chunkserver_num_) {
-        LOG(WARNING, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
+        LOG(INFO, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
             chunkserver_num_, num);
         return false;
     }

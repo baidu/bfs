@@ -15,12 +15,14 @@
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_port);
 DECLARE_int32(nameserver_log_level);
+DECLARE_string(nameserver_warninglog);
 
 int main(int argc, char* argv[])
 {
     FLAGS_flagfile = "./bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     ::baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
+    ::baidu::common::SetWarningFile(FLAGS_nameserver_warninglog.c_str());
 
     LOG(baidu::common::INFO, "NameServe start ...");
 

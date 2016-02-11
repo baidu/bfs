@@ -123,19 +123,22 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
-        int64_t cur_block_id = block.block_id();
-        int64_t cur_block_size = block.block_size();
-
-        // update cs -> block
-        chunkserver_manager_->AddBlock(cs_id, cur_block_id);
-        // update block -> cs
+        int64_t block_id = block.block_id();
+        int64_t block_size = block.block_size();
         int64_t block_version = block.version();
         LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
-            cs_id, cur_block_id, block_version, cur_block_size);
-        block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
-                                        cur_block_size,
-                                        block_version,
-                                        safe_mode_);
+            cs_id, block_id, block_version, block_size);
+        // update block -> cs;
+        if (block_mapping_->UpdateBlockInfo(block_id, cs_id,
+                                            block_size,
+                                            block_version,
+                                            safe_mode_)) {
+            // update cs -> block
+            chunkserver_manager_->AddBlock(cs_id, block_id);
+        } else {
+            LOG(INFO, "BlockReceived drop C%d #%ld V%ld %ld",
+                cs_id, block_id, block_version, block_size);
+        }
     }
     response->set_status(kOK);
     done->Run();
@@ -242,7 +245,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::string path = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
     if (!namespace_->GetFileInfo(path, &file_info)) {
-        LOG(WARNING, "AddBlock file not found: %s", path.c_str());
+        LOG(INFO, "AddBlock file not found: %s", path.c_str());
         response->set_status(kNotFound);
         done->Run();
         return;
@@ -283,8 +286,13 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             response->set_status(kUpdateError);
         }
     } else {
-        LOG(INFO, "AddBlock for %s failed.", path.c_str());
-        response->set_status(kGetChunkserverError);
+        if (safe_mode_) {
+            LOG(INFO, "AddBlock for %s failed, safe mode.", path.c_str());
+            response->set_status(kSafeMode);
+        } else {
+            LOG(WARNING, "AddBlock for %s failed.", path.c_str());
+            response->set_status(kGetChunkserverError);
+        }
     }
     done->Run();
 }
@@ -299,7 +307,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     std::string file_name = request->file_name();
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
-        LOG(WARNING, "FinishBlock file not found: %s", file_name.c_str());
+        LOG(INFO, "FinishBlock file not found: #%ld %s", block_id, file_name.c_str());
         response->set_status(kNotFound);
         done->Run();
         return;
@@ -411,7 +419,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         response->set_status(kOK);
         LOG(INFO, "Stat: %s return: %ld", path.c_str(), file_size);
     } else {
-        LOG(WARNING, "Stat: %s return: not found", path.c_str());
+        LOG(INFO, "Stat: %s return: not found", path.c_str());
         response->set_status(kNotFound);
     }
     done->Run();
@@ -495,7 +503,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
             ret_status = kNotOK;
         }
     } else {
-        LOG(WARNING, "Change replica num not found: %s", file_name.c_str());
+        LOG(INFO, "Change replica num not found: %s", file_name.c_str());
         ret_status = kNotFound;
     }
     response->set_status(ret_status);
