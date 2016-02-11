@@ -170,11 +170,11 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return LookUp(path, file_info);
 }
 
-int NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
+StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "CreateFile split fail %s", path.c_str());
-        return 886;
+        return kBadParameter;
     }
 
     /// Find parent directory, create if not exist.
@@ -197,7 +197,7 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
         } else {
             if (!IsDir(file_info.type())) {
                 LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
-                return 886;
+                return kBadParameter;
             }
         }
         parent_id = file_info.entry_id();
@@ -206,8 +206,8 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
     const std::string& fname = paths[depth-1];
     if ((flags & O_TRUNC) == 0) {
         if (LookUp(parent_id, fname, &file_info)) {
-            LOG(INFO, "CreateFile %s fail: already exist!\n", fname.c_str());
-            return 1;
+            LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
+            return kNotOK;
         }
     }
     if (mode) {
@@ -225,19 +225,19 @@ int NameSpace::CreateFile(const std::string& path, int flags, int mode, int repl
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
-        return 0;
+        return kOK;
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail %s", path.c_str(), s.ToString().c_str());
-        return 2;
+        return kNotOK;
     }
 }
 
-int NameSpace::ListDirectory(const std::string& path,
+StatusCode NameSpace::ListDirectory(const std::string& path,
                              google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
-        return 404;
+        return kNotFound;
     }
     int64_t entry_id = info.entry_id();
     LOG(DEBUG, "ListDirectory entry_id= %ld", entry_id);
@@ -260,27 +260,27 @@ int NameSpace::ListDirectory(const std::string& path,
             common::DebugString(key.ToString()).c_str());
     }
     delete it;
-    return 0;
+    return kOK;
 }
 
-int NameSpace::Rename(const std::string& old_path,
+StatusCode NameSpace::Rename(const std::string& old_path,
                       const std::string& new_path,
                       bool* need_unlink,
                       FileInfo* remove_file) {
     *need_unlink = false;
     if (old_path == "/" || new_path == "/" || old_path == new_path) {
-        return 403;
+        return kBadParameter;
     }
     FileInfo old_file;
     if (!LookUp(old_path, &old_file)) {
         LOG(INFO, "Rename not found: %s\n", old_path.c_str());
-        return 404;
+        return kNotFound;
     }
 
     std::vector<std::string> new_paths;
     if (!common::util::SplitPath(new_path, &new_paths) || new_paths.empty()) {
         LOG(INFO, "CreateFile split fail %s", new_path.c_str());
-        return 886;
+        return kBadParameter;
     }
 
     int64_t parent_id = kRootEntryid;
@@ -288,12 +288,12 @@ int NameSpace::Rename(const std::string& old_path,
         FileInfo path_file;
         if (!LookUp(parent_id, new_paths[i], &path_file)) {
             LOG(INFO, "Rename to %s which not exist", new_paths[i].c_str());
-            return 404;
+            return kNotFound;
         }
         if (!IsDir(path_file.type())) {
             LOG(INFO, "Rename %s to %s fail: %s is not a directory",
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
-            return 886;
+            return kBadParameter;
         }
         parent_id = path_file.entry_id();
     }
@@ -307,7 +307,7 @@ int NameSpace::Rename(const std::string& old_path,
             if (IsDir(dst_file.type())) {
                 LOG(INFO, "Rename %s to %s, target %o is a exist directory",
                     old_path.c_str(), new_path.c_str(), dst_file.type());
-                return 403;
+                return kNotOK;
             }
             *need_unlink = true;
             remove_file->CopyFrom(dst_file);
@@ -333,17 +333,17 @@ int NameSpace::Rename(const std::string& old_path,
         LOG(INFO, "Rename %s to %s[%s], replace: %d",
             old_path.c_str(), new_path.c_str(),
             common::DebugString(new_key).c_str(), *need_unlink);
-        return 0;
+        return kOK;
     } else {
         LOG(WARNING, "Rename write leveldb fail: %s %s", old_path.c_str(), s.ToString().c_str());
-        return 1;
+        return kUpdateError;
     }
 
-    return 1;
+    return kNotOK;
 }
 
-int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
-    int ret_status = 0;
+StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
+    StatusCode ret_status = kOK;
     if (LookUp(path, file_removed)) {
         // Only support file
         if ((file_removed->type() & (1<<9)) == 0) {
@@ -354,38 +354,38 @@ int NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
             EncodingStoreKey(file_removed->parent_entry_id(), file_removed->name(), &file_key);
             if (DeleteFileInfo(file_key)) {
                 LOG(INFO, "Unlink done: %s\n", path.c_str());
-                ret_status = 0;
+                ret_status = kOK;
             } else {
                 LOG(WARNING, "Unlink write meta fail: %s\n", path.c_str());
-                ret_status = 400;
+                ret_status = kUpdateError;
             }
         } else {
             LOG(INFO, "Unlink not support directory: %s\n", path.c_str());
-            ret_status = 403;
+            ret_status = kBadParameter;
         }
     } else {
         LOG(INFO, "Unlink not found: %s\n", path.c_str());
-        ret_status = 404;
+        ret_status = kNotFound;
     }
     return ret_status;
 }
 
-int NameSpace::DeleteDirectory(const std::string& path, bool recursive,
+StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
                                std::vector<FileInfo>* files_removed) {
     files_removed->clear();
     FileInfo info;
     std::string store_key;
     if (!LookUp(path, &info)) {
         LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
-        return 404;
+        return kNotFound;
     } else if (!IsDir(info.type())) {
         LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
-        return 886;
+        return kNotOK;
     }
     return InternalDeleteDirectory(info, recursive, files_removed);
 }
 
-int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
+StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
                                        bool recursive,
                                        std::vector<FileInfo>* files_removed) {
     int entry_id = dir_info.entry_id();
@@ -399,10 +399,10 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
         LOG(INFO, "Try to delete an unempty directory unrecursively: %s",
             dir_info.name().c_str());
         delete it;
-        return 886;
+        return kNotOK;
     }
 
-    int ret_status = 0;
+    StatusCode ret_status = kOK;
     leveldb::WriteBatch batch;
     for (; it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
@@ -418,7 +418,7 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
             child_info.set_name(entry_name);
             LOG(INFO, "Recursive to path: %s", entry_name.c_str());
             ret_status = InternalDeleteDirectory(child_info, true, files_removed);
-            if (ret_status != 0) {
+            if (ret_status != kOK) {
                 break;
             }
         } else {
@@ -442,7 +442,7 @@ int NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     } else {
         LOG(FATAL, "Namespace write to storage fail!");
         LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
-        ret_status = 886;
+        ret_status = kUpdateError;
     }
     return ret_status;
 }

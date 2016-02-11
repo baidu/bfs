@@ -231,7 +231,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         mode = 0644;    // default mode
     }
     int replica_num = request->replica_num();
-    int status = namespace_->CreateFile(path, flags, mode, replica_num);
+    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num);
     response->set_status(status);
     done->Run();
 }
@@ -389,7 +389,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     std::string path = NameSpace::NormalizePath(request->path());
     common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
 
-    int status = namespace_->ListDirectory(path, response->mutable_files());
+    StatusCode status = namespace_->ListDirectory(path, response->mutable_files());
     response->set_status(status);
     done->Run();
 }
@@ -435,8 +435,8 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
 
     bool need_unlink;
     FileInfo remove_file;
-    int status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file);
-    if (status == 0 && need_unlink) {
+    StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file);
+    if (status == kOK && need_unlink) {
         block_mapping_->RemoveBlocksForFile(remove_file);
     }
     response->set_status(status);
@@ -452,11 +452,11 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     std::string path = NameSpace::NormalizePath(request->path());
 
     FileInfo file_info;
-    int status = namespace_->RemoveFile(path, &file_info);
-    if (status == 0) {
+    StatusCode status = namespace_->RemoveFile(path, &file_info);
+    if (status == kOK) {
         block_mapping_->RemoveBlocksForFile(file_info);
     }
-    LOG(INFO, "Unlink: %s return %d", path.c_str(), status);
+    LOG(INFO, "Unlink: %s return %s", path.c_str(), StatusCode_Name(status).c_str());
     response->set_status(status);
     done->Run();
 }
@@ -473,7 +473,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
         done->Run();
     }
     std::vector<FileInfo> removed;
-    int ret_status = namespace_->DeleteDirectory(path, recursive, &removed);
+    StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, &removed);
     for (uint32_t i = 0; i < removed.size(); i++) {
         block_mapping_->RemoveBlocksForFile(removed[i]);
     }
@@ -489,7 +489,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     std::string file_name = NameSpace::NormalizePath(request->file_name());
     int32_t replica_num = request->replica_num();
 
-    int ret_status = kOK;
+    StatusCode ret_status = kOK;
 
     FileInfo file_info;
     if (namespace_->GetFileInfo(file_name, &file_info)) {
