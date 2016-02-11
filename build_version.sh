@@ -43,8 +43,8 @@ GIT_INFO_FILE=git_info.tmp
 VERSION_CPP_FILE=src/version.cc
 
 # generate template file
-git log | head -3 | sed 's/$/&\\n\"/g' | sed 's/^/    "/' > $GIT_INFO_FILE
-git log | head -4 | tail -1 | sed 's/$/&\";/g' | sed 's/^/    "/' >> $GIT_INFO_FILE
+git log | head -2 | sed 's/$/&\\n\"/g' | sed 's/^/    "/' > $GIT_INFO_FILE
+git log | head -3 | tail -1 | sed 's/$/&\";/g' | sed 's/^/    "/' >> $GIT_INFO_FILE
 gen_info_template_header > $TEMPLATE_HEADER_FILE
 gen_info_template_foot > $TEMPLATE_FOOT_FILE
 gen_info_print_template >> $TEMPLATE_FOOT_FILE
