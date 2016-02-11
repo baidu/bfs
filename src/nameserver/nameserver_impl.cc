@@ -617,11 +617,12 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::HumanReadableString(chunkserver.disk_quota()) + "B";
         std::string ratio = common::NumToString(
-            chunkserver.data_size() * 100 / chunkserver.disk_quota());
+            chunkserver.data_size() * 100 / chunkserver.disk_quota());       
         table_str += "</td><td><div class=\"progress\" style=\"margin-bottom:0\">"
                "<div class=\"progress-bar\" "
-                    "role=\"progressbar\" aria-valuenow=\""+ ratio + "\" aria-valuemin=\"0\" "
-                    "aria-valuemax=\"100\" style=\"width: "+ ratio + "%\">" + ratio + "%"
+                    "role=\"progressbar\" aria-valuenow=\"60\" aria-valuemin=\"0\" "
+                    "aria-valuemax=\"100\" "
+                    "style=\"width: "+ ratio + "%; color:#000;\">" + ratio + "%"
                "</div></div>";
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.buffers());
