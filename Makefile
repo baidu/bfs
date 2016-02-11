@@ -50,9 +50,10 @@ CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
 LEVELDB = ./thirdparty/leveldb/libleveldb.a
 
-FLAGS_OBJ = $(patsubst %.cc, %.o, $(wildcard src/*.cc))
 COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
-OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
+FLAGS_OBJ = src/flags.o
+VERSION_OBJ = src/version.o
+OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
@@ -117,6 +118,11 @@ $(FUSE_OBJ): %.o: %.cc
 
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
+src/version.cc: FORCE
+	sh build_version.sh
+
+.PHONY: FORCE
+FORCE:
 
 clean:
 	rm -rf $(BIN)
