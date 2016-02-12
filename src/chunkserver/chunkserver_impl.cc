@@ -270,7 +270,7 @@ void ChunkServerImpl::SendBlockReport() {
         for (int i = 0; i < response.close_blocks_size(); ++i) {
             boost::function<void ()> close_block_task = // TODO
                 boost::bind(&ChunkServerImpl::CloseIncompleteBlock, this, response.close_blocks(i));
-            recover_thread_pool_->AddTask(close_block_task);
+            write_thread_pool_->AddTask(close_block_task);
         }
     }
     blockreport_task_id_ = work_thread_pool_->DelayTask(FLAGS_blockreport_interval* 1000,
@@ -738,7 +738,8 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<table class=dataintable>";
     str += "<tr><td>Block number</td><td>Data size</td>"
            "<td>Write(QPS)</td><td>Write(Speed)</td><td>Read(QPS)</td><td>Read(Speed)</td>"
-           "<td>Recover(Speed)</td><td>Buffers(new/delete)</td><tr>";
+           "<td>Recover(Speed)</td><td>Buffers(new/delete)</td>"
+           "<td>PendingTask(W/R/Close/Recv)</td><tr>";
     str += "<tr><td>" + common::NumToString(g_blocks.Get()) + "</td>";
     str += "<td>" + common::HumanReadableString(g_data_size.Get()) + "</td>";
     str += "<td>" + common::NumToString(counters.write_ops) + "</td>";
@@ -749,6 +750,10 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<td>" + common::NumToString(g_block_buffers.Get())
            + "(" + common::NumToString(counters.buffers_new) + "/"
            + common::NumToString(counters.buffers_delete) +")" + "</td>";
+    str += "<td>" + common::NumToString(work_thread_pool_->PendingNum()) + "/"
+           + common::NumToString(read_thread_pool_->PendingNum()) + "/"
+           + common::NumToString(write_thread_pool_->PendingNum()) + "/"
+           + common::NumToString(recover_thread_pool_->PendingNum()) + "</td>";
     str += "</tr>";
     str += "</table>";
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
