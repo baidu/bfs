@@ -531,8 +531,8 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
 }
 
 void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
-    std::string hi_recover, lo_recover, lost, check, incomplete;
-    block_mapping_->ListRecover(&hi_recover, &lo_recover, &lost, &check, &incomplete);
+    std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
+    block_mapping_->ListRecover(&hi_recover, &lo_recover, &lost, &hi_check, &lo_check, &incomplete);
     std::string str =
             "<html><head><title>Recover Details</title>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
@@ -542,14 +542,17 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     str += "<body><div class=\"col-sm-12  col-md-12\">";
     str += "<h1>分布式文件系统控制台 - RecoverDetails</h1>";
 
-    str += "<table class=\"table\"><tr><td>hi_recover</td></tr>";
-    str += "<tr><td>" + hi_recover + "</td></tr>";
-    str += "<tr><td>incomplete</td></tr>";
-    str += "<tr><td>" + incomplete + "</td></tr>";
+    str += "<table class=\"table\">";
     str += "<tr><td>lost</td></tr>";
     str += "<tr><td>" + lost + "</td></tr>";
-    str += "<tr><td>check</td></tr>";
-    str += "<tr><td>" + check + "</td></tr>";
+    str += "<tr><td>incomplete</td></tr>";
+    str += "<tr><td>" + incomplete + "</td></tr>";
+    str += "<tr><td>hi_check</td></tr>";
+    str += "<tr><td>" + hi_check + "</td></tr>";
+    str += "<tr><td>lo_check</td></tr>";
+    str += "<tr><td>" + lo_check + "</td></tr>";
+    str += "<tr><td>hi_recover</td></tr>";
+    str += "<tr><td>" + hi_recover + "</td></tr>";
     str += "<tr><td>lo_recover</td></tr>";
     str += "<tr><td>" + lo_recover + "</td></tr></table>";
 
