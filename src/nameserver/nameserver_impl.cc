@@ -636,8 +636,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t lo_recover_num, pending_num, hi_recover_num, lost_num, incomplete_num;
-    block_mapping_->GetStat(&lo_recover_num, &pending_num, &hi_recover_num,
+    int64_t lo_recover_num, hi_recover_num, lo_pending, hi_pending, lost_num, incomplete_num;
+    block_mapping_->GetStat(&lo_recover_num, &hi_recover_num, &lo_pending, &hi_pending,
                             &lost_num, &incomplete_num);
     str += "<h1 style=\"margin-top: 10px; margin-bottom: 0px;\">分布式文件系统控制台 - NameServer</h1>";
 
@@ -656,7 +656,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Recover(hi/lo): " + common::NumToString(hi_recover_num) + "/" + common::NumToString(lo_recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(pending_num) + "</br>";
+    str += "Pending: " + common::NumToString(hi_pending) + "/" + common::NumToString(lo_pending) + "</br>";
     str += "Lost: " + common::NumToString(lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
     str += "<a href=\"/dfs/details\">Details</a>";
