@@ -208,7 +208,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
             heartbeat_list_.find(client_it->second) != heartbeat_list_.end()) {
             ChunkServerInfo* cs = NULL;
             if (GetChunkServerPtr(client_it->second, &cs)) {
-                if (cs->data_size() < cs->disk_quota()
+                if (cs->data_size() < cs->disk_quota() * 0.95
                         && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
                     chains->push_back(std::make_pair(cs->id(), cs->address()));
                     if (--num == 0) {
@@ -231,7 +231,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
                 // skip it.
                 continue;
             }
-            if (cs->data_size() < cs->disk_quota()
+            if (cs->data_size() < cs->disk_quota() * 0.95
                 && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
                 loads.push_back(
                     std::make_pair(cs->data_size(), cs));
@@ -338,7 +338,8 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         if (!GetChunkServerPtr(cs_id, &cs)) {
             return;
         }
-        if (cs->buffers() > FLAGS_chunkserver_max_pending_buffers * 0.5) {
+        if (cs->buffers() > FLAGS_chunkserver_max_pending_buffers * 0.5
+            || cs->data_size() > cs->disk_quota() * 0.95) {
             return;
         }
     }

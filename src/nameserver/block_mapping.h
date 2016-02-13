@@ -46,24 +46,27 @@ public:
                          int64_t block_version, bool safe_mode);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
-    void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
     StatusCode CheckBlockVersion(int64_t block_id, int64_t version);
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::map<int64_t, int32_t>* recover_blocks);
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
-    void GetStat(int64_t* recover_num, int64_t* pending_num,
-                 int64_t* urgent_num, int64_t* lost_num,
-                 int64_t* incomplete_num);
+    void GetStat(int64_t* lo_recover_num, int64_t* hi_recover_num,
+                 int64_t* lo_pending, int64_t* hi_pending,
+                 int64_t* lost_num, int64_t* incomplete_num);
     void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
-                     std::string* check, std::string* incomplete);
+                     std::string* hi_check, std::string* lo_check, std::string* incomplete);
 
 private:
+    void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
+    typedef std::map<int32_t, std::set<int64_t> > CheckList;
+    void ListCheckList(const CheckList& check_list, std::string* output);
     void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
                             std::map<int64_t, int32_t>* recover_blocks,
                             std::set<int64_t>* check_set);
     void TryRecover(NSBlock* block);
+    bool RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id);
     void CheckRecover(int32_t cs_id, int64_t block_id);
     void InsertToIncomplete(int64_t block_id, const std::set<int32_t>& inc_replica);
     void RemoveFromIncomplete(int64_t block_id, int32_t cs_id);
@@ -84,10 +87,9 @@ private:
     NSBlockMap block_map_;
     int64_t next_block_id_;
 
-    typedef std::map<int32_t, std::set<int64_t> > CheckList;
-    CheckList recover_check_;
-    typedef std::map<int32_t, std::set<int64_t> > IncompleteList;
-    IncompleteList incomplete_;
+    CheckList hi_recover_check_;
+    CheckList lo_recover_check_;
+    CheckList incomplete_;
     std::set<int64_t> lo_pri_recover_;
     std::set<int64_t> hi_pri_recover_;
     std::set<int64_t> lost_blocks_;

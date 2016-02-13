@@ -14,6 +14,7 @@
 DECLARE_int32(recover_speed);
 DECLARE_int32(recover_timeout);
 DECLARE_bool(bfs_bug_tolerant);
+DECLARE_bool(clean_redundancy);
 
 namespace baidu {
 namespace bfs {
@@ -144,7 +145,7 @@ bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
             nsblock->version = block_version;
             nsblock->block_size = block_size;
         } else {
-            if (nsblock->incomplete_replica.empty()) {
+            if (inc_replica.empty()) {
                 SetState(nsblock, kNotInRecover);
                 TryRecover(nsblock);
                 if (replica.size() >= 2) {
@@ -204,6 +205,7 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         }
     }
     /// Then block_version >= 0
+    assert(inc_replica.empty());
     if (block_version > nsblock->version) {
         LOG(INFO, "Block #%ld update by C%d from V%ld %ld to V%ld %ld",
             block_id, cs_id, nsblock->version, nsblock->block_size,
@@ -240,8 +242,15 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         LOG(INFO, "New replica C%d V%ld %ld for #%ld R%lu",
             cs_id, block_version, block_size, block_id, replica.size());
     }
+
     if (!safe_mode || replica.size() >= nsblock->expect_replica_num) {
         TryRecover(nsblock);
+    }
+    if (FLAGS_clean_redundancy && !safe_mode && replica.size() > nsblock->expect_replica_num) {
+        LOG(INFO, "Too much replica #%ld R%lu expect=%d C%d ",
+            block_id, replica.size(), nsblock->expect_replica_num, cs_id);
+        replica.erase(cs_id);
+        return false;
     }
     return true;
 }
@@ -497,9 +506,11 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
     if (inc_replica.erase(cs_id)) {
         if (block->recover_stat == kIncomplete) {
             RemoveFromIncomplete(block_id, cs_id);
-        } else if (block->recover_stat == kCheck) {
-            block->recover_stat = kNotInRecover;
         }
+    } else if (block->recover_stat == kCheck) {
+        LOG(INFO, "Recovering replica dead #%ld C%d %R %IR retry recover",
+            block_id, cs_id, replica.size(), inc_replica.size());
+        block->recover_stat = kNotInRecover;
     } else {
         if (replica.erase(cs_id) == 0) {
             LOG(INFO, "Dead replica C%d #%ld not in blockmapping, ignore it R%lu IR%lu",
@@ -535,11 +546,16 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
         DealWithDeadBlock(cs_id, *it);
     }
     MutexLock lock(&mu_);
-    for (std::set<int64_t>::iterator it = recover_check_[cs_id].begin();
-            it != recover_check_[cs_id].end(); ++it) {
-        DealWithDeadBlock(cs_id, *it);
+    for (std::set<int64_t>::iterator it = hi_recover_check_[cs_id].begin();
+            it != hi_recover_check_[cs_id].end(); ++it) {
+         DealWithDeadBlock(cs_id, *it);
     }
-    recover_check_.erase(cs_id);
+    hi_recover_check_.erase(cs_id);
+    for (std::set<int64_t>::iterator it = lo_recover_check_[cs_id].begin();
+            it != lo_recover_check_[cs_id].end(); ++it) {
+         DealWithDeadBlock(cs_id, *it);
+    }
+    lo_recover_check_.erase(cs_id);
 }
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
@@ -548,50 +564,65 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     if (hi_pri_recover_.empty() && lo_pri_recover_.empty()) {
         return;
     }
-    std::set<int64_t>& check_set = recover_check_[cs_id];
-    int32_t quota = FLAGS_recover_speed - check_set.size();
-    LOG(DEBUG, "C%d has %lu pending_recover blocks", cs_id, check_set.size());
+    std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
+    std::set<int64_t>& hi_check_set = hi_recover_check_[cs_id];
+    int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
+    LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
+        cs_id, hi_check_set.size(), lo_check_set.size());
     quota = quota < block_num ? quota : block_num;
     LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ",
         hi_pri_recover_.size(), lo_pri_recover_.size());
-    PickRecoverFromSet(cs_id, quota, &hi_pri_recover_, recover_blocks, &check_set);
-    PickRecoverFromSet(cs_id, quota, &lo_pri_recover_, recover_blocks, &check_set);
+    PickRecoverFromSet(cs_id, quota, &hi_pri_recover_, recover_blocks, &hi_check_set);
+    PickRecoverFromSet(cs_id, quota, &lo_pri_recover_, recover_blocks, &lo_check_set);
     LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
 
+bool BlockMapping::RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id) {
+    mu_.AssertHeld();
+    std::set<int64_t>::iterator it = lo_recover_check_[cs_id].find(block_id);
+    if (it != lo_recover_check_[cs_id].end()){
+        lo_recover_check_[cs_id].erase(it);
+        //LOG(DEBUG, "Remove #%ld from lo_recover_check", block_id);
+    } else {
+        it = hi_recover_check_[cs_id].find(block_id);
+        if (it != hi_recover_check_[cs_id].end()) {
+            //LOG(DEBUG, "Remove #%ld from hi_recover_check", block_id);
+            hi_recover_check_[cs_id].erase(it);
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
 void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success) {
     MutexLock lock(&mu_);
+    bool ret = RemoveFromRecoverCheckList(cs_id, block_id);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
         LOG(DEBUG, "ProcessRecoveredBlock for C%d can't find block: #%ld ", cs_id, block_id);
-        block = NULL;
-    }
-    if (recover_success) {
-        if (block) {
-            block->replica.insert(cs_id);
-        }
-        LOG(DEBUG, "Recovered block #%ld at C%d ", block_id, cs_id);
-    } else {
-        LOG(INFO, "Recover block fail #%ld at C%d", block_id, cs_id);
-    }
-    CheckList::iterator it = recover_check_.find(cs_id);
-    if (it == recover_check_.end()) {
-        LOG(DEBUG, "Not in recover_check_ #%ld C%d ", block_id, cs_id);
         return;
     }
-    (it->second).erase(block_id);
-    if (block) {
-        block->incomplete_replica.erase(cs_id);
-        SetState(block, kNotInRecover);
-        TryRecover(block);
+    if (!ret) {
+        LOG(WARNING, "RemoveFromRecoverCheckList fail #%ld C%d %s",
+            block_id, cs_id, RecoverStat_Name(block->recover_stat).c_str());
     }
+    if (recover_success) {
+        block->replica.insert(cs_id);
+        LOG(DEBUG, "Recovered block #%ld at C%d ", block_id, cs_id);
+    } else {
+        LOG(INFO, "Recover block fail #%ld at C%d ", block_id, cs_id);
+    }
+    block->incomplete_replica.erase(cs_id);
+    SetState(block, kNotInRecover);
+    ///TODO: if (!safe_mode)
+    TryRecover(block);
 }
 
 void BlockMapping::GetCloseBlocks(int32_t cs_id,
                                   google::protobuf::RepeatedField<int64_t>* close_blocks) {
     MutexLock lock(&mu_);
-    IncompleteList::iterator c_it = incomplete_.find(cs_id);
+    CheckList::iterator c_it = incomplete_.find(cs_id);
     if (c_it != incomplete_.end()) {
         const std::set<int64_t>& blocks = c_it->second;
         for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
@@ -601,17 +632,23 @@ void BlockMapping::GetCloseBlocks(int32_t cs_id,
     }
 }
 
-void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* pending_num,
-                           int64_t* hi_recover_num, int64_t* lost_num,
-                           int64_t* incomplete_num) {
+void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* hi_recover_num,
+                           int64_t* lo_pending, int64_t* hi_pending,
+                           int64_t* lost_num, int64_t* incomplete_num) {
     MutexLock lock(&mu_);
     if (lo_recover_num) {
         *lo_recover_num = lo_pri_recover_.size();
     }
-    if (pending_num) {
-        *pending_num = 0;
-        for (CheckList::iterator it = recover_check_.begin(); it != recover_check_.end(); ++it) {
-            *pending_num += (it->second).size();
+    if (lo_pending) {
+        *lo_pending = 0;
+        for (CheckList::iterator it = lo_recover_check_.begin(); it != lo_recover_check_.end(); ++it) {
+            *lo_pending += (it->second).size();
+        }
+    }
+    if (hi_pending) {
+        *hi_pending = 0;
+        for (CheckList::iterator it = hi_recover_check_.begin(); it != hi_recover_check_.end(); ++it) {
+            *hi_pending += (it->second).size();
         }
     }
     if (hi_recover_num) {
@@ -622,45 +659,60 @@ void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* pending_num,
     }
     if (incomplete_num) {
         *incomplete_num = 0;
-        for (IncompleteList::iterator it = incomplete_.begin(); it != incomplete_.end(); ++it) {
+        for (CheckList::iterator it = incomplete_.begin(); it != incomplete_.end(); ++it) {
             *incomplete_num += (it->second).size();
         }
     }
 }
-void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
-                               std::string* check, std::string* incomplete) {
+
+void BlockMapping::ListCheckList(const CheckList& check_list, std::string* output) {
+    for (CheckList::const_iterator it = check_list.begin(); it != check_list.end(); ++it) {
+        output->append(common::NumToString(it->first) + ": ");
+        const std::set<int64_t>& block_set = it->second;
+        uint32_t last = output->size();
+        for (std::set<int64_t>::iterator block_it = block_set.begin();
+                block_it != block_set.end(); ++block_it) {
+            output->append(common::NumToString(*block_it) + " ");
+            if (output->size() - last > 1024) {
+                output->append("...");
+                break;
+            }
+            last = output->size();
+        }
+        output->append("<br>");
+    }
+}
+void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover,
+                               std::string* lost, std::string* hi_check,
+                               std::string* lo_check, std::string* incomplete) {
     MutexLock lock(&mu_);
     for (std::set<int64_t>::iterator it = lo_pri_recover_.begin(); it != lo_pri_recover_.end(); ++it) {
         lo_recover->append(common::NumToString(*it) + " ");
+        if (lo_recover->size() > 1024) {
+            lo_recover->append("...");
+            break;
+        }
     }
 
     for (std::set<int64_t>::iterator it = hi_pri_recover_.begin(); it != hi_pri_recover_.end(); ++it) {
         hi_recover->append(common::NumToString(*it) + " ");
+        if (hi_recover->size() > 1024) {
+            hi_recover->append("...");
+            break;
+        }
     }
 
     for (std::set<int64_t>::iterator it = lost_blocks_.begin(); it != lost_blocks_.end(); ++it) {
         lost->append(common::NumToString(*it) + " ");
+        if (lost->size() > 1024) {
+            lost->append("...");
+            break;
+        }
     }
 
-    for (CheckList::iterator it = recover_check_.begin(); it != recover_check_.end(); ++it) {
-        check->append(common::NumToString(it->first) + ": ");
-        const std::set<int64_t>& block_set = it->second;
-        for (std::set<int64_t>::iterator block_it = block_set.begin(); block_it != block_set.end();
-             ++block_it) {
-            check->append(common::NumToString(*block_it) + " ");
-        }
-        check->append("<br>");
-    }
-
-    for (CheckList::iterator it = incomplete_.begin(); it != incomplete_.end(); ++it) {
-        incomplete->append(common::NumToString(it->first) + ": ");
-        const std::set<int64_t>& block_set = it->second;
-        for (std::set<int64_t>::iterator block_it = block_set.begin(); block_it != block_set.end();
-             ++block_it) {
-            incomplete->append(common::NumToString(*block_it) + " ");
-        }
-        incomplete->append("<br>");
-    }
+    ListCheckList(hi_recover_check_, hi_check);
+    ListCheckList(lo_recover_check_, lo_check);
+    ListCheckList(incomplete_, incomplete);
 }
 
 void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota,
@@ -759,20 +811,18 @@ void BlockMapping::TryRecover(NSBlock* block) {
 void BlockMapping::CheckRecover(int32_t cs_id, int64_t block_id) {
     MutexLock lock(&mu_);
     LOG(DEBUG, "recover timeout check: #%ld C%d ", block_id, cs_id);
-    CheckList::iterator it = recover_check_.find(cs_id);
-    if (it == recover_check_.end()) return;
-    std::set<int64_t>& block_set = it->second;
-    std::set<int64_t>::iterator check_it = block_set.find(block_id);
-    if (check_it == block_set.end()) {
-        return;
-    }
+    bool ret = RemoveFromRecoverCheckList(cs_id, block_id);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
         LOG(DEBUG, "CheckRecover for C%d can't find block: #%ld ", cs_id, block_id);
-        block_set.erase(block_id);
         return;
     }
-    block_set.erase(block_id);
+    if (!ret) {
+        LOG(WARNING, "RemoveFromRecoverCheckList fail #%ld C%d %s",
+            block_id, cs_id, RecoverStat_Name(block->recover_stat).c_str());
+    }
+    block->incomplete_replica.erase(cs_id);
+    SetState(block, kNotInRecover);
     TryRecover(block);
 }
 
@@ -786,7 +836,7 @@ void BlockMapping::InsertToIncomplete(int64_t block_id, const std::set<int32_t>&
 void BlockMapping::RemoveFromIncomplete(int64_t block_id, int32_t cs_id) {
     mu_.AssertHeld();
     bool error = false;
-    IncompleteList::iterator incomplete_it = incomplete_.find(cs_id);
+    CheckList::iterator incomplete_it = incomplete_.find(cs_id);
     if (incomplete_it != incomplete_.end()) {
         std::set<int64_t>& incomplete_set = incomplete_it->second;
         if (!incomplete_set.erase(block_id)) error = true;

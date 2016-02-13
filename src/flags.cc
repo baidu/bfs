@@ -20,6 +20,7 @@ DEFINE_string(nameserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in ms");
 DEFINE_int32(recover_speed, 100, "max num of block to recover for one chunkserver");
 DEFINE_int32(recover_timeout, 180, "Recover timeout for one chunkserver");
+DEFINE_bool(clean_redundancy, false, "Clean redundant replica");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
