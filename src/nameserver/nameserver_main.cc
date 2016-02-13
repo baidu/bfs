@@ -58,7 +58,7 @@ int main(int argc, char* argv[])
 
     rpc_server.Run();
 
-    delete webservice;
+    //delete webservice;
     LOG(baidu::common::WARNING, "Nameserver exit");
     return EXIT_SUCCESS;
 }
