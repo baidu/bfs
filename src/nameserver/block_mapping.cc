@@ -145,7 +145,7 @@ bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
             nsblock->version = block_version;
             nsblock->block_size = block_size;
         } else {
-            if (nsblock->incomplete_replica.empty()) {
+            if (inc_replica.empty()) {
                 SetState(nsblock, kNotInRecover);
                 TryRecover(nsblock);
                 if (replica.size() >= 2) {
