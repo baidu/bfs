@@ -37,7 +37,7 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     chunkserver_block_map_.erase(id);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
-    block_mapping_->DealWithDeadBlocks(id, blocks);
+    block_mapping_->DealWithDeadNode(id, blocks);
     mu_.Lock();
     if (cs->is_dead()) {
         cs->set_status(kCsOffLine);
@@ -231,7 +231,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
                 // skip it.
                 continue;
             }
-            if (cs->data_size() < cs->disk_quota()
+            if (cs->data_size() < cs->disk_quota() * 0.95
                 && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
                 loads.push_back(
                     std::make_pair(cs->data_size(), cs));
