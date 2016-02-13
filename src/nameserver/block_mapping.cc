@@ -205,7 +205,6 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         }
     }
     /// Then block_version >= 0
-    assert(inc_replica.empty());
     if (block_version > nsblock->version) {
         LOG(INFO, "Block #%ld update by C%d from V%ld %ld to V%ld %ld",
             block_id, cs_id, nsblock->version, nsblock->block_size,
