@@ -204,7 +204,6 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         }
     }
     /// Then block_version >= 0
-    assert(inc_replica.empty());
     if (block_version > nsblock->version) {
         LOG(INFO, "Block #%ld update by C%d from V%ld %ld to V%ld %ld",
             block_id, cs_id, nsblock->version, nsblock->block_size,
@@ -486,49 +485,61 @@ StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
     return kOK;
 }
 
-void BlockMapping::DealWithDeadBlocks(int32_t cs_id, const std::set<int64_t>& blocks) {
+void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
+    mu_.AssertHeld();
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        LOG(DEBUG, "DealWithDeadBlocks for C%d can't find block: #%ld ", cs_id, block_id);
+        return;
+    }
+    std::set<int32_t>& inc_replica = block->incomplete_replica;
+    std::set<int32_t>& replica = block->replica;
+    if (inc_replica.erase(cs_id)) {
+        if (block->recover_stat == kIncomplete) {
+            RemoveFromIncomplete(block_id, cs_id);
+        } else if (block->recover_stat == kCheck) {
+            block->recover_stat = kNotInRecover;
+        }
+    } else {
+        if (replica.erase(cs_id) == 0) {
+            LOG(INFO, "Dead replica C%d #%ld not in blockmapping, ignore it R%lu IR%lu",
+                cs_id, block_id, replica.size(), inc_replica.size());
+            return;
+        }
+    }
+    if (block->recover_stat == kIncomplete) {
+        LOG(INFO, "Incomplete block C%d #%ld dead replica= %lu",
+            cs_id, block_id, replica.size());
+        ///TODO: if safe_mode, don't change stat
+        if (inc_replica.empty()) SetState(block, kNotInRecover);
+    } else if (block->recover_stat == kBlockWriting) {
+        LOG(INFO, "Writing block C%d #%ld dead R%lu IR%lu",
+            cs_id, block_id, replica.size(), inc_replica.size());
+        if (inc_replica.size() > 0) {
+            SetState(block, kIncomplete);
+            InsertToIncomplete(block_id, inc_replica);
+        } else {
+            ///TODO: if safe_mode, don't change stat
+            SetState(block, kNotInRecover);
+        }
+    }   // else Normal check low hi
+
+    LOG(DEBUG, "Dead replica at C%d add #%ld R%lu try recover",
+        cs_id, block_id, replica.size());
+    TryRecover(block);
+}
+
+void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks) {
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
-        NSBlock* block = NULL;
-        int64_t block_id = *it;
-        if (!GetBlockPtr(block_id, &block)) {
-            LOG(DEBUG, "DealWithDeadBlocks for C%d can't find block: #%ld ", cs_id, block_id);
-            continue;
-        }
-        std::set<int32_t>& inc_replica = block->incomplete_replica;
-        std::set<int32_t>& replica = block->replica;
-        if (inc_replica.erase(cs_id)) {
-            if (block->recover_stat == kIncomplete) {
-                RemoveFromIncomplete(block_id, cs_id);
-            }
-        } else {
-            if (replica.erase(cs_id) == 0) {
-                LOG(INFO, "Dead replica C%d #%ld not in blockmapping, ignore it R%lu IR%lu",
-                    cs_id, block_id, replica.size(), inc_replica.size());
-                continue;
-            }
-        }
-        if (block->recover_stat == kIncomplete) {
-            LOG(INFO, "Incomplete block C%d #%ld dead replica= %lu",
-                cs_id, block_id, replica.size());
-            ///TODO: if safe_mode, don't change stat
-            if (inc_replica.empty()) SetState(block, kNotInRecover);
-        } else if (block->recover_stat == kBlockWriting) {
-            LOG(INFO, "Writing block C%d #%ld dead R%lu IR%lu",
-                cs_id, block_id, replica.size(), inc_replica.size());
-            if (inc_replica.size() > 0) {
-                SetState(block, kIncomplete);
-                InsertToIncomplete(block_id, inc_replica);
-            } else {
-                ///TODO: if safe_mode, don't change stat
-                SetState(block, kNotInRecover);
-            }
-        }   // else Normal check low hi
-
-        LOG(DEBUG, "Dead replica at C%d add #%ld R%lu try recover",
-            cs_id, block_id, replica.size());
-        TryRecover(block);
+        DealWithDeadBlock(cs_id, *it);
     }
+    MutexLock lock(&mu_);
+    for (std::set<int64_t>::iterator it = recover_check_[cs_id].begin();
+            it != recover_check_[cs_id].end(); ++it) {
+        DealWithDeadBlock(cs_id, *it);
+    }
+    recover_check_.erase(cs_id);
 }
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
@@ -571,6 +582,7 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
     }
     (it->second).erase(block_id);
     if (block) {
+        block->incomplete_replica.erase(cs_id);
         SetState(block, kNotInRecover);
         TryRecover(block);
     }
@@ -692,6 +704,7 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota,
         int src_id = *src_it;
         recover_blocks->insert(std::make_pair(block_id, src_id));
         check_set->insert(block_id);
+        cur_block->incomplete_replica.insert(cs_id);
         assert(cur_block->recover_stat == kHiRecover || cur_block->recover_stat == kLoRecover);
         cur_block->recover_stat = kCheck;
         LOG(INFO, "PickRecoverBlocks for C%d #%ld source: C%d ", cs_id, block_id, src_id);
