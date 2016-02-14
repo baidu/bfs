@@ -262,9 +262,14 @@ void ChunkServerImpl::SendBlockReport() {
 
         LOG(INFO, "Block report done. %d replica blocks", response.new_replicas_size());
         for (int i = 0; i < response.new_replicas_size(); ++i) {
+            const ReplicaInfo& rep = response.new_replicas(i);
             boost::function<void ()> new_replica_task =
-                boost::bind(&ChunkServerImpl::PullNewBlock, this, response.new_replicas(i));
-            recover_thread_pool_->AddTask(new_replica_task);
+                boost::bind(&ChunkServerImpl::PullNewBlock, this, rep);
+            if (rep.priority()) {
+                recover_thread_pool_->AddPriorityTask(new_replica_task);
+            } else {
+                recover_thread_pool_->AddTask(new_replica_task);
+            }
         }
 
         for (int i = 0; i < response.close_blocks_size(); ++i) {
@@ -664,14 +669,15 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         offset += len;
     }
     delete chunkserver;
+    LOG(INFO, "Done pull : #%ld V%d %ld bytes", block_id, block->GetVersion(), offset);
     block->DecRef();
+    ///TODO: block has ben removed?
     if (!success) {
         block_manager_->RemoveBlock(block_id);
         report_request.add_failed(block_id);
     } else {
         report_request.add_blocks(block_id);
     }
-    LOG(INFO, "Done pull : #%ld V%d %ld bytes", block_id, block->GetVersion(), offset);
 
 REPORT:
     PullBlockReportResponse report_response;

@@ -510,11 +510,7 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
                 block_id, cs_id, replica.size(), inc_replica.size());
             block->recover_stat = kNotInRecover;
             //RemoveFromRecoverCheckList(cs_id, block_id);
-        } else {
-            LOG(WARNING, "Incompleta replica dead with wrong %s #%ld C%d R%lu IR%lu",
-                RecoverStat_Name(block->recover_stat).c_str(),
-                block_id, cs_id, replica.size(), inc_replica.size());
-        }
+        } // else kBlockWriting
     } else {
         if (replica.erase(cs_id) == 0) {
             LOG(INFO, "Dead replica C%d #%ld not in blockmapping, ignore it R%lu IR%lu",
@@ -563,7 +559,8 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
 }
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
-                                     std::map<int64_t, int32_t>* recover_blocks) {
+                                     std::map<int64_t, int32_t>* recover_blocks,
+                                     int32_t* hi_num) {
     MutexLock lock(&mu_);
     if (hi_pri_recover_.empty() && lo_pri_recover_.empty()) {
         return;
@@ -577,6 +574,7 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ",
         hi_pri_recover_.size(), lo_pri_recover_.size());
     PickRecoverFromSet(cs_id, quota, &hi_pri_recover_, recover_blocks, &hi_check_set);
+    if (hi_num) *hi_num = recover_blocks->size();
     PickRecoverFromSet(cs_id, quota, &lo_pri_recover_, recover_blocks, &lo_check_set);
     LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
@@ -833,7 +831,7 @@ void BlockMapping::CheckRecover(int32_t cs_id, int64_t block_id) {
         block->incomplete_replica.erase(cs_id);
     } else {
         // if ret == false, maybe a task for a dead chunkserver, don't change state
-        LOG(WARNING, "RemoveFromRecoverCheckList fail #%ld C%d %s",
+        LOG(DEBUG, "CheckRecover not found #%ld C%d %s",
             block_id, cs_id, RecoverStat_Name(block->recover_stat).c_str());
     }
     TryRecover(block);
