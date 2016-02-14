@@ -797,7 +797,7 @@ void BlockMapping::TryRecover(NSBlock* block) {
         return;
     }
     if (block->recover_stat != kNotInRecover) {
-        LOG(INFO, "Block #%ld C%ld %ld R%lu back to normal from %s",
+        LOG(INFO, "Block #%ld V%ld %ld R%lu back to normal from %s",
             block_id, block->version, block->block_size, block->replica.size(),
             RecoverStat_Name(block->recover_stat).c_str());
         SetState(block, kNotInRecover);
@@ -816,12 +816,14 @@ void BlockMapping::CheckRecover(int32_t cs_id, int64_t block_id) {
         LOG(DEBUG, "CheckRecover for C%d can't find block: #%ld ", cs_id, block_id);
         return;
     }
-    if (!ret) {
+    if (ret) {
+        SetState(block, kNotInRecover);
+    } else {
+        // if ret == false, maybe a task for a dead chunkserver, don't change state
         LOG(WARNING, "RemoveFromRecoverCheckList fail #%ld C%d %s",
             block_id, cs_id, RecoverStat_Name(block->recover_stat).c_str());
     }
     block->incomplete_replica.erase(cs_id);
-    SetState(block, kNotInRecover);
     TryRecover(block);
 }
 
