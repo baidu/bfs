@@ -505,11 +505,12 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
     if (inc_replica.erase(cs_id)) {
         if (block->recover_stat == kIncomplete) {
             RemoveFromIncomplete(block_id, cs_id);
+        } else if (block->recover_stat == kCheck) {
+            LOG(INFO, "Recovering replica dead #%ld C%d R%lu IR%lu retry recover",
+                block_id, cs_id, replica.size(), inc_replica.size());
+            block->recover_stat = kNotInRecover;
+            //RemoveFromRecoverCheckList(cs_id, block_id);
         }
-    } else if (block->recover_stat == kCheck) {
-        LOG(INFO, "Recovering replica dead #%ld C%d R%lu IR%lu retry recover",
-            block_id, cs_id, replica.size(), inc_replica.size());
-        block->recover_stat = kNotInRecover;
     } else {
         if (replica.erase(cs_id) == 0) {
             LOG(INFO, "Dead replica C%d #%ld not in blockmapping, ignore it R%lu IR%lu",
@@ -608,7 +609,10 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
         LOG(DEBUG, "ProcessRecoveredBlock for C%d can't find block: #%ld ", cs_id, block_id);
         return;
     }
-    if (!ret) {
+    if (ret) {
+        block->incomplete_replica.erase(cs_id);
+        SetState(block, kNotInRecover);
+    } else {
         LOG(WARNING, "RemoveFromRecoverCheckList fail #%ld C%d %s",
             block_id, cs_id, RecoverStat_Name(block->recover_stat).c_str());
     }
@@ -618,8 +622,6 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
     } else {
         LOG(INFO, "Recover block fail #%ld at C%d ", block_id, cs_id);
     }
-    block->incomplete_replica.erase(cs_id);
-    SetState(block, kNotInRecover);
     ///TODO: if (!safe_mode)
     TryRecover(block);
 }
@@ -824,12 +826,12 @@ void BlockMapping::CheckRecover(int32_t cs_id, int64_t block_id) {
     }
     if (ret) {
         SetState(block, kNotInRecover);
+        block->incomplete_replica.erase(cs_id);
     } else {
         // if ret == false, maybe a task for a dead chunkserver, don't change state
         LOG(WARNING, "RemoveFromRecoverCheckList fail #%ld C%d %s",
             block_id, cs_id, RecoverStat_Name(block->recover_stat).c_str());
     }
-    block->incomplete_replica.erase(cs_id);
     TryRecover(block);
 }
 
