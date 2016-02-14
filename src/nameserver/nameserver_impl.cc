@@ -67,6 +67,7 @@ void NameServerImpl::CheckSafemode() {
 }
 void NameServerImpl::LeaveSafemode() {
     LOG(INFO, "Nameserver leave safemode");
+    block_mapping_->SetSafeMode(false);
     safe_mode_ = 0;
 }
 
@@ -146,8 +147,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         // update block -> cs;
         if (block_mapping_->UpdateBlockInfo(block_id, cs_id,
                                             block_size,
-                                            block_version,
-                                            safe_mode_)) {
+                                            block_version)) {
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id);
         } else {
@@ -187,8 +187,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         int64_t block_version = block.version();
         if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
-                                             block_version,
-                                             safe_mode_)) {
+                                             block_version)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
@@ -585,6 +584,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     if (path == "/dfs/details") {
         ListRecover(&response);
         return true;
+    } else if (path == "/dfs/leave_safemode") {
+        LeaveSafemode();
+        response.content->Append("<body onload=\"history.back()\"></body>");
+        return true;
     }
 
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
@@ -669,7 +672,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Safemode: " + common::NumToString(safe_mode_) + "</br>";
+    str += "Safemode: " + common::NumToString(safe_mode_) 
+           + " <a href=\"/dfs/leave_safemode\">leave</a></br>";
     str += "Pending tasks: "
         + common::NumToString(thread_pool_.PendingNum()) + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
