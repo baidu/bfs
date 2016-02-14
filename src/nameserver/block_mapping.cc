@@ -583,11 +583,17 @@ bool BlockMapping::RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id) {
     if (it != lo_recover_check_[cs_id].end()){
         lo_recover_check_[cs_id].erase(it);
         //LOG(DEBUG, "Remove #%ld from lo_recover_check", block_id);
+        if (lo_recover_check_[cs_id].empty()) {
+            lo_recover_check_.erase(cs_id);
+        }
     } else {
         it = hi_recover_check_[cs_id].find(block_id);
         if (it != hi_recover_check_[cs_id].end()) {
             //LOG(DEBUG, "Remove #%ld from hi_recover_check", block_id);
             hi_recover_check_[cs_id].erase(it);
+            if (hi_recover_check_[cs_id].empty()) {
+                hi_recover_check_.erase(cs_id);
+            }
         } else {
             return false;
         }
