@@ -187,12 +187,15 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     // recover replica
     if (!safe_mode_) {
         std::map<int64_t, std::string> recover_blocks;
-        chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks);
+        int hi_num = 0;
+        chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks, &hi_num);
+        int priority = 0;
         for (std::map<int64_t, std::string>::iterator it = recover_blocks.begin();
                 it != recover_blocks.end(); ++it) {
             ReplicaInfo* rep = response->add_new_replicas();
             rep->set_block_id(it->first);
             rep->add_chunkserver_address(it->second);
+            rep->set_priority(priority++ < hi_num);
         }
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
