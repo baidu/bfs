@@ -510,6 +510,10 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
                 block_id, cs_id, replica.size(), inc_replica.size());
             block->recover_stat = kNotInRecover;
             //RemoveFromRecoverCheckList(cs_id, block_id);
+        } else {
+            LOG(WARNING, "Incompleta replica dead with wrong %s #%ld C%d R%lu IR%lu",
+                RecoverStat_Name(block->recover_stat).c_str(),
+                block_id, cs_id, replica.size(), inc_replica.size());
         }
     } else {
         if (replica.erase(cs_id) == 0) {
