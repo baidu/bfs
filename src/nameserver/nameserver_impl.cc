@@ -37,22 +37,37 @@ common::Counter g_create_file;
 common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
-NameServerImpl::NameServerImpl() : safe_mode_(true) {
+NameServerImpl::NameServerImpl() : safe_mode_(FLAGS_nameserver_safemode_time) {
     namespace_ = new NameSpace();
     block_mapping_ = new BlockMapping();
     chunkserver_manager_ = new ChunkServerManager(&thread_pool_, block_mapping_);
     namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
+    start_time_ = common::timer::get_micros();
     thread_pool_.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-    thread_pool_.DelayTask(FLAGS_nameserver_safemode_time * 1000,
-        boost::bind(&NameServerImpl::LeaveSafemode, this));
+    thread_pool_.DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
 }
 
+void NameServerImpl::CheckSafemode() {
+    int now_time = (common::timer::get_micros() - start_time_) / 1000000;
+    int safe_mode = safe_mode_;
+    if (safe_mode == 0) {
+        return;
+    }
+    int new_safe_mode = FLAGS_nameserver_safemode_time - now_time;
+    if (new_safe_mode < 0) {
+        LOG(INFO, "Now time %d", now_time);
+        LeaveSafemode();
+        return;
+    }
+    common::atomic_comp_swap(&safe_mode_, new_safe_mode, safe_mode);
+    thread_pool_.DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+}
 void NameServerImpl::LeaveSafemode() {
     LOG(INFO, "Nameserver leave safemode");
-    safe_mode_ = false;
+    safe_mode_ = 0;
 }
 
 void NameServerImpl::LogStatus() {
