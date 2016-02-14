@@ -507,7 +507,7 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
             RemoveFromIncomplete(block_id, cs_id);
         }
     } else if (block->recover_stat == kCheck) {
-        LOG(INFO, "Recovering replica dead #%ld C%d %R %IR retry recover",
+        LOG(INFO, "Recovering replica dead #%ld C%d R%lu IR%lu retry recover",
             block_id, cs_id, replica.size(), inc_replica.size());
         block->recover_stat = kNotInRecover;
     } else {
