@@ -46,6 +46,15 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     }
 }
 
+bool ChunkServerManager::KickChunkserver(int32_t cs_id) {
+    MutexLock lock(&mu_);
+    ChunkServerInfo* cs = NULL;
+    if (!GetChunkServerPtr(cs_id, &cs)) {
+        return false;
+    }
+    cs->set_kick(true);
+    return true;
+}
 bool ChunkServerManager::RemoveChunkServer(const std::string& addr) {
     MutexLock lock(&mu_);
     std::map<std::string, int32_t>::iterator it = address_map_.find(addr);
@@ -179,6 +188,9 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     int32_t now_time = common::timer::now_time();
     heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
+    if (info->kick()) {
+        response->set_kick(true);
+    }
 }
 
 void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers) {
@@ -274,6 +286,7 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
     }
     info->set_disk_quota(quota);
     info->set_status(kCsActive);
+    info->set_kick(false);
     if (info->is_dead()) {
         int32_t now_time = common::timer::now_time();
         heartbeat_list_[now_time].insert(info);
@@ -292,6 +305,7 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t q
     info->set_address(address);
     info->set_disk_quota(quota);
     info->set_status(kCsActive);
+    info->set_kick(false);
     LOG(INFO, "New ChunkServerInfo C%d %s %p", id, address.c_str(), info);
     chunkservers_[id] = info;
     address_map_[address] = id;

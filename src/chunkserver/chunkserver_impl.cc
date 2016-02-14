@@ -8,6 +8,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
@@ -207,6 +208,10 @@ void ChunkServerImpl::SendHeartbeat() {
         }
         StopBlockReport();
         heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
+        return;
+    } else if (response.kick()) {
+        LOG(WARNING, "Kick by nameserver");
+        kill(getpid(), SIGTERM);
         return;
     }
     heartbeat_task_id_ = heartbeat_thread_->DelayTask(FLAGS_heartbeat_interval * 1000,

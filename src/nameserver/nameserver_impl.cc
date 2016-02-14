@@ -8,6 +8,7 @@
 
 #include <set>
 #include <map>
+#include <sstream>
 
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
@@ -57,7 +58,7 @@ void NameServerImpl::CheckSafemode() {
         return;
     }
     int new_safe_mode = FLAGS_nameserver_safemode_time - now_time;
-    if (new_safe_mode < 0) {
+    if (new_safe_mode <= 0) {
         LOG(INFO, "Now time %d", now_time);
         LeaveSafemode();
         return;
@@ -588,6 +589,19 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         LeaveSafemode();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
+    } else if (path == "/dfs/kick") {
+        std::map<std::string, std::string>::const_iterator it =
+            request.query_params->find("cs");
+        if (it == request.query_params->end()) {
+            return false;
+        }
+        std::stringstream ss(it->second);
+        int cs_id;
+        if (ss >> cs_id && chunkserver_manager_->KickChunkserver(cs_id)) {
+            response.content->Append("<body onload=\"history.back()\"></body>");
+            return true;
+        }
+        return false;
     }
 
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
@@ -652,7 +666,14 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
-        table_str += chunkserver.is_dead() ? "dead" : "alive";
+        if (chunkserver.is_dead()) {
+            table_str += "dead";
+        } else if (chunkserver.kick()) {
+            table_str += "kicked";
+        } else {
+            table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
+                      + "\">kick</a>)";
+        }
         table_str += "</td><td>";
         table_str += common::NumToString(
                         common::timer::now_time() - chunkserver.last_heartbeat());
@@ -672,8 +693,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Safemode: " + common::NumToString(safe_mode_) 
-           + " <a href=\"/dfs/leave_safemode\">leave</a></br>";
+    str += "Safemode: " + common::NumToString(safe_mode_);
+    if (safe_mode_) {
+        str += " <a href=\"/dfs/leave_safemode\">leave</a>";
+    }
+    str += "</br>";
     str += "Pending tasks: "
         + common::NumToString(thread_pool_.PendingNum()) + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
