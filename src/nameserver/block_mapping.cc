@@ -205,7 +205,6 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         }
     }
     /// Then block_version >= 0
-    assert(inc_replica.empty());
     if (block_version > nsblock->version) {
         LOG(INFO, "Block #%ld update by C%d from V%ld %ld to V%ld %ld",
             block_id, cs_id, nsblock->version, nsblock->block_size,
@@ -508,7 +507,7 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
             RemoveFromIncomplete(block_id, cs_id);
         }
     } else if (block->recover_stat == kCheck) {
-        LOG(INFO, "Recovering replica dead #%ld C%d %R %IR retry recover",
+        LOG(INFO, "Recovering replica dead #%ld C%d R%lu IR%lu retry recover",
             block_id, cs_id, replica.size(), inc_replica.size());
         block->recover_stat = kNotInRecover;
     } else {

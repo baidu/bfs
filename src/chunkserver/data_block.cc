@@ -276,10 +276,9 @@ bool Block::Close() {
     }
     finished_ = true;
     // DiskWrite will close file_desc_ asynchronously.
-    if (!disk_writing_) {
-        this->AddRef();
-        thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
-    }
+    this->AddRef();
+    thread_pool_->AddPriorityTask(boost::bind(&Block::DiskWrite, this));
+
     while (file_desc_ != -1) {
         close_cv_.Wait();
     }

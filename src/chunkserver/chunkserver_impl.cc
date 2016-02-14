@@ -91,7 +91,7 @@ ChunkServerImpl::ChunkServerImpl()
         assert(0);
     }
     counter_manager_ = new CounterManager;
-    work_thread_pool_->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this, true));
+    heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this, true));
     heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
 }
 
@@ -126,7 +126,7 @@ void ChunkServerImpl::LogStatus(bool routine) {
         counters.write_bytes / 1024.0 / 1024,
         counters.rpc_delay, counters.delay_all, work_thread_pool_->PendingNum());
     if (routine) {
-        work_thread_pool_->DelayTask(1000,
+        heartbeat_thread_->DelayTask(1000,
             boost::bind(&ChunkServerImpl::LogStatus, this, true));
     }
 }
