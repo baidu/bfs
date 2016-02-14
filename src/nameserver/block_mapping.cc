@@ -552,7 +552,7 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
     hi_recover_check_.erase(cs_id);
     for (std::set<int64_t>::iterator it = lo_recover_check_[cs_id].begin();
             it != lo_recover_check_[cs_id].end(); ++it) {
-         DealWithDeadBlock(cs_id, *it);
+        DealWithDeadBlock(cs_id, *it);
     }
     lo_recover_check_.erase(cs_id);
 }
