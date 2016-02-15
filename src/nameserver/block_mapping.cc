@@ -12,6 +12,9 @@
 #include <common/string_util.h>
 
 DECLARE_int32(recover_speed);
+DECLARE_int32(priority_recover_high_watermark);
+DECLARE_int32(priority_recover_low_watermark);
+DECLARE_int32(priority_recover_threshold);
 DECLARE_int32(recover_timeout);
 DECLARE_bool(bfs_bug_tolerant);
 DECLARE_bool(clean_redundancy);
@@ -577,9 +580,23 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     quota = quota < block_num ? quota : block_num;
     LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ",
         hi_pri_recover_.size(), lo_pri_recover_.size());
-    PickRecoverFromSet(cs_id, quota, &hi_pri_recover_, recover_blocks, &hi_check_set);
+    int32_t high_priority_quota = 0;
+    int32_t total_recover_block = hi_pri_recover_.size() + lo_pri_recover_.size();
+    if (total_recover_block >= FLAGS_priority_recover_threshold) {
+        high_priority_quota = FLAGS_priority_recover_high_watermark - hi_check_set.size();
+    } else {
+        high_priority_quota = FLAGS_priority_recover_low_watermark - hi_check_set.size();
+    }
+    if (high_priority_quota > block_num) {
+        high_priority_quota = block_num;
+    }
+    PickRecoverFromSet(cs_id, high_priority_quota, &hi_pri_recover_, recover_blocks, &hi_check_set);
     if (hi_num) *hi_num = recover_blocks->size();
-    PickRecoverFromSet(cs_id, quota, &lo_pri_recover_, recover_blocks, &lo_check_set);
+    int32_t low_priority_quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
+    if (static_cast<int>(recover_blocks->size()) + low_priority_quota > block_num) {
+        low_priority_quota = block_num - recover_blocks->size();
+    }
+    PickRecoverFromSet(cs_id, low_priority_quota, &lo_pri_recover_, recover_blocks, &lo_check_set);
     LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
