@@ -8,6 +8,7 @@
 
 #include <set>
 #include <map>
+#include <sstream>
 
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
@@ -37,22 +38,38 @@ common::Counter g_create_file;
 common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
-NameServerImpl::NameServerImpl() : safe_mode_(true) {
+NameServerImpl::NameServerImpl() : safe_mode_(FLAGS_nameserver_safemode_time) {
     namespace_ = new NameSpace();
     block_mapping_ = new BlockMapping();
     chunkserver_manager_ = new ChunkServerManager(&thread_pool_, block_mapping_);
     namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
+    start_time_ = common::timer::get_micros();
     thread_pool_.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-    thread_pool_.DelayTask(FLAGS_nameserver_safemode_time * 1000,
-        boost::bind(&NameServerImpl::LeaveSafemode, this));
+    thread_pool_.DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
 }
 
+void NameServerImpl::CheckSafemode() {
+    int now_time = (common::timer::get_micros() - start_time_) / 1000000;
+    int safe_mode = safe_mode_;
+    if (safe_mode == 0) {
+        return;
+    }
+    int new_safe_mode = FLAGS_nameserver_safemode_time - now_time;
+    if (new_safe_mode <= 0) {
+        LOG(INFO, "Now time %d", now_time);
+        LeaveSafemode();
+        return;
+    }
+    common::atomic_comp_swap(&safe_mode_, new_safe_mode, safe_mode);
+    thread_pool_.DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+}
 void NameServerImpl::LeaveSafemode() {
     LOG(INFO, "Nameserver leave safemode");
-    safe_mode_ = false;
+    block_mapping_->SetSafeMode(false);
+    safe_mode_ = 0;
 }
 
 void NameServerImpl::LogStatus() {
@@ -131,8 +148,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         // update block -> cs;
         if (block_mapping_->UpdateBlockInfo(block_id, cs_id,
                                             block_size,
-                                            block_version,
-                                            safe_mode_)) {
+                                            block_version)) {
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id);
         } else {
@@ -172,8 +188,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         int64_t block_version = block.version();
         if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
-                                             block_version,
-                                             safe_mode_)) {
+                                             block_version)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
@@ -570,6 +585,23 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     if (path == "/dfs/details") {
         ListRecover(&response);
         return true;
+    } else if (path == "/dfs/leave_safemode") {
+        LeaveSafemode();
+        response.content->Append("<body onload=\"history.back()\"></body>");
+        return true;
+    } else if (path == "/dfs/kick") {
+        std::map<std::string, std::string>::const_iterator it =
+            request.query_params->find("cs");
+        if (it == request.query_params->end()) {
+            return false;
+        }
+        std::stringstream ss(it->second);
+        int cs_id;
+        if (ss >> cs_id && chunkserver_manager_->KickChunkserver(cs_id)) {
+            response.content->Append("<body onload=\"history.back()\"></body>");
+            return true;
+        }
+        return false;
     }
 
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
@@ -634,7 +666,14 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
-        table_str += chunkserver.is_dead() ? "dead" : "alive";
+        if (chunkserver.is_dead()) {
+            table_str += "dead";
+        } else if (chunkserver.kick()) {
+            table_str += "kicked";
+        } else {
+            table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
+                      + "\">kick</a>)";
+        }
         table_str += "</td><td>";
         table_str += common::NumToString(
                         common::timer::now_time() - chunkserver.last_heartbeat());
@@ -654,7 +693,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Safemode: " + common::NumToString(safe_mode_) + "</br>";
+    str += "Safemode: " + common::NumToString(safe_mode_);
+    if (safe_mode_) {
+        str += " <a href=\"/dfs/leave_safemode\">leave</a>";
+    }
+    str += "</br>";
     str += "Pending tasks: "
         + common::NumToString(thread_pool_.PendingNum()) + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";

@@ -160,12 +160,12 @@ bool Block::OpenForWrite() {
     // Mkdir dir for data block, ignore error, may already exist.
     mkdir(dir.c_str(), 0755);
     int fd  = open(disk_file_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR);
+    mu_.Lock("Block::OpenForWrite");
     if (fd < 0) {
         LOG(WARNING, "Open block #%ld %s fail: %s",
             meta_.block_id, disk_file_.c_str(), strerror(errno));
         return false;
     }
-    mu_.Lock("Block::OpenForWrite");
     g_writing_blocks.Inc();
     file_desc_ = fd;
     return true;

@@ -134,6 +134,7 @@ message HeartBeatResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
     optional int64 namespace_version = 3;
+    optional bool kick = 4;
 }
 
 message ReportBlockInfo {

@@ -43,7 +43,7 @@ public:
                      int64_t version, int64_t block_size,
                      const std::vector<int32_t>* init_replicas);
     bool UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
-                         int64_t block_version, bool safe_mode);
+                         int64_t block_version);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
@@ -58,7 +58,7 @@ public:
                  int64_t* lost_num, int64_t* incomplete_num);
     void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                      std::string* hi_check, std::string* lo_check, std::string* incomplete);
-
+    void SetSafeMode(bool safe_mode);
 private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
@@ -76,17 +76,18 @@ private:
     bool SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to);
 
     bool UpdateWritingBlock(NSBlock* nsblock, int32_t cs_id, int64_t block_size,
-                            int64_t block_version, bool safe_mode);
+                            int64_t block_version);
     bool UpdateNormalBlock(NSBlock* nsblock, int32_t cs_id, int64_t block_size,
-                           int64_t block_version, bool safe_mode);
+                           int64_t block_version);
     bool UpdateIncompleteBlock(NSBlock* nsblock,int32_t cs_id, int64_t block_size,
-                               int64_t block_version, bool safe_mode);
+                               int64_t block_version);
 private:
     Mutex mu_;
     ThreadPool thread_pool_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
     int64_t next_block_id_;
+    bool safe_mode_;
 
     CheckList hi_recover_check_;
     CheckList lo_recover_check_;
