@@ -178,12 +178,14 @@ message BlockReportResponse {
 }
 
 message BlockReceivedRequest {
+    optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     optional string chunkserver_addr = 3;
     repeated ReportBlockInfo blocks = 6;
 }
 
 message BlockReceivedResponse {
+    optional int64 sequence_id = 1;
     optional StatusCode status = 2;
 }
 

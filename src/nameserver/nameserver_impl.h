@@ -104,7 +104,8 @@ private:
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
 private:
     /// Global thread pool
-    ThreadPool thread_pool_;
+    ThreadPool* work_thread_pool_;
+    ThreadPool* report_thread_pool_;
     /// Global lock
     Mutex mu_;
     /// Chunkserver map

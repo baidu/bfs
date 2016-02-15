@@ -162,7 +162,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     int cs_id = GetChunkserverId(address);
     if (id == -1 || cs_id != id) {
         //reconnect after DeadCheck()
-        LOG(WARNING, "Unknown chunkserver %s with namespace version %ld",
+        LOG(INFO, "HandleHeartBeat unknown chunkserver %s with namespace version %ld",
             address.c_str(), request->namespace_version());
         response->set_status(kUnknownCs);
         return;
