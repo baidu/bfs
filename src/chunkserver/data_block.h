@@ -70,9 +70,9 @@ public:
     void Append(int32_t seq, const char*buf, int64_t len);
     /// Flush block to disk.
     bool Close();
-    bool CloseIncomplete();
     void AddRef();
     void DecRef();
+    int GetRef();
 private:
     /// Open corresponding file for write.
     bool OpenForWrite();
@@ -98,9 +98,9 @@ private:
     int         file_desc_; ///< disk file fd
     volatile int refs_;
     Mutex       mu_;
+    CondVar     close_cv_;
     common::SlidingWindow<Buffer>* recv_window_;
-    bool        finished_;  // finished by user
-    bool        closed_;    // incomplete block closed by nameesrver
+    bool        finished_;
     volatile int deleted_;
 
     FileCache*  file_cache_;

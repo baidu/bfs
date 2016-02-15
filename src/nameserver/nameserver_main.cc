@@ -8,19 +8,29 @@
 
 #include <sofa/pbrpc/pbrpc.h>
 #include <gflags/gflags.h>
-
 #include <common/logging.h>
+
 #include "nameserver/nameserver_impl.h"
+#include "version.h"
 
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_port);
 DECLARE_int32(nameserver_log_level);
+DECLARE_string(nameserver_warninglog);
 
 int main(int argc, char* argv[])
 {
+    if (argc > 1) {
+        std::string ext_cmd = argv[1];
+        if (ext_cmd == "version") {
+            PrintSystemVersion();
+            return 0;
+        }
+    }
     FLAGS_flagfile = "./bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     ::baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
+    ::baidu::common::SetWarningFile(FLAGS_nameserver_warninglog.c_str());
 
     LOG(baidu::common::INFO, "NameServe start ...");
 
@@ -48,7 +58,7 @@ int main(int argc, char* argv[])
 
     rpc_server.Run();
 
-    delete webservice;
+    //delete webservice;
     LOG(baidu::common::WARNING, "Nameserver exit");
     return EXIT_SUCCESS;
 }

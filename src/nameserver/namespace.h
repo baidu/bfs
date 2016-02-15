@@ -14,6 +14,7 @@
 #include <leveldb/db.h>
 
 #include "proto/nameserver.pb.h"
+#include "proto/status_code.pb.h"
 
 namespace baidu {
 namespace bfs {
@@ -23,17 +24,17 @@ public:
     NameSpace();
     ~NameSpace();
     /// List a directory
-    int ListDirectory(const std::string& path,
+    StatusCode ListDirectory(const std::string& path,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
-    int CreateFile(const std::string& file_name, int flags, int mode, int replica_num);
+    StatusCode CreateFile(const std::string& file_name, int flags, int mode, int replica_num);
     /// Remove file by name
-    int RemoveFile(const std::string& path, FileInfo* file_removed);
+    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed);
     /// Remove director.
-    int DeleteDirectory(const std::string& path, bool recursive,
+    StatusCode DeleteDirectory(const std::string& path, bool recursive,
                         std::vector<FileInfo>* files_removed);
     /// File rename
-    int Rename(const std::string& old_path,
+    StatusCode Rename(const std::string& old_path,
                const std::string& new_path,
                bool* need_unlink,
                FileInfo* remove_file);
@@ -58,7 +59,7 @@ private:
     void SetupRoot();
     bool LookUp(const std::string& path, FileInfo* info);
     bool LookUp(int64_t pid, const std::string& name, FileInfo* info);
-    int InternalDeleteDirectory(const FileInfo& dir_info,
+    StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed);
 private:

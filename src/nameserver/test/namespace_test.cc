@@ -227,7 +227,7 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     ASSERT_NE(0, ns.ListDirectory("/dir1", &outputs));
 
     // Use rmr to delete a file
-    ASSERT_EQ(886, ns.DeleteDirectory("/file1", true, &files_removed));
+    ASSERT_EQ(1, ns.DeleteDirectory("/file1", true, &files_removed));
     // Rmr root path will clear the filesystem
     ASSERT_EQ(0, ns.DeleteDirectory("/", true, &files_removed));
     ASSERT_EQ(0, ns.ListDirectory("/", &outputs));

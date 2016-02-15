@@ -29,7 +29,7 @@ class FileCache;
 
 class BlockManager {
 public:
-    BlockManager(ThreadPool* thread_pool, const std::string& store_path);
+    BlockManager(const std::string& store_path);
     ~BlockManager();
     int64_t DiskQuota()  const;
     void CheckStorePath(const std::string& store_path);
@@ -43,12 +43,13 @@ public:
     Block* FindBlock(int64_t block_id);
     std::string BlockId2Str(int64_t block_id);
     bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time);
-    bool CloseBlock(Block* block, bool is_complete);
+    bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);
     bool RemoveAllBlocksAsync();
     bool RemoveAllBlocks();
 private:
     void GetIOStats();
+    bool RemoveBlockMeta(int64_t block_id);
 private:
     ThreadPool* thread_pool_;
     std::vector<std::string> store_path_list_;

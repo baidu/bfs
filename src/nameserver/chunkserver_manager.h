@@ -24,6 +24,7 @@ public:
     void ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers);
     bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains, const std::string& client_address);
     int32_t AddChunkServer(const std::string& address, int64_t quota);
+    bool KickChunkserver(int cs_id);
     bool UpdateChunkServer(int cs_id, int64_t quota);
     bool RemoveChunkServer(const std::string& address);
     std::string GetChunkServerAddr(int32_t id);
@@ -31,7 +32,7 @@ public:
     void AddBlock(int32_t id, int64_t block_id);
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
-    void PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks);
+    void PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks, int* hi_num);
 private:
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
 private:

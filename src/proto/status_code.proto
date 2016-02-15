@@ -13,6 +13,8 @@ enum StatusCode {
     kGetChunkserverError = 9;
     kNsCreateError = 10;
     kCsCreateError = 11;
+    kCsTooMuchPendingBuffer = 12;
+    kSafeMode = 20;
 }
 
 enum ChunkServerStatus {
@@ -30,5 +32,6 @@ enum RecoverStat {
     kCheck = 3;
     kIncomplete = 4;
     kLost = 5;
-    kAny = 6;
+    kBlockWriting = 6;
+    kAny = 20;
 }

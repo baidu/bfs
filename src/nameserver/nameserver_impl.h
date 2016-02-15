@@ -99,7 +99,9 @@ private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
     void Register();
+    void CheckSafemode();
     void LeaveSafemode();
+    void ListRecover(sofa::pbrpc::HTTPResponse* response);
 private:
     /// Global thread pool
     ThreadPool thread_pool_;
@@ -109,7 +111,9 @@ private:
     ChunkServerManager* chunkserver_manager_;
     /// Block map
     BlockMapping* block_mapping_;
-    bool safe_mode_;
+    /// Safemode
+    volatile int safe_mode_;
+    int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;
     int64_t namespace_version_;
