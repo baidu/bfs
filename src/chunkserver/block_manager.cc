@@ -40,8 +40,8 @@ extern common::Counter g_find_ops;
 BlockManager::BlockManager(const std::string& store_path)
    : metadb_(NULL),
      namespace_version_(0), total_disk_quota_(0) {
-     CheckStorePath(store_path);
      thread_pool_ = new ThreadPool(FLAGS_chunkserver_io_thread_num);
+     CheckStorePath(store_path);
      file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
 }
 BlockManager::~BlockManager() {
