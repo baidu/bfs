@@ -255,7 +255,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
         bool ret = file_info->ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
         file_info->set_name(std::string(key.data() + 8, key.size() - 8));
-        LOG(INFO, "List %s return %s[%s]",
+        LOG(DEBUG, "List %s return %s[%s]",
             path.c_str(), file_info->name().c_str(),
             common::DebugString(key.ToString()).c_str());
     }
