@@ -14,6 +14,8 @@
 
 #include <common/thread_pool.h>
 
+#include "utils/iostat.h"
+
 namespace leveldb {
 class DB;
 }
@@ -31,7 +33,7 @@ public:
     ~BlockManager();
     int64_t DiskQuota()  const;
     void CheckStorePath(const std::string& store_path);
-    const std::string& GetStorePath(int64_t block_id);
+    std::string GetStorePath(int64_t block_id);
     /// Load meta from disk
     bool LoadStorage();
     int64_t NameSpaceVersion() const;
@@ -46,6 +48,7 @@ public:
     bool RemoveAllBlocksAsync();
     bool RemoveAllBlocks();
 private:
+    void GetIOStats();
     bool RemoveBlockMeta(int64_t block_id);
 private:
     ThreadPool* thread_pool_;
@@ -56,7 +59,14 @@ private:
     FileCache* file_cache_;
     Mutex   mu_;
     int64_t namespace_version_;
-    int64_t disk_quota_;
+    int64_t total_disk_quota_;
+    struct DiskStat {
+        std::string device_path;
+        int64_t disk_quota;
+        IOStat prev_iostat;
+        IOStat iostat_diff;
+    };
+    std::map<std::string, DiskStat> disk_stats_;
 };
 
 } // bfs
