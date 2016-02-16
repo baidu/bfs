@@ -289,7 +289,7 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Stat,
             &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Stat rpc fail: %s\n", path);
+            LOG(WARNING, "Stat rpc fail: %s", path);
             return false;
         }
         if (response.status() == kOK) {
@@ -418,11 +418,11 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Unlink,
             &request, &response, 15, 1);
         if (!ret) {
-            fprintf(stderr, "Unlink rpc fail: %s\n", path);
+            LOG(WARNING, "Unlink rpc fail: %s", path);
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
+            LOG(WARNING, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
             return false;
         }
         return true;
@@ -436,11 +436,11 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Rename,
             &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Rename rpc fail: %s to %s\n", oldpath, newpath);
+            LOG(WARNING, "Rename rpc fail: %s to %s\n", oldpath, newpath);
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Rename %s to %s return: %s\n",
+            LOG(WARNING, "Rename %s to %s return: %s\n",
                 oldpath, newpath, StatusCode_Name(response.status()).c_str());
             return false;
         }
@@ -456,12 +456,12 @@ public:
                 &NameServer_Stub::ChangeReplicaNum,
                 &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Change %s replica num to %d rpc fail\n",
+            LOG(WARNING, "Change %s replica num to %d rpc fail\n",
                     file_name, replica_num);
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Change %s replida num to %d return: %s\n",
+            LOG(WARNING, "Change %s replida num to %d return: %s\n",
                     file_name, replica_num, StatusCode_Name(response.status()).c_str());
             return false;
         }
@@ -647,7 +647,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     }
 
     if (!ret || response.status() != kOK) {
-        printf("Read block %ld fail, ret= %d status= %s\n", block_id, ret, StatusCode_Name(response.status()).c_str());
+        LOG(WARNING, "Read block %ld fail, ret= %d status= %s\n", block_id, ret, StatusCode_Name(response.status()).c_str());
         return -4;
     }
 
