@@ -276,7 +276,6 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
     BlockMeta meta;
     meta.set_block_id(block_id);
     meta.set_store_path(GetStorePath(block_id));
-    //arguments here?
     Block* block = new Block(meta, thread_pool_, file_cache_);
     // for block_map
     BlockMap::iterator it = block_map_.find(block_id);
