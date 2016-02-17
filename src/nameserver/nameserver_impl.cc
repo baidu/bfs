@@ -711,6 +711,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     int64_t lo_recover_num, hi_recover_num, lo_pending, hi_pending, lost_num, incomplete_num;
     block_mapping_->GetStat(&lo_recover_num, &hi_recover_num, &lo_pending, &hi_pending,
                             &lost_num, &incomplete_num);
+    int32_t w_qps, r_qps;
+    int64_t w_speed, r_speed, recover_speed;
+    chunkserver_manager_->GetStat(&w_qps, &w_speed, &r_qps, &r_speed, &recover_speed);
     str += "<h1 style=\"margin-top: 10px; margin-bottom: 0px;\">分布式文件系统控制台 - NameServer</h1>";
 
     str += "<div class=\"row\">";
@@ -742,10 +745,20 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h4 align=left>Chunkserver status</h4>";
+    str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
     str += "Dead: " + common::NumToString(dead_num)+"</br>";
     str += "Overload: " + common::NumToString(overladen_num)+"</p>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
+
+    str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "w_qps: " + common::NumToString(w_qps)+"</br>";
+    str += "w_speed: " + common::HumanReadableString(w_speed)+"</br>";
+    str += "r_qps: " + common::NumToString(r_qps)+"</br>";
+    str += "r_speed: " + common::HumanReadableString(r_speed)+"</br>";
+    str += "recover_speed: " + common::HumanReadableString(recover_speed)+"</p>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="row">
 

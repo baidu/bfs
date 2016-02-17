@@ -187,6 +187,10 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
+    info->set_w_qps(request->w_qps());
+    info->set_w_speed(request->w_speed());
+    info->set_r_qps(request->r_qps());
+    info->set_r_speed(request->r_speed());
     int32_t now_time = common::timer::now_time();
     heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
@@ -380,6 +384,24 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
             continue;
         }
         recover_blocks->insert(std::make_pair(it->first, cs->address()));
+    }
+}
+
+void ChunkServerManager::GetStat(int32_t* w_qps, int64_t* w_speed,
+                                 int32_t* r_qps, int64_t* r_speed, int64_t* recover_speed) {
+    if (w_qps) *w_qps = 0;
+    if (w_speed) *w_speed = 0;
+    if (r_qps) *r_qps = 0;
+    if (r_speed) *r_speed = 0;
+    if (recover_speed) *recover_speed = 0;
+    MutexLock lock(&mu_);
+    for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
+        ChunkServerInfo* cs = it->second;
+        if (w_qps) *w_qps += cs->w_qps();
+        if (w_speed) *w_speed += cs->w_speed();
+        if (r_qps) *r_qps += cs->r_qps();
+        if (r_speed) *r_speed += cs->r_speed();
+        if (recover_speed) *recover_speed += cs->recover_speed();
     }
 }
 
