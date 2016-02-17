@@ -40,8 +40,8 @@ DEFINE_int32(chunkserver_recover_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 DEFINE_int32(chunkserver_use_root_partition, 1, "Should chunkserver use root partition, 0: forbidden");
 DEFINE_bool(chunkserver_auto_clean, true, "If namespace version mismatch, chunkserver clean itself");
-DEFINE_bool(multiple_disks_load_balance, true, "Load balance between disks");
-DEFINE_int32(max_request_wait_time, 1000, "Max request wait time threeshold in disks load balance");
+DEFINE_bool(multiple_disks_load_balance, false, "Load balance between disks");
+DEFINE_int32(max_request_wait_time, 5000, "Max request wait time threeshold in disks load balance");
 
 // SDK
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");

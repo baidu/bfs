@@ -435,7 +435,8 @@ void BlockManager::GetIOStats() {
             stat_diff.time_in_queue = (tmp.time_in_queue - prev_stat.time_in_queue);
             prev_stat = tmp;
             /*
-            LOG(INFO, "iostat: %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n\n",
+            LOG(INFO, "iostat: %s %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n\n",
+                    (it->second.device_path).c_str(),
                     stat_diff.read_ios, stat_diff.read_merges,
                     stat_diff.read_sectors, stat_diff.read_ticks,
                     stat_diff.write_ios, stat_diff.write_merges,
