@@ -149,33 +149,32 @@ bool BlockManager::LoadStorage() {
             return false;
         }
         BlockMeta meta;
-        assert(it->value().size() == sizeof(meta));
-        memcpy(&meta, it->value().data(), sizeof(meta));
-        assert(meta.block_id == block_id);
-        std::string file_path = GetStorePath(block_id) + Block::BuildFilePath(block_id);
-        if (meta.version < 0) {
+        meta.ParseFromArray(it->value().data(), it->value().size());
+        assert(meta.block_id() == block_id);
+        std::string file_path = meta.store_path() + Block::BuildFilePath(block_id);
+        if (meta.version() < 0) {
             LOG(INFO, "Incomplete block #%ld V%ld %ld, drop it",
-                block_id, meta.version, meta.block_size);
+                block_id, meta.version(), meta.block_size());
             metadb_->Delete(leveldb::WriteOptions(), it->key());
             remove(file_path.c_str());
             continue;
         } else {
             struct stat st;
             if (stat(file_path.c_str(), &st) ||
-                st.st_size != meta.block_size ||
+                st.st_size != meta.block_size() ||
                 access(file_path.c_str(), R_OK)) {
                 LOG(WARNING, "Corrupted block #%ld V%ld size %ld path %s can't access: %s'",
-                    block_id, meta.version, meta.block_size, file_path.c_str(),
+                    block_id, meta.version(), meta.block_size(), file_path.c_str(),
                     strerror(errno));
                 metadb_->Delete(leveldb::WriteOptions(), it->key());
                 remove(file_path.c_str());
                 continue;
             } else {
                 LOG(DEBUG, "Load #%ld V%ld size %ld path %s",
-                    block_id, meta.version, meta.block_size, file_path.c_str());
+                    block_id, meta.version(), meta.block_size(), file_path.c_str());
             }
         }
-        Block* block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
+        Block* block = new Block(meta, thread_pool_, file_cache_);
         block->AddRef();
         block_map_[block_id] = block;
         block_num ++;
@@ -220,9 +219,8 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
             return false;
         }
         BlockMeta meta;
-        assert(it->value().size() == sizeof(meta));
-        memcpy(&meta, it->value().data(), sizeof(meta));
-        assert(meta.block_id == block_id);
+        meta.ParseFromArray(it->value().data(), it->value().size());
+        assert(meta.block_id() == block_id);
         blocks->push_back(meta);
         // LOG(DEBUG, "List block %ld", block_id);
         if (--num <= 0) {
@@ -235,9 +233,9 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
 
 Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status) {
     BlockMeta meta;
-    meta.block_id = block_id;
-    Block* block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
-    // for block_map
+    meta.set_block_id(block_id);
+    meta.set_store_path(GetStorePath(block_id));
+    Block* block = new Block(meta, thread_pool_, file_cache_);
     MutexLock lock(&mu_, "BlockManger::AddBlock", 1000);
     BlockMap::iterator it = block_map_.find(block_id);
     if (it != block_map_.end()) {
@@ -249,6 +247,7 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCod
         *status = kBlockExist;
         return it->second;
     }
+    // for block_map
     block->AddRef();
     block_map_[block_id] = block;
     // Unlock for write meta & sync
@@ -288,12 +287,13 @@ std::string BlockManager::BlockId2Str(int64_t block_id) {
     return std::string(idstr);
 }
 bool BlockManager::SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
-    std::string idstr = BlockId2Str(meta.block_id);
+    std::string idstr = BlockId2Str(meta.block_id());
     leveldb::WriteOptions options;
     // options.sync = true;
     int64_t time_start = common::timer::get_micros();
-    leveldb::Status s = metadb_->Put(options, idstr,
-        leveldb::Slice(reinterpret_cast<const char*>(&meta),sizeof(meta)));
+    std::string meta_buf;
+    meta.SerializeToString(&meta_buf);
+    leveldb::Status s = metadb_->Put(options, idstr, meta_buf);
     int64_t time_use = common::timer::get_micros() - time_start;
     if (sync_time) *sync_time = time_use;
     if (!s.ok()) {
@@ -347,10 +347,11 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
             block_id, file_path.c_str());
     }
 
-    char dir_name[5];
-    snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
+    //char dir_name[5];
+    //snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
     // Rmdir, ignore error when not empty.
     // rmdir((GetStorePath(block_id) + dir_name).c_str());
+    // rmdir((block->meta_.store_path() + dir_name).c_str());
     if (meta_removed) {
         MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
         block_map_.erase(block_id);
