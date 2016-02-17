@@ -9,7 +9,7 @@ namespace bfs {
 bool GetIOStat(const std::string& path, struct IOStat* iostat) {
     std::ifstream stat(path.c_str());
     if (!stat.is_open())  {
-        LOG(WARNING, "open proc stat fail");
+        LOG(WARNING, "open proc stat fail: %s", path.c_str());
         return false;
     }
     std::ostringstream tmp;

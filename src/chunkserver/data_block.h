@@ -14,6 +14,8 @@
 #include <common/thread_pool.h>
 #include <common/sliding_window.h>
 
+#include "proto/block.pb.h"
+
 namespace baidu {
 namespace bfs {
 
@@ -28,24 +30,13 @@ struct Buffer {
       : data_(o.data_), len_(o.len_) {}
 };
 
-/// Meta of a data block
-struct BlockMeta {
-    int64_t block_id;
-    int64_t block_size;
-    int64_t checksum;
-    int64_t version;
-    BlockMeta()
-      : block_id(0), block_size(0), checksum(0), version(-1) {
-    }
-};
 
 class FileCache;
 
 /// Data block
 class Block {
 public:
-    Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool,
-          FileCache* file_cache);
+    Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cache);
     ~Block();
     static std::string BuildFilePath(int64_t block_id);
     /// Getter
