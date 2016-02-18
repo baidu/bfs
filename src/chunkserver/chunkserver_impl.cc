@@ -200,6 +200,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_w_speed(counters.write_bytes);
     request.set_r_qps(counters.read_ops);
     request.set_r_speed(counters.read_bytes);
+    request.set_recover_speed(counters.recover_bytes);
     HeartBeatResponse response;
     if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::HeartBeat,
             &request, &response, 15, 1)) {
