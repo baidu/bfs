@@ -33,7 +33,10 @@ public:
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
     void PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks, int* hi_num);
+    void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
+                 int64_t* r_speed, int64_t* recover_speed);
 private:
+    int GetChunkserverLoad(ChunkServerInfo* cs);
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
 private:
     ThreadPool* thread_pool_;

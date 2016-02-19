@@ -25,6 +25,8 @@
 
 DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_int32(nameserver_report_thread_num);
+DECLARE_int32(nameserver_work_thread_num);
 
 namespace baidu {
 namespace bfs {
@@ -41,11 +43,13 @@ common::Counter g_report_blocks;
 NameServerImpl::NameServerImpl() : safe_mode_(FLAGS_nameserver_safemode_time) {
     namespace_ = new NameSpace();
     block_mapping_ = new BlockMapping();
-    chunkserver_manager_ = new ChunkServerManager(&thread_pool_, block_mapping_);
+    report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
+    work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
+    chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_);
     namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
     start_time_ = common::timer::get_micros();
-    thread_pool_.AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-    thread_pool_.DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+    work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
+    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
@@ -64,7 +68,7 @@ void NameServerImpl::CheckSafemode() {
         return;
     }
     common::atomic_comp_swap(&safe_mode_, new_safe_mode, safe_mode);
-    thread_pool_.DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 void NameServerImpl::LeaveSafemode() {
     LOG(INFO, "Nameserver leave safemode");
@@ -78,7 +82,7 @@ void NameServerImpl::LogStatus() {
         g_create_file.Clear(), g_list_dir.Clear(), g_get_location.Clear(),
         g_add_block.Clear(), g_unlink.Clear(), g_block_report.Clear(),
         g_report_blocks.Clear(), g_heart_beat.Clear());
-    thread_pool_.DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
+    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
 }
 
 void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
@@ -123,6 +127,13 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
                        const BlockReceivedRequest* request,
                        BlockReceivedResponse* response,
                        ::google::protobuf::Closure* done) {
+    if (!response->has_sequence_id()) {
+        response->set_sequence_id(request->sequence_id());
+        boost::function<void ()> task =
+            boost::bind(&NameServerImpl::BlockReceived, this, controller, request, response, done);
+        work_thread_pool_->AddTask(task);
+        return;
+    }
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
     LOG(INFO, "BlockReceived from C%d, %s, %d blocks",
@@ -165,6 +176,13 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    BlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
     g_block_report.Inc();
+    if (!response->has_sequence_id()) {
+        response->set_sequence_id(request->sequence_id());
+        boost::function<void ()> task =
+            boost::bind(&NameServerImpl::BlockReport, this, controller, request, response, done);
+        report_thread_pool_->AddTask(task);
+        return;
+    }
     int32_t cs_id = request->chunkserver_id();
     LOG(INFO, "Report from C%d %s %d blocks\n",
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
@@ -172,7 +190,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
     int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
     if (cs_id != old_id) {
-        LOG(WARNING, "Chunkserver %s id mismatch, old: C%d new: C%d ",
+        LOG(INFO, "Chunkserver %s id mismatch, old: C%d new: C%d , need to re-register",
             request->chunkserver_addr().c_str(), old_id, cs_id);
         response->set_status(kUnknownCs);
         done->Run();
@@ -258,8 +276,14 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                          const AddBlockRequest* request,
                          AddBlockResponse* response,
                          ::google::protobuf::Closure* done) {
-    g_add_block.Inc();
     response->set_sequence_id(request->sequence_id());
+    if (safe_mode_) {
+        LOG(INFO, "AddBlock for %s failed, safe mode.", request->file_name().c_str());
+        response->set_status(kSafeMode);
+        done->Run();
+        return;
+    }
+    g_add_block.Inc();
     std::string path = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
     if (!namespace_->GetFileInfo(path, &file_info)) {
@@ -304,13 +328,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             response->set_status(kUpdateError);
         }
     } else {
-        if (safe_mode_) {
-            LOG(INFO, "AddBlock for %s failed, safe mode.", path.c_str());
-            response->set_status(kSafeMode);
-        } else {
-            LOG(WARNING, "AddBlock for %s failed.", path.c_str());
-            response->set_status(kGetChunkserverError);
-        }
+        LOG(WARNING, "AddBlock for %s failed.", path.c_str());
+        response->set_status(kGetChunkserverError);
     }
     done->Run();
 }
@@ -402,6 +421,14 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
                         const ListDirectoryRequest* request,
                         ListDirectoryResponse* response,
                         ::google::protobuf::Closure* done) {
+    g_block_report.Inc();
+    if (!response->has_sequence_id()) {
+        response->set_sequence_id(request->sequence_id());
+        boost::function<void ()> task =
+            boost::bind(&NameServerImpl::ListDirectory, this, controller, request, response, done);
+        work_thread_pool_->AddTask(task);
+        return;
+    }
     g_list_dir.Inc();
     response->set_sequence_id(request->sequence_id());
     std::string path = NameSpace::NormalizePath(request->path());
@@ -684,6 +711,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     int64_t lo_recover_num, hi_recover_num, lo_pending, hi_pending, lost_num, incomplete_num;
     block_mapping_->GetStat(&lo_recover_num, &hi_recover_num, &lo_pending, &hi_pending,
                             &lost_num, &incomplete_num);
+    int32_t w_qps, r_qps;
+    int64_t w_speed, r_speed, recover_speed;
+    chunkserver_manager_->GetStat(&w_qps, &w_speed, &r_qps, &r_speed, &recover_speed);
     str += "<h1 style=\"margin-top: 10px; margin-bottom: 0px;\">分布式文件系统控制台 - NameServer</h1>";
 
     str += "<div class=\"row\">";
@@ -699,7 +729,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     str += "</br>";
     str += "Pending tasks: "
-        + common::NumToString(thread_pool_.PendingNum()) + "</br>";
+        + common::NumToString(work_thread_pool_->PendingNum()) + " "
+        + common::NumToString(report_thread_pool_->PendingNum()) + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
@@ -714,10 +745,20 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h4 align=left>Chunkserver status</h4>";
+    str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
     str += "Dead: " + common::NumToString(dead_num)+"</br>";
     str += "Overload: " + common::NumToString(overladen_num)+"</p>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
+
+    str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "w_qps: " + common::NumToString(w_qps)+"</br>";
+    str += "w_speed: " + common::HumanReadableString(w_speed)+"</br>";
+    str += "r_qps: " + common::NumToString(r_qps)+"</br>";
+    str += "r_speed: " + common::HumanReadableString(r_speed)+"</br>";
+    str += "recover_speed: " + common::HumanReadableString(recover_speed)+"</p>";
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="row">
 

@@ -18,6 +18,8 @@ DECLARE_int32(recover_speed);
 namespace baidu {
 namespace bfs {
 
+const int kChunkserverLoadMax = 1000;
+
 ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping)
     : thread_pool_(thread_pool),
       block_mapping_(block_mapping),
@@ -160,7 +162,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     int cs_id = GetChunkserverId(address);
     if (id == -1 || cs_id != id) {
         //reconnect after DeadCheck()
-        LOG(WARNING, "Unknown chunkserver %s with namespace version %ld",
+        LOG(INFO, "HandleHeartBeat unknown chunkserver %s with namespace version %ld",
             address.c_str(), request->namespace_version());
         response->set_status(kUnknownCs);
         return;
@@ -185,6 +187,10 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
+    info->set_w_qps(request->w_qps());
+    info->set_w_speed(request->w_speed());
+    info->set_r_qps(request->r_qps());
+    info->set_r_speed(request->r_speed());
     int32_t now_time = common::timer::now_time();
     heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
@@ -203,6 +209,18 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
     }
 }
 
+int ChunkServerManager::GetChunkserverLoad(ChunkServerInfo* cs) {
+    double max_pending = FLAGS_chunkserver_max_pending_buffers * 0.8;
+    double pending_socre = cs->buffers() / max_pending;
+    double data_socre = cs->data_size() * 1.0 / cs->disk_quota();
+    int64_t space_left = cs->disk_quota() - cs->data_size();
+
+    if (data_socre > 0.95 || space_left < (5L << 30) || pending_socre > 1.0) {
+        return kChunkserverLoadMax;
+    }
+    return static_cast<int>(kChunkserverLoadMax * (data_socre + pending_socre) / 2);
+}
+
 bool ChunkServerManager::GetChunkServerChains(int num,
                           std::vector<std::pair<int32_t,std::string> >* chains,
                           const std::string& client_address) {
@@ -219,19 +237,17 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         if (tmp_address == client_address &&
             heartbeat_list_.find(client_it->second) != heartbeat_list_.end()) {
             ChunkServerInfo* cs = NULL;
-            if (GetChunkServerPtr(client_it->second, &cs)) {
-                if (cs->data_size() < cs->disk_quota() * 0.95
-                        && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
-                    chains->push_back(std::make_pair(cs->id(), cs->address()));
-                    if (--num == 0) {
-                        return true;
-                    }
+            if (GetChunkServerPtr(client_it->second, &cs)
+                && GetChunkserverLoad(cs) < kChunkserverLoadMax) {
+                chains->push_back(std::make_pair(cs->id(), cs->address()));
+                if (--num == 0) {
+                    return true;
                 }
             }
         }
     }
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
-    std::vector<std::pair<int64_t, ChunkServerInfo*> > loads;
+    std::vector<std::pair<int, ChunkServerInfo*> > loads;
 
     for (; it != heartbeat_list_.end(); ++it) {
         std::set<ChunkServerInfo*>& set = it->second;
@@ -243,10 +259,9 @@ bool ChunkServerManager::GetChunkServerChains(int num,
                 // skip it.
                 continue;
             }
-            if (cs->data_size() < cs->disk_quota() * 0.95
-                && cs->buffers() < FLAGS_chunkserver_max_pending_buffers * 0.8) {
-                loads.push_back(
-                    std::make_pair(cs->data_size(), cs));
+            int load = GetChunkserverLoad(cs);
+            if (load < kChunkserverLoadMax) {
+                loads.push_back(std::make_pair(load, cs));
             } else {
                 LOG(INFO, "Alloc ignore: Chunkserver %s data %ld/%ld buffer %d",
                     cs->address().c_str(), cs->data_size(),
@@ -264,8 +279,8 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     int scope = loads.size() - (loads.size() % num);
     for (int32_t i = num; i < scope; i++) {
         int round =  i / num + 1;
-        int64_t base_load = loads[i % num].first;
-        int ratio = (base_load + 1024) * 100 / (loads[i].first + 1024);
+        int base_load = loads[i % num].first;
+        int ratio = (base_load + 1) * 100 / (loads[i].first + 1);
         if (rand() % 100 < (ratio / round)) {
             std::swap(loads[i % num], loads[i]);
         }
@@ -369,6 +384,24 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
             continue;
         }
         recover_blocks->insert(std::make_pair(it->first, cs->address()));
+    }
+}
+
+void ChunkServerManager::GetStat(int32_t* w_qps, int64_t* w_speed,
+                                 int32_t* r_qps, int64_t* r_speed, int64_t* recover_speed) {
+    if (w_qps) *w_qps = 0;
+    if (w_speed) *w_speed = 0;
+    if (r_qps) *r_qps = 0;
+    if (r_speed) *r_speed = 0;
+    if (recover_speed) *recover_speed = 0;
+    MutexLock lock(&mu_);
+    for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
+        ChunkServerInfo* cs = it->second;
+        if (w_qps) *w_qps += cs->w_qps();
+        if (w_speed) *w_speed += cs->w_speed();
+        if (r_qps) *r_qps += cs->r_qps();
+        if (r_speed) *r_speed += cs->r_speed();
+        if (recover_speed) *recover_speed += cs->recover_speed();
     }
 }
 

@@ -130,7 +130,7 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
         }
         parent_id = entry_id;
         entry_id = info->entry_id();
-        LOG(DEBUG, "LookUp %s entry_id= %ld", paths[i].c_str(), entry_id);
+        LOG(DEBUG, "LookUp %s entry_id= E%ld ", paths[i].c_str(), entry_id);
     }
     info->set_name(paths[paths.size()-1]);
     info->set_parent_entry_id(parent_id);
@@ -193,7 +193,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
             LOG(INFO, "Put %s", common::DebugString(key_str).c_str());
             assert (s.ok());
-            LOG(INFO, "Create path recursively: %s %ld", paths[i].c_str(), file_info.entry_id());
+            LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
         } else {
             if (!IsDir(file_info.type())) {
                 LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
@@ -240,7 +240,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
         return kNotFound;
     }
     int64_t entry_id = info.entry_id();
-    LOG(DEBUG, "ListDirectory entry_id= %ld", entry_id);
+    LOG(DEBUG, "ListDirectory entry_id= E%ld ", entry_id);
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
@@ -255,7 +255,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
         bool ret = file_info->ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
         file_info->set_name(std::string(key.data() + 8, key.size() - 8));
-        LOG(INFO, "List %s return %s[%s]",
+        LOG(DEBUG, "List %s return %s[%s]",
             path.c_str(), file_info->name().c_str(),
             common::DebugString(key.ToString()).c_str());
     }
@@ -388,7 +388,7 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
 StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
                                        bool recursive,
                                        std::vector<FileInfo>* files_removed) {
-    int entry_id = dir_info.entry_id();
+    int64_t entry_id = dir_info.entry_id();
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
     EncodingStoreKey(entry_id + 1, "", &key_end);
