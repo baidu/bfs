@@ -47,5 +47,6 @@ DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
 DEFINE_string(sdk_write_mode, "chains", "Sdk write mode: chains/fan-out");
 DEFINE_int32(sdk_createblock_retry, 5, "Create block retry times before fail");
+DEFINE_int32(file_location_cache_size, 1024, "File location cache size");
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
