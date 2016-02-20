@@ -32,7 +32,7 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
 }
 
 void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "CleanChunkserver", 10);
     chunkserver_num_--;
     LOG(INFO, "Remove Chunkserver C%d %s %s, cs_num=%d",
         cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
@@ -48,7 +48,7 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     cs->set_r_qps(0);
     cs->set_r_speed(0);
     cs->set_recover_speed(0);
-    mu_.Lock();
+    mu_.Lock("CleanChunkserverRelock", 10);
     if (cs->is_dead()) {
         cs->set_status(kCsOffLine);
     } else {
@@ -57,7 +57,7 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
 }
 
 bool ChunkServerManager::KickChunkserver(int32_t cs_id) {
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "KickChunkserver", 10);
     ChunkServerInfo* cs = NULL;
     if (!GetChunkServerPtr(cs_id, &cs)) {
         return false;
@@ -66,7 +66,7 @@ bool ChunkServerManager::KickChunkserver(int32_t cs_id) {
     return true;
 }
 bool ChunkServerManager::RemoveChunkServer(const std::string& addr) {
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "RemoveChunkServer", 10);
     std::map<std::string, int32_t>::iterator it = address_map_.find(addr);
     if (it == address_map_.end()) {
         return false;
@@ -87,7 +87,7 @@ bool ChunkServerManager::RemoveChunkServer(const std::string& addr) {
 void ChunkServerManager::DeadCheck() {
     int32_t now_time = common::timer::now_time();
 
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "DeadCheck", 10);
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
 
     while (it != heartbeat_list_.end()
@@ -131,7 +131,7 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
     const std::string& address = request->chunkserver_addr();
     StatusCode status = kOK;
     int cs_id = -1;
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "HandleRegister", 10);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
         cs_id = AddChunkServer(request->chunkserver_addr(), request->disk_quota());
@@ -169,7 +169,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     }
     response->set_status(kOK);
 
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "HandleHeartBeat", 10);
     ChunkServerInfo* info = NULL;
     bool ret = GetChunkServerPtr(id, &info);
     assert(ret && info);
@@ -201,7 +201,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
 }
 
 void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers) {
-    MutexLock lock(&mu_, "ListChunkServers", 1000);
+    MutexLock lock(&mu_, "ListChunkServers", 10);
     for (ServerMap::iterator it = chunkservers_.begin();
                 it != chunkservers_.end(); ++it) {
         ChunkServerInfo* src = it->second;
@@ -225,7 +225,7 @@ int ChunkServerManager::GetChunkserverLoad(ChunkServerInfo* cs) {
 bool ChunkServerManager::GetChunkServerChains(int num,
                           std::vector<std::pair<int32_t,std::string> >* chains,
                           const std::string& client_address) {
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "GetChunkServerChains", 10);
     if (num > chunkserver_num_) {
         LOG(INFO, "not enough alive chunkservers [%ld] for GetChunkServerChains [%d]\n",
             chunkserver_num_, num);
@@ -333,7 +333,7 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t q
 }
 
 std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "GetChunkServerAddr", 10);
     ChunkServerInfo* cs = NULL;
     if (GetChunkServerPtr(id, &cs) && !cs->is_dead()) {
         return cs->address();
@@ -342,7 +342,7 @@ std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
 }
 
 int32_t ChunkServerManager::GetChunkserverId(const std::string& addr) {
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "GetChunkserverId", 10);
     std::map<std::string, int32_t>::iterator it = address_map_.find(addr);
     if (it != address_map_.end()) {
         return it->second;
@@ -351,12 +351,12 @@ int32_t ChunkServerManager::GetChunkserverId(const std::string& addr) {
 }
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "AddBlock", 10);
     chunkserver_block_map_[id].insert(block_id);
 }
 
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
-    MutexLock lock(&mu_);
+    MutexLock lock(&mu_, "RemoveBlock", 10);
     chunkserver_block_map_[id].erase(block_id);
 }
 
@@ -364,7 +364,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
                                            std::map<int64_t, std::string>* recover_blocks,
                                            int* hi_num) {
     {
-        MutexLock lock(&mu_);
+        MutexLock lock(&mu_, "PickRecoverBlocks 1", 10);
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(cs_id, &cs)) {
             return;
@@ -377,7 +377,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
     std::map<int64_t, int32_t> blocks;
     block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
     for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        MutexLock lock(&mu_);
+        MutexLock lock(&mu_, "PickRecoverBlocks 2", 10);
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(it->second, &cs)) {
             LOG(WARNING, "PickRecoverBlocks for C%d can't find chunkserver C%d",
