@@ -18,9 +18,9 @@
 #include <common/logging.h>
 #include <common/string_util.h>
 
-#include "nameserver/namespace.h"
-#include "nameserver/chunkserver_manager.h"
 #include "nameserver/block_mapping.h"
+#include "nameserver/chunkserver_manager.h"
+#include "nameserver/namespace.h"
 #include "proto/status_code.pb.h"
 
 DECLARE_int32(nameserver_safemode_time);
@@ -359,7 +359,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     }
     StatusCode ret = block_mapping_->CheckBlockVersion(block_id, block_version);
     if (ret != kOK) {
-        LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
+        LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
         response->set_status(ret);
         done->Run();
         return;

@@ -490,7 +490,7 @@ StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
         return kNotFound;
     }
     if (it->second->version != version) {
-        LOG(WARNING, "CheckBlockVersion fail #%ld V%ld to V%ld",
+        LOG(INFO, "CheckBlockVersion fail #%ld V%ld to V%ld",
             block_id, it->second->version, version);
         return kSafeMode;
     }
