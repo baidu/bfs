@@ -54,35 +54,33 @@ bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
 
 bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,int64_t* size) {
     MutexLock lock(&mu_);
-    NSBlockMap::iterator it = block_map_.find(id);
-    if (it == block_map_.end()) {
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(id, &block)) {
         LOG(WARNING, "GetReplicaLocation can not find block: #%ld ", id);
         return false;
     }
-    NSBlock* nsblock = it->second;
-    replica->assign(nsblock->replica.begin(), nsblock->replica.end());
-    if (nsblock->recover_stat == kBlockWriting
-        || nsblock->recover_stat == kIncomplete) {
+    replica->assign(block->replica.begin(), block->replica.end());
+    if (block->recover_stat == kBlockWriting
+        || block->recover_stat == kIncomplete) {
         LOG(DEBUG, "GetLocatedBlock return writing block #%ld ", id);
         replica->insert(replica->end(),
-                         nsblock->incomplete_replica.begin(),
-                         nsblock->incomplete_replica.end());
+                        block->incomplete_replica.begin(),
+                        block->incomplete_replica.end());
     }
-    *size = nsblock->block_size;
+    *size = block->block_size;
     return true;
 }
 
 bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
     MutexLock lock(&mu_);
     NSBlockMap::iterator it = block_map_.find(block_id);
-    if (it == block_map_.end()) {
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
         LOG(WARNING, "Can't find block: #%ld ", block_id);
         return false;
-    } else {
-        NSBlock* nsblock = it->second;
-        nsblock->expect_replica_num = replica_num;
-        return true;
     }
+    block->expect_replica_num = replica_num;
+    return true;
 }
 
 void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
@@ -431,22 +429,21 @@ bool BlockMapping::UpdateBlockInfoMerge(NSBlock* nsblock,
     return true;
 }
 */
-bool BlockMapping::UpdateBlockInfo(int64_t id, int32_t server_id, int64_t block_size,
+bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                                    int64_t block_version) {
     MutexLock lock(&mu_);
-    NSBlockMap::iterator it = block_map_.find(id);
-    if (it == block_map_.end()) { //have been removed
-        LOG(DEBUG, "UpdateBlockInfo C%d #%ld has been removed", server_id, id);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        LOG(DEBUG, "UpdateBlockInfo C%d #%ld has been removed", server_id, block_id);
         return false;
     }
-    NSBlock* nsblock = it->second;
-    switch (nsblock->recover_stat) {
+    switch (block->recover_stat) {
       case kBlockWriting:
-        return UpdateWritingBlock(nsblock, server_id, block_size, block_version);
+        return UpdateWritingBlock(block, server_id, block_size, block_version);
       case kIncomplete:
-        return UpdateIncompleteBlock(nsblock, server_id, block_size, block_version);
-      default:  // kNotInRecover kLow kHi kLost
-        return UpdateNormalBlock(nsblock, server_id, block_size, block_version);
+        return UpdateIncompleteBlock(block, server_id, block_size, block_version);
+      default:  // kNotInRecover kLow kHi kLost kCheck
+        return UpdateNormalBlock(block, server_id, block_size, block_version);
     }
 }
 
@@ -460,12 +457,11 @@ void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info) {
 
 void BlockMapping::RemoveBlock(int64_t block_id) {
     MutexLock lock(&mu_);
-    NSBlockMap::iterator it = block_map_.find(block_id);
-    if (it == block_map_.end()) {
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
         LOG(WARNING, "RemoveBlock #%ld not found", block_id);
         return;
     }
-    NSBlock* block = it->second;
     if (block->recover_stat == kIncomplete) {
         for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();
              it != block->incomplete_replica.end(); ++it) {
@@ -479,19 +475,19 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
         lo_pri_recover_.erase(block_id);
     }
     delete block;
-    block_map_.erase(it);
+    block_map_.erase(block_id);
 }
 
 StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
     MutexLock lock(&mu_);
-    NSBlockMap::iterator it = block_map_.find(block_id);
-    if (it == block_map_.end()) {
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
         LOG(WARNING, "CheckBlockVersion can not find block: #%ld ", block_id);
         return kNotFound;
     }
-    if (it->second->version != version) {
+    if (block->version != version) {
         LOG(WARNING, "CheckBlockVersion fail #%ld V%ld to V%ld",
-            block_id, it->second->version, version);
+            block_id, block->version, version);
         return kSafeMode;
     }
     return kOK;
