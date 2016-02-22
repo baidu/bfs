@@ -138,7 +138,7 @@ void ChunkServerImpl::Register() {
     request.set_disk_quota(block_manager_->DiskQuota());
     request.set_namespace_version(block_manager_->NameSpaceVersion());
 
-    LOG(INFO, "Send Register request with version %ld", request.namespace_version());
+    LOG(INFO, "Send Register request with version V%ld ", request.namespace_version());
     RegisterResponse response;
     if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Register,
             &request, &response, 20, 3)) {
@@ -158,7 +158,7 @@ void ChunkServerImpl::Register() {
             /// abort
             LOG(FATAL, "Name space verion FLAGS_chunkserver_auto_clean == false");
         }
-        LOG(INFO, "Use new namespace version: %ld, clean local data", new_version);
+        LOG(INFO, "Use new namespace version: V%ld, clean local data", new_version);
         // Clean
         if (!block_manager_->RemoveAllBlocks()) {
             LOG(FATAL, "Remove local blocks fail");
@@ -171,7 +171,7 @@ void ChunkServerImpl::Register() {
     }
     assert (response.chunkserver_id() != -1);
     chunkserver_id_ = response.chunkserver_id();
-    LOG(INFO, "Connect to nameserver version= %ld, cs_id = %d",
+    LOG(INFO, "Connect to nameserver version= V%ld, cs_id = C%d ",
         block_manager_->NameSpaceVersion(), chunkserver_id_);
 
     work_thread_pool_->DelayTask(1, boost::bind(&ChunkServerImpl::SendBlockReport, this));
@@ -305,11 +305,11 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     BlockReceivedResponse response;
     if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::BlockReceived,
             &request, &response, 20, 3)) {
-        LOG(WARNING, "Reprot finish fail: %ld\n", block->Id());
+        LOG(WARNING, "Reprot finish fail: #%ld ", block->Id());
         return false;
     }
 
-    LOG(INFO, "Report finish to nameserver done, block_id: %ld\n", block->Id());
+    LOG(INFO, "Report finish to nameserver done, block_id: #%ld\n", block->Id());
     return true;
 }
 

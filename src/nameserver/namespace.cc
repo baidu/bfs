@@ -45,7 +45,7 @@ NameSpace::NameSpace(): last_entry_id_(1) {
             LOG(FATAL, "Bad namespace version len= %lu.", version_str.size());
         }
         version_ = *(reinterpret_cast<int64_t*>(&version_str[0]));
-        LOG(INFO, "Load namespace version: %ld", version_);
+        LOG(INFO, "Load namespace version: V%ld ", version_);
     } else {
         version_ = common::timer::get_micros();
         version_str.resize(8);
@@ -54,7 +54,7 @@ NameSpace::NameSpace(): last_entry_id_(1) {
         if (!s.ok()) {
             LOG(FATAL, "Write namespace version to db fail: %s", s.ToString().c_str());
         }
-        LOG(INFO, "Create new namespace version: %ld", version_);
+        LOG(INFO, "Create new namespace version: V%ld ", version_);
     }
     SetupRoot();
 }
@@ -142,10 +142,10 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
     std::string key_str;
     EncodingStoreKey(parent_id, name, &key_str);
     if (!GetFromStore(key_str, info)) {
-        LOG(INFO, "LookUp %ld %s return false", parent_id, name.c_str());
+        LOG(INFO, "LookUp E%ld %s return false", parent_id, name.c_str());
         return false;
     }
-    LOG(DEBUG, "LookUp %ld %s return true", parent_id, name.c_str());
+    LOG(DEBUG, "LookUp E%ld %s return true", parent_id, name.c_str());
     return true;
 }
 
