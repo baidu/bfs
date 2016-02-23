@@ -45,7 +45,7 @@ NameSpace::NameSpace(): last_entry_id_(1) {
             LOG(FATAL, "Bad namespace version len= %lu.", version_str.size());
         }
         version_ = *(reinterpret_cast<int64_t*>(&version_str[0]));
-        LOG(INFO, "Load namespace version: V%ld ", version_);
+        LOG(INFO, "Load namespace version: %ld ", version_);
     } else {
         version_ = common::timer::get_micros();
         version_str.resize(8);
@@ -54,7 +54,7 @@ NameSpace::NameSpace(): last_entry_id_(1) {
         if (!s.ok()) {
             LOG(FATAL, "Write namespace version to db fail: %s", s.ToString().c_str());
         }
-        LOG(INFO, "Create new namespace version: V%ld ", version_);
+        LOG(INFO, "Create new namespace version: %ld ", version_);
     }
     SetupRoot();
 }

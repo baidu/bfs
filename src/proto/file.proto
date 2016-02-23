@@ -8,7 +8,7 @@ message FileInfo {
     repeated int64 blocks = 4;
     optional uint32 ctime = 5;
     optional string name = 6;
-    optional int64 size = 7 [default = 0];
+    optional int64 size = 7;
     optional int32 replicas = 8;
     optional int64 parent_entry_id = 9;
     optional int32 owner = 10;
