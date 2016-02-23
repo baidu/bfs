@@ -189,12 +189,18 @@ void ChunkServerImpl::StopBlockReport() {
 
 void ChunkServerImpl::SendHeartbeat() {
     HeartBeatRequest request;
+    CounterManager::Counters counters = counter_manager_->GetCounters();
     request.set_chunkserver_id(chunkserver_id_);
     request.set_namespace_version(block_manager_->NameSpaceVersion());
     request.set_chunkserver_addr(data_server_addr_);
     request.set_block_num(g_blocks.Get());
     request.set_data_size(g_data_size.Get());
     request.set_buffers(g_block_buffers.Get());
+    request.set_w_qps(counters.write_ops);
+    request.set_w_speed(counters.write_bytes);
+    request.set_r_qps(counters.read_ops);
+    request.set_r_speed(counters.read_bytes);
+    request.set_recover_speed(counters.recover_bytes);
     HeartBeatResponse response;
     if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::HeartBeat,
             &request, &response, 15, 1)) {

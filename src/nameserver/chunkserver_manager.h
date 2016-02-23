@@ -15,10 +15,14 @@ class BlockMapping;
 
 class ChunkServerManager {
 public:
+    struct Stats {
+        int32_t w_qps;
+        int64_t w_speed;
+        int32_t r_qps;
+        int64_t r_speed;
+        int64_t recover_speed;
+    };
     ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping);
-    void DeadCheck();
-    void IncChunkServerNum();
-    int32_t GetChunkServerNum();
     void HandleRegister(const RegisterRequest* request, RegisterResponse* response);
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response);
     void ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers);
@@ -33,13 +37,18 @@ public:
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
     void PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks, int* hi_num);
+    void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
+                 int64_t* r_speed, int64_t* recover_speed);
 private:
     double GetChunkserverLoad(ChunkServerInfo* cs);
+    void DeadCheck();
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
+    void LogStats();
 private:
     ThreadPool* thread_pool_;
     BlockMapping* block_mapping_;
     Mutex mu_;      /// chunkserver_s list mutext;
+    Stats stats_;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
     ServerMap chunkservers_;
     std::map<std::string, int32_t> address_map_;

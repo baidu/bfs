@@ -129,6 +129,11 @@ message HeartBeatRequest {
     optional int32 block_num = 5;
     optional int64 data_size = 6;
     optional int32 buffers = 7;
+    optional int32 w_qps = 8;
+    optional int64 w_speed = 9;
+    optional int32 r_qps = 10;
+    optional int64 r_speed = 11;
+    optional int64 recover_speed = 12;
 }
 message HeartBeatResponse {
     optional int64 sequence_id = 1;

@@ -8,12 +8,14 @@
 #include <gflags/gflags.h>
 
 #include <common/logging.h>
+#include <common/string_util.h>
 #include "proto/status_code.pb.h"
 #include "nameserver/block_mapping.h"
 
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(recover_speed);
+DECLARE_int32(heartbeat_interval);
 
 namespace baidu {
 namespace bfs {
@@ -26,6 +28,7 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
       chunkserver_num_(0),
       next_chunkserver_id_(1) {
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
+    thread_pool_->AddTask(boost::bind(&ChunkServerManager::LogStats, this));
 }
 
 void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
@@ -40,6 +43,11 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     cs->set_status(kCsCleaning);
     mu_.Unlock();
     block_mapping_->DealWithDeadNode(id, blocks);
+    cs->set_w_qps(0);
+    cs->set_w_speed(0);
+    cs->set_r_qps(0);
+    cs->set_r_speed(0);
+    cs->set_recover_speed(0);
     mu_.Lock();
     if (cs->is_dead()) {
         cs->set_status(kCsOffLine);
@@ -118,14 +126,6 @@ void ChunkServerManager::DeadCheck() {
                            boost::bind(&ChunkServerManager::DeadCheck, this));
 }
 
-void ChunkServerManager::IncChunkServerNum() {
-    ++chunkserver_num_;
-}
-
-int32_t ChunkServerManager::GetChunkServerNum() {
-    return chunkserver_num_;
-}
-
 void ChunkServerManager::HandleRegister(const RegisterRequest* request,
                                         RegisterResponse* response) {
     const std::string& address = request->chunkserver_addr();
@@ -187,6 +187,11 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
+    info->set_w_qps(request->w_qps());
+    info->set_w_speed(request->w_speed());
+    info->set_r_qps(request->r_qps());
+    info->set_r_speed(request->r_speed());
+    info->set_recover_speed(request->recover_speed());
     int32_t now_time = common::timer::now_time();
     heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
@@ -243,7 +248,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         }
     }
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
-    std::vector<std::pair<int, ChunkServerInfo*> > loads;
+    std::vector<std::pair<double, ChunkServerInfo*> > loads;
 
     for (; it != heartbeat_list_.end(); ++it) {
         std::set<ChunkServerInfo*>& set = it->second;
@@ -276,7 +281,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     for (int32_t i = num; i < scope; i++) {
         int round =  i / num + 1;
         double base_load = loads[i % num].first;
-        int ratio = (base_load + 0.0001) * 100.0 / (loads[i].first + 0.0001);
+        int ratio = static_cast<int>((base_load + 0.0001) * 100.0 / (loads[i].first + 0.0001));
         if (rand() % 100 < (ratio / round)) {
             std::swap(loads[i % num], loads[i]);
         }
@@ -383,6 +388,15 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
     }
 }
 
+void ChunkServerManager::GetStat(int32_t* w_qps, int64_t* w_speed,
+                                 int32_t* r_qps, int64_t* r_speed, int64_t* recover_speed) {
+    if (w_qps) *w_qps = stats_.w_qps;
+    if (w_speed) *w_speed = stats_.w_speed;
+    if (r_qps) *r_qps = stats_.r_qps;
+    if (r_speed) *r_speed = stats_.r_speed;
+    if (recover_speed) *recover_speed = stats_.recover_speed;
+}
+
 bool ChunkServerManager::GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs) {
     mu_.AssertHeld();
     ServerMap::iterator it = chunkservers_.find(cs_id);
@@ -391,6 +405,30 @@ bool ChunkServerManager::GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs) 
     }
     if (cs) *cs = it->second;
     return true;
+}
+
+void ChunkServerManager::LogStats() {
+    int32_t w_qps = 0, r_qps = 0;
+    int64_t w_speed = 0, r_speed = 0, recover_speed = 0;
+    for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
+        ChunkServerInfo* cs = it->second;
+        w_qps += cs->w_qps();
+        w_speed += cs->w_speed();
+        r_qps += cs->r_qps();
+        r_speed += cs->r_speed();
+        recover_speed += cs->recover_speed();
+    }
+    stats_.w_qps = w_qps;
+    stats_.w_speed = w_speed;
+    stats_.r_qps = r_qps;
+    stats_.r_speed = r_speed;
+    stats_.recover_speed = recover_speed;
+    LOG(INFO, "[LogStats] w_qps=%d w_speed=%s r_qps=%d r_speed=%s recover_speed=%s",
+               w_qps, common::HumanReadableString(w_speed).c_str(), r_qps,
+               common::HumanReadableString(r_speed).c_str(),
+               common::HumanReadableString(recover_speed).c_str());
+    thread_pool_->DelayTask(FLAGS_heartbeat_interval * 1000,
+                           boost::bind(&ChunkServerManager::LogStats, this));
 }
 
 } // namespace bfs
