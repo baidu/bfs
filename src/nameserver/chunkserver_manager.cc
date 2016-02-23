@@ -187,6 +187,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
+    info->set_pending_writes(request->pending_writes());
     info->set_w_qps(request->w_qps());
     info->set_w_speed(request->w_speed());
     info->set_r_qps(request->r_qps());

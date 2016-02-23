@@ -691,7 +691,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     "style=\"width: "+ ratio + "%; color:#000;" + bg_color + "\">" + ratio + "%"
                "</div></div>";
         table_str += "</td><td>";
-        table_str += common::NumToString(chunkserver.buffers());
+        table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
+                     common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
         if (chunkserver.is_dead()) {
             table_str += "dead";
