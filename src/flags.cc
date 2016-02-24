@@ -8,6 +8,8 @@
 
 // global
 DEFINE_bool(bfs_bug_tolerant, true, "Tolerate minor bug");
+DEFINE_string(bfs_log, "", "BFS log");
+DEFINE_int32(bfs_log_size, 1024, "BFS log size");
 // nameserver
 DEFINE_string(namedb_path, "./db", "Namespace database");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
