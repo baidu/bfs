@@ -451,7 +451,6 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
     if (namespace_->GetFileInfo(path, &info)) {
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
-        out_info->set_size(info.size());
         //maybe haven't been written info meta
         if (!out_info->size()) {
             int64_t file_size = 0;
