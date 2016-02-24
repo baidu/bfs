@@ -360,11 +360,12 @@ void Block::DiskWrite() {
     this->DecRef();
 }
 /// Append to block buffer
-void Block::Append(int32_t seq, const char* buf, int64_t len) {
+StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
-    if (finished_) {
-        LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_", meta_.block_id());
-        return;
+    if (finished_ || deleted_) {
+        LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_. finished_=%d, deleted_=%d",
+            meta_.block_id, finished_, deleted_);
+        return kBlockClosed;
     }
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;
@@ -394,6 +395,7 @@ void Block::Append(int32_t seq, const char* buf, int64_t len) {
     meta_.set_block_size(meta_.block_size() + len);
     g_data_size.Add(len);
     last_seq_ = seq;
+    return kOK;
 }
 
 } // namespace bfs

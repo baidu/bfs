@@ -33,5 +33,6 @@ message ChunkServerInfo {
     optional int64 r_speed = 24;
     optional int64 writing_buffers = 25;
     optional int64 active_blocks = 26;
+    optional int64 recover_speed = 27;
 }
 

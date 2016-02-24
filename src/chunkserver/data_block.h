@@ -13,6 +13,7 @@
 #include <common/mutex.h>
 #include <common/thread_pool.h>
 #include <common/sliding_window.h>
+#include "proto/status_code.pb.h"
 
 #include "proto/block.pb.h"
 
@@ -58,7 +59,7 @@ public:
     bool Write(int32_t seq, int64_t offset, const char* data,
                int64_t len, int64_t* add_use = NULL);
     /// Append to block buffer
-    void Append(int32_t seq, const char*buf, int64_t len);
+    StatusCode Append(int32_t seq, const char*buf, int64_t len);
     /// Flush block to disk.
     bool Close();
     void AddRef();
