@@ -668,7 +668,9 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         int32_t len = response.databuf().size();
         const char* buf = response.databuf().data();
         if (len) {
-            block->Append(seq, buf, len);
+            if (block->Append(seq, buf, len) != kOK) {
+                break;
+            }
             g_recover_bytes.Add(len);
         } else {
             block->SetSliceNum(seq);
