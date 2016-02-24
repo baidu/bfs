@@ -92,6 +92,7 @@ Block::~Block() {
         }
         delete[] buf;
         g_block_buffers.Dec();
+        g_pending_writes.Dec();
         g_buffers_delete.Inc();
     }
     block_buf_list_.clear();

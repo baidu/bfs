@@ -640,7 +640,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     while (!service_stop_) {
         ReadBlockRequest request;
         ReadBlockResponse response;
-        request.set_sequence_id(++seq);
+        request.set_sequence_id(common::timer::get_micros());
         request.set_block_id(block_id);
         request.set_offset(offset);
         request.set_read_len(1 << 20);
@@ -648,6 +648,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
         bool ret = rpc_client_->SendRequest(chunkserver,
                                             &ChunkServer_Stub::ReadBlock,
                                             &request, &response, 15, 3);
+        ++seq;
         if (!ret || response.status() != kOK) {
             //try another chunkserver
             //reset seq

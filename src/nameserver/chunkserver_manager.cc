@@ -213,7 +213,7 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 
 double ChunkServerManager::GetChunkserverLoad(ChunkServerInfo* cs) {
     double max_pending = FLAGS_chunkserver_max_pending_buffers * 0.8;
-    double pending_socre = cs->buffers() / max_pending;
+    double pending_socre = cs->pending_writes() / max_pending;
     double data_socre = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
