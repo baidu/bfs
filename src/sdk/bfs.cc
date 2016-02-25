@@ -34,6 +34,7 @@ DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
 DECLARE_int32(sdk_createblock_retry);
+DECLARE_int32(default_replica_num);
 
 namespace baidu {
 namespace bfs {
@@ -138,6 +139,8 @@ public:
     /// When rpc buffer full deley send write reqeust
     void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
                          int retry_times, std::string cs_addr);
+    /// When file is closed, do cleanup work background
+    void CloseCleanup();
     bool Flush();
     bool Sync(int32_t timeout = 0);
     bool Close();
@@ -151,6 +154,7 @@ public:
 private:
     int32_t AddBlock();
     bool CheckWriteWindows();
+    int BackgroundDoneChunkserverNum();
 private:
     FSImpl* fs_;                        ///< 文件系统
     RpcClient* rpc_client_;             ///< RpcClient
@@ -371,7 +375,12 @@ public:
             request.set_sequence_id(0);
             request.set_flags(flags);
             request.set_mode(mode&0777);
-            request.set_replica_num(replica);
+            if (FLAGS_sdk_write_mode == "fan-out") {
+                replica = replica <= 0 ? FLAGS_default_replica_num : replica;
+                request.set_replica_num(replica + 1);
+            } else {
+                request.set_replica_num(replica);
+            }
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != kOK) {
@@ -836,6 +845,18 @@ void BfsFileImpl::StartWrite() {
     mu_.Lock("StartWrite relock", 1000);
 }
 
+int BfsFileImpl::BackgroundDoneChunkserverNum() {
+    mu_.AssertHeld();
+    int count = 0;
+    std::map<std::string, common::SlidingWindow<int>* >::iterator it;
+    for (it = write_windows_.begin(); it != write_windows_.end(); ++it) {
+        if (it->second->GetBaseOffset() == last_seq_ + 1)  {
+            count++;
+        }
+    }
+    return count;
+}
+
 bool BfsFileImpl::CheckWriteWindows() {
     mu_.AssertHeld();
     if (FLAGS_sdk_write_mode == "chains") {
@@ -937,6 +958,17 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      int retry_times,
                                      WriteBuffer* buffer,
                                      std::string cs_addr) {
+    if (closed_ || bg_error_) {
+        LOG(INFO, "BackgroundWrite been omitted bid= #%ld , seq= %d",
+                    " offset= %ld, len= %d, back_writing= %d",
+            buffer->block_id(), buffer->Sequence(),
+            buffer->offset(), buffer->Size(), back_writing_);
+        common::atomic_dec(&back_writing_);
+        buffer->DecRef();
+        delete request;
+        delete response;
+        return;
+    }
     if (failed || response->status() != kOK) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
                 && response->status() != kCsTooMuchPendingBuffer) {
@@ -992,6 +1024,9 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         assert(r == 0);
         buffer->DecRef();
         delete request;
+        if (write_windows_[cs_addr]->GetBaseOffset() == last_seq_ + 1) {
+            sync_signal_.Broadcast();
+         }
     }
     delete response;
 
@@ -1028,7 +1063,10 @@ bool BfsFileImpl::Sync(int32_t timeout) {
         StartWrite();
     }
     int wait_time = 0;
-    while (back_writing_ && !bg_error_ && (timeout == 0 || wait_time < timeout)) {
+    while ((FLAGS_sdk_write_mode == "chains" &&
+            back_writing_ && !bg_error_ && (timeout == 0 || wait_time < timeout))
+            || (FLAGS_sdk_write_mode == "fan-out" &&
+                BackgroundDoneChunkserverNum() < FLAGS_default_replica_num)) {
         bool finish = sync_signal_.TimeWait(1000, "Sync wait");
         if (++wait_time >= 30 && (wait_time % 10 == 0)) {
             LOG(WARNING, "Sync timeout %d s, %s back_writing_= %d, finish= %d",
@@ -1036,7 +1074,26 @@ bool BfsFileImpl::Sync(int32_t timeout) {
         }
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
-    return !bg_error_ && !back_writing_;
+    return !bg_error_ && (!back_writing_ || FLAGS_sdk_write_mode == "fan-out");
+}
+
+void BfsFileImpl::CloseCleanup() {
+    {
+        MutexLock lock(&mu_);
+        int wait_time = 0;
+        while (back_writing_) {
+            bool finish = sync_signal_.TimeWait(1000, "Sync wait");
+            if (++wait_time >= 30 && (wait_time % 10 == 0)) {
+                LOG(WARNING, "Cleanup timeout %d s, %s back_writing_= %d, finish= %d",
+                        wait_time, name_.c_str(), back_writing_, finish);
+            }
+        }
+        delete block_for_write_;
+        block_for_write_ = NULL;
+        delete chunkserver_;
+        chunkserver_ = NULL;
+    }
+    delete this;
 }
 
 bool BfsFileImpl::Close() {
@@ -1056,19 +1113,21 @@ bool BfsFileImpl::Close() {
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
         int wait_time = 0;
-        while (back_writing_) {
-            bool finish = sync_signal_.TimeWait(1000, (name_ + " Close wait").c_str());
+        while ((FLAGS_sdk_write_mode == "chains" &&
+                    back_writing_ && !bg_error_ )
+                || (FLAGS_sdk_write_mode == "fan-out" &&
+                    BackgroundDoneChunkserverNum() < FLAGS_default_replica_num)) {
+            bool finish = sync_signal_.TimeWait(1000, "Sync wait");
             if (++wait_time >= 30 && (wait_time % 10 == 0)) {
-                LOG(WARNING, "Close timeout %d s, %s back_writing_= %d, finish= %d",
-                wait_time, name_.c_str(), back_writing_, finish);
+                LOG(WARNING, "Sync timeout %d s, %s back_writing_= %d, finish= %d",
+                        wait_time, name_.c_str(), back_writing_, finish);
             }
         }
-        delete block_for_write_;
-        block_for_write_ = NULL;
     }
-    delete chunkserver_;
-    chunkserver_ = NULL;
     LOG(DEBUG, "File %s closed", name_.c_str());
+    boost::function<void ()> task =
+        boost::bind(&BfsFileImpl::CloseCleanup, this);
+    g_thread_pool->AddTask(task);
     closed_ = true;
     bool ret = true;
     if (bg_error_) {
