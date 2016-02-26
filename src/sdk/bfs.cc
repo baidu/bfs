@@ -959,10 +959,12 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBuffer* buffer,
                                      std::string cs_addr) {
     if (closed_ || bg_error_) {
+        /*
         LOG(INFO, "BackgroundWrite been omitted bid= #%ld , seq= %d",
                     " offset= %ld, len= %d, back_writing= %d",
             buffer->block_id(), buffer->Sequence(),
             buffer->offset(), buffer->Size(), back_writing_);
+        */
         common::atomic_dec(&back_writing_);
         buffer->DecRef();
         delete request;
