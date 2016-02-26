@@ -15,6 +15,7 @@
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(recover_speed);
+DECLARE_int32(recover_dest_limit);
 DECLARE_int32(heartbeat_interval);
 
 namespace baidu {
@@ -222,6 +223,21 @@ int ChunkServerManager::GetChunkserverLoad(ChunkServerInfo* cs) {
     return static_cast<int>(kChunkserverLoadMax * (data_socre + pending_socre) / 2);
 }
 
+void ChunkServerManager::RandomSelect(std::vector<std::pair<int, ChunkServerInfo*> >* loads,
+                                      int num) {
+    std::sort(loads->begin(), loads->end());
+    // Add random factor
+    int scope = loads->size() - (loads->size() % num);
+    for (int32_t i = num; i < scope; i++) {
+        int round =  i / num + 1;
+        int base_load = (*loads)[i % num].first;
+        int ratio = (base_load + 1) * 100 / ((*loads)[i].first + 1);
+        if (rand() % 100 < (ratio / round)) {
+            std::swap((*loads)[i % num], (*loads)[i]);
+        }
+    }
+}
+
 bool ChunkServerManager::GetChunkServerChains(int num,
                           std::vector<std::pair<int32_t,std::string> >* chains,
                           const std::string& client_address) {
@@ -275,21 +291,45 @@ bool ChunkServerManager::GetChunkServerChains(int num,
             loads.size(), chunkserver_num_, num);
         return false;
     }
-    std::sort(loads.begin(), loads.end());
-    // Add random factor
-    int scope = loads.size() - (loads.size() % num);
-    for (int32_t i = num; i < scope; i++) {
-        int round =  i / num + 1;
-        int base_load = loads[i % num].first;
-        int ratio = (base_load + 1) * 100 / (loads[i].first + 1);
-        if (rand() % 100 < (ratio / round)) {
-            std::swap(loads[i % num], loads[i]);
-        }
-    }
+    RandomSelect(&loads, num);
 
     for (int i = 0; i < num; ++i) {
         ChunkServerInfo* cs = loads[i].second;
         chains->push_back(std::make_pair(cs->id(), cs->address()));
+    }
+    return true;
+}
+
+bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
+                                          std::vector<std::string>* chains) {
+    mu_.AssertHeld();
+    std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
+    std::vector<std::pair<int, ChunkServerInfo*> > loads;
+
+    for (; it != heartbeat_list_.end(); ++it) {
+        std::set<ChunkServerInfo*>& set = it->second;
+        for (std::set<ChunkServerInfo*>::iterator sit = set.begin(); sit != set.end(); ++sit) {
+            ChunkServerInfo* cs = *sit;
+            if (replica.find(cs->id()) != replica.end()) {
+                continue;
+            }
+            int load = GetChunkserverLoad(cs);
+            if (load < kChunkserverLoadMax) {
+                loads.push_back(std::make_pair(load, cs));
+            } else {
+                LOG(INFO, "Recover alloc ignore: Chunkserver %s data %ld/%ld buffer %d",
+                    cs->address().c_str(), cs->data_size(),
+                    cs->disk_quota(), cs->buffers());
+            }
+        }
+    }
+    if (loads.empty()) {
+        return false;
+    }
+    RandomSelect(&loads, FLAGS_recover_dest_limit);
+    for (int i = 0; i < static_cast<int>(loads.size()) && i < FLAGS_recover_dest_limit; ++i) {
+        ChunkServerInfo* cs = loads[i].second;
+        chains->push_back(cs->address());
     }
     return true;
 }
@@ -361,7 +401,7 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
 }
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
-                                           std::map<int64_t, std::string>* recover_blocks,
+                                           std::map<int64_t, std::vector<std::string> >* recover_blocks,
                                            int* hi_num) {
     {
         MutexLock lock(&mu_);
@@ -374,17 +414,18 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
             return;
         }
     }
-    std::map<int64_t, int32_t> blocks;
+    std::map<int64_t, std::set<int32_t> > blocks;
     block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
-    for (std::map<int64_t, int32_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+    for (std::map<int64_t, std::set<int32_t> >::iterator it = blocks.begin();
+         it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
-        ChunkServerInfo* cs = NULL;
-        if (!GetChunkServerPtr(it->second, &cs)) {
-            LOG(WARNING, "PickRecoverBlocks for C%d can't find chunkserver C%d",
-                cs_id, it->second);
-            continue;
+        std::map<int64_t, std::vector<std::string> >::iterator recover_it =
+            recover_blocks->insert(std::make_pair(it->first, std::vector<std::string>())).first;
+        if (GetRecoverChains(it->second, &(recover_it->second))) {
+            //
+        } else {
+            recover_blocks->erase(recover_it);
         }
-        recover_blocks->insert(std::make_pair(it->first, cs->address()));
     }
 }
 

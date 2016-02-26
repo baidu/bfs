@@ -275,7 +275,7 @@ void ChunkServerImpl::SendBlockReport() {
         for (int i = 0; i < response.new_replicas_size(); ++i) {
             const ReplicaInfo& rep = response.new_replicas(i);
             boost::function<void ()> new_replica_task =
-                boost::bind(&ChunkServerImpl::PullNewBlock, this, rep);
+                boost::bind(&ChunkServerImpl::PushBlock, this, rep);
             if (rep.priority()) {
                 recover_thread_pool_->AddPriorityTask(new_replica_task);
             } else {
@@ -470,6 +470,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     }
     int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
+        block->SetVersion(request->recover_version());
         block->SetSliceNum(packet_seq + 1);
     }
 
@@ -558,9 +559,6 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
-            if (request->require_block_version()) {
-                response->set_block_version(block->GetVersion());
-            }
             LOG(INFO, "ReadBlock #%ld offset: %ld len: %ld return: %ld "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
@@ -591,115 +589,82 @@ void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
         }
     }
 }
-void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
-    PullBlockReportRequest report_request;
+
+void ChunkServerImpl::PushBlock(const ReplicaInfo& new_replica_info) {
+    PushBlockReportRequest report_request;
     report_request.set_sequence_id(0);
     report_request.set_chunkserver_id(chunkserver_id_);
     int64_t block_id = new_replica_info.block_id();
-    LOG(INFO, "started pull : #%ld ", block_id);
-
-    int64_t seq = -1;
-    int64_t offset = 0;
-    bool success = false;
-    int init_index = 0;
-    int pre_index = -1;
-    ChunkServer_Stub* chunkserver = NULL;
-    Block* block = block_manager_->FindBlock(block_id);
-    if (block) {
-        block->DecRef();
-        LOG(INFO, "already has #%ld , skip pull", block_id);
-        report_request.add_failed(block_id);
-        goto REPORT;
-    }
-    block = block_manager_->CreateBlock(block_id, NULL);
-    if (!block) {
-        LOG(WARNING, "Cant't create block: #%ld ", block_id);
-        //ignore this block
-        report_request.add_failed(block_id);
-        goto REPORT;
+    PushBlockProcess(new_replica_info);
+    report_request.add_blocks(block_id);
+    PushBlockReportResponse report_response;
+    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::PushBlockReport,
+                &report_request, &report_response, 15, 3)) {
+        LOG(WARNING, "Report push finish fail #%ld ", block_id);
     } else {
-        LOG(INFO, "Start pull #%ld from %s",
-            block_id, new_replica_info.chunkserver_address(0).c_str());
+        LOG(INFO, "Report push finish done #%ld ", block_id);
     }
-    for (; init_index < new_replica_info.chunkserver_address_size(); init_index++) {
-        if (rpc_client_->GetStub(new_replica_info.chunkserver_address(init_index), &chunkserver)) {
-            break;
+}
+
+void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
+    int64_t block_id = new_replica_info.block_id();
+    Block* block = block_manager_->FindBlock(block_id);
+    if (!block) {
+        LOG(INFO, "[PushBlock] #%ld failed, does not exist anymore", block_id);
+        return;
+    }
+    ChunkServer_Stub* chunkserver = NULL;
+    int attempts = new_replica_info.chunkserver_address_size();
+    for (int i = 0; i < attempts; ++i) {
+        const std::string& cs_addr = new_replica_info.chunkserver_address(i);
+        if (!rpc_client_->GetStub(cs_addr, &chunkserver)) {
+            continue;
         }
-    }
-    if (init_index == new_replica_info.chunkserver_address_size()) {
-         LOG(WARNING, "Can't connect to any chunkservers for pull block #%ld ", block_id);
-        //remove this block
-        block->DecRef();
-        block_manager_->RemoveBlock(block_id);
-        report_request.add_failed(block_id);
-        goto REPORT;
-    }
-    pre_index = init_index;
-    while (!service_stop_) {
-        ReadBlockRequest request;
-        ReadBlockResponse response;
-        request.set_sequence_id(++seq);
-        request.set_block_id(block_id);
-        request.set_offset(offset);
-        request.set_read_len(1 << 20);
-        request.set_require_block_version(true);
-        bool ret = rpc_client_->SendRequest(chunkserver,
-                                            &ChunkServer_Stub::ReadBlock,
-                                            &request, &response, 15, 3);
-        if (!ret || response.status() != kOK) {
-            //try another chunkserver
-            //reset seq
-            --seq;
-            delete chunkserver;
-            chunkserver = NULL;
-            pre_index = (pre_index + 1) % new_replica_info.chunkserver_address_size();
-            LOG(INFO, "Change src chunkserver to %s for pull block #%ld ",
-                    new_replica_info.chunkserver_address(pre_index).c_str(), block_id);
-            if (pre_index == init_index) {
-                LOG(INFO, "Pull block #%ld read fail", block_id);
-                break;
-            } else {
-                rpc_client_->GetStub(new_replica_info.chunkserver_address(pre_index), &chunkserver);
-                continue;
-            }
-        }
-        int32_t len = response.databuf().size();
-        const char* buf = response.databuf().data();
-        if (len) {
-            if (block->Append(seq, buf, len) != kOK) {
-                break;
-            }
-            g_recover_bytes.Add(len);
+        LOG(INFO, "[PushBlock] started push #%ld to %s, attempt %d/%d",
+                block_id, cs_addr.c_str(), i, attempts);
+        if (WriteRecoverBlock(block, chunkserver)) {
+            LOG(INFO, "[PushBlock] success #%ld to %s", block_id, cs_addr.c_str());
+            return;
         } else {
-            block->SetSliceNum(seq);
-            block->SetVersion(response.block_version());
+            continue;
         }
-        if (block->IsComplete() && block_manager_->CloseBlock(block)) {
-            LOG(INFO, "Pull block: #%ld finish\n", block_id);
-            success = true;
-            break;
+    }
+    LOG(INFO, "[PushBlock] failed #%ld", block_id);
+}
+
+bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver) {
+    int32_t read_len = 128 << 10;
+    int32_t offset = 0;
+    int32_t seq = 0;
+    while (!service_stop_) {
+        char* buf = new char[read_len];
+        int64_t len = block->Read(buf, read_len, offset);
+        if (len < 0) {
+            delete[] buf;
+            return false;
+        }
+        WriteBlockRequest request;
+        WriteBlockResponse response;
+        request.set_sequence_id(common::timer::get_micros());
+        request.set_block_id(block->Id());
+        request.set_databuf(buf, len);
+        request.set_is_last(len == 0);
+        request.set_packet_seq(seq);
+        request.set_recover_version(block->GetVersion());
+        bool ret = rpc_client_->SendRequest(chunkserver, &ChunkServer_Stub::WriteBlock,
+                                 &request, &response, 60, 1);
+        if (!ret || response.status() != kOK) {
+            delete[] buf;
+            return false;
         }
         offset += len;
+        ++seq;
+        delete[] buf;
+        if (len == 0) {
+            return true;
+        }
     }
-    delete chunkserver;
-    LOG(INFO, "Done pull : #%ld V%d %ld bytes", block_id, block->GetVersion(), offset);
-    block->DecRef();
-    ///TODO: block has ben removed?
-    if (!success) {
-        block_manager_->RemoveBlock(block_id);
-        report_request.add_failed(block_id);
-    } else {
-        report_request.add_blocks(block_id);
-    }
-
-REPORT:
-    PullBlockReportResponse report_response;
-    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::PullBlockReport,
-                &report_request, &report_response, 15, 3)) {
-        LOG(WARNING, "Report pull finish fail #%ld ", block_id);
-    } else {
-        LOG(INFO, "Report pull finish done #%ld ", block_id);
-    }
+    return false;
 }
 
 void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller,

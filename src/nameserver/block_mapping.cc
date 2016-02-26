@@ -502,14 +502,13 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
     }
     std::set<int32_t>& inc_replica = block->incomplete_replica;
     std::set<int32_t>& replica = block->replica;
+    if (block->recover_stat == kCheck) {
+        LOG(INFO, "Dead block was in recover #%ld ");
+        block->recover_stat = kNotInRecover;
+    }
     if (inc_replica.erase(cs_id)) {
         if (block->recover_stat == kIncomplete) {
             RemoveFromIncomplete(block_id, cs_id);
-        } else if (block->recover_stat == kCheck) {
-            LOG(INFO, "Recovering replica dead #%ld C%d R%lu IR%lu retry recover",
-                block_id, cs_id, replica.size(), inc_replica.size());
-            block->recover_stat = kNotInRecover;
-            //RemoveFromRecoverCheckList(cs_id, block_id);
         } // else kBlockWriting
     } else {
         if (replica.erase(cs_id) == 0) {
@@ -559,7 +558,7 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
 }
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
-                                     std::map<int64_t, int32_t>* recover_blocks,
+                                     std::map<int64_t, std::set<int32_t> >* recover_blocks,
                                      int32_t* hi_num) {
     MutexLock lock(&mu_);
     if (hi_pri_recover_.empty() && lo_pri_recover_.empty()) {
@@ -603,7 +602,7 @@ bool BlockMapping::RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id) {
     }
     return true;
 }
-void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool recover_success) {
+void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id) {
     MutexLock lock(&mu_);
     bool ret = RemoveFromRecoverCheckList(cs_id, block_id);
     NSBlock* block = NULL;
@@ -617,12 +616,6 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, bool r
     } else {
         LOG(WARNING, "RemoveFromRecoverCheckList fail #%ld C%d %s",
             block_id, cs_id, RecoverStat_Name(block->recover_stat).c_str());
-    }
-    if (recover_success) {
-        block->replica.insert(cs_id);
-        LOG(DEBUG, "Recovered block #%ld at C%d ", block_id, cs_id);
-    } else {
-        LOG(INFO, "Recover block fail #%ld at C%d ", block_id, cs_id);
     }
     TryRecover(block);
 }
@@ -723,9 +716,8 @@ void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover,
     ListCheckList(incomplete_, incomplete);
 }
 
-void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota,
-                                      std::set<int64_t>* recover_set,
-                                      std::map<int64_t, int32_t>* recover_blocks,
+void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
+                                      std::map<int64_t, std::set<int32_t> >* recover_blocks,
                                       std::set<int64_t>* check_set) {
     mu_.AssertHeld();
     std::set<int64_t>::iterator it = recover_set->begin();
@@ -752,22 +744,15 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota,
             recover_set->erase(it++);
             continue;
         }
-        if (replica.find(cs_id) != replica.end()) {
+        if (replica.find(cs_id) == replica.end()) {
             ++it;
             continue;
         }
-        int index = rand() % replica.size();
-        std::set<int32_t>::iterator src_it = replica.begin();
-        for (; index >0; index--) {
-            ++src_it;
-        }
-        int src_id = *src_it;
-        recover_blocks->insert(std::make_pair(block_id, src_id));
+        recover_blocks->insert(std::make_pair(block_id, replica));
         check_set->insert(block_id);
-        cur_block->incomplete_replica.insert(cs_id);
         assert(cur_block->recover_stat == kHiRecover || cur_block->recover_stat == kLoRecover);
         cur_block->recover_stat = kCheck;
-        LOG(INFO, "PickRecoverBlocks for C%d #%ld source: C%d ", cs_id, block_id, src_id);
+        LOG(INFO, "PickRecoverBlocks for C%d #%ld ", cs_id, block_id);
         thread_pool_.DelayTask(FLAGS_recover_timeout * 1000,
             boost::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
         recover_set->erase(it++);
@@ -827,7 +812,6 @@ void BlockMapping::CheckRecover(int32_t cs_id, int64_t block_id) {
     }
     if (ret) {
         SetState(block, kNotInRecover);
-        block->incomplete_replica.erase(cs_id);
     } else {
         // if ret == false, maybe a task for a dead chunkserver, don't change state
         LOG(DEBUG, "CheckRecover not found #%ld C%d %s",

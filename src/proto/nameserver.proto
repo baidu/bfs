@@ -194,13 +194,12 @@ message BlockReceivedResponse {
     optional StatusCode status = 2;
 }
 
-message PullBlockReportRequest {
+message PushBlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     repeated int64 blocks = 3;
-    repeated int64 failed = 4;
 }
-message PullBlockReportResponse {
+message PushBlockReportResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
 }
@@ -232,7 +231,7 @@ service NameServer {
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
     rpc BlockReport(BlockReportRequest) returns(BlockReportResponse);
     rpc BlockReceived(BlockReceivedRequest) returns(BlockReceivedResponse);
-    rpc PullBlockReport(PullBlockReportRequest) returns(PullBlockReportResponse);
+    rpc PushBlockReport(PushBlockReportRequest) returns(PushBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
 }

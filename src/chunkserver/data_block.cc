@@ -183,6 +183,8 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
     if (offset > meta_.block_size) {
         return -1;
+    } else if (deleted_) {
+        return -1;
     }
 
     /// Read from disk

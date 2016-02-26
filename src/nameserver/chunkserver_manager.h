@@ -26,7 +26,9 @@ public:
     void HandleRegister(const RegisterRequest* request, RegisterResponse* response);
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response);
     void ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers);
-    bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains, const std::string& client_address);
+    bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains,
+                              const std::string& client_address);
+    bool GetRecoverChains(const std::set<int32_t>& replica, std::vector<std::string>* chains);
     int32_t AddChunkServer(const std::string& address, int64_t quota);
     bool KickChunkserver(int cs_id);
     bool UpdateChunkServer(int cs_id, int64_t quota);
@@ -36,12 +38,14 @@ public:
     void AddBlock(int32_t id, int64_t block_id);
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
-    void PickRecoverBlocks(int cs_id, std::map<int64_t, std::string>* recover_blocks, int* hi_num);
+    void PickRecoverBlocks(int cs_id, std::map<int64_t, std::vector<std::string> >* recover_blocks,
+                           int* hi_num);
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
 private:
     void DeadCheck();
     int GetChunkserverLoad(ChunkServerInfo* cs);
+    void RandomSelect(std::vector<std::pair<int, ChunkServerInfo*> >* loads, int num);
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
     void LogStats();
 private:
