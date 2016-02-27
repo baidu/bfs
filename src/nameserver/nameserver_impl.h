@@ -106,8 +106,6 @@ private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
-    /// Global lock
-    Mutex mu_;
     /// Chunkserver map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
