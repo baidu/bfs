@@ -613,7 +613,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     }
     block = block_manager_->CreateBlock(block_id, NULL);
     if (!block) {
-        LOG(WARNING, "Cant't create block: #%ld ", block_id);
+        LOG(WARNING, "Can't create block: #%ld ", block_id);
         //ignore this block
         report_request.add_failed(block_id);
         goto REPORT;
@@ -684,7 +684,7 @@ void ChunkServerImpl::PullNewBlock(const ReplicaInfo& new_replica_info) {
     delete chunkserver;
     LOG(INFO, "Done pull : #%ld V%d %ld bytes", block_id, block->GetVersion(), offset);
     block->DecRef();
-    ///TODO: block has ben removed?
+    ///TODO: block has been removed?
     if (!success) {
         block_manager_->RemoveBlock(block_id);
         report_request.add_failed(block_id);
