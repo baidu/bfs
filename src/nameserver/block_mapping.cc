@@ -237,7 +237,15 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
                 return true;
             }
         }
-    } // else block_version == nsblock->version, normal block report
+    } else { //block_version == nsblock->version, normal block report
+        if (block_size != nsblock->block_size) {
+            LOG(WARNING, "Block #%ld V%ld size mismatch, old: %ld new: %ld",
+                block_id, block_version, nsblock->block_size, block_size);
+            replica.erase(cs_id);
+            if (!FLAGS_bfs_bug_tolerant) abort();
+            return false;
+        }
+    }
 
     if (replica.insert(cs_id).second) {
         LOG(INFO, "New replica C%d V%ld %ld for #%ld R%lu",
@@ -311,6 +319,14 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
                 block_id, cs_id, block_version ,
                 replica.size(), inc_replica.size());
             return true;
+        }
+    } else { //block_version == nsblock->version
+        if (block_size != nsblock->block_size) {
+            LOG(WARNING, "Block #%ld V%ld size mismatch, old: %ld new: %ld",
+                block_id, block_version, nsblock->block_size, block_size);
+            replica.erase(cs_id);
+            if (!FLAGS_bfs_bug_tolerant) abort();
+            return false;
         }
     }
 
