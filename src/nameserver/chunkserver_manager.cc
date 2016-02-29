@@ -43,12 +43,12 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     cs->set_status(kCsCleaning);
     mu_.Unlock();
     block_mapping_->DealWithDeadNode(id, blocks);
+    mu_.Lock();
     cs->set_w_qps(0);
     cs->set_w_speed(0);
     cs->set_r_qps(0);
     cs->set_r_speed(0);
     cs->set_recover_speed(0);
-    mu_.Lock();
     if (cs->is_dead()) {
         cs->set_status(kCsOffLine);
     } else {
