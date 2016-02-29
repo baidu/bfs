@@ -453,18 +453,21 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
     if (namespace_->GetFileInfo(path, &info)) {
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
-        int64_t file_size = 0;
-        for (int i = 0; i < out_info->blocks_size(); i++) {
-            int64_t block_id = out_info->blocks(i);
-            NSBlock nsblock;
-            if (!block_mapping_->GetBlock(block_id, &nsblock)) {
-                continue;
+        //maybe haven't been written info meta
+        if (!out_info->size()) {
+            int64_t file_size = 0;
+            for (int i = 0; i < out_info->blocks_size(); i++) {
+                int64_t block_id = out_info->blocks(i);
+                NSBlock nsblock;
+                if (!block_mapping_->GetBlock(block_id, &nsblock)) {
+                    continue;
+                }
+                file_size += nsblock.block_size;
             }
-            file_size += nsblock.block_size;
+            out_info->set_size(file_size);
         }
-        out_info->set_size(file_size);
         response->set_status(kOK);
-        LOG(INFO, "Stat: %s return: %ld", path.c_str(), file_size);
+        LOG(INFO, "Stat: %s return: %ld", path.c_str(), out_info->size());
     } else {
         LOG(INFO, "Stat: %s return: not found", path.c_str());
         response->set_status(kNotFound);
@@ -693,7 +696,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     "style=\"width: "+ ratio + "%; color:#000;" + bg_color + "\">" + ratio + "%"
                "</div></div>";
         table_str += "</td><td>";
-        table_str += common::NumToString(chunkserver.buffers());
+        table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
+                     common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
         if (chunkserver.is_dead()) {
             table_str += "dead";

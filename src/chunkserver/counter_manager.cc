@@ -17,6 +17,7 @@ common::Counter g_buffers_new;
 common::Counter g_buffers_delete;
 common::Counter g_blocks;
 common::Counter g_writing_blocks;
+common::Counter g_pending_writes;
 common::Counter g_writing_bytes;
 common::Counter g_find_ops;
 common::Counter g_read_ops;

@@ -233,7 +233,8 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ListDirectory,
             &request, &response, 15, 3);
         if (!ret || response.status() != kOK) {
-            LOG(WARNING, "List fail: %s\n", path);
+            LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
+                path, ret, StatusCode_Name(response.status()).c_str());
             return false;
         }
         if (response.files_size() != 0) {
@@ -288,7 +289,7 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Stat,
             &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Stat rpc fail: %s\n", path);
+            LOG(WARNING, "Stat rpc fail: %s", path);
             return false;
         }
         if (response.status() == kOK) {
@@ -339,8 +340,8 @@ public:
                         &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
                     delete chunkserver;
                     if (!ret || gbi_response.status() != kOK) {
-                        LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail",
-                            path, addr.c_str());
+                        LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail, ret= %d, status= %s",
+                            path, addr.c_str(), ret, StatusCode_Name(gbi_response.status()).c_str());
                         continue;
                     }
                     *file_size += gbi_response.block_size();
@@ -374,8 +375,8 @@ public:
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != kOK) {
-                LOG(WARNING, "Open file for write fail: %s, status= %s\n",
-                    path, StatusCode_Name(response.status()).c_str());
+                LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
+                    path, ret, StatusCode_Name(response.status()).c_str());
                 ret = false;
             } else {
                 //printf("Open file %s\n", path);
@@ -417,11 +418,11 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Unlink,
             &request, &response, 15, 1);
         if (!ret) {
-            fprintf(stderr, "Unlink rpc fail: %s\n", path);
+            LOG(WARNING, "Unlink rpc fail: %s", path);
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
+            LOG(WARNING, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
             return false;
         }
         return true;
@@ -435,11 +436,11 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Rename,
             &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Rename rpc fail: %s to %s\n", oldpath, newpath);
+            LOG(WARNING, "Rename rpc fail: %s to %s\n", oldpath, newpath);
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Rename %s to %s return: %s\n",
+            LOG(WARNING, "Rename %s to %s return: %s\n",
                 oldpath, newpath, StatusCode_Name(response.status()).c_str());
             return false;
         }
@@ -455,12 +456,12 @@ public:
                 &NameServer_Stub::ChangeReplicaNum,
                 &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Change %s replica num to %d rpc fail\n",
+            LOG(WARNING, "Change %s replica num to %d rpc fail\n",
                     file_name, replica_num);
             return false;
         }
         if (response.status() != kOK) {
-            fprintf(stderr, "Change %s replida num to %d return: %s\n",
+            LOG(WARNING, "Change %s replida num to %d return: %s\n",
                     file_name, replica_num, StatusCode_Name(response.status()).c_str());
             return false;
         }
@@ -646,7 +647,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     }
 
     if (!ret || response.status() != kOK) {
-        printf("Read block %ld fail, status= %s\n", block_id, StatusCode_Name(response.status()).c_str());
+        LOG(WARNING, "Read block %ld fail, ret= %d status= %s\n", block_id, ret, StatusCode_Name(response.status()).c_str());
         return -4;
     }
 
@@ -711,7 +712,8 @@ int32_t BfsFileImpl::AddBlock() {
     bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
         &request, &response, 15, 3);
     if (!ret || !response.has_block()) {
-        LOG(WARNING, "Nameserver AddBlock fail: %s", name_.c_str());
+        LOG(WARNING, "Nameserver AddBlock fail: %s, ret= %d, status= %s",
+            name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
         return kNsCreateError;
     }
     block_for_write_ = new LocatedBlock(response.block());
@@ -743,8 +745,8 @@ int32_t BfsFileImpl::AddBlock() {
                                             &create_request, &create_response,
                                             25, 1);
         if (!ret || create_response.status() != 0) {
-            LOG(WARNING, "Chunkserver AddBlock fail: %s %d %d",
-                name_.c_str(), ret, create_response.status());
+            LOG(WARNING, "Chunkserver AddBlock fail: %s ret=%d status= %s",
+                name_.c_str(), ret, StatusCode_Name(create_response.status()).c_str());
             for (int j = 0; j <= i; j++) {
                 const std::string& cs_addr = block_for_write_->chains(j).address();
                 delete write_windows_[cs_addr];
@@ -1084,8 +1086,8 @@ bool BfsFileImpl::Close() {
         ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
         if (!(ret && response.status() == kOK))  {
-            LOG(WARNING, "Close file %s fail, finish report returns %s",
-                    name_.c_str(), StatusCode_Name(response.status()).c_str());
+            LOG(WARNING, "Close file %s fail, finish report returns %d, status: %s",
+                    name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
             ret = false;
         }
     }

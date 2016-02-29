@@ -25,6 +25,7 @@ message ChunkServerInfo {
     optional int32 status = 9;
     optional int32 ip = 10;
     optional int32 buffers = 11;
+    optional int32 pending_writes = 28;
     optional bool kick = 12;
     optional string zone = 13;
     optional string datacenter = 14;

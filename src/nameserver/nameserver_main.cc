@@ -18,6 +18,8 @@ DECLARE_string(nameserver_port);
 DECLARE_int32(nameserver_log_level);
 DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
+DECLARE_string(bfs_log);
+DECLARE_int32(bfs_log_size);
 
 int main(int argc, char* argv[])
 {
@@ -30,7 +32,10 @@ int main(int argc, char* argv[])
     }
     FLAGS_flagfile = "./bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
-    ::baidu::common::SetLogFile(FLAGS_nameserver_logfile.c_str());
+    if (FLAGS_bfs_log != "") {
+        baidu::common::SetLogFile(FLAGS_bfs_log.c_str());
+        baidu::common::SetLogSize(FLAGS_bfs_log_size);
+    }
     ::baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
     ::baidu::common::SetWarningFile(FLAGS_nameserver_warninglog.c_str());
 
