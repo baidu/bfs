@@ -26,6 +26,9 @@ message ChunkServerInfo {
     optional int32 ip = 10;
     optional int32 buffers = 11;
     optional bool kick = 12;
+    optional string zone = 13;
+    optional string datacenter = 14;
+    optional string rack = 15;
     // running status
     optional int32 w_qps = 21;
     optional int64 w_speed = 22;

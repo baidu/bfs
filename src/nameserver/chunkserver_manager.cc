@@ -9,13 +9,16 @@
 
 #include <common/logging.h>
 #include <common/string_util.h>
+#include <common/util.h>
 #include "proto/status_code.pb.h"
 #include "nameserver/block_mapping.h"
+#include "nameserver/location_provider.h"
 
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(recover_speed);
 DECLARE_int32(heartbeat_interval);
+DECLARE_bool(select_chunkserver_by_zone);
 
 namespace baidu {
 namespace bfs {
@@ -29,6 +32,8 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
       next_chunkserver_id_(1) {
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::LogStats, this));
+    localhostname_ = common::util::GetLocalHostName();
+    localzone_ = LocationProvider(localhostname_, "").GetZone();
 }
 
 void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
@@ -126,7 +131,8 @@ void ChunkServerManager::DeadCheck() {
                            boost::bind(&ChunkServerManager::DeadCheck, this));
 }
 
-void ChunkServerManager::HandleRegister(const RegisterRequest* request,
+void ChunkServerManager::HandleRegister(const std::string& ip,
+                                        const RegisterRequest* request,
                                         RegisterResponse* response) {
     const std::string& address = request->chunkserver_addr();
     StatusCode status = kOK;
@@ -134,7 +140,7 @@ void ChunkServerManager::HandleRegister(const RegisterRequest* request,
     MutexLock lock(&mu_, "HandleRegister", 10);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
-        cs_id = AddChunkServer(request->chunkserver_addr(), request->disk_quota());
+        cs_id = AddChunkServer(request->chunkserver_addr(), ip, request->disk_quota());
         assert(cs_id >= 0);
         response->set_chunkserver_id(cs_id);
     } else {
@@ -287,11 +293,50 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         }
     }
 
-    for (int i = 0; i < num; ++i) {
-        ChunkServerInfo* cs = loads[i].second;
-        chains->push_back(std::make_pair(cs->id(), cs->address()));
+    if (FLAGS_select_chunkserver_by_zone) {
+        int count = SelectChunkserverByZone(num, loads, chains);
+        if (count < num) {
+            LOG(WARNING, "SelectChunkserverByZone(%d) return %d", num);
+            return false;
+        }
+    } else {
+        for (int i = 0; i < num; ++i) {
+            ChunkServerInfo* cs = loads[i].second;
+            chains->push_back(std::make_pair(cs->id(), cs->address()));
+        }
     }
     return true;
+}
+
+int ChunkServerManager::SelectChunkserverByZone(int num,
+        const std::vector<std::pair<int, ChunkServerInfo*> >& loads,
+        std::vector<std::pair<int32_t,std::string> >* chains) {
+    /*
+    ChunkServerInfo* local_server = NULL;
+    if (chains.size()) {
+        bool ret = GetChunkServerPtr(chains->first, &local_server);
+        assert(ret);
+    }*/
+    int ret = 0;
+    ChunkServerInfo* remote_server = NULL;
+    for(uint32_t i = 0; i < loads.size(); i++) {
+        ChunkServerInfo* cs = loads[i].second;
+        if (cs->zone() != localzone_) {
+            if (!remote_server) remote_server = cs;
+        } else {
+            ++ret;
+            chains->push_back(std::make_pair(cs->id(), cs->address()));
+            if (chains->size() + (remote_server?1:0) >= static_cast<uint32_t>(num)) {
+                break;
+            }
+        }
+    }
+    if (remote_server) {
+        ++ret;
+        chains->push_back(std::make_pair(remote_server->id(), remote_server->address()));
+        LOG(DEBUG, "Select remote server %s", remote_server->address().c_str());
+    }
+    return ret;
 }
 
 bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
@@ -313,7 +358,9 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
     return true;
 }
 
-int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t quota) {
+int32_t ChunkServerManager::AddChunkServer(const std::string& address,
+                                           const std::string& ip,
+                                           int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = new ChunkServerInfo;
     int32_t id = next_chunkserver_id_++;
@@ -322,6 +369,11 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address, int64_t q
     info->set_disk_quota(quota);
     info->set_status(kCsActive);
     info->set_kick(false);
+    std::string host = address.substr(0, address.find(':'));
+    LocationProvider loc(host, ip);
+    info->set_zone(loc.GetZone());
+    info->set_datacenter(loc.GetDataCenter());
+    info->set_rack(loc.GetRack());
     LOG(INFO, "New ChunkServerInfo C%d %s %p", id, address.c_str(), info);
     chunkservers_[id] = info;
     address_map_[address] = id;

@@ -108,7 +108,9 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
     sofa::pbrpc::RpcController* sofa_cntl =
         reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     const std::string& address = request->chunkserver_addr();
-    LOG(INFO, "Register ip: %s", sofa_cntl->RemoteAddress().c_str());
+    const std::string& ip_address = sofa_cntl->RemoteAddress();
+    const std::string cs_ip = ip_address.substr(ip_address.find(':'));
+    LOG(INFO, "Register ip: %s", ip_address.c_str());
     int64_t version = request->namespace_version();
     if (version != namespace_->Version()) {
         LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
@@ -116,7 +118,7 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
         chunkserver_manager_->RemoveChunkServer(address);
     } else {
         LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
-        chunkserver_manager_->HandleRegister(request, response);
+        chunkserver_manager_->HandleRegister(cs_ip, request, response);
     }
     response->set_namespace_version(namespace_->Version());
     done->Run();
