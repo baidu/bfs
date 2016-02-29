@@ -32,28 +32,28 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
 }
 
 void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
-    MutexLock lock(&mu_);
-    chunkserver_num_--;
-    LOG(INFO, "Remove Chunkserver C%d %s %s, cs_num=%d",
-        cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     int32_t id = cs->id();
     std::set<int64_t> blocks;
-    std::swap(blocks, chunkserver_block_map_[id]);
-    chunkserver_block_map_.erase(id);
-    cs->set_status(kCsCleaning);
-    mu_.Unlock();
-    block_mapping_->DealWithDeadNode(id, blocks);
-    cs->set_w_qps(0);
-    cs->set_w_speed(0);
-    cs->set_r_qps(0);
-    cs->set_r_speed(0);
-    cs->set_recover_speed(0);
-    mu_.Lock();
-    if (cs->is_dead()) {
-        cs->set_status(kCsOffLine);
-    } else {
-        cs->set_status(kCsStandby);
+    {
+        MutexLock lock(&mu_);
+        chunkserver_num_--;
+        LOG(INFO, "Remove Chunkserver C%d %s %s, cs_num=%d",
+                cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
+        std::swap(blocks, chunkserver_block_map_[id]);
+        chunkserver_block_map_.erase(id);
+        cs->set_status(kCsCleaning);
+        cs->set_w_qps(0);
+        cs->set_w_speed(0);
+        cs->set_r_qps(0);
+        cs->set_r_speed(0);
+        cs->set_recover_speed(0);
+        if (cs->is_dead()) {
+            cs->set_status(kCsOffLine);
+        } else {
+            cs->set_status(kCsStandby);
+        }
     }
+    block_mapping_->DealWithDeadNode(id, blocks);
 }
 
 bool ChunkServerManager::KickChunkserver(int32_t cs_id) {
