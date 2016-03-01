@@ -42,12 +42,13 @@ int64_t BlockMapping::NewBlockID() {
 
 bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
     MutexLock lock(&mu_, "BlockMapping::GetBlock", 1000);
-    NSBlockMap::iterator it = block_map_.find(block_id);
-    if (it == block_map_.end()) {
+    NSBlock* nsblock = NULL;
+    if (!GetBlockPtr(block_id, &nsblock)) {
+        LOG(WARNING, "GetBlock can not find block: #%ld", block_id);
         return false;
     }
     if (block) {
-        *block = *(it->second);
+        *block = *nsblock;
     }
     return true;
 }
@@ -488,7 +489,7 @@ StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
     if (block->version != version) {
         LOG(WARNING, "CheckBlockVersion fail #%ld V%ld to V%ld",
             block_id, block->version, version);
-        return kSafeMode;
+        return kVersionError;
     }
     return kOK;
 }
