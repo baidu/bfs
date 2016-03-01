@@ -219,7 +219,7 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 
 double ChunkServerManager::GetChunkserverLoad(ChunkServerInfo* cs) {
     double max_pending = FLAGS_chunkserver_max_pending_buffers * 0.8;
-    double pending_socre = cs->pending_writes() / max_pending;
+    double pending_socre = cs->buffers() / max_pending;
     double data_socre = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
@@ -310,7 +310,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 }
 
 int ChunkServerManager::SelectChunkserverByZone(int num,
-        const std::vector<std::pair<int, ChunkServerInfo*> >& loads,
+        const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains) {
     /*
     ChunkServerInfo* local_server = NULL;
@@ -424,6 +424,10 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         }
         if (cs->buffers() > FLAGS_chunkserver_max_pending_buffers * 0.5
             || cs->data_size() > cs->disk_quota() * 0.95) {
+            return;
+        }
+        if (cs->zone() != localzone_) {
+            LOG(INFO, "Remote zone server C%d ignore PickRecoverBlocks", cs_id);
             return;
         }
     }

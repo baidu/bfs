@@ -47,7 +47,7 @@ private:
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
     void LogStats();
     int SelectChunkserverByZone(int num,
-        const std::vector<std::pair<int, ChunkServerInfo*> >& loads,
+        const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains);
 private:
     ThreadPool* thread_pool_;
