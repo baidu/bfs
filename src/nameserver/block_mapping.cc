@@ -776,8 +776,10 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota,
 
 void BlockMapping::TryRecover(NSBlock* block) {
     mu_.AssertHeld();
-    assert (block->recover_stat != kBlockWriting);
-    if (safe_mode_ || block->recover_stat == kCheck || block->recover_stat == kIncomplete) {
+    if (safe_mode_
+        || block->recover_stat == kCheck
+        || block->recover_stat == kIncomplete
+        || block->recover_stat == kBlockWriting) {
         return;
     }
     int64_t block_id = block->id;
