@@ -2,9 +2,7 @@ language: cpp
 compiler: gcc
 env:
     global:
-    # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
-    #   via the "travis encrypt" command using the project repo's public key
-        - secure: "Drn8lpBITl8cc/5+SFlmhQ1dj19xh5MEQXtPz+KozlqxvX9iz1TkmS7tCwDlYYOa3FMY0jBWiBO31nRlpWM/QZccOwzIGRNezdinOYtu9DsvIGiagnQyccJ+PwJkoZYDUo764JNs3IsfFuT41r262svEc3vTzIVoaDo07dgHulUTSd3LPcdC/vH2uAmiUUdqNswMevMrAVA94McWBu085GDYQ5oPFbfk2rDbif9xKcEuFwTibBNVoSi1spiALoAM9FpnH2Jtu6uShlO7yKVWqZAolYf9fgYDBUr5Pd67uidJf4bDA9Hf7bzoAx1T7LlGbo26NBMaOGaOV2rYB0k1+yk96fWcYFXA60ndr/YDqKmiEeUaA53lhQ4+JUI0KRGmdjR0WXHKypsuNY2hgETaiY6OV1y0wrS+OVhd4t4f2reLThjGpyIddpkLWMd5RClf9MWMxe/4AOFxaLObWEswE4db9goJSbW2my+EkoHYJTDwumrGEOdun3M7h3w004w8+OqtiyUxA27UTbnPempdBUJfbhEWJtk3KNrOO4USIg4tAXuYZNCRqYjcdG+eiSGF2SOGIfCiJNUSKiXaEJq9wBcDL1w7Qs31C0QxUIgOdta/sJeFFe4rveh6fzoorU18QyYAGyvfAtHMcQBeVDP8rPKbQduxGZcieIFu/inlcDo="
+        - secuvre: "Vpettms0gLgdHTEEciOy3WPlwa62xARgai+DH7NPQEY2DunJwSDP1QmXAkqp1P9QTyOrbhjF9Icgs7NeF4+U8AFUVNCYxZUo80qeIZ5l8zw4eGrrjIyWHXvxmD3FeJvnJmlemOifTN7SpAvsxRYtEeSf4eazU8EnzLnI+9f6nqLNcYUksT8EeY2On0snXYHFhFATmuD0/MgtWhxFXgJP4EAcMhwgYzYaEiQ9R80TTb3CldCkMuCWnD0SsWAmRTqaBLSOsgFpKnrbA4bU4MSZI9xazjwqaiNueMW9aTKgm9x08I2sVvD0Ojc9ijPyUyYCy4zBXb5ZHLgdqu44bGte2/wJv6g9vmKvHMa+9ITuXjbFm7Bsb9dg7GwtXoo1tjsmKLq8Y9d/j5sk8/3aEcNbFINeXVCajkcS/9fcCoYIB565pPU88jNKW2J0D7xJ6DciJO+xTni/l80ZEKlf2XjK2JWqNtniApedTUMo6nEO/jVOOK+Q5UWrPhy0YNjvS6Gj/IPruU8A0aaXOWq5WewYg6WgbADP2foewgf1BrA9uyHEIME8gLDqzL5AUPsMIdaewvAmlTKzxB2K/DSUms+TTEAfKVz9jTBJl6O+VmA6eYs7VkQDJTxdCn8xJHG3Ixjz7mGNqFwxE6WNCDSseKNDdmZa4rJFBhBvLfAPpg9qmpU=s"
     matrix:
         - PROTOBUF_VERSION=2.6.0
 
@@ -47,6 +45,8 @@ before_script:
     - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
     - echo 'COMMON_PATH=./common/output' >> depends.mk
 
+script: make -j4 && make test
+
 addons:
    coverity_scan:
        project:
@@ -55,6 +55,4 @@ addons:
        build_command_prepend: "rm -rf output "
        build_command: "sh internal_build.sh"
        branch_pattern: master
-
-script: make -j4 && make test
 
