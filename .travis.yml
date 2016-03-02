@@ -53,7 +53,7 @@ addons:
            name: "myawan/bfs"
        notification_email: 185829549@qq.com
        build_command_prepend: "rm -rf output "
-       build_command: "make -j4"
+       build_command: "sh internal_build.sh"
        branch_pattern: master
 
 script: make -j4 && make test
