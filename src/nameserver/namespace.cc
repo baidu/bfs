@@ -170,7 +170,8 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return LookUp(path, file_info);
 }
 
-StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
+StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode,
+                                 int replica_num, std::vector<int64_t>* blocks_to_remove) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "CreateFile split fail %s", path.c_str());
@@ -204,10 +205,17 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     }
 
     const std::string& fname = paths[depth-1];
-    if ((flags & O_TRUNC) == 0) {
-        if (LookUp(parent_id, fname, &file_info)) {
+    if (LookUp(parent_id, fname, &file_info)) {
+        if (file_info.type() & (1 << 9)) {
+            return kDirExist;
+        }
+        if ((flags & O_TRUNC) == 0) {
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
-            return kNotOK;
+            return kFileExist;
+        } else {
+            for (int i = 0; i < file_info.blocks_size(); i++) {
+                blocks_to_remove->push_back(file_info.blocks(i));
+            }
         }
     }
     if (mode) {

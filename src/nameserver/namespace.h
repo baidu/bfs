@@ -27,7 +27,8 @@ public:
     StatusCode ListDirectory(const std::string& path,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
-    StatusCode CreateFile(const std::string& file_name, int flags, int mode, int replica_num);
+    StatusCode CreateFile(const std::string& file_name, int flags, int mode,
+                          int replica_num, std::vector<int64_t>* blocks_to_remove);
     /// Remove file by name
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed);
     /// Remove director.
