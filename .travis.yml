@@ -2,6 +2,10 @@ language: cpp
 compiler: gcc
 env:
     - PROTOBUF_VERSION=2.6.0
+    global:
+    # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+    #   via the "travis encrypt" command using the project repo's public key
+    - secure: "Drn8lpBITl8cc/5+SFlmhQ1dj19xh5MEQXtPz+KozlqxvX9iz1TkmS7tCwDlYYOa3FMY0jBWiBO31nRlpWM/QZccOwzIGRNezdinOYtu9DsvIGiagnQyccJ+PwJkoZYDUo764JNs3IsfFuT41r262svEc3vTzIVoaDo07dgHulUTSd3LPcdC/vH2uAmiUUdqNswMevMrAVA94McWBu085GDYQ5oPFbfk2rDbif9xKcEuFwTibBNVoSi1spiALoAM9FpnH2Jtu6uShlO7yKVWqZAolYf9fgYDBUr5Pd67uidJf4bDA9Hf7bzoAx1T7LlGbo26NBMaOGaOV2rYB0k1+yk96fWcYFXA60ndr/YDqKmiEeUaA53lhQ4+JUI0KRGmdjR0WXHKypsuNY2hgETaiY6OV1y0wrS+OVhd4t4f2reLThjGpyIddpkLWMd5RClf9MWMxe/4AOFxaLObWEswE4db9goJSbW2my+EkoHYJTDwumrGEOdun3M7h3w004w8+OqtiyUxA27UTbnPempdBUJfbhEWJtk3KNrOO4USIg4tAXuYZNCRqYjcdG+eiSGF2SOGIfCiJNUSKiXaEJq9wBcDL1w7Qs31C0QxUIgOdta/sJeFFe4rveh6fzoorU18QyYAGyvfAtHMcQBeVDP8rPKbQduxGZcieIFu/inlcDo="
 install:
     - echo | sudo apt-add-repository ppa:boost-latest/ppa
     - sudo apt-get update
@@ -41,4 +45,14 @@ before_script:
     - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
     - echo 'COMMON_PATH=./common/output' >> depends.mk
 
+addons:
+   coverity_scan:
+       project:
+           name: "myawan/bfs"
+       notification_email: 185829549@qq.com
+       build_command_prepend: "rm -rf output "
+       build_command:   "make -j4"
+       branch_pattern: master
+
 script: make -j4 && make test
+
