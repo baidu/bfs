@@ -45,7 +45,6 @@ before_script:
     - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
     - echo 'COMMON_PATH=./common/output' >> depends.mk
 
-script: make -j4 && make test
 
 addons:
    coverity_scan:
@@ -55,4 +54,6 @@ addons:
        build_command_prepend: "rm -rf output "
        build_command: "sh internal_build.sh"
        branch_pattern: master
+
+script: make -j4 && make test
 
