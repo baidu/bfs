@@ -267,7 +267,13 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         mode = 0644;    // default mode
     }
     int replica_num = request->replica_num();
-    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num);
+    std::vector<int64_t> blocks_to_remove;
+    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove);
+    if (!blocks_to_remove.empty()) {
+        for (int i = 0; i < blocks_to_remove.size(); i++) {
+            block_mapping_->RemoveBlock(blocks_to_remove[i]);
+        }
+    }
     response->set_status(status);
     done->Run();
 }

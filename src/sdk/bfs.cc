@@ -377,9 +377,14 @@ public:
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
             if (!ret || response.status() != kOK) {
-                LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
-                    path, ret, StatusCode_Name(response.status()).c_str());
-                ret = false;
+                if (response.status() == kDirExist) {
+                    ///TODO change file name and retry
+                    ret = false;
+                } else {
+                    LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
+                        path, ret, StatusCode_Name(response.status()).c_str());
+                    ret = false;
+                }
             } else {
                 //printf("Open file %s\n", path);
                 *file = new BfsFileImpl(this, rpc_client_, path, flags);
