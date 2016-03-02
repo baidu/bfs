@@ -1,7 +1,7 @@
-[The Baidu File System](http://github.com/bluebore/dfs)
+[The Baidu File System](http://github.com/myawan/dfs-1)
 ======
 
-Travis [![Build Status](https://travis-ci.org/bluebore/bfs.svg)](https://travis-ci.org/bluebore/bfs)
+Travis [![Build Status](https://travis-ci.org/myawan/bfs-1.svg)](https://travis-ci.org/myawan/bfs-1)
 
 Jenkins [![Build Status](http://220.181.7.231/buildStatus/icon?job=bfs_master)](http://220.181.7.231/view/bfs/job/bfs_master/)
 
