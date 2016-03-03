@@ -45,7 +45,7 @@ NameSpace::NameSpace(): last_entry_id_(1) {
             LOG(FATAL, "Bad namespace version len= %lu.", version_str.size());
         }
         version_ = *(reinterpret_cast<int64_t*>(&version_str[0]));
-        LOG(INFO, "Load namespace version: %ld", version_);
+        LOG(INFO, "Load namespace version: %ld ", version_);
     } else {
         version_ = common::timer::get_micros();
         version_str.resize(8);
@@ -54,7 +54,7 @@ NameSpace::NameSpace(): last_entry_id_(1) {
         if (!s.ok()) {
             LOG(FATAL, "Write namespace version to db fail: %s", s.ToString().c_str());
         }
-        LOG(INFO, "Create new namespace version: %ld", version_);
+        LOG(INFO, "Create new namespace version: %ld ", version_);
     }
     SetupRoot();
 }
@@ -130,7 +130,7 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
         }
         parent_id = entry_id;
         entry_id = info->entry_id();
-        LOG(DEBUG, "LookUp %s entry_id= %ld", paths[i].c_str(), entry_id);
+        LOG(DEBUG, "LookUp %s entry_id= E%ld ", paths[i].c_str(), entry_id);
     }
     info->set_name(paths[paths.size()-1]);
     info->set_parent_entry_id(parent_id);
@@ -142,10 +142,10 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
     std::string key_str;
     EncodingStoreKey(parent_id, name, &key_str);
     if (!GetFromStore(key_str, info)) {
-        LOG(INFO, "LookUp %ld %s return false", parent_id, name.c_str());
+        LOG(INFO, "LookUp E%ld %s return false", parent_id, name.c_str());
         return false;
     }
-    LOG(DEBUG, "LookUp %ld %s return true", parent_id, name.c_str());
+    LOG(DEBUG, "LookUp E%ld %s return true", parent_id, name.c_str());
     return true;
 }
 
@@ -193,7 +193,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
             LOG(INFO, "Put %s", common::DebugString(key_str).c_str());
             assert (s.ok());
-            LOG(INFO, "Create path recursively: %s %ld", paths[i].c_str(), file_info.entry_id());
+            LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
         } else {
             if (!IsDir(file_info.type())) {
                 LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
@@ -240,7 +240,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
         return kNotFound;
     }
     int64_t entry_id = info.entry_id();
-    LOG(DEBUG, "ListDirectory entry_id= %ld", entry_id);
+    LOG(DEBUG, "ListDirectory entry_id= E%ld ", entry_id);
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
@@ -388,7 +388,7 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
 StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
                                        bool recursive,
                                        std::vector<FileInfo>* files_removed) {
-    int entry_id = dir_info.entry_id();
+    int64_t entry_id = dir_info.entry_id();
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
     EncodingStoreKey(entry_id + 1, "", &key_end);

@@ -360,12 +360,10 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     StatusCode ret = block_mapping_->CheckBlockVersion(block_id, block_version);
     if (ret != kOK) {
         LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
-        response->set_status(ret);
-        done->Run();
-        return;
+    } else {
+        LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
     }
-    LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
-    response->set_status(kOK);
+    response->set_status(ret);
     done->Run();
 }
 
@@ -451,18 +449,21 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
     if (namespace_->GetFileInfo(path, &info)) {
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
-        int64_t file_size = 0;
-        for (int i = 0; i < out_info->blocks_size(); i++) {
-            int64_t block_id = out_info->blocks(i);
-            NSBlock nsblock;
-            if (!block_mapping_->GetBlock(block_id, &nsblock)) {
-                continue;
+        //maybe haven't been written info meta
+        if (!out_info->size()) {
+            int64_t file_size = 0;
+            for (int i = 0; i < out_info->blocks_size(); i++) {
+                int64_t block_id = out_info->blocks(i);
+                NSBlock nsblock;
+                if (!block_mapping_->GetBlock(block_id, &nsblock)) {
+                    continue;
+                }
+                file_size += nsblock.block_size;
             }
-            file_size += nsblock.block_size;
+            out_info->set_size(file_size);
         }
-        out_info->set_size(file_size);
         response->set_status(kOK);
-        LOG(INFO, "Stat: %s return: %ld", path.c_str(), file_size);
+        LOG(INFO, "Stat: %s return: %ld", path.c_str(), out_info->size());
     } else {
         LOG(INFO, "Stat: %s return: not found", path.c_str());
         response->set_status(kNotFound);
@@ -533,19 +534,21 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
     int32_t replica_num = request->replica_num();
-
     StatusCode ret_status = kOK;
-
     FileInfo file_info;
     if (namespace_->GetFileInfo(file_name, &file_info)) {
         file_info.set_replicas(replica_num);
         bool ret = namespace_->UpdateFileInfo(file_info);
         assert(ret);
-        if (block_mapping_->ChangeReplicaNum(file_info.entry_id(), replica_num)) {
-            LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
-        } else {
-            LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
-            ret_status = kNotOK;
+        for (int i = 0; i < file_info.blocks_size(); i++) {
+            if (block_mapping_->ChangeReplicaNum(file_info.blocks(i), replica_num)) {
+                LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
+            } else {
+                ///TODO: need to undo when file have multiple blocks?
+                LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
+                ret_status = kNotOK;
+                break;
+            }
         }
     } else {
         LOG(INFO, "Change replica num not found: %s", file_name.c_str());
@@ -691,7 +694,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     "style=\"width: "+ ratio + "%; color:#000;" + bg_color + "\">" + ratio + "%"
                "</div></div>";
         table_str += "</td><td>";
-        table_str += common::NumToString(chunkserver.buffers());
+        table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
+                     common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
         if (chunkserver.is_dead()) {
             table_str += "dead";
