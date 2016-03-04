@@ -59,6 +59,7 @@ extern common::Counter g_buffers_new;
 extern common::Counter g_buffers_delete;
 extern common::Counter g_blocks;
 extern common::Counter g_writing_blocks;
+extern common::Counter g_pending_writes;
 extern common::Counter g_writing_bytes;
 extern common::Counter g_read_ops;
 extern common::Counter g_read_bytes;
@@ -118,9 +119,9 @@ void ChunkServerImpl::LogStatus(bool routine) {
     counter_manager_->GatherCounters();
     CounterManager::Counters counters = counter_manager_->GetCounters();
 
-    LOG(INFO, "[Status] blocks %ld %ld buffers %ld data %sB, "
+    LOG(INFO, "[Status] blocks %ld %ld buffers %ld pending %ld data %sB, "
               "find %ld read %ld write %ld %ld %.2f MB, rpc %ld %ld %ld",
-        g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(),
+        g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(), g_pending_writes.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
         counters.find_ops, counters.read_ops,
         counters.write_ops, counters.refuse_ops,
@@ -196,6 +197,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_block_num(g_blocks.Get());
     request.set_data_size(g_data_size.Get());
     request.set_buffers(g_block_buffers.Get());
+    request.set_pending_writes(g_pending_writes.Get());
     request.set_w_qps(counters.write_ops);
     request.set_w_speed(counters.write_bytes);
     request.set_r_qps(counters.read_ops);
@@ -271,11 +273,13 @@ void ChunkServerImpl::SendBlockReport() {
             write_thread_pool_->AddTask(task);
         }
 
-        LOG(INFO, "Block report done. %d replica blocks", response.new_replicas_size());
+        LOG(INFO, "Block report done. %d replica blocks recover_size=%d",
+                response.new_replicas_size(), response.new_replicas_size());
         for (int i = 0; i < response.new_replicas_size(); ++i) {
             const ReplicaInfo& rep = response.new_replicas(i);
             boost::function<void ()> new_replica_task =
                 boost::bind(&ChunkServerImpl::PushBlock, this, rep);
+            LOG(INFO, "push #%ld ", rep.block_id());
             if (rep.priority()) {
                 recover_thread_pool_->AddPriorityTask(new_replica_task);
             } else {
@@ -470,7 +474,9 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     }
     int64_t write_end = common::timer::get_micros();
     if (request->is_last()) {
-        block->SetVersion(request->recover_version());
+        if (request->has_recover_version()) {
+            block->SetVersion(request->recover_version());
+        }
         block->SetSliceNum(packet_seq + 1);
     }
 
@@ -731,7 +737,8 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<td>" + common::NumToString(counters.read_ops) + "</td>";
     str += "<td>" + common::HumanReadableString(counters.read_bytes) + "/S</td>";
     str += "<td>" + common::HumanReadableString(counters.recover_bytes) + "/S</td>";
-    str += "<td>" + common::NumToString(g_block_buffers.Get())
+    str += "<td>" + common::NumToString(g_pending_writes.Get()) + "/" +
+                    common::NumToString(g_block_buffers.Get()) +
            + "(" + common::NumToString(counters.buffers_new) + "/"
            + common::NumToString(counters.buffers_delete) +")" + "</td>";
     str += "<td>" + common::NumToString(work_thread_pool_->PendingNum()) + "/"

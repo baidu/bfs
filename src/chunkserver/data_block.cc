@@ -31,6 +31,7 @@ extern common::Counter g_buffers_new;
 extern common::Counter g_buffers_delete;
 extern common::Counter g_blocks;
 extern common::Counter g_writing_blocks;
+extern common::Counter g_pending_writes;
 extern common::Counter g_writing_bytes;
 extern common::Counter g_find_ops;
 extern common::Counter g_read_ops;
@@ -91,6 +92,7 @@ Block::~Block() {
         }
         delete[] buf;
         g_block_buffers.Dec();
+        g_pending_writes.Dec();
         g_buffers_delete.Inc();
     }
     block_buf_list_.clear();
@@ -273,6 +275,7 @@ bool Block::Close() {
 
     if (bufdatalen_) {
         block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
+        g_pending_writes.Inc();
         blockbuf_ = NULL;
         bufdatalen_ = 0;
     }
@@ -342,6 +345,7 @@ void Block::DiskWrite() {
                 mu_.Lock("Block::DiskWrite ReLock", 1000);
                 block_buf_list_.erase(block_buf_list_.begin());
                 delete[] buf;
+                g_pending_writes.Dec();
                 g_block_buffers.Dec();
                 g_buffers_delete.Inc();
                 disk_file_size_ += len;
@@ -385,6 +389,7 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
         thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
 
         blockbuf_ = new char[buflen_];
+        g_pending_writes.Inc();
         g_block_buffers.Inc();
         g_buffers_new.Inc();
         bufdatalen_ = 0;
