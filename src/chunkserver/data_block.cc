@@ -184,6 +184,7 @@ bool Block::IsComplete() {
 int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
     if (offset > meta_.block_size) {
+        LOG(INFO, "Wrong offset %ld > %ld", offset, meta_.block_size);
         return -1;
     }
 
@@ -196,6 +197,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
                         buf + readlen, pread_len, offset + readlen);
         mu_.Lock("Block::Read relock", 1000);
         if (ret != pread_len) {
+            LOG(INFO, "ReadFile fail: %d %s", ret, strerror(errno));
             return -2;
         }
         readlen += ret;
