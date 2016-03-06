@@ -362,12 +362,10 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     StatusCode ret = block_mapping_->CheckBlockVersion(block_id, block_version);
     if (ret != kOK) {
         LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
-        response->set_status(ret);
-        done->Run();
-        return;
+    } else {
+        LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
     }
-    LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
-    response->set_status(kOK);
+    response->set_status(ret);
     done->Run();
 }
 
@@ -538,19 +536,21 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
     int32_t replica_num = request->replica_num();
-
     StatusCode ret_status = kOK;
-
     FileInfo file_info;
     if (namespace_->GetFileInfo(file_name, &file_info)) {
         file_info.set_replicas(replica_num);
         bool ret = namespace_->UpdateFileInfo(file_info);
         assert(ret);
-        if (block_mapping_->ChangeReplicaNum(file_info.entry_id(), replica_num)) {
-            LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
-        } else {
-            LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
-            ret_status = kNotOK;
+        for (int i = 0; i < file_info.blocks_size(); i++) {
+            if (block_mapping_->ChangeReplicaNum(file_info.blocks(i), replica_num)) {
+                LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
+            } else {
+                ///TODO: need to undo when file have multiple blocks?
+                LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
+                ret_status = kNotOK;
+                break;
+            }
         }
     } else {
         LOG(INFO, "Change replica num not found: %s", file_name.c_str());
