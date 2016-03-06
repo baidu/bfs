@@ -236,14 +236,18 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     std::map<std::string, int32_t>::iterator client_it = address_map_.lower_bound(client_address);
     if (client_it != address_map_.end()) {
         std::string tmp_address(client_it->first, 0, client_it->first.find_last_of(':'));
-        if (tmp_address == client_address &&
-            heartbeat_list_.find(client_it->second) != heartbeat_list_.end()) {
+        if (tmp_address == client_address) {
             ChunkServerInfo* cs = NULL;
-            if (GetChunkServerPtr(client_it->second, &cs)
-                && GetChunkserverLoad(cs) != kChunkserverLoadMax) {
-                chains->push_back(std::make_pair(cs->id(), cs->address()));
-                if (--num == 0) {
-                    return true;
+            if (!GetChunkServerPtr(client_it->second, &cs)) {
+                LOG(INFO, "Cant' find chunkserver info: C#ld ", client_it->second);
+            } else {
+                int32_t now_time = common::timer::now_time();
+                if (cs->last_heartbeat() + FLAGS_keepalive_timeout > now_time &&
+                        GetChunkserverLoad(cs) != kChunkserverLoadMax) {
+                    chains->push_back(std::make_pair(cs->id(), cs->address()));
+                    if (--num == 0) {
+                        return true;
+                    }
                 }
             }
         }
