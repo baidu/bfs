@@ -305,8 +305,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::vector<std::pair<int32_t, std::string> > chains;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
         int64_t new_block_id = block_mapping_->NewBlockID();
-        LOG(INFO, "[AddBlock] new block for %s #%ld R%d",
-            path.c_str(), new_block_id, replica_num);
+        LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
+            path.c_str(), new_block_id, replica_num, request->client_address().c_str());
         LocatedBlock* block = response->mutable_block();
         std::vector<int32_t> replicas;
         for (int i = 0; i < replica_num; i++) {
