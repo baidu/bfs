@@ -34,6 +34,8 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::LogStats, this));
     localhostname_ = common::util::GetLocalHostName();
     localzone_ = LocationProvider(localhostname_, "").GetZone();
+    LOG(INFO, "Localhost: %s, localzone: %s",
+        localhostname_.c_str(), localzone_.c_str());
 }
 
 void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
@@ -242,12 +244,13 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     std::map<std::string, int32_t>::iterator client_it = address_map_.lower_bound(client_address);
     if (client_it != address_map_.end()) {
         std::string tmp_address(client_it->first, 0, client_it->first.find_last_of(':'));
-        if (tmp_address == client_address &&
-            heartbeat_list_.find(client_it->second) != heartbeat_list_.end()) {
+        if (tmp_address == client_address) {
             ChunkServerInfo* cs = NULL;
             if (GetChunkServerPtr(client_it->second, &cs)
+                && !cs->is_dead()
                 && GetChunkserverLoad(cs) != kChunkserverLoadMax) {
                 chains->push_back(std::make_pair(cs->id(), cs->address()));
+                LOG(DEBUG, "Local host %s C%d ", cs->address().c_str(), cs->id());
                 if (--num == 0) {
                     return true;
                 }
@@ -325,9 +328,11 @@ int ChunkServerManager::SelectChunkserverByZone(int num,
         if (cs->zone() != localzone_) {
             if (!remote_server) remote_server = cs;
         } else {
+            LOG(DEBUG, "Local zone %s C%d ",
+                cs->zone().c_str(), cs->id());
             ++ret;
             chains->push_back(std::make_pair(cs->id(), cs->address()));
-            if (chains->size() + (remote_server?1:0) >= static_cast<uint32_t>(num)) {
+            if (ret + (remote_server ? 1 : 0) >= num) {
                 break;
             }
         }
@@ -335,7 +340,8 @@ int ChunkServerManager::SelectChunkserverByZone(int num,
     if (remote_server) {
         ++ret;
         chains->push_back(std::make_pair(remote_server->id(), remote_server->address()));
-        LOG(DEBUG, "Select remote server %s", remote_server->address().c_str());
+        LOG(INFO, "Remote zone %s C%d ",
+            remote_server->zone().c_str(), remote_server->id());
     }
     return ret;
 }
@@ -375,7 +381,9 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     info->set_zone(loc.GetZone());
     info->set_datacenter(loc.GetDataCenter());
     info->set_rack(loc.GetRack());
-    LOG(INFO, "New ChunkServerInfo C%d %s %p", id, address.c_str(), info);
+    LOG(INFO, "New ChunkServerInfo C%d %s %s %s %s",
+        id, address.c_str(), info->zone().c_str(),
+        info->datacenter().c_str(), info->rack().c_str());
     chunkservers_[id] = info;
     address_map_[address] = id;
     int32_t now_time = common::timer::now_time();
@@ -427,7 +435,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
             return;
         }
         if (cs->zone() != localzone_) {
-            LOG(INFO, "Remote zone server C%d ignore PickRecoverBlocks", cs_id);
+            LOG(DEBUG, "Remote zone server C%d ignore PickRecoverBlocks", cs_id);
             return;
         }
     }
