@@ -6,6 +6,8 @@
 
 #include "location_provider.h"
 
+#include <stdio.h>
+
 namespace baidu {
 namespace bfs {
 
