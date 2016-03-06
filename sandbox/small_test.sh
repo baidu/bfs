@@ -86,7 +86,6 @@ rm -rf ./binary
 # Nameserver restart
 kill -9 `cat nameserver/pid`
 cd nameserver
-mv nlog nlog.bak
 ./bin/nameserver 1>nlog2 2>&1 &
 sleep 3
 cd -
