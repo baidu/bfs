@@ -239,7 +239,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         if (tmp_address == client_address) {
             ChunkServerInfo* cs = NULL;
             if (!GetChunkServerPtr(client_it->second, &cs)) {
-                LOG(INFO, "Cant' find chunkserver info: C#ld ", client_it->second);
+                LOG(INFO, "Can't find chunkserver info: C#ld ", client_it->second);
             } else {
                 int32_t now_time = common::timer::now_time();
                 if (cs->last_heartbeat() + FLAGS_keepalive_timeout > now_time &&
