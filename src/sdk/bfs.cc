@@ -1133,7 +1133,7 @@ bool BfsFileImpl::Close() {
     LOG(DEBUG, "File %s closed", name_.c_str());
     boost::function<void ()> task =
         boost::bind(&BfsFileImpl::CloseCleanup, this);
-    g_thread_pool->AddTask(task);
+    thread_pool_->AddTask(task);
     closed_ = true;
     bool ret = true;
     if (bg_error_) {
