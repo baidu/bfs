@@ -14,9 +14,6 @@ sleep 3
 # File put
 ./bfs_client put ./bfs_client /bfs_client
 
-# File put rewrite
-./bfs_client put ./bfs_client /bfs_client
-
 # Test mkdir
 ./bfs_client mkdir /bin
 

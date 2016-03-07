@@ -7,14 +7,15 @@ enum StatusCode {
     kVersionError = 3;
     kNotFound = 4;
     kWriteError = 5;
-    kBlockClosed = 13;
-    kReadError = 6;
-    kBadParameter = 7;
-    kUpdateError = 8;
-    kGetChunkserverError = 9;
-    kNsCreateError = 10;
-    kCsCreateError = 11;
-    kCsTooMuchPendingBuffer = 12;
+    kBlockClosed = 6;
+    kReadError = 7;
+    kBadParameter = 8;
+    kUpdateError = 9;
+    kGetChunkserverError = 10;
+    kNsCreateError = 11;
+    kCsCreateError = 12;
+    kCsTooMuchPendingBuffer = 13;
+    kFileExist = 14;
     kSafeMode = 20;
 }
 
