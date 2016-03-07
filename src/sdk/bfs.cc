@@ -39,8 +39,6 @@ DECLARE_int32(default_replica_num);
 namespace baidu {
 namespace bfs {
 
-ThreadPool* g_thread_pool = NULL;
-
 struct LocatedBlocks {
     int64_t file_length_;
     std::vector<LocatedBlock> blocks_;
@@ -158,6 +156,7 @@ private:
 private:
     FSImpl* fs_;                        ///< 文件系统
     RpcClient* rpc_client_;             ///< RpcClient
+    ThreadPool* thread_pool_;           ///< ThreadPool
     std::string name_;                  ///< 文件路径
     int32_t open_flags_;                ///< 打开使用的flag
 
@@ -197,10 +196,13 @@ public:
     friend class BfsFileImpl;
     FSImpl() : rpc_client_(NULL), nameserver_(NULL) {
         local_host_name_ = common::util::GetLocalHostName();
+        thread_pool_ = new ThreadPool(FLAGS_sdk_thread_num);
     }
     ~FSImpl() {
         delete nameserver_;
         delete rpc_client_;
+        thread_pool_->Stop(true);
+        delete thread_pool_;
     }
     bool ConnectNameServer(const char* nameserver) {
         if (nameserver != NULL) {
@@ -518,6 +520,7 @@ private:
     NameServer_Stub* nameserver_;
     std::string nameserver_address_;
     std::string local_host_name_;
+    ThreadPool* thread_pool_;
 };
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
@@ -530,6 +533,7 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
     last_read_offset_(-1), closed_(false),
     sync_signal_(&mu_), bg_error_(false) {
+        thread_pool_ = fs->thread_pool_;
 }
 
 BfsFileImpl::~BfsFileImpl () {
@@ -841,7 +845,7 @@ void BfsFileImpl::StartWrite() {
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
     common::atomic_inc(&back_writing_);
     mu_.Unlock();
-    g_thread_pool->AddTask(task);
+    thread_pool_->AddTask(task);
     mu_.Lock("StartWrite relock", 1000);
 }
 
@@ -924,7 +928,7 @@ void BfsFileImpl::BackgroundWrite() {
                     buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
             common::atomic_inc(&back_writing_);
             if (delay) {
-                g_thread_pool->DelayTask(5,
+                thread_pool_->DelayTask(5,
                         boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, max_retry_times, cs_addr));
             } else {
@@ -1014,7 +1018,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         }
         if (!bg_error_) {
             common::atomic_inc(&back_writing_);
-            g_thread_pool->DelayTask(5,
+            thread_pool_->DelayTask(5,
                 boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, retry_times, cs_addr));
         }
@@ -1045,7 +1049,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
 
     boost::function<void ()> task =
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
-    g_thread_pool->AddTask(task);
+    thread_pool_->AddTask(task);
 }
 
 void BfsFileImpl::OnWriteCommit(int32_t, int) {
@@ -1162,8 +1166,6 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
         return false;
     }
     *fs = impl;
-    g_thread_pool = new ThreadPool(FLAGS_sdk_thread_num);
-    g_thread_pool->Start();
     return true;
 }
 

@@ -40,8 +40,8 @@ public:
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
 private:
+    double GetChunkserverLoad(ChunkServerInfo* cs);
     void DeadCheck();
-    int GetChunkserverLoad(ChunkServerInfo* cs);
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
     void LogStats();
 private:
