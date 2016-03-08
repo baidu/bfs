@@ -19,6 +19,7 @@ DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(recover_speed);
 DECLARE_int32(heartbeat_interval);
 DECLARE_bool(select_chunkserver_by_zone);
+DECLARE_double(select_chunkserver_local_factor);
 
 namespace baidu {
 namespace bfs {
@@ -240,6 +241,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
             chunkserver_num_, num);
         return false;
     }
+    ChunkServerInfo* local_cs = NULL;
     //first take local cs of client
     std::map<std::string, int32_t>::iterator client_it = address_map_.lower_bound(client_address);
     if (client_it != address_map_.end()) {
@@ -247,13 +249,8 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         if (tmp_address == client_address) {
             ChunkServerInfo* cs = NULL;
             if (GetChunkServerPtr(client_it->second, &cs)
-                && !cs->is_dead()
-                && GetChunkserverLoad(cs) != kChunkserverLoadMax) {
-                chains->push_back(std::make_pair(cs->id(), cs->address()));
-                LOG(DEBUG, "Local host %s C%d ", cs->address().c_str(), cs->id());
-                if (--num == 0) {
-                    return true;
-                }
+                && !cs->is_dead()) {
+                local_cs = cs;
             }
         }
     }
@@ -272,7 +269,9 @@ bool ChunkServerManager::GetChunkServerChains(int num,
             }
             double load = GetChunkserverLoad(cs);
             if (load != kChunkserverLoadMax) {
-                loads.push_back(std::make_pair(load, cs));
+                double local_factor =
+                    (cs == local_cs ? FLAGS_select_chunkserver_local_factor : 0) ;
+                loads.push_back(std::make_pair(load + local_factor, cs));
             } else {
                 LOG(INFO, "Alloc ignore: Chunkserver %s data %ld/%ld buffer %d",
                     cs->address().c_str(), cs->data_size(),
