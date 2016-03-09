@@ -51,7 +51,7 @@ addons:
    coverity_scan:
        project:
            name: "myawan/bfs-1"
-       notification_email: 185829549@qq.com
+       notification_email: mayue01@baidu.com
        build_command_prepend: "make clean"
        build_command: "make -j4"
        branch_pattern: master
