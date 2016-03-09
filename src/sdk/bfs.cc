@@ -377,14 +377,9 @@ public:
             request.set_sequence_id(0);
             request.set_flags(flags);
             request.set_mode(mode&0777);
-            if (FLAGS_sdk_write_mode == "fan-out") {
-                replica = replica <= 0 ? FLAGS_default_replica_num : replica;
-                request.set_replica_num(replica + 1);
-            } else {
-                request.set_replica_num(replica);
-            }
+            request.set_replica_num(replica);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
-                &request, &response, 15, 3);
+                                           &request, &response, 15, 3);
             if (!ret || response.status() != kOK) {
                 LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
                     path, ret, StatusCode_Name(response.status()).c_str());
@@ -722,6 +717,7 @@ int32_t BfsFileImpl::AddBlock() {
     request.set_file_name(name_);
     const std::string& local_host_name = fs_->local_host_name_;
     request.set_client_address(local_host_name);
+    request.set_fan_out_write(FLAGS_sdk_write_mode == "fan-out");
     bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
         &request, &response, 15, 3);
     if (!ret || !response.has_block()) {
@@ -963,12 +959,10 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBuffer* buffer,
                                      std::string cs_addr) {
     if (closed_ || bg_error_) {
-        /*
         LOG(INFO, "BackgroundWrite been omitted bid= #%ld , seq= %d",
                     " offset= %ld, len= %d, back_writing= %d",
             buffer->block_id(), buffer->Sequence(),
             buffer->offset(), buffer->Size(), back_writing_);
-        */
         common::atomic_dec(&back_writing_);
         buffer->DecRef();
         delete request;
