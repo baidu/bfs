@@ -299,7 +299,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     if (FLAGS_select_chunkserver_by_zone) {
         int count = SelectChunkserverByZone(num, loads, chains);
         if (count < num) {
-            LOG(WARNING, "SelectChunkserverByZone(%d) return %d", num);
+            LOG(WARNING, "SelectChunkserverByZone(%d) return %d", num, count);
             return false;
         }
     } else {
