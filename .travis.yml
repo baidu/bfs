@@ -1,7 +1,11 @@
 language: cpp
 compiler: gcc
 env:
-    - PROTOBUF_VERSION=2.6.0
+    global:
+        - secure: "Y4lDq9rLykf3H2I5SKJXv59JRGap0iu6FReCYt8deSrlLOB1v7haEYeVRnbQHP6MWY4ZgFq8Z02YjUqbFiogKudrvdik2VNrvgVH79ZIy+5tfKJuQotLbeIWHHxZslLGtCCradm5LKBPCK8qso5U3LhcRxGtps/aEF3uWYPws8Nvb4qzygVrjKCRpT+uWmmr0X+y+d54R3yhmZpY6U0TibeWwMXUAKEaZEr8WyVgJJOOacOuiDNUYl3Ok9o/jf4xDdlotLzIUFV/2W0HyOczuoCzlNORrujVqoZ1kpgxEJkFkLC1pQHsj6jGIYKqKFw//GYh9ybYDDmP2iHY2WZJmTpBfg7EFM0RnlEge6FjhBmfnD83d3P638HNEz8v9pEiHCF47tQuIMxiaf2bJmrUslcQ0Ay4ead+0B+seYqFcJZqm3myMH/LKiRW6p0F7cZmrN1LT+0yclEksqABaxWY2/0ky91NiOkPWlZlNqEgXShUFMZ2UErCYWJO9gCEwdU83B65n4zYPMCHEZcIxObsJNIakYLRop6JUBA7a9VU3xR1loGVuIlGNejFpENA/fYVm3gM6/8rXpZyV378l6UmYWG/iXChqKY8stTJuD9Dgx4aez3w82Xqz9LDJJYyXB9HeMntyY71+CQS2fNVbwubobKN06uK7llc7i8xl2udezA="
+    matrix:
+        - PROTOBUF_VERSION=2.6.0
+
 install:
     - echo | sudo apt-add-repository ppa:boost-latest/ppa
     - sudo apt-get update
@@ -42,3 +46,13 @@ before_script:
     - echo 'COMMON_PATH=./common/output' >> depends.mk
 
 script: make -j4 && make test
+
+addons:
+   coverity_scan:
+       project:
+           name: "myawan/bfs-1"
+       notification_email: mayue01@baidu.com
+       build_command_prepend: "make clean"
+       build_command: "make -j4"
+       branch_pattern: master
+
