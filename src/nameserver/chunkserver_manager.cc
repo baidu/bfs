@@ -229,7 +229,7 @@ double ChunkServerManager::GetChunkserverLoad(ChunkServerInfo* cs) {
     if (data_socre > 0.95 || space_left < (5L << 30) || pending_socre > 1.0) {
         return kChunkserverLoadMax;
     }
-    return data_socre * data_socre + pending_socre * pending_socre;
+    return data_socre * data_socre + pending_socre;
 }
 
 bool ChunkServerManager::GetChunkServerChains(int num,
