@@ -23,11 +23,13 @@ public:
         int64_t recover_speed;
     };
     ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping);
-    void HandleRegister(const RegisterRequest* request, RegisterResponse* response);
+    void HandleRegister(const std::string& ip, 
+                        const RegisterRequest* request,
+                        RegisterResponse* response);
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response);
     void ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers);
     bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains, const std::string& client_address);
-    int32_t AddChunkServer(const std::string& address, int64_t quota);
+    int32_t AddChunkServer(const std::string& address, const std::string& ip, int64_t quota);
     bool KickChunkserver(int cs_id);
     bool UpdateChunkServer(int cs_id, int64_t quota);
     bool RemoveChunkServer(const std::string& address);
@@ -44,6 +46,9 @@ private:
     void DeadCheck();
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
     void LogStats();
+    int SelectChunkserverByZone(int num,
+        const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
+        std::vector<std::pair<int32_t,std::string> >* chains);
 private:
     ThreadPool* thread_pool_;
     BlockMapping* block_mapping_;
@@ -56,6 +61,9 @@ private:
     std::map<int32_t, std::set<int64_t> > chunkserver_block_map_;
     int32_t chunkserver_num_;
     int32_t next_chunkserver_id_;
+
+    std::string localhostname_;
+    std::string localzone_;
 };
 
 } // namespace bfs

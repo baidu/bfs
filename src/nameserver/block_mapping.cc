@@ -69,6 +69,9 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,in
                         block->incomplete_replica.begin(),
                         block->incomplete_replica.end());
     }
+    if (!safe_mode_ && replica->empty()) {
+        LOG(DEBUG, "Block #%ld lost all replica", id);
+    }
     *size = block->block_size;
     return true;
 }
@@ -501,7 +504,7 @@ StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
         return kNotFound;
     }
     if (block->version != version) {
-        LOG(WARNING, "CheckBlockVersion fail #%ld V%ld to V%ld",
+        LOG(INFO, "CheckBlockVersion fail #%ld V%ld to V%ld",
             block_id, block->version, version);
         return kVersionError;
     }
@@ -791,8 +794,10 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota,
 
 void BlockMapping::TryRecover(NSBlock* block) {
     mu_.AssertHeld();
-    assert (block->recover_stat != kBlockWriting);
-    if (safe_mode_ || block->recover_stat == kCheck || block->recover_stat == kIncomplete) {
+    if (safe_mode_
+        || block->recover_stat == kCheck
+        || block->recover_stat == kIncomplete
+        || block->recover_stat == kBlockWriting) {
         return;
     }
     int64_t block_id = block->id;
