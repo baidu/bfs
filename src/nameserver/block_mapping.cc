@@ -769,7 +769,8 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
         check_set->insert(block_id);
         assert(cur_block->recover_stat == kHiRecover || cur_block->recover_stat == kLoRecover);
         cur_block->recover_stat = kCheck;
-        LOG(INFO, "PickRecoverBlocks for C%d #%ld ", cs_id, block_id);
+        LOG(INFO, "PickRecoverBlocks for C%d #%ld %s",
+                cs_id, block_id, RecoverStat_Name(cur_block->recover_stat).c_str());
         thread_pool_.DelayTask(FLAGS_recover_timeout * 1000,
             boost::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
         recover_set->erase(it++);

@@ -49,7 +49,7 @@ Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* t
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size), file_desc_(-1), refs_(0),
-  close_cv_(&mu_), deleted_(false), file_cache_(file_cache) {
+  close_cv_(&mu_), is_recover_(false), deleted_(false), file_cache_(file_cache) {
     assert(meta_.block_id < (1L<<40));
     g_data_size.Add(meta.block_size);
     disk_file_ = store_path + BuildFilePath(meta_.block_id);
@@ -365,6 +365,16 @@ void Block::DiskWrite() {
         }
     }
     this->DecRef();
+}
+void Block::Debug(int32_t* slice, int32_t* last) {
+    *slice = slice_num_;
+    *last = last_seq_;
+}
+void Block::SetRecover() {
+    is_recover_ = true;
+}
+bool Block::IsRecover() {
+    return is_recover_;
 }
 /// Append to block buffer
 StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {

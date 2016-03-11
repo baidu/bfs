@@ -42,11 +42,16 @@ BlockManager::BlockManager(const std::string& store_path)
 }
 BlockManager::~BlockManager() {
     MutexLock lock(&mu_);
-    for (BlockMap::iterator it = block_map_.begin();
-            it != block_map_.end(); ++it) {
+    for (BlockMap::iterator it = block_map_.begin(); it != block_map_.end();) {
         Block* block = it->second;
+        if (block->IsRecover()) {
+            LOG(INFO, "[~BlockManager] drop recovering block #%ld ", block->Id());
+            block_map_.erase(it++);
+            continue;
+        }
         CloseBlock(block);
         block->DecRef();
+        ++it;
     }
     thread_pool_->Stop(true);
     delete thread_pool_;

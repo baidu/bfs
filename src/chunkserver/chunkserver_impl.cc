@@ -433,7 +433,11 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
 
     boost::function<void ()> callback =
         boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
-    work_thread_pool_->AddTask(callback);
+    if (request->priority()) {
+        work_thread_pool_->AddPriorityTask(callback);
+    } else {
+        work_thread_pool_->AddTask(callback);
+    }
 }
 
 void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
@@ -463,7 +467,11 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
         done->Run();
         return;
     }
-    LOG(INFO, "[WriteBlock] local write #%ld %d", block_id, packet_seq);
+    if (request->has_recover_version()) {
+        block->SetRecover();
+    }
+    LOG(INFO, "[WriteBlock] local write #%ld %d recover=%d",
+        block_id, packet_seq, block->IsRecover());
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
     if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), &add_used)) {
@@ -476,8 +484,13 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     if (request->is_last()) {
         if (request->has_recover_version()) {
             block->SetVersion(request->recover_version());
+            LOG(INFO, "LL: recover block set version #%ld v%d ", block_id, request->recover_version());
         }
+        int32_t slice_num, last;
         block->SetSliceNum(packet_seq + 1);
+        block->Debug(&slice_num, &last);
+        LOG(INFO, "LL: is complete %d #%ld slice=%d last=%d pac=%d",
+            block->IsComplete(),block_id, slice_num, last, packet_seq);
     }
 
     // If complete, close block, and report only once(close block return true).
@@ -627,18 +640,20 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
             continue;
         }
         LOG(INFO, "[PushBlock] started push #%ld to %s, attempt %d/%d",
-                block_id, cs_addr.c_str(), i, attempts);
-        if (WriteRecoverBlock(block, chunkserver)) {
+                block_id, cs_addr.c_str(), i + 1, attempts);
+        if (WriteRecoverBlock(block, chunkserver, new_replica_info.priority())) {
             LOG(INFO, "[PushBlock] success #%ld to %s", block_id, cs_addr.c_str());
+            block->DecRef();
             return;
         } else {
             continue;
         }
     }
+    block->DecRef();
     LOG(INFO, "[PushBlock] failed #%ld", block_id);
 }
 
-bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver) {
+bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver, bool priority) {
     int32_t read_len = 128 << 10;
     int32_t offset = 0;
     int32_t seq = 0;
@@ -646,6 +661,7 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         char* buf = new char[read_len];
         int64_t len = block->Read(buf, read_len, offset);
         if (len < 0) {
+            LOG(INFO, "[WriteRecoverBlock] #%ld read len < 0", block->Id());
             delete[] buf;
             return false;
         }
@@ -656,20 +672,25 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         request.set_databuf(buf, len);
         request.set_is_last(len == 0);
         request.set_packet_seq(seq);
+        request.set_offset(offset);
         request.set_recover_version(block->GetVersion());
+        request.set_priority(priority);
         bool ret = rpc_client_->SendRequest(chunkserver, &ChunkServer_Stub::WriteBlock,
                                  &request, &response, 60, 1);
         if (!ret || response.status() != kOK) {
+            LOG(INFO, "[WriteRecoverBlock] #%ld write failed", block->Id());
             delete[] buf;
             return false;
         }
         offset += len;
         ++seq;
+        g_recover_bytes.Add(len);
         delete[] buf;
         if (len == 0) {
             return true;
         }
     }
+    LOG(INFO, "[WriteRecoverBlock] #%ld service_stop_", block->Id());
     return false;
 }
 

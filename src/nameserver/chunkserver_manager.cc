@@ -303,6 +303,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 
 bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
                                           std::vector<std::string>* chains) {
+    LOG(INFO, "In GetRecoverChains #%ld ");
     mu_.AssertHeld();
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<double, ChunkServerInfo*> > loads;
@@ -312,6 +313,7 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin(); sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
             if (replica.find(cs->id()) != replica.end()) {
+                LOG(INFO, "GetRecoverChains has C%d ", cs->id());
                 continue;
             }
             double load = GetChunkserverLoad(cs);
@@ -426,6 +428,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         if (GetRecoverChains(it->second, &(recover_it->second))) {
             //
         } else {
+            block_mapping_->ProcessRecoveredBlock(cs_id, it->first);
             recover_blocks->erase(recover_it);
         }
     }
