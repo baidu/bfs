@@ -31,6 +31,7 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
       block_mapping_(block_mapping),
       chunkserver_num_(0),
       next_chunkserver_id_(1) {
+    memset(&stats_, 0, sizeof(stats_));
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::LogStats, this));
     localhostname_ = common::util::GetLocalHostName();
