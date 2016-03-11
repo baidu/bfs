@@ -880,7 +880,6 @@ void BfsFileImpl::BackgroundWrite() {
                 }
             }
             WriteBlockRequest* request = new WriteBlockRequest;
-            WriteBlockResponse* response = new WriteBlockResponse;
             int64_t offset = buffer->offset();
             int64_t seq = common::timer::get_micros();
             request->set_sequence_id(seq);
@@ -911,6 +910,7 @@ void BfsFileImpl::BackgroundWrite() {
                         boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, max_retry_times, cs_addr));
             } else {
+                WriteBlockResponse* response = new WriteBlockResponse;
                 rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
                         request, response, callback, 60, 1);
             }
