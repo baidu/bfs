@@ -27,7 +27,7 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
-NameSpace::NameSpace(): last_entry_id_(1) {
+NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -35,6 +35,7 @@ NameSpace::NameSpace(): last_entry_id_(1) {
     if (!s.ok()) {
         db_ = NULL;
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
+        return;
     }
     std::string version_key(8, 0);
     version_key.append("version");
