@@ -57,6 +57,8 @@ BlockManager::~BlockManager() {
     block_map_.clear();
     delete metadb_;
     metadb_ = NULL;
+    delete file_cache_;
+    file_cache_ = NULL;
 }
 int64_t BlockManager::DiskQuota() const{
     return total_disk_quota_;
@@ -79,7 +81,6 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     for (uint32_t i = 0; i < store_path_list_.size(); ++i) {
         std::vector<std::string> tmp;
         common::SplitString(store_path_list_[i], ":", &tmp);
-        assert(tmp.size() == 2);
         store_path_list_[i] = tmp[0];
         std::string& disk_path = store_path_list_[i];
         disk_path = common::TrimString(disk_path, " ");

@@ -12,6 +12,7 @@
 #include <string>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 #include <common/util.h>
 #include <common/timer.h>
@@ -182,10 +183,14 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "Can't open local file %s\n", argv[2]);
         return 1;
     }
-
+    struct stat st;
+    if (stat(source.c_str(), &st)) {
+        fprintf(stderr, "Can't get file stat info %s\n", source.c_str());
+        fclose(fp);
+        return 1;
+    }
     baidu::bfs::File* file;
-    ///TODO: Use the same mode as the source file.
-    if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, 0644, -1, &file)) {
+    if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode, -1, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", target.c_str());
         fclose(fp);
         return 1;
@@ -197,16 +202,17 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         int32_t write_bytes = file->Write(buf, bytes);
         if (write_bytes < bytes) {
             fprintf(stderr, "Write fail: [%s:%ld]\n", target.c_str(), len);
-            return 1;
+            ret = 2;
+            break;
         }
         len += bytes;
     }
+    fclose(fp);
     if (!file->Close()) {
         fprintf(stderr, "close fail: %s\n", target.c_str());
         ret = 1;
     }
     delete file;
-    fclose(fp);
     printf("Put file to bfs %s %ld bytes\n", target.c_str(), len);
     return ret;
 }

@@ -31,6 +31,7 @@ extern common::Counter g_buffers_new;
 extern common::Counter g_buffers_delete;
 extern common::Counter g_blocks;
 extern common::Counter g_writing_blocks;
+extern common::Counter g_pending_writes;
 extern common::Counter g_writing_bytes;
 extern common::Counter g_find_ops;
 extern common::Counter g_read_ops;
@@ -90,6 +91,7 @@ Block::~Block() {
         }
         delete[] buf;
         g_block_buffers.Dec();
+        g_pending_writes.Dec();
         g_buffers_delete.Inc();
     }
     block_buf_list_.clear();
@@ -181,6 +183,7 @@ bool Block::IsComplete() {
 int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
     if (offset > meta_.block_size()) {
+        LOG(INFO, "Wrong offset %ld > %ld", offset, meta_.block_size());
         return -1;
     }
 
@@ -193,6 +196,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
                         buf + readlen, pread_len, offset + readlen);
         mu_.Lock("Block::Read relock", 1000);
         if (ret != pread_len) {
+            LOG(INFO, "ReadFile fail: %ld %s", ret, strerror(errno));
             return -2;
         }
         readlen += ret;
@@ -270,6 +274,7 @@ bool Block::Close() {
 
     if (bufdatalen_) {
         block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
+        g_pending_writes.Inc();
         blockbuf_ = NULL;
         bufdatalen_ = 0;
     }
@@ -339,6 +344,7 @@ void Block::DiskWrite() {
                 mu_.Lock("Block::DiskWrite ReLock", 1000);
                 block_buf_list_.erase(block_buf_list_.begin());
                 delete[] buf;
+                g_pending_writes.Dec();
                 g_block_buffers.Dec();
                 g_buffers_delete.Inc();
                 disk_file_size_ += len;
@@ -364,7 +370,7 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
     if (finished_ || deleted_) {
         LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_. finished_=%d, deleted_=%d",
-            meta_.block_id, finished_, deleted_);
+            meta_.block_id(), finished_, deleted_);
         return kBlockClosed;
     }
     if (blockbuf_ == NULL) {
@@ -382,6 +388,7 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
         thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
 
         blockbuf_ = new char[buflen_];
+        g_pending_writes.Inc();
         g_block_buffers.Inc();
         g_buffers_new.Inc();
         bufdatalen_ = 0;

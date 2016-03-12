@@ -18,9 +18,9 @@
 #include <common/logging.h>
 #include <common/string_util.h>
 
-#include "nameserver/namespace.h"
-#include "nameserver/chunkserver_manager.h"
 #include "nameserver/block_mapping.h"
+#include "nameserver/chunkserver_manager.h"
+#include "nameserver/namespace.h"
 #include "proto/status_code.pb.h"
 
 DECLARE_int32(nameserver_safemode_time);
@@ -108,7 +108,9 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
     sofa::pbrpc::RpcController* sofa_cntl =
         reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     const std::string& address = request->chunkserver_addr();
-    LOG(INFO, "Register ip: %s", sofa_cntl->RemoteAddress().c_str());
+    const std::string& ip_address = sofa_cntl->RemoteAddress();
+    const std::string cs_ip = ip_address.substr(ip_address.find(':'));
+    LOG(INFO, "Register ip: %s", ip_address.c_str());
     int64_t version = request->namespace_version();
     if (version != namespace_->Version()) {
         LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
@@ -116,7 +118,7 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
         chunkserver_manager_->RemoveChunkServer(address);
     } else {
         LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
-        chunkserver_manager_->HandleRegister(request, response);
+        chunkserver_manager_->HandleRegister(cs_ip, request, response);
     }
     response->set_namespace_version(namespace_->Version());
     done->Run();
@@ -303,8 +305,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::vector<std::pair<int32_t, std::string> > chains;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
         int64_t new_block_id = block_mapping_->NewBlockID();
-        LOG(INFO, "[AddBlock] new block for %s #%ld R%d",
-            path.c_str(), new_block_id, replica_num);
+        LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
+            path.c_str(), new_block_id, replica_num, request->client_address().c_str());
         LocatedBlock* block = response->mutable_block();
         std::vector<int32_t> replicas;
         for (int i = 0; i < replica_num; i++) {
@@ -359,13 +361,11 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     }
     StatusCode ret = block_mapping_->CheckBlockVersion(block_id, block_version);
     if (ret != kOK) {
-        LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
-        response->set_status(ret);
-        done->Run();
-        return;
+        LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
+    } else {
+        LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
     }
-    LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
-    response->set_status(kOK);
+    response->set_status(ret);
     done->Run();
 }
 
@@ -536,19 +536,21 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
     int32_t replica_num = request->replica_num();
-
     StatusCode ret_status = kOK;
-
     FileInfo file_info;
     if (namespace_->GetFileInfo(file_name, &file_info)) {
         file_info.set_replicas(replica_num);
         bool ret = namespace_->UpdateFileInfo(file_info);
         assert(ret);
-        if (block_mapping_->ChangeReplicaNum(file_info.entry_id(), replica_num)) {
-            LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
-        } else {
-            LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
-            ret_status = kNotOK;
+        for (int i = 0; i < file_info.blocks_size(); i++) {
+            if (block_mapping_->ChangeReplicaNum(file_info.blocks(i), replica_num)) {
+                LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
+            } else {
+                ///TODO: need to undo when file have multiple blocks?
+                LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
+                ret_status = kNotOK;
+                break;
+            }
         }
     } else {
         LOG(INFO, "Change replica num not found: %s", file_name.c_str());
@@ -694,7 +696,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     "style=\"width: "+ ratio + "%; color:#000;" + bg_color + "\">" + ratio + "%"
                "</div></div>";
         table_str += "</td><td>";
-        table_str += common::NumToString(chunkserver.buffers());
+        table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
+                     common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
         if (chunkserver.is_dead()) {
             table_str += "dead";
