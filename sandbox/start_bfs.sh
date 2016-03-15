@@ -1,7 +1,7 @@
 #! /bin/sh
 
 cd nameserver;
-./bin/nameserver 1>nlog1 2>&1 &
+./bin/nameserver 1>nlog 2>&1 &
 echo $! > pid
 
 for i in `seq 0 3`;

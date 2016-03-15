@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <list>
 #include <queue>
+#include <set>
 #include <sstream>
 
 #include "proto/nameserver.pb.h"
@@ -21,6 +22,7 @@
 #include <common/logging.h>
 #include <common/string_util.h>
 #include <common/tprinter.h>
+#include <common/util.h>
 
 #include "proto/status_code.pb.h"
 
@@ -35,8 +37,6 @@ DECLARE_int32(sdk_createblock_retry);
 
 namespace baidu {
 namespace bfs {
-
-ThreadPool* g_thread_pool = NULL;
 
 struct LocatedBlocks {
     int64_t file_length_;
@@ -152,6 +152,7 @@ private:
 private:
     FSImpl* fs_;                        ///< 文件系统
     RpcClient* rpc_client_;             ///< RpcClient
+    ThreadPool* thread_pool_;           ///< ThreadPool
     std::string name_;                  ///< 文件路径
     int32_t open_flags_;                ///< 打开使用的flag
 
@@ -169,6 +170,8 @@ private:
     LocatedBlocks located_blocks_;      ///< block meta for read
     ChunkServer_Stub* chunkserver_;     ///< located chunkserver
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
+    std::set<ChunkServer_Stub*> bad_chunkservers_;
+    int32_t last_chunkserver_index_;
     int64_t read_offset_;               ///< 读取的偏移
     Mutex read_offset_mu_;
     char* reada_buffer_;                ///< Read ahead buffer
@@ -188,10 +191,14 @@ class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
     FSImpl() : rpc_client_(NULL), nameserver_(NULL) {
+        local_host_name_ = common::util::GetLocalHostName();
+        thread_pool_ = new ThreadPool(FLAGS_sdk_thread_num);
     }
     ~FSImpl() {
         delete nameserver_;
         delete rpc_client_;
+        thread_pool_->Stop(true);
+        delete thread_pool_;
     }
     bool ConnectNameServer(const char* nameserver) {
         if (nameserver != NULL) {
@@ -211,7 +218,7 @@ public:
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
             &request, &response, 15, 3);
-        if (!ret || response.status() != 0) {
+        if (!ret || response.status() != kOK) {
             return false;
         } else {
             return true;
@@ -227,8 +234,9 @@ public:
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ListDirectory,
             &request, &response, 15, 3);
-        if (!ret || response.status() != 0) {
-            LOG(WARNING, "List fail: %s\n", path);
+        if (!ret || response.status() != kOK) {
+            LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
+                path, ret, StatusCode_Name(response.status()).c_str());
             return false;
         }
         if (response.files_size() != 0) {
@@ -257,10 +265,10 @@ public:
             LOG(WARNING, "DeleteDirectory fail: %s\n", path);
             return false;
         }
-        if (response.status() == 404) {
+        if (response.status() == kNotFound) {
             LOG(WARNING, "%s is not found.", path);
         }
-        return response.status() == 0;
+        return response.status() == kOK;
     }
     bool Access(const char* path, int32_t mode) {
         StatRequest request;
@@ -273,7 +281,7 @@ public:
             LOG(WARNING, "Stat fail: %s\n", path);
             return false;
         }
-        return (response.status() == 0);
+        return (response.status() == kOK);
     }
     bool Stat(const char* path, BfsFileInfo* fileinfo) {
         StatRequest request;
@@ -283,10 +291,10 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Stat,
             &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Stat rpc fail: %s\n", path);
+            LOG(WARNING, "Stat rpc fail: %s", path);
             return false;
         }
-        if (response.status() == 0) {
+        if (response.status() == kOK) {
             const FileInfo& info = response.file_info();
             fileinfo->ctime = info.ctime();
             fileinfo->mode = info.type();
@@ -306,8 +314,8 @@ public:
         request.set_sequence_id(0);
         bool ret = rpc_client_->SendRequest(nameserver_,
             &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
-        if (!ret || response.status() != 0) {
-            LOG(WARNING, "GetFileSize(%s) return %d", path, response.status());
+        if (!ret || response.status() != kOK) {
+            LOG(WARNING, "GetFileSize(%s) return %s", path, StatusCode_Name(response.status()).c_str());
             return false;
         }
         *file_size = 0;
@@ -333,9 +341,9 @@ public:
                     ret = rpc_client_->SendRequest(chunkserver,
                         &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
                     delete chunkserver;
-                    if (!ret || gbi_response.status() != 0) {
-                        LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail",
-                            path, addr.c_str());
+                    if (!ret || gbi_response.status() != kOK) {
+                        LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail, ret= %d, status= %s",
+                            path, addr.c_str(), ret, StatusCode_Name(gbi_response.status()).c_str());
                         continue;
                     }
                     *file_size += gbi_response.block_size();
@@ -368,9 +376,9 @@ public:
             request.set_replica_num(replica);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
                 &request, &response, 15, 3);
-            if (!ret || response.status() != 0) {
-                LOG(WARNING, "Open file for write fail: %s, status= %d\n",
-                    path, response.status());
+            if (!ret || response.status() != kOK) {
+                LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
+                    path, ret, StatusCode_Name(response.status()).c_str());
                 ret = false;
             } else {
                 //printf("Open file %s\n", path);
@@ -383,14 +391,14 @@ public:
             request.set_sequence_id(0);
             ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::GetFileLocation,
                 &request, &response, 15, 3);
-            if (ret && response.status() == 0) {
+            if (ret && response.status() == kOK) {
                 BfsFileImpl* f = new BfsFileImpl(this, rpc_client_, path, flags);
                 f->located_blocks_.CopyFrom(response.blocks());
                 *file = f;
                 //printf("OpenFile success: %s\n", path);
             } else {
                 //printf("GetFileLocation return %d\n", response.blocks_size());
-                LOG(WARNING, "OpenFile return %d\n", response.status());
+                LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
                 ret = false;
             }
         } else {
@@ -412,11 +420,11 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Unlink,
             &request, &response, 15, 1);
         if (!ret) {
-            fprintf(stderr, "Unlink rpc fail: %s\n", path);
+            LOG(WARNING, "Unlink rpc fail: %s", path);
             return false;
         }
-        if (response.status() != 0) {
-            fprintf(stderr, "Unlink %s return: %d\n", path, response.status());
+        if (response.status() != kOK) {
+            LOG(WARNING, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
             return false;
         }
         return true;
@@ -430,12 +438,12 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Rename,
             &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Rename rpc fail: %s to %s\n", oldpath, newpath);
+            LOG(WARNING, "Rename rpc fail: %s to %s\n", oldpath, newpath);
             return false;
         }
-        if (response.status() != 0) {
-            fprintf(stderr, "Rename %s to %s return: %d\n",
-                oldpath, newpath, response.status());
+        if (response.status() != kOK) {
+            LOG(WARNING, "Rename %s to %s return: %s\n",
+                oldpath, newpath, StatusCode_Name(response.status()).c_str());
             return false;
         }
         return true;
@@ -450,13 +458,13 @@ public:
                 &NameServer_Stub::ChangeReplicaNum,
                 &request, &response, 15, 3);
         if (!ret) {
-            fprintf(stderr, "Change %s replica num to %d rpc fail\n",
+            LOG(WARNING, "Change %s replica num to %d rpc fail\n",
                     file_name, replica_num);
             return false;
         }
-        if (response.status() != 0) {
-            fprintf(stderr, "Change %s replica num to %d return: %d\n",
-                    file_name, replica_num, response.status());
+        if (response.status() != kOK) {
+            LOG(WARNING, "Change %s replida num to %d return: %s\n",
+                    file_name, replica_num, StatusCode_Name(response.status()).c_str());
             return false;
         }
         return true;
@@ -468,7 +476,7 @@ public:
                 &NameServer_Stub::SysStat,
                 &request, &response, 15, 3);
         if (!ret) {
-            LOG(WARNING, "SysStat fail %d", response.status());
+            LOG(WARNING, "SysStat fail %s", StatusCode_Name(response.status()).c_str());
             return false;
         }
         bool stat_all = (stat_name == "StatAll");
@@ -502,6 +510,8 @@ private:
     RpcClient* rpc_client_;
     NameServer_Stub* nameserver_;
     std::string nameserver_address_;
+    std::string local_host_name_;
+    ThreadPool* thread_pool_;
 };
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
@@ -509,10 +519,12 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
   : fs_(fs), rpc_client_(rpc_client), name_(name),
     open_flags_(flags), write_offset_(0), block_for_write_(NULL),
     write_buf_(NULL), last_seq_(-1), back_writing_(0),
-    chunkserver_(NULL), read_offset_(0), reada_buffer_(NULL),
+    chunkserver_(NULL), last_chunkserver_index_(-1),
+    read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
     last_read_offset_(-1), closed_(false),
     sync_signal_(&mu_), bg_error_(false) {
+        thread_pool_ = fs->thread_pool_;
 }
 
 BfsFileImpl::~BfsFileImpl () {
@@ -530,6 +542,11 @@ BfsFileImpl::~BfsFileImpl () {
     for (it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
         delete it->second;
         it->second = NULL;
+    }
+    std::set<ChunkServer_Stub*>::iterator bad_cs_it;
+    for (bad_cs_it = bad_chunkservers_.begin();
+            bad_cs_it != bad_chunkservers_.end(); ++bad_cs_it) {
+        delete *bad_cs_it;
     }
 }
 
@@ -557,11 +574,11 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             return read_len;
         }
     }
+
     LocatedBlock lcblock;
     ChunkServer_Stub* chunk_server = NULL;
     std::string cs_addr;
-
-    int server_index = 0;
+    int64_t block_id;
     {
         MutexLock lock(&mu_, "Pread GetStub", 1000);
         if (located_blocks_.blocks_.empty()) {
@@ -572,14 +589,27 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
             return -3;
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
-        server_index = rand() % lcblock.chains_size();
-        cs_addr = lcblock.chains(server_index).address();
-        if (chunkserver_ == NULL) {
+        if (last_chunkserver_index_ == -1 || !chunkserver_) {
+            const std::string& local_host_name = fs_->local_host_name_;
+            for (int i = 0; i < lcblock.chains_size(); i++) {
+                std::string addr = lcblock.chains(i).address();
+                std::string cs_name = std::string(addr, 0, addr.find_last_of(':'));
+                if (cs_name == local_host_name) {
+                    last_chunkserver_index_ = i;
+                    cs_addr = lcblock.chains(i).address();
+                    break;
+                }
+            }
+            if (last_chunkserver_index_ == -1) {
+                int server_index = rand() % lcblock.chains_size();
+                cs_addr = lcblock.chains(server_index).address();
+                last_chunkserver_index_ = server_index;
+            }
             fs_->rpc_client_->GetStub(cs_addr, &chunkserver_);
         }
         chunk_server = chunkserver_;
+        block_id = lcblock.block_id();
     }
-    int64_t block_id = lcblock.block_id();
 
     ReadBlockRequest request;
     ReadBlockResponse response;
@@ -603,21 +633,25 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
                     &request, &response, 15, 3);
 
         if (!ret || response.status() != kOK) {
-            ///TODO: Add to _badchunkservers_
-            cs_addr = lcblock.chains((++server_index) % lcblock.chains_size()).address();
+            cs_addr = lcblock.chains((++last_chunkserver_index_) % lcblock.chains_size()).address();
             LOG(INFO, "Pread retry another chunkserver: %s", cs_addr.c_str());
-            fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
             {
-                MutexLock lock(&mu_, "Pread change chunkserver_", 1000);
-                chunkserver_ = chunk_server;
+                MutexLock lock(&mu_, "Pread change chunkserver", 1000);
+                if (chunk_server != chunkserver_) {
+                    chunk_server = chunkserver_;
+                } else {
+                    bad_chunkservers_.insert(chunk_server);
+                    fs_->rpc_client_->GetStub(cs_addr, &chunk_server);
+                    chunkserver_ = chunk_server;
+                }
             }
         } else {
             break;
         }
     }
 
-    if (!ret || response.status() != 0) {
-        printf("Read block %ld fail, status= %d\n", block_id, response.status());
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "Read block %ld fail, ret= %d status= %s\n", block_id, ret, StatusCode_Name(response.status()).c_str());
         return -4;
     }
 
@@ -677,10 +711,13 @@ int32_t BfsFileImpl::AddBlock() {
     AddBlockResponse response;
     request.set_sequence_id(0);
     request.set_file_name(name_);
+    const std::string& local_host_name = fs_->local_host_name_;
+    request.set_client_address(local_host_name);
     bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
         &request, &response, 15, 3);
     if (!ret || !response.has_block()) {
-        LOG(WARNING, "Nameserver AddBlock fail: %s", name_.c_str());
+        LOG(WARNING, "Nameserver AddBlock fail: %s, ret= %d, status= %s",
+            name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
         return kNsCreateError;
     }
     block_for_write_ = new LocatedBlock(response.block());
@@ -703,8 +740,8 @@ int32_t BfsFileImpl::AddBlock() {
         WriteBlockResponse create_response;
         if (FLAGS_sdk_write_mode == "chains") {
             for (int i = 1; i < block_for_write_->chains_size(); i++) {
-                std::string addr = block_for_write_->chains(i).address();
-                create_request.add_chunkservers(addr);
+                const std::string& cs_addr = block_for_write_->chains(i).address();
+                create_request.add_chunkservers(cs_addr);
             }
         }
         bool ret = rpc_client_->SendRequest(chunkservers_[addr],
@@ -712,11 +749,12 @@ int32_t BfsFileImpl::AddBlock() {
                                             &create_request, &create_response,
                                             25, 1);
         if (!ret || create_response.status() != 0) {
-            LOG(WARNING, "Chunkserver AddBlock fail: %s %d %d",
-                name_.c_str(), ret, create_response.status());
+            LOG(WARNING, "Chunkserver AddBlock fail: %s ret=%d status= %s",
+                name_.c_str(), ret, StatusCode_Name(create_response.status()).c_str());
             for (int j = 0; j <= i; j++) {
-                delete write_windows_[addr];
-                delete chunkservers_[addr];
+                const std::string& cs_addr = block_for_write_->chains(j).address();
+                delete write_windows_[cs_addr];
+                delete chunkservers_[cs_addr];
             }
             write_windows_.clear();
             chunkservers_.clear();
@@ -750,7 +788,8 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
             int ret = 0;
             for (int i = 0; i < FLAGS_sdk_createblock_retry; i++) {
                 ret = AddBlock();
-                if (ret == 0) break;
+                if (ret == kOK) break;
+                sleep(10);
             }
             if (ret != kOK) {
                 LOG(WARNING, "AddBlock fail for %s\n", name_.c_str());
@@ -797,7 +836,7 @@ void BfsFileImpl::StartWrite() {
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
     common::atomic_inc(&back_writing_);
     mu_.Unlock();
-    g_thread_pool->AddTask(task);
+    thread_pool_->AddTask(task);
     mu_.Lock("StartWrite relock", 1000);
 }
 
@@ -841,7 +880,6 @@ void BfsFileImpl::BackgroundWrite() {
                 }
             }
             WriteBlockRequest* request = new WriteBlockRequest;
-            WriteBlockResponse* response = new WriteBlockResponse;
             int64_t offset = buffer->offset();
             int64_t seq = common::timer::get_micros();
             request->set_sequence_id(seq);
@@ -868,10 +906,11 @@ void BfsFileImpl::BackgroundWrite() {
                     buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
             common::atomic_inc(&back_writing_);
             if (delay) {
-                g_thread_pool->DelayTask(5,
+                thread_pool_->DelayTask(5,
                         boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, max_retry_times, cs_addr));
             } else {
+                WriteBlockResponse* response = new WriteBlockResponse;
                 rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
                         request, response, callback, 60, 1);
             }
@@ -902,26 +941,26 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      int retry_times,
                                      WriteBuffer* buffer,
                                      std::string cs_addr) {
-    if (failed || response->status() != 0) {
+    if (failed || response->status() != kOK) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
-                && response->status() != 500) {
+                && response->status() != kCsTooMuchPendingBuffer) {
             if (retry_times < 5) {
                 LOG(INFO, "BackgroundWrite failed %s"
                     " #%ld seq:%d, offset:%ld, len:%d"
-                    " status: %d, retry_times: %d",
+                    " status: %s, retry_times: %d",
                     name_.c_str(),
                     buffer->block_id(), buffer->Sequence(),
                     buffer->offset(), buffer->Size(),
-                    response->status(), retry_times);
+                    StatusCode_Name(response->status()).c_str(), retry_times);
             }
             if (--retry_times == 0) {
                 LOG(WARNING, "BackgroundWrite error %s"
                     "#%ld seq:%d, offset:%ld, len:%d]"
-                    " status: %d, retry_times: %d",
+                    " status: %s, retry_times: %d",
                     name_.c_str(),
                     buffer->block_id(), buffer->Sequence(),
                     buffer->offset(), buffer->Size(),
-                    response->status(), retry_times);
+                    StatusCode_Name(response->status()).c_str(), retry_times);
                 ///TODO: SetFaild & handle it
                 if (FLAGS_sdk_write_mode == "chains") {
                     bg_error_ = true;
@@ -939,15 +978,16 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                         bg_error_ = true;
                     }
                 }
-                buffer->DecRef();
-                delete request;
             }
         }
-        if (!bg_error_) {
+        if (!bg_error_ && retry_times > 0) {
             common::atomic_inc(&back_writing_);
-            g_thread_pool->DelayTask(5,
+            thread_pool_->DelayTask(5,
                 boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
                             request, retry_times, cs_addr));
+        } else {
+            buffer->DecRef();
+            delete request;
         }
     } else {
         LOG(DEBUG, "BackgroundWrite done bid:%ld, seq:%d, offset:%ld, len:%d, back_writing_:%d",
@@ -973,7 +1013,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
 
     boost::function<void ()> task =
         boost::bind(&BfsFileImpl::BackgroundWrite, this);
-    g_thread_pool->AddTask(task);
+    thread_pool_->AddTask(task);
 }
 
 void BfsFileImpl::OnWriteCommit(int32_t, int) {
@@ -1050,9 +1090,9 @@ bool BfsFileImpl::Close() {
         request.set_block_size(write_offset_);
         ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
-        if (!(ret && response.status() == 0))  {
-            LOG(WARNING, "Close file %s fail, finish report returns %d",
-                    name_.c_str(), response.status());
+        if (!(ret && response.status() == kOK))  {
+            LOG(WARNING, "Close file %s fail, finish report returns %d, status: %s",
+                    name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
             ret = false;
         }
     }
@@ -1066,8 +1106,6 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
         return false;
     }
     *fs = impl;
-    g_thread_pool = new ThreadPool(FLAGS_sdk_thread_num);
-    g_thread_pool->Start();
     return true;
 }
 

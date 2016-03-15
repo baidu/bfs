@@ -16,7 +16,7 @@ message CreateFileRequest {
 
 message CreateFileResponse {
     optional int64 sequence_id = 1;
-    required int32 status = 2;
+    required StatusCode status = 2;
 }
 
 message LocatedBlock {
@@ -35,7 +35,7 @@ message FileLocationRequest {
 
 message FileLocationResponse {
     required int64 sequence_id = 1;
-    required int32 status = 2;
+    required StatusCode status = 2;
     repeated LocatedBlock blocks = 3;
 }
 
@@ -45,7 +45,7 @@ message ListDirectoryRequest {
 }
 message ListDirectoryResponse {
     required int64 sequence_id = 1;
-    required int32 status = 2;
+    required StatusCode status = 2;
     repeated FileInfo files = 3;
 }
 
@@ -55,7 +55,7 @@ message StatRequest {
 }
 message StatResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional FileInfo file_info = 3;
 }
 
@@ -66,16 +66,17 @@ message RenameRequest {
 }
 message RenameResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message AddBlockRequest {
     required int64 sequence_id = 1;
     required string file_name = 2;
+    optional string client_address = 3;
 }
 message AddBlockResponse {
     required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional LocatedBlock block = 3;
 }
 
@@ -88,7 +89,7 @@ message FinishBlockRequest {
 }
 message FinishBlockResponse {
     required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message UnlinkRequest {
@@ -97,7 +98,7 @@ message UnlinkRequest {
 }
 message UnlinkResponse {
     required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message DeleteDirectoryRequest {
@@ -107,7 +108,7 @@ message DeleteDirectoryRequest {
 }
 message DeleteDirectoryResponse {
     required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message ChangeReplicaNumRequest {
@@ -117,7 +118,7 @@ message ChangeReplicaNumRequest {
 }
 message ChangeReplicaNumResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message HeartBeatRequest {
@@ -128,11 +129,18 @@ message HeartBeatRequest {
     optional int32 block_num = 5;
     optional int64 data_size = 6;
     optional int32 buffers = 7;
+    optional int32 pending_writes = 13;
+    optional int32 w_qps = 8;
+    optional int64 w_speed = 9;
+    optional int32 r_qps = 10;
+    optional int64 r_speed = 11;
+    optional int64 recover_speed = 12;
 }
 message HeartBeatResponse {
     optional int64 sequence_id = 1;
-    optional int64 status = 2;
+    optional StatusCode status = 2;
     optional int64 namespace_version = 3;
+    optional bool kick = 4;
 }
 
 message ReportBlockInfo {
@@ -145,6 +153,7 @@ message ReplicaInfo {
     repeated string chunkserver_address = 2;
     //optional int64 block_size = 3;
     //optional int64 block_version = 4;
+    optional bool priority = 5;
 }
 
 message RegisterRequest {
@@ -168,19 +177,22 @@ message BlockReportRequest {
 }
 message BlockReportResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     repeated int64 obsolete_blocks = 3;
-    repeated ReplicaInfo new_replicas = 4;
+    repeated int64 close_blocks = 4;
+    repeated ReplicaInfo new_replicas = 5;
 }
 
 message BlockReceivedRequest {
+    optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     optional string chunkserver_addr = 3;
     repeated ReportBlockInfo blocks = 6;
 }
 
 message BlockReceivedResponse {
-    optional int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
 }
 
 message PullBlockReportRequest {
@@ -191,7 +203,7 @@ message PullBlockReportRequest {
 }
 message PullBlockReportResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message SysStatRequest {
@@ -199,7 +211,7 @@ message SysStatRequest {
 }
 
 message SysStatResponse {
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     repeated ChunkServerInfo chunkservers = 3;
     optional int64 block_num = 4;
     optional int64 data_size = 5;

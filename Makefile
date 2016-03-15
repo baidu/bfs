@@ -50,9 +50,10 @@ CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
 LEVELDB = ./thirdparty/leveldb/libleveldb.a
 
-FLAGS_OBJ = $(patsubst %.cc, %.o, $(wildcard src/*.cc))
 COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
-OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ)
+FLAGS_OBJ = src/flags.o
+VERSION_OBJ = src/version.o
+OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
@@ -61,8 +62,9 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test
-TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o src/chunkserver_impl_test.o
+TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test 
+TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/test/file_cache_test.o \
+			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
 UNITTEST_OUTPUT = test/
 
 all: $(BIN)
@@ -93,6 +95,9 @@ chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
+location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+
 nameserver: $(NAMESERVER_OBJ) $(OBJS) $(LEVELDB)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
@@ -117,6 +122,11 @@ $(FUSE_OBJ): %.o: %.cc
 
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
+src/version.cc: FORCE
+	sh build_version.sh
+
+.PHONY: FORCE
+FORCE:
 
 clean:
 	rm -rf $(BIN)

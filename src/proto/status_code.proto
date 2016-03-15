@@ -7,12 +7,15 @@ enum StatusCode {
     kVersionError = 3;
     kNotFound = 4;
     kWriteError = 5;
+    kBlockClosed = 13;
     kReadError = 6;
     kBadParameter = 7;
     kUpdateError = 8;
     kGetChunkserverError = 9;
     kNsCreateError = 10;
     kCsCreateError = 11;
+    kCsTooMuchPendingBuffer = 12;
+    kSafeMode = 20;
 }
 
 enum ChunkServerStatus {
@@ -28,5 +31,8 @@ enum RecoverStat {
     kLoRecover = 1;
     kHiRecover = 2;
     kCheck = 3;
+    kIncomplete = 4;
+    kLost = 5;
+    kBlockWriting = 6;
+    kAny = 20;
 }
-

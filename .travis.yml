@@ -1,8 +1,13 @@
 language: cpp
 compiler: gcc
 env:
-    - PROTOBUF_VERSION=2.6.0
+    global:
+        - secure: "BTWd5JMj+Asg9e9Fg7jJ2i1MDpko0+jMN6WqsbKwa0nq5IcdcnKQp9JNdMr25VIpYS9/E8ys+ha0M00QZE/1O4xkX7tlSq/Ex0knqEpXZjLpwA+c3d+4Nuw+u/WZG+Q8YPSvJocFBrCNTpD3wTue0nR9gpw79c+iclQWHXeuziM="
+    matrix:
+        - PROTOBUF_VERSION=2.6.0
+
 install:
+    - echo | sudo apt-add-repository ppa:boost-latest/ppa
     - sudo apt-get update
     - sudo apt-get install libboost-dev
     - wget https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-$PROTOBUF_VERSION.tar.gz
@@ -11,7 +16,7 @@ install:
     - git clone https://github.com/google/snappy
     - ( cd snappy && sh ./autogen.sh && ./configure && make -j2 && sudo make install && sudo ldconfig )
     - sudo apt-get install zlib1g-dev
-    - git clone https://github.com/cyshi/sofa-pbrpc ./thirdparty/sofa-pbrpc
+    - git clone https://github.com/baidu/sofa-pbrpc ./thirdparty/sofa-pbrpc
     - ( cd thirdparty/sofa-pbrpc && make -j4 && make install);
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz
@@ -41,3 +46,13 @@ before_script:
     - echo 'COMMON_PATH=./common/output' >> depends.mk
 
 script: make -j4 && make test
+
+addons:
+   coverity_scan:
+       project:
+           name: "bluebore/bfs"
+       notification_email: yanshiguang02@baidu.com
+       build_command_prepend: "make clean"
+       build_command: "make -j4"
+       branch_pattern: master
+

@@ -25,6 +25,11 @@ message ChunkServerInfo {
     optional int32 status = 9;
     optional int32 ip = 10;
     optional int32 buffers = 11;
+    optional int32 pending_writes = 28;
+    optional bool kick = 12;
+    optional string zone = 13;
+    optional string datacenter = 14;
+    optional string rack = 15;
     // running status
     optional int32 w_qps = 21;
     optional int64 w_speed = 22;
@@ -32,5 +37,6 @@ message ChunkServerInfo {
     optional int64 r_speed = 24;
     optional int64 writing_buffers = 25;
     optional int64 active_blocks = 26;
+    optional int64 recover_speed = 27;
 }
 
