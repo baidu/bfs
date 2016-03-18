@@ -263,16 +263,11 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
-            if (!chains->empty() && cs->id() == (*(chains->begin())).first) {
-                // we have selected this chunkserver as it's local for this client,
-                // skip it.
-                continue;
-            }
             double load = GetChunkserverLoad(cs);
             if (load != kChunkserverLoadMax) {
                 double local_factor =
                     (cs == local_cs ? FLAGS_select_chunkserver_local_factor : 0) ;
-                loads.push_back(std::make_pair(load + local_factor, cs));
+                loads.push_back(std::make_pair(load - local_factor, cs));
             } else {
                 LOG(INFO, "Alloc ignore: Chunkserver %s data %ld/%ld buffer %d",
                     cs->address().c_str(), cs->data_size(),
