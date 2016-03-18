@@ -311,7 +311,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
         return false;
     }
 
-    LOG(INFO, "Report finish to nameserver done, block_id: #%ld\n", block->Id());
+    LOG(INFO, "Report finish to nameserver done, block_id: #%ld ", block->Id());
     return true;
 }
 
@@ -337,7 +337,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
             g_refuse_ops.Inc();
             return;
         }
-        LOG(DEBUG, "[WriteBlock] dispatch #%ld seq:%d, offset:%ld, len:%lu] %lu\n",
+        LOG(DEBUG, "[WriteBlock] dispatch #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
         response->add_timestamp(common::timer::get_micros());
         boost::function<void ()> task =
@@ -412,7 +412,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
     if (failed || next_response->status() != kOK) {
-        LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu], "
+        LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu, "
                      "status= %s, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
             StatusCode_Name(next_response->status()).c_str(), error);
@@ -461,7 +461,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
         done->Run();
         return;
     }
-    LOG(INFO, "[WriteBlock] local write #%ld %d", block_id, packet_seq);
+    LOG(INFO, "[WriteBlock] local write #%ld seq:%d", block_id, packet_seq);
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
     if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), &add_used)) {
@@ -725,12 +725,12 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
     int64_t find_end = common::timer::get_micros();
     if (block == NULL) {
         status = kNotFound;
-        LOG(WARNING, "GetBlockInfo not found: #%ld ",block_id);
+        LOG(WARNING, "GetBlockInfo not found: #%ld ", block_id);
     } else {
         int64_t block_size = block->GetMeta().block_size();
         response->set_block_size(block_size);
         status = kOK;
-        LOG(INFO, "GetBlockInfo #%ld return: %d "
+        LOG(INFO, "GetBlockInfo #%ld return: %ld "
                   "use %ld %ld %ld %ld",
             block_id, block_size,
             (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time

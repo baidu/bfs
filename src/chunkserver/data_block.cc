@@ -113,7 +113,7 @@ Block::~Block() {
         }
         delete recv_window_;
     }
-    LOG(INFO, "Block #%ld destruct", meta_.block_id());
+    LOG(INFO, "Block #%ld deconstruct", meta_.block_id());
     g_blocks.Dec();
     g_data_size.Sub(meta_.block_size());
 }
