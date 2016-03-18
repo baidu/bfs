@@ -18,9 +18,9 @@
 #include <common/logging.h>
 #include <common/string_util.h>
 
-#include "nameserver/namespace.h"
-#include "nameserver/chunkserver_manager.h"
 #include "nameserver/block_mapping.h"
+#include "nameserver/chunkserver_manager.h"
+#include "nameserver/namespace.h"
 #include "proto/status_code.pb.h"
 
 DECLARE_int32(nameserver_safemode_time);
@@ -108,7 +108,9 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
     sofa::pbrpc::RpcController* sofa_cntl =
         reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     const std::string& address = request->chunkserver_addr();
-    LOG(INFO, "Register ip: %s", sofa_cntl->RemoteAddress().c_str());
+    const std::string& ip_address = sofa_cntl->RemoteAddress();
+    const std::string cs_ip = ip_address.substr(ip_address.find(':'));
+    LOG(INFO, "Register ip: %s", ip_address.c_str());
     int64_t version = request->namespace_version();
     if (version != namespace_->Version()) {
         LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
@@ -116,7 +118,7 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
         chunkserver_manager_->RemoveChunkServer(address);
     } else {
         LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
-        chunkserver_manager_->HandleRegister(request, response);
+        chunkserver_manager_->HandleRegister(cs_ip, request, response);
     }
     response->set_namespace_version(namespace_->Version());
     done->Run();
@@ -222,8 +224,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         std::map<int64_t, std::vector<std::string> > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks, &hi_num);
-        int priority = 0;
-        LOG(INFO, "LL: recoversize=%d", recover_blocks.size());
         for (std::map<int64_t, std::vector<std::string> >::iterator it = recover_blocks.begin();
                 it != recover_blocks.end(); ++it) {
             ReplicaInfo* rep = response->add_new_replicas();
@@ -232,7 +232,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                  dest_it != (it->second).end(); ++dest_it) {
                 rep->add_chunkserver_address(*dest_it);
             }
-            rep->set_priority(priority++ < hi_num);
         }
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
@@ -304,8 +303,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::vector<std::pair<int32_t, std::string> > chains;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
         int64_t new_block_id = block_mapping_->NewBlockID();
-        LOG(INFO, "[AddBlock] new block for %s #%ld R%d",
-            path.c_str(), new_block_id, replica_num);
+        LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
+            path.c_str(), new_block_id, replica_num, request->client_address().c_str());
         LocatedBlock* block = response->mutable_block();
         std::vector<int32_t> replicas;
         for (int i = 0; i < replica_num; i++) {
@@ -360,7 +359,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     }
     StatusCode ret = block_mapping_->CheckBlockVersion(block_id, block_version);
     if (ret != kOK) {
-        LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
+        LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
     } else {
         LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
     }

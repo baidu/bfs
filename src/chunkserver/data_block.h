@@ -69,7 +69,6 @@ public:
                int64_t len, int64_t* add_use = NULL);
     /// Append to block buffer
     StatusCode Append(int32_t seq, const char*buf, int64_t len);
-    void Debug(int32_t* slice, int32_t* last);
     void SetRecover();
     bool IsRecover();
     /// Flush block to disk.

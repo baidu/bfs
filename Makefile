@@ -62,8 +62,9 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test
-TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/file_cache_test.o src/chunkserver_impl_test.o
+TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test 
+TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/test/file_cache_test.o \
+			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
 UNITTEST_OUTPUT = test/
 
 all: $(BIN)
@@ -92,6 +93,9 @@ file_cache_test: src/chunkserver/test/file_cache_test.o
 chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o src/chunkserver/block_manager.o \
 	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+
+location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS) $(LEVELDB)

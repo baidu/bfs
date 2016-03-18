@@ -26,6 +26,8 @@ DEFINE_int32(recover_timeout, 180, "Recover timeout for one chunkserver");
 DEFINE_bool(clean_redundancy, false, "Clean redundant replica");
 DEFINE_int32(nameserver_report_thread_num, 20, "Threads to handle block report");
 DEFINE_int32(nameserver_work_thread_num, 20, "Work threads num");
+DEFINE_bool(select_chunkserver_by_zone, false, "Select chunkserver by zone");
+DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locality");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");

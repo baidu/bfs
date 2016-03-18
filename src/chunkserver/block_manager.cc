@@ -58,6 +58,8 @@ BlockManager::~BlockManager() {
     block_map_.clear();
     delete metadb_;
     metadb_ = NULL;
+    delete file_cache_;
+    file_cache_ = NULL;
 }
 int64_t BlockManager::DiskQuota() const{
     return disk_quota_;

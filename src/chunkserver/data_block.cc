@@ -114,7 +114,7 @@ Block::~Block() {
         }
         delete recv_window_;
     }
-    LOG(INFO, "Block #%ld destruct", meta_.block_id);
+    LOG(INFO, "Block #%ld deconstruct", meta_.block_id);
     g_blocks.Dec();
     g_data_size.Sub(meta_.block_size);
 }
@@ -184,6 +184,7 @@ bool Block::IsComplete() {
 int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
     if (offset > meta_.block_size) {
+        LOG(INFO, "Wrong offset %ld > %ld", offset, meta_.block_size);
         return -1;
     } else if (deleted_) {
         return -1;
@@ -198,6 +199,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
                         buf + readlen, pread_len, offset + readlen);
         mu_.Lock("Block::Read relock", 1000);
         if (ret != pread_len) {
+            LOG(INFO, "ReadFile fail: %ld %s", ret, strerror(errno));
             return -2;
         }
         readlen += ret;
@@ -365,10 +367,6 @@ void Block::DiskWrite() {
         }
     }
     this->DecRef();
-}
-void Block::Debug(int32_t* slice, int32_t* last) {
-    *slice = slice_num_;
-    *last = last_seq_;
 }
 void Block::SetRecover() {
     is_recover_ = true;

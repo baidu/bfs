@@ -186,6 +186,7 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
     struct stat st;
     if (stat(source.c_str(), &st)) {
         fprintf(stderr, "Can't get file stat info %s\n", source.c_str());
+        fclose(fp);
         return 1;
     }
     baidu::bfs::File* file;
@@ -201,16 +202,17 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         int32_t write_bytes = file->Write(buf, bytes);
         if (write_bytes < bytes) {
             fprintf(stderr, "Write fail: [%s:%ld]\n", target.c_str(), len);
-            return 1;
+            ret = 2;
+            break;
         }
         len += bytes;
     }
+    fclose(fp);
     if (!file->Close()) {
         fprintf(stderr, "close fail: %s\n", target.c_str());
         ret = 1;
     }
     delete file;
-    fclose(fp);
     printf("Put file to bfs %s %ld bytes\n", target.c_str(), len);
     return ret;
 }
