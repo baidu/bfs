@@ -278,7 +278,7 @@ void ChunkServerImpl::SendBlockReport() {
             const ReplicaInfo& rep = response.new_replicas(i);
             boost::function<void ()> new_replica_task =
                 boost::bind(&ChunkServerImpl::PushBlock, this, rep);
-            LOG(INFO, "push #%ld ", rep.block_id());
+            LOG(INFO, "schedule push #%ld ", rep.block_id());
             if (rep.priority()) {
                 recover_thread_pool_->AddPriorityTask(new_replica_task);
             } else {
@@ -673,6 +673,8 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         offset += len;
         ++seq;
         g_recover_bytes.Add(len);
+        g_read_bytes.Add(len);
+        g_read_ops.Inc();
         delete[] buf;
         if (len == 0) {
             return true;

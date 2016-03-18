@@ -198,6 +198,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    int priority = 0;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -228,6 +229,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 it != recover_blocks.end(); ++it) {
             ReplicaInfo* rep = response->add_new_replicas();
             rep->set_block_id(it->first);
+            rep->set_priority(priority++ < hi_num);
             for (std::vector<std::string>::iterator dest_it = (it->second).begin();
                  dest_it != (it->second).end(); ++dest_it) {
                 rep->add_chunkserver_address(*dest_it);
