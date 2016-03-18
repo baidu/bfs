@@ -323,8 +323,8 @@ void Block::DiskWrite() {
         }
         if (!deleted_) {
             disk_writing_ = true;
+            if (!OpenForWrite())assert(0);
             while (!block_buf_list_.empty() && !deleted_) {
-                if (!OpenForWrite())assert(0);
                 const char* buf = block_buf_list_[0].first;
                 int len = block_buf_list_[0].second;
 
