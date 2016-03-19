@@ -281,7 +281,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         }
     }
     if ((int)loads.size() < num) {
-        LOG(WARNING, "Only %ld chunkserver of %ld is not over overladen, GetChunkServerChains(%d) return false",
+        LOG(WARNING, "Only %ld chunkserver of %d is not over overladen, GetChunkServerChains(%d) return false",
             loads.size(), chunkserver_num_, num);
         return false;
     }

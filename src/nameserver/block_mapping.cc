@@ -78,7 +78,6 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,in
 
 bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
     MutexLock lock(&mu_);
-    NSBlockMap::iterator it = block_map_.find(block_id);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
         LOG(WARNING, "Can't find block: #%ld ", block_id);
