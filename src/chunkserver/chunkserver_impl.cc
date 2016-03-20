@@ -367,7 +367,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
                 }
                 LOG(INFO, "Write to secondary %s, block id: #%ld , seq: %d, offset: %ld, len: %lu",
                         next_server.c_str(), block_id, packet_seq, offset, databuf.size());
-                WriteNext(next_server, stub, next_request, next_response, request, response, done);
+                WriteNext(next_server, stub, next_request, next_response, request, response, done, true);
             }
         } else {
             WriteBlockRequest* next_request = new WriteBlockRequest(*request);
@@ -379,7 +379,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
             ChunkServer_Stub* stub = NULL;
             const std::string& next_server = request->chunkservers(0);
             rpc_client_->GetStub(next_server, &stub);
-            WriteNext(next_server, stub, next_request, next_response, request, response, done);
+            WriteNext(next_server, stub, next_request, next_response, request, response, done, false);
         }
     } else {
         boost::function<void ()> callback =
@@ -394,14 +394,16 @@ void ChunkServerImpl::WriteNext(const std::string& next_server,
                                 WriteBlockResponse* next_response,
                                 const WriteBlockRequest* request,
                                 WriteBlockResponse* response,
-                                ::google::protobuf::Closure* done) {
+                                ::google::protobuf::Closure* done,
+                                bool called_by_primary) {
     int64_t block_id = request->block_id();
     int32_t packet_seq = request->packet_seq();
     LOG(INFO, "[WriteBlock] send #%ld seq:%d to next %s\n",
         block_id, packet_seq, next_server.c_str());
     boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
         boost::bind(&ChunkServerImpl::WriteNextCallback,
-            this, _1, _2, _3, _4, next_server, std::make_pair(request, response), done, stub);
+            this, _1, _2, _3, _4, next_server, std::make_pair(request, response),
+            done, std::make_pair(stub, called_by_primary));
     rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
         next_request, next_response, callback, 30, 3);
 }
@@ -412,26 +414,41 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
                         const std::string& next_server,
                         std::pair<const WriteBlockRequest*, WriteBlockResponse*> origin,
                         ::google::protobuf::Closure* done,
-                        ChunkServer_Stub* stub) {
+                        std::pair<ChunkServer_Stub*, bool> stub_and_primary_flag) {
+    int64_t block_id = next_request->block_id();
+    int32_t packet_seq = next_request->packet_seq();
+    ChunkServer_Stub* stub = stub_and_primary_flag.first;
+    bool called_by_primary = stub_and_primary_flag.second;
+
     MutexLock lock(&mu_);
-    ///TODO:: origin request & response maybe invalidate, first check whether other secondary already fails
+    if (called_by_primary) {
+        std::map<int64_t, std::map<int32_t, int32_t> >::iterator block_it = secondary_ack_map_.find(block_id);
+        if (block_it == secondary_ack_map_.end()) {
+            return;
+        } else {
+            std::map<int32_t, int32_t>& packet_seq_map = block_it->second;
+            std::map<int32_t, int32_t>::iterator packet_it = packet_seq_map.find(packet_seq);
+            if (packet_it == packet_seq_map.end()) {
+                return;
+            }
+        }
+    }
+    // now it's safe to touch origin request & response
     const WriteBlockRequest* request = origin.first;
     WriteBlockResponse* response = origin.second;
     /// If RPC_ERROR_SEND_BUFFER_FULL retry send.
     if (failed && error == sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL) {
         boost::function<void ()> callback =
             boost::bind(&ChunkServerImpl::WriteNext, this, next_server,
-                        stub, next_request, next_response, request, response, done);
+                        stub, next_request, next_response, request, response, done, called_by_primary);
         work_thread_pool_->DelayTask(10, callback);
         return;
     }
     delete next_request;
     delete stub;
 
-    int64_t block_id = request->block_id();
     const std::string& databuf = request->databuf();
     int64_t offset = request->offset();
-    int32_t packet_seq = request->packet_seq();
     if (failed || next_response->status() != kOK) {
         LOG(WARNING, "[WriteBlock] WriteNext %s fail: #%ld seq:%d, offset:%ld, len:%lu, "
                      "status= %s, error= %d\n",
@@ -443,27 +460,21 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
             response->set_status(next_response->status());
         }
         delete next_response;
-        if (request->is_primary()) {
-            std::map<int32_t, int32_t>& block_ack_map = secondary_ack_map_[block_id];
-            if (secondary_ack_map_.find(block_id) == secondary_ack_map_.end() ||
-                    !secondary_ack_map_[block_id].erase(packet_seq)) {
-                // other secondary maybe also falis, request & response & done is invalidate now
-                return;
-            }
-        }
         done->Run();
+        // secondary replica fails, remove ack info
+        std::map<int32_t, int32_t>& packet_seq_map = secondary_ack_map_[block_id];
+        packet_seq_map.erase(packet_seq);
         return;
     } else {
         LOG(INFO, "[Writeblock] send #%ld seq:%d to next done", block_id, packet_seq);
         delete next_response;
     }
-    if (request->is_primary()) {
+    if (called_by_primary) {
         std::map<int32_t, int32_t>& block_ack_map = secondary_ack_map_[block_id];
         int32_t& ack_counter = block_ack_map[packet_seq];
         if (++ack_counter == request->chunkservers_size()) {
             LOG(INFO, "Write to all secondary done: #%ld , seq: %d, offset: %ld, len: %lu",
                     block_id, packet_seq, offset, databuf.size());
-
             boost::function<void ()> callback =
                 boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
             work_thread_pool_->AddTask(callback);
