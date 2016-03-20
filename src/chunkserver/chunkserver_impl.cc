@@ -352,16 +352,35 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 
     if (request->chunkservers_size()) {
         // New request for next chunkserver
-        WriteBlockRequest* next_request = new WriteBlockRequest(*request);
-        WriteBlockResponse* next_response = new WriteBlockResponse();
-        next_request->clear_chunkservers();
-        for (int i = 1; i < request->chunkservers_size(); i++) {
-            next_request->add_chunkservers(request->chunkservers(i));
+        if (request->is_primary()) {
+            for (int i = 0; i < request->chunkservers_size(); i++) {
+                WriteBlockRequest* next_request = new WriteBlockRequest(*request);
+                WriteBlockResponse* next_response = new WriteBlockResponse();
+                next_request->clear_chunkservers();
+                next_request->set_is_primary(false);
+                ChunkServer_Stub* stub = NULL;
+                const std::string& next_server = request->chunkservers(i);
+                rpc_client_->GetStub(next_server, &stub);
+                {
+                    MutexLock lock(&mu_);
+                    secondary_ack_map_[block_id].insert(std::make_pair(packet_seq, 0));
+                }
+                LOG(INFO, "Write to secondary %s, block id: #%ld , seq: %d, offset: %ld, len: %lu",
+                        next_server.c_str(), block_id, packet_seq, offset, databuf.size());
+                WriteNext(next_server, stub, next_request, next_response, request, response, done);
+            }
+        } else {
+            WriteBlockRequest* next_request = new WriteBlockRequest(*request);
+            WriteBlockResponse* next_response = new WriteBlockResponse();
+            next_request->clear_chunkservers();
+            for (int i = 1; i < request->chunkservers_size(); i++) {
+                next_request->add_chunkservers(request->chunkservers(i));
+            }
+            ChunkServer_Stub* stub = NULL;
+            const std::string& next_server = request->chunkservers(0);
+            rpc_client_->GetStub(next_server, &stub);
+            WriteNext(next_server, stub, next_request, next_response, request, response, done);
         }
-        ChunkServer_Stub* stub = NULL;
-        const std::string& next_server = request->chunkservers(0);
-        rpc_client_->GetStub(next_server, &stub);
-        WriteNext(next_server, stub, next_request, next_response, request, response, done);
     } else {
         boost::function<void ()> callback =
             boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
@@ -394,6 +413,8 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
                         std::pair<const WriteBlockRequest*, WriteBlockResponse*> origin,
                         ::google::protobuf::Closure* done,
                         ChunkServer_Stub* stub) {
+    MutexLock lock(&mu_);
+    ///TODO:: origin request & response maybe invalidate, first check whether other secondary already fails
     const WriteBlockRequest* request = origin.first;
     WriteBlockResponse* response = origin.second;
     /// If RPC_ERROR_SEND_BUFFER_FULL retry send.
@@ -422,16 +443,36 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
             response->set_status(next_response->status());
         }
         delete next_response;
+        if (request->is_primary()) {
+            std::map<int32_t, int32_t>& block_ack_map = secondary_ack_map_[block_id];
+            if (secondary_ack_map_.find(block_id) == secondary_ack_map_.end() ||
+                    !secondary_ack_map_[block_id].erase(packet_seq)) {
+                // other secondary maybe also falis, request & response & done is invalidate now
+                return;
+            }
+        }
         done->Run();
         return;
     } else {
         LOG(INFO, "[Writeblock] send #%ld seq:%d to next done", block_id, packet_seq);
         delete next_response;
     }
+    if (request->is_primary()) {
+        std::map<int32_t, int32_t>& block_ack_map = secondary_ack_map_[block_id];
+        int32_t& ack_counter = block_ack_map[packet_seq];
+        if (++ack_counter == request->chunkservers_size()) {
+            LOG(INFO, "Write to all secondary done: #%ld , seq: %d, offset: %ld, len: %lu",
+                    block_id, packet_seq, offset, databuf.size());
 
-    boost::function<void ()> callback =
-        boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
-    work_thread_pool_->AddTask(callback);
+            boost::function<void ()> callback =
+                boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
+            work_thread_pool_->AddTask(callback);
+        }
+    } else {
+        boost::function<void ()> callback =
+            boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
+        work_thread_pool_->AddTask(callback);
+    }
 }
 
 void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
@@ -442,10 +483,16 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
 
+    if (request->is_primary()) {
+        LOG(INFO, "Primary local write #%ld , seq: %d, offset: %ld, len: %lu",
+                block_id, packet_seq, offset, databuf.size());
+        MutexLock lock(&mu_);
+        secondary_ack_map_[block_id].erase(packet_seq);
+    }
+
     if (!response->has_status()) {
         response->set_status(kOK);
     }
-
     int64_t find_start = common::timer::get_micros();
     /// search;
     int64_t sync_time = 0;
@@ -479,6 +526,10 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t report_start = write_end;
     if (block->IsComplete() && block_manager_->CloseBlock(block)) {
         LOG(INFO, "[WriteBlock] block finish #%ld size:%ld", block_id, block->Size());
+        if (request->is_primary()) {
+            MutexLock lock(&mu_);
+            secondary_ack_map_.erase(block_id);
+        }
         report_start = common::timer::get_micros();
         ReportFinish(block);
     }

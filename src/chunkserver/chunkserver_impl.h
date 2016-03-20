@@ -91,6 +91,20 @@ private:
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
     volatile bool service_stop_;
+    /*
+    struct WriteAckInfo {
+        WriteAckInfo(const WriteBlockRequest* req, WriteBlockResponse* res,
+                     ::google::protobuf::Closure* controller, int32_t counter) :
+                     request(req), response(res), done(controller),
+                     secondary_counter(counter) {}
+        const WriteBlockRequest* request;
+        WriteBlockResponse* response;
+        ::google::protobuf::Closure* done;
+        int32_t secondary_counter;
+    };
+    */
+    std::map<int64_t, std::map<int32_t, int32_t> > secondary_ack_map_;
+    Mutex mu_;
 };
 
 } // namespace bfs

@@ -721,8 +721,7 @@ int32_t BfsFileImpl::AddBlock() {
         return kNsCreateError;
     }
     block_for_write_ = new LocatedBlock(response.block());
-    int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 :
-                                            block_for_write_->chains_size();
+    int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 : block_for_write_->chains_size();
     for (int i = 0; i < cs_size; i++) {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);
@@ -864,7 +863,8 @@ void BfsFileImpl::BackgroundWrite() {
         mu_.Unlock();
 
         buffer->AddRefBy(chunkservers_.size());
-        for (size_t i = 0; i < chunkservers_.size(); i++) {
+        size_t cs_size = FLAGS_sdk_write_mode == "fan-out" ? chunkservers_.size() : 1;
+        for (size_t i = 0; i < cs_size; i++) {
             std::string cs_addr = block_for_write_->chains(i).address();
             bool delay = false;
             if (!(write_windows_[cs_addr]->UpBound() > write_queue_.top()->Sequence())) {
@@ -890,10 +890,13 @@ void BfsFileImpl::BackgroundWrite() {
             request->set_packet_seq(buffer->Sequence());
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
-            if (FLAGS_sdk_write_mode == "chains") {
+            if (FLAGS_sdk_write_mode != "fan-out") {
                 for (int i = 1; i < block_for_write_->chains_size(); i++) {
                     std::string addr = block_for_write_->chains(i).address();
                     request->add_chunkservers(addr);
+                }
+                if (FLAGS_sdk_write_mode == "primary-secondary") {
+                    request->set_is_primary(true);
                 }
             }
             const int max_retry_times = 5;
