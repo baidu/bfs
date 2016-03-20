@@ -721,7 +721,7 @@ int32_t BfsFileImpl::AddBlock() {
         return kNsCreateError;
     }
     block_for_write_ = new LocatedBlock(response.block());
-    int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 : block_for_write_->chains_size();
+    int cs_size = FLAGS_sdk_write_mode != "chains" ? block_for_write_->chains_size() : 1;
     for (int i = 0; i < cs_size; i++) {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);

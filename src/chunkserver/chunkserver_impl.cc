@@ -421,14 +421,15 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     bool called_by_primary = stub_and_primary_flag.second;
 
     MutexLock lock(&mu_);
+    std::map<int64_t, std::map<int32_t, int32_t> >::iterator block_it;
+    std::map<int32_t, int32_t>::iterator packet_it;
     if (called_by_primary) {
-        std::map<int64_t, std::map<int32_t, int32_t> >::iterator block_it = secondary_ack_map_.find(block_id);
+        block_it = secondary_ack_map_.find(block_id);
         if (block_it == secondary_ack_map_.end()) {
             return;
         } else {
-            std::map<int32_t, int32_t>& packet_seq_map = block_it->second;
-            std::map<int32_t, int32_t>::iterator packet_it = packet_seq_map.find(packet_seq);
-            if (packet_it == packet_seq_map.end()) {
+            packet_it = block_it->second.find(packet_seq);
+            if (packet_it == block_it->second.end()) {
                 return;
             }
         }
@@ -462,16 +463,14 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         delete next_response;
         done->Run();
         // secondary replica fails, remove ack info
-        std::map<int32_t, int32_t>& packet_seq_map = secondary_ack_map_[block_id];
-        packet_seq_map.erase(packet_seq);
+        block_it->second.erase(packet_it);
         return;
     } else {
         LOG(INFO, "[Writeblock] send #%ld seq:%d to next done", block_id, packet_seq);
         delete next_response;
     }
     if (called_by_primary) {
-        std::map<int32_t, int32_t>& block_ack_map = secondary_ack_map_[block_id];
-        int32_t& ack_counter = block_ack_map[packet_seq];
+        int32_t& ack_counter = packet_it->second;
         if (++ack_counter == request->chunkservers_size()) {
             LOG(INFO, "Write to all secondary done: #%ld , seq: %d, offset: %ld, len: %lu",
                     block_id, packet_seq, offset, databuf.size());
@@ -583,6 +582,8 @@ void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
     block_manager_->CloseBlock(block);
     ReportFinish(block);
     block->DecRef();
+    MutexLock lock(&mu_);
+    secondary_ack_map_.erase(block_id);
 }
 
 void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
