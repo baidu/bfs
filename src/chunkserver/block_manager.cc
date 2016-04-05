@@ -313,7 +313,6 @@ bool BlockManager::RemoveBlockMeta(int64_t block_id) {
     return true;
 }
 bool BlockManager::RemoveBlock(int64_t block_id) {
-    bool meta_removed = RemoveBlockMeta(block_id);
     Block* block = FindBlock(block_id);
     if (block == NULL) {
         LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
@@ -337,10 +336,11 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
             block_id, file_path.c_str());
     }
 
-    char dir_name[5];
-    snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
+    //char dir_name[5];
+    //snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
     // Rmdir, ignore error when not empty.
     // rmdir((GetStorePath(block_id) + dir_name).c_str());
+    bool meta_removed = RemoveBlockMeta(block_id);
     if (meta_removed) {
         MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
         block_map_.erase(block_id);
