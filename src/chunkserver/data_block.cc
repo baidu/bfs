@@ -273,12 +273,11 @@ bool Block::Close() {
         return false;
     }
 
-    if (bufdatalen_) {
-        block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
-        g_pending_writes.Inc();
-        blockbuf_ = NULL;
-        bufdatalen_ = 0;
-    }
+    block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
+    g_pending_writes.Inc();
+    blockbuf_ = NULL;
+    bufdatalen_ = 0;
+
     finished_ = true;
     // DiskWrite will close file_desc_ asynchronously.
     this->AddRef();
@@ -324,7 +323,7 @@ void Block::DiskWrite() {
         if (!deleted_) {
             disk_writing_ = true;
             while (!block_buf_list_.empty() && !deleted_) {
-                if (!OpenForWrite())assert(0);
+                if (!OpenForWrite()) assert(0);
                 const char* buf = block_buf_list_[0].first;
                 int len = block_buf_list_[0].second;
 
