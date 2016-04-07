@@ -60,14 +60,15 @@ private:
                    WriteBlockResponse* next_response,
                    const WriteBlockRequest* request,
                    WriteBlockResponse* response,
-                   ::google::protobuf::Closure* done);
+                   ::google::protobuf::Closure* done,
+                   bool called_by_primary);
     void WriteNextCallback(const WriteBlockRequest* next_request,
                            WriteBlockResponse* next_response,
                            bool failed, int error,
                            const std::string& next_server,
                            std::pair<const WriteBlockRequest*, WriteBlockResponse*> origin,
                            ::google::protobuf::Closure* done,
-                           ChunkServer_Stub* stub);
+                           std::pair<ChunkServer_Stub*, bool> stud_and_primary_flag);
     void LocalWriteBlock(const WriteBlockRequest* request,
                          WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
@@ -91,6 +92,8 @@ private:
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
     volatile bool service_stop_;
+    std::map<int64_t, std::map<int32_t, int32_t> > secondary_ack_map_;
+    Mutex mu_;
 };
 
 } // namespace bfs
