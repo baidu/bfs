@@ -450,17 +450,31 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t find_start = common::timer::get_micros();
     /// search;
     int64_t sync_time = 0;
-    Block* block = NULL;
+    Block* block = block_manager_->FindBlock(block_id);
+
     if (packet_seq == 0) {
-        block = block_manager_->CreateBlock(block_id, &sync_time);
+        StatusCode s;
+        block = block_manager_->CreateBlock(block_id, &sync_time, &s);
+        if (s != kOK) {
+            LOG(INFO, "[LocalWriteBlock] #%ld created failed, reason %s",
+                    block_id, StatusCode_Name(s).c_str());
+            if (s == kBlockExist) {
+                response->set_current_size(block->Size());
+                response->set_current_seq(block->GetLastSaq());
+                LOG(INFO, "[LocalWriteBlock] #%ld exist block size = %ld", block_id, block->Size());
+            }
+            response->set_status(s);
+            done->Run();
+            return;
+        }
     } else {
         block = block_manager_->FindBlock(block_id);
-    }
-    if (!block) {
-        LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
-        response->set_status(kNotFound);
-        done->Run();
-        return;
+        if (!block) {
+            LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
+            response->set_status(kNotFound);
+            done->Run();
+            return;
+        }
     }
     if (request->has_recover_version()) {
         block->SetRecover();
@@ -520,9 +534,11 @@ void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
     Block* block = block_manager_->FindBlock(block_id);
     if (!block) {
         LOG(INFO, "[CloseIncompleteBlock] Block not found: #%ld ", block_id);
-        block = block_manager_->CreateBlock(block_id, NULL);
-        if (!block) {
-            LOG(WARNING, "[CloseIncompleteBlock] create block fail: #%ld ", block_id);
+        StatusCode s;
+        block = block_manager_->CreateBlock(block_id, NULL, &s);
+        if (s != kOK) {
+            LOG(WARNING, "[CloseIncompleteBlock] create block fail: #%ld reason: %s",
+                block_id, StatusCode_Name(s).c_str());
             return;
         }
         block->Write(0, 0, NULL, 0, NULL);
@@ -636,6 +652,9 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
             LOG(INFO, "[PushBlock] success #%ld to %s", block_id, cs_addr.c_str());
             block->DecRef();
             return;
+        } else if (service_stop_) {
+            LOG(INFO, "[PushBlock] failed #%ld service_stop_", block_id);
+            return;
         }
     }
     block->DecRef();
@@ -643,12 +662,14 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
 }
 
 bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver) {
-    int32_t read_len = 128 << 10;
+    int32_t read_len = 1 << 20;
     int32_t offset = 0;
     int32_t seq = 0;
     while (!service_stop_) {
         char* buf = new char[read_len];
         int64_t len = block->Read(buf, read_len, offset);
+        g_read_bytes.Add(len);
+        g_read_ops.Inc();
         if (len < 0) {
             LOG(INFO, "[WriteRecoverBlock] #%ld read len < 0", block->Id());
             delete[] buf;
@@ -665,16 +686,19 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         request.set_recover_version(block->GetVersion());
         bool ret = rpc_client_->SendRequest(chunkserver, &ChunkServer_Stub::WriteBlock,
                                  &request, &response, 60, 1);
-        if (!ret || response.status() != kOK) {
+        if (!ret || (response.status() != kOK && response.status() != kBlockExist)) {
             LOG(INFO, "[WriteRecoverBlock] #%ld write failed", block->Id());
             delete[] buf;
             return false;
         }
-        offset += len;
-        ++seq;
-        g_recover_bytes.Add(len);
-        g_read_bytes.Add(len);
-        g_read_ops.Inc();
+        if (response.status() == kOK) {
+            offset += len;
+            g_recover_bytes.Add(len);
+            ++seq;
+        } else if (response.status() == kBlockExist) {
+            offset = response.current_size();
+            seq = response.current_seq() + 1;
+        }
         delete[] buf;
         if (len == 0) {
             return true;

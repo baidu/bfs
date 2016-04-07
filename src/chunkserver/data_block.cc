@@ -144,6 +144,9 @@ void Block::SetVersion(int64_t version) {
 int Block::GetVersion() {
     return meta_.version;
 }
+int32_t Block::GetLastSaq() {
+    return last_seq_;
+}
 
 std::string Block::BuildFilePath(int64_t block_id) {
     char file_path[16];
