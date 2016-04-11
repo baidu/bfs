@@ -326,6 +326,9 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
             if (replica.find(cs->id()) != replica.end()) {
                 LOG(INFO, "GetRecoverChains has C%d ", cs->id());
                 continue;
+            } else if (cs->zone() != localzone_) {
+                LOG(DEBUG, "Remote zone server C%d ignore PickRecoverBlocks", cs->id());
+                continue;
             }
             double load = GetChunkserverLoad(cs);
             if (load != kChunkserverLoadMax) {
@@ -464,14 +467,6 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         MutexLock lock(&mu_, "PickRecoverBlocks 1", 10);
         ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(cs_id, &cs)) {
-            return;
-        }
-        if (cs->buffers() > FLAGS_chunkserver_max_pending_buffers * 0.5
-            || cs->data_size() > cs->disk_quota() * 0.95) {
-            return;
-        }
-        if (cs->zone() != localzone_) {
-            LOG(DEBUG, "Remote zone server C%d ignore PickRecoverBlocks", cs_id);
             return;
         }
     }
