@@ -237,16 +237,16 @@ void ChunkServerImpl::SendBlockReport() {
     int64_t blocks_num = blocks.size();
     for (int64_t i = 0; i < blocks_num; i++) {
         ReportBlockInfo* info = request.add_blocks();
-        info->set_block_id(blocks[i].block_id);
-        info->set_block_size(blocks[i].block_size);
-        info->set_version(blocks[i].version);
+        info->set_block_id(blocks[i].block_id());
+        info->set_block_size(blocks[i].block_size());
+        info->set_version(blocks[i].version());
     }
 
     if (blocks_num < FLAGS_blockreport_size) {
         last_report_blockid_ = -1;
     } else {
         if (blocks_num) {
-            last_report_blockid_ = blocks[blocks_num - 1].block_id;
+            last_report_blockid_ = blocks[blocks_num - 1].block_id();
         }
     }
 
@@ -727,7 +727,7 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
         status = kNotFound;
         LOG(WARNING, "GetBlockInfo not found: #%ld ", block_id);
     } else {
-        int64_t block_size = block->GetMeta().block_size;
+        int64_t block_size = block->GetMeta().block_size();
         response->set_block_size(block_size);
         status = kOK;
         LOG(INFO, "GetBlockInfo #%ld return: %ld "

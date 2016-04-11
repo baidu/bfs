@@ -42,6 +42,10 @@ SDK_SRC = $(wildcard src/sdk/*.cc)
 SDK_OBJ = $(patsubst %.cc, %.o, $(SDK_SRC))
 SDK_HEADER = $(wildcard src/sdk/*.h)
 
+UTILS_SRC = $(wildcard src/utils/*.cc)
+UTILS_OBJ = $(patsubst %.cc, %.o, $(UTILS_SRC))
+UTILS_HEADER = $(wildcard src/utils/*.h)
+
 FUSE_SRC = $(wildcard fuse/*.cc)
 FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
 FUSE_HEADER = $(wildcard fuse/*.h)
@@ -53,7 +57,7 @@ LEVELDB = ./thirdparty/leveldb/libleveldb.a
 COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
 FLAGS_OBJ = src/flags.o
 VERSION_OBJ = src/version.o
-OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
+OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ) $(VERSION_OBJ) $(UTILS_OBJ)
 
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
@@ -75,6 +79,7 @@ $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)
 $(NAMESERVER_OBJ): $(NAMESERVER_HEADER)
 $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
 $(SDK_OBJ): $(SDK_HEADER)
+$(UTILS_OBJ): $(UTILS_HEADER)
 $(FUSE_OBJ): $(FUSE_HEADER)
 
 # Targets

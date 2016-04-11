@@ -43,18 +43,17 @@ extern common::Counter g_rpc_delay_all;
 extern common::Counter g_rpc_count;
 extern common::Counter g_data_size;
 
-Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* thread_pool,
-      FileCache* file_cache) :
+Block::Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cache) :
   thread_pool_(thread_pool), meta_(meta),
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
-  disk_file_size_(meta.block_size), file_desc_(-1), refs_(0),
+  disk_file_size_(meta.block_size()), file_desc_(-1), refs_(0),
   close_cv_(&mu_), deleted_(false), file_cache_(file_cache) {
-    assert(meta_.block_id < (1L<<40));
-    g_data_size.Add(meta.block_size);
-    disk_file_ = store_path + BuildFilePath(meta_.block_id);
+    assert(meta_.block_id() < (1L<<40));
+    g_data_size.Add(meta.block_size());
+    disk_file_ = meta.store_path() + BuildFilePath(meta_.block_id());
     g_blocks.Inc();
-    if (meta_.version >= 0) {
+    if (meta_.version() >= 0) {
         finished_ = true;
         recv_window_ = NULL;
     } else {
@@ -67,7 +66,7 @@ Block::~Block() {
     if (bufdatalen_ > 0) {
         if (!deleted_) {
             LOG(WARNING, "Data lost, %d bytes in #%ld %s",
-                bufdatalen_, meta_.block_id, disk_file_.c_str());
+                bufdatalen_, meta_.block_id(), disk_file_.c_str());
         }
     }
     if (blockbuf_) {
@@ -80,15 +79,15 @@ Block::~Block() {
     bufdatalen_ = 0;
 
     LOG(INFO, "Release #%ld block_buf_list_ size= %lu",
-        meta_.block_id, block_buf_list_.size());
+        meta_.block_id(), block_buf_list_.size());
     for (uint32_t i = 0; i < block_buf_list_.size(); i++) {
         const char* buf = block_buf_list_[i].first;
         int len = block_buf_list_[i].second;
         if (!deleted_) {
             LOG(WARNING, "Data lost, %d bytes in %s, #%ld block_buf_list_",
-                len, disk_file_.c_str(), meta_.block_id);
+                len, disk_file_.c_str(), meta_.block_id());
         } else {
-            LOG(INFO, "Release block_buf_list_ %d for #%ld ", len, meta_.block_id);
+            LOG(INFO, "Release block_buf_list_ %d for #%ld ", len, meta_.block_id());
         }
         delete[] buf;
         g_block_buffers.Dec();
@@ -105,7 +104,7 @@ Block::~Block() {
     if (recv_window_) {
         if (recv_window_->Size()) {
             LOG(INFO, "#%ld recv_window fragments: %d\n",
-                meta_.block_id, recv_window_->Size());
+                meta_.block_id(), recv_window_->Size());
             std::vector<std::pair<int32_t,Buffer> > frags;
             recv_window_->GetFragments(&frags);
             for (uint32_t i = 0; i < frags.size(); i++) {
@@ -114,16 +113,16 @@ Block::~Block() {
         }
         delete recv_window_;
     }
-    LOG(INFO, "Block #%ld deconstruct", meta_.block_id);
+    LOG(INFO, "Block #%ld deconstruct", meta_.block_id());
     g_blocks.Dec();
-    g_data_size.Sub(meta_.block_size);
+    g_data_size.Sub(meta_.block_size());
 }
 /// Getter
 int64_t Block::Id() const {
-    return meta_.block_id;
+    return meta_.block_id();
 }
 int64_t Block::Size() const {
-    return meta_.block_size;
+    return meta_.block_size();
 }
 std::string Block::GetFilePath() const {
     return disk_file_;
@@ -139,10 +138,10 @@ bool Block::SetDeleted() {
     return (0 == deleted);
 }
 void Block::SetVersion(int64_t version) {
-    meta_.version = std::max(version, meta_.version);
+    meta_.set_version(std::max(version, meta_.version()));
 }
 int Block::GetVersion() {
-    return meta_.version;
+    return meta_.version();
 }
 
 std::string Block::BuildFilePath(int64_t block_id) {
@@ -165,7 +164,7 @@ bool Block::OpenForWrite() {
     mu_.Lock("Block::OpenForWrite");
     if (fd < 0) {
         LOG(WARNING, "Open block #%ld %s fail: %s",
-            meta_.block_id, disk_file_.c_str(), strerror(errno));
+            meta_.block_id(), disk_file_.c_str(), strerror(errno));
         return false;
     }
     g_writing_blocks.Inc();
@@ -183,8 +182,8 @@ bool Block::IsComplete() {
 /// Read operation.
 int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
-    if (offset > meta_.block_size) {
-        LOG(INFO, "Wrong offset %ld > %ld", offset, meta_.block_size);
+    if (offset > meta_.block_size()) {
+        LOG(INFO, "Wrong offset %ld > %ld", offset, meta_.block_size());
         return -1;
     }
 
@@ -233,13 +232,13 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
                   int64_t len, int64_t* add_use) {
     if (finished_) {
         LOG(INFO, "Write a finish block #%ld V%ld %ld, seq: %d, offset: %ld",
-            meta_.block_id, meta_.version, meta_.block_size, seq, offset);
+            meta_.block_id(), meta_.version(), meta_.block_size(), seq, offset);
         return false;
     }
-    if (offset < meta_.block_size) {
-        assert (offset + len <= meta_.block_size);
+    if (offset < meta_.block_size()) {
+        assert (offset + len <= meta_.block_size());
         LOG(INFO, "Write #%ld size %ld, seq: %d, wrong offset: %ld",
-            meta_.block_id, meta_.block_size, seq, offset);
+            meta_.block_id(), meta_.block_size(), seq, offset);
         return true;
     }
     char* buf = NULL;
@@ -257,7 +256,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
         if (ret < 0) {
             LOG(WARNING, "Write block #%ld seq: %d, offset: %ld, block_size: %ld"
                          " out of range %d",
-                meta_.block_id, seq, offset, meta_.block_size, recv_window_->UpBound());
+                meta_.block_id(), seq, offset, meta_.block_size(), recv_window_->UpBound());
             return false;
         }
     }
@@ -286,11 +285,11 @@ bool Block::Close() {
     while (file_desc_ != -1) {
         close_cv_.Wait();
     }
-    if (meta_.version == -1) {
+    if (meta_.version() == -1) {
         SetVersion(last_seq_);
     }
     LOG(INFO, "Block #%ld closed %s V%ld %ld",
-        meta_.block_id, disk_file_.c_str(), meta_.version, meta_.block_size);
+        meta_.block_id(), disk_file_.c_str(), meta_.version(), meta_.block_size());
     return true;
 }
 
@@ -334,7 +333,7 @@ void Block::DiskWrite() {
                     int w = write(file_desc_, buf + wlen, len - wlen);
                     if (w < 0) {
                         LOG(WARNING, "IOError write #%ld %s return %s",
-                            meta_.block_id, disk_file_.c_str(), strerror(errno));
+                            meta_.block_id(), disk_file_.c_str(), strerror(errno));
                         assert(0);
                         break;
                     }
@@ -370,7 +369,7 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
     if (finished_ || deleted_) {
         LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_. finished_=%d, deleted_=%d",
-            meta_.block_id, finished_, deleted_);
+            meta_.block_id(), finished_, deleted_);
         return kBlockClosed;
     }
     if (blockbuf_ == NULL) {
@@ -399,7 +398,7 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
         memcpy(blockbuf_ + bufdatalen_, buf, ap_len);
         bufdatalen_ += ap_len;
     }
-    meta_.block_size += len;
+    meta_.set_block_size(meta_.block_size() + len);
     g_data_size.Add(len);
     last_seq_ = seq;
     return kOK;
