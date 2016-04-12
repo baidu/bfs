@@ -117,7 +117,6 @@ TEST_F(NameSpaceTest, CreateFile) {
     ASSERT_EQ(0, ns.CreateFile("/file2", 0, 0, 0));
     ASSERT_EQ(0, ns.CreateFile("/file3", 0, 0, 2));
     ASSERT_EQ(0, ns.CreateFile("/dir1/subdir1/file1", 0, 0, -1));
-    ASSERT_EQ(0, ns.CreateFile("/dir1/subdir1/file1", O_TRUNC, 0, -1));
     ASSERT_EQ(0, ns.CreateFile("/dir1/subdir2/file1", 0, 0, -1));
     ASSERT_EQ(0, ns.CreateFile("/dir1/subdir2/file2", 0, -1, -1));
     ASSERT_EQ(0, ns.CreateFile("/dir1/subdir2/file3", 0, 01755, -1));

@@ -205,11 +205,9 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     }
 
     const std::string& fname = paths[depth-1];
-    if ((flags & O_TRUNC) == 0) {
-        if (LookUp(parent_id, fname, &file_info)) {
-            LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
-            return kNotOK;
-        }
+    if (LookUp(parent_id, fname, &file_info)) {
+        LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
+        return kFileExist;
     }
     if (mode) {
         file_info.set_type(((1 << 10) - 1) & mode);
