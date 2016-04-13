@@ -17,18 +17,18 @@ BFS的设计目标是存储海量文件，因此目录树结构可能无法全�
 
 ##### 目录树存储
 在BFS的目录树中，每一个目录或文件的存储格式为 `父目录 entry_id + 目录/文件名 -> 目录/文件元信息`。其中`entry_id`是用来唯一标识某个目录或文件的id，根目录的`entry_id`为1，`父目录entry_id`为1，目录的元信息包括目录的`entry_id`、读写权限及创建时间等；文件的元信息还会包括文件的大小，版本，副本数量，及文件对应的所有block的`block_id`等。例如形如`/home/dir/file`的一个目录结构在BFS中的实际存储如下：
-> 0/
-> 1home -> meta(`entry_id`=2, ctime=...)
-> 2dir -> meta(`entry_id`=3, ctime=...)
-> 3file -> meta(`entry_id`=4, block=1,2,3, size=...)
+> 0/  
+> 1home -> meta(`entry_id`=2, ctime=...)  
+> 2dir -> meta(`entry_id`=3, ctime=...)  
+> 3file -> meta(`entry_id`=4, block=1,2,3, size=...)  
 
 这样的设计可以实现高效的list和rename操作。
 
 ##### 文件查找
 查找文件时按层级查找，先查找到父目录的`entry_id`，再以父目录`entry_id` + 子目录名为key查找子目录的`entry_id`，以此类推。例如，查找`/home/dir/file`的过程如下：
-> 查找home目录的`entry_id`，再以根目录的`entry_id`+home，也就是`1home`，读取/home目录的meta信息，获得/home的`entry_id`，2
-> 同上查找`2dir`读取`entry_id`，3
-> 最后取得`3file`
+> 查找根目录的`entry_id`，再以根目录的`entry_id`+home，也就是`1home`，读取/home目录的meta信息，获得/home的`entry_id`，2  
+> 同上查找`2dir`读取`entry_id`，3  
+> 最后取得`3file`  
 
 查找文件的复杂度等于目录深度。
 
@@ -39,7 +39,7 @@ BFS的设计目标是存储海量文件，因此目录树结构可能无法全�
 只需更改`父目录entry_id`和文件名就可以实现rename。
 
 #### BlockMapping
-在BFS中，文件被切分成block，每一个block都有一个唯一的id作为标示，称为block_id。每个block都会有多个副本，存储在多个Chunkserver上（默认为三个），以提高数据的可靠性和可用性，每一个副本称为一个replica。BlockMapping维护了block和其replica所在Chunkserver的映射关系。
+在BFS中，文件被切分成block，每一个block都有一个唯一的id作为标识，称为block_id。每个block都会有多个副本，存储在多个Chunkserver上（默认为三个），以提高数据的可靠性和可用性，每一个副本称为一个replica。BlockMapping维护了block和其replica所在Chunkserver的映射关系。
 
 #### ChunkserverManager
 ChunkserverManager主要维护集群中所有Chunkserver的状态。
