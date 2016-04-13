@@ -358,6 +358,30 @@ public:
         }
         return true;
     }
+    bool GetFileLocation(const char* path, std::map<int64_t, std::vector<std::string> >* locations) {
+        if (locations == NULL) {
+            return false;
+        }
+        FileLocationRequest request;
+        FileLocationResponse response;
+        request.set_file_name(path);
+        request.set_sequence_id(0);
+        bool ret = rpc_client_->SendRequest(nameserver_,
+            &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
+        if (!ret || response.status() != kOK) {
+            LOG(WARNING, "GetFileLocation(%s) return %s", path,
+                    StatusCode_Name(response.status()).c_str());
+            return false;
+        }
+        for (int i = 0; i < response.blocks_size(); i++) {
+            const LocatedBlock& block = response.blocks(i);
+            locations->insert(std::make_pair(block.block_id(), std::vector<std::string>()));
+            for (int j = 0; j < block.chains_size(); ++j) {
+                (*locations)[block.block_id()].push_back(block.chains(j).address());
+            }
+        }
+        return true;
+    }
     bool OpenFile(const char* path, int32_t flags, File** file) {
         return OpenFile(path, flags, 0, -1, file);
     }
