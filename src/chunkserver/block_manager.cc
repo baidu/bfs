@@ -42,10 +42,13 @@ BlockManager::BlockManager(const std::string& store_path)
 }
 BlockManager::~BlockManager() {
     MutexLock lock(&mu_);
-    for (BlockMap::iterator it = block_map_.begin();
-            it != block_map_.end(); ++it) {
+    for (BlockMap::iterator it = block_map_.begin(); it != block_map_.end(); ++it) {
         Block* block = it->second;
-        CloseBlock(block);
+        if (!block->IsRecover()) {
+            CloseBlock(block);
+        } else {
+            LOG(INFO, "[~BlockManager] Do not close recovering block #%ld ", block->Id());
+        }
         block->DecRef();
     }
     thread_pool_->Stop(true);
@@ -230,7 +233,7 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
     return true;
 }
 
-Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
+Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status) {
     BlockMeta meta;
     meta.block_id = block_id;
     Block* block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
@@ -239,7 +242,8 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
     BlockMap::iterator it = block_map_.find(block_id);
     if (it != block_map_.end()) {
         delete block;
-        return NULL;
+        *status = kBlockExist;
+        return it->second;
     }
     block->AddRef();
     block_map_[block_id] = block;
@@ -247,6 +251,7 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
     mu_.Unlock();
     if (!SyncBlockMeta(meta, sync_time)) {
         delete block;
+        *status = kSyncMetaFailed;
         block = NULL;
     }
     mu_.Lock();
@@ -256,6 +261,7 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
         // for user
         block->AddRef();
     }
+    *status = kOK;
     return block;
 }
 

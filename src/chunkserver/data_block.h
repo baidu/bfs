@@ -58,6 +58,7 @@ public:
     bool SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion();
+    int32_t GetLastSaq();
     /// Set expected slice num, for IsComplete.
     void SetSliceNum(int32_t num);
     /// Is all slice is arrival(Notify by the sliding window)
@@ -69,6 +70,8 @@ public:
                int64_t len, int64_t* add_use = NULL);
     /// Append to block buffer
     StatusCode Append(int32_t seq, const char*buf, int64_t len);
+    void SetRecover();
+    bool IsRecover();
     /// Flush block to disk.
     bool Close();
     void AddRef();
@@ -101,6 +104,7 @@ private:
     Mutex       mu_;
     CondVar     close_cv_;
     common::SlidingWindow<Buffer>* recv_window_;
+    bool        is_recover_;
     bool        finished_;
     volatile int deleted_;
 

@@ -6,6 +6,8 @@ enum StatusCode {
     kUnknownCs = 2;
     kVersionError = 3;
     kNotFound = 4;
+    kBlockExist = 14;
+    kSyncMetaFailed = 15;
     kWriteError = 5;
     kBlockClosed = 13;
     kReadError = 6;

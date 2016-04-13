@@ -49,7 +49,7 @@ Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* t
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size), file_desc_(-1), refs_(0),
-  close_cv_(&mu_), deleted_(false), file_cache_(file_cache) {
+  close_cv_(&mu_), is_recover_(false), deleted_(false), file_cache_(file_cache) {
     assert(meta_.block_id < (1L<<40));
     g_data_size.Add(meta.block_size);
     disk_file_ = store_path + BuildFilePath(meta_.block_id);
@@ -144,6 +144,9 @@ void Block::SetVersion(int64_t version) {
 int Block::GetVersion() {
     return meta_.version;
 }
+int32_t Block::GetLastSaq() {
+    return last_seq_;
+}
 
 std::string Block::BuildFilePath(int64_t block_id) {
     char file_path[16];
@@ -185,6 +188,8 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
     if (offset > meta_.block_size) {
         LOG(INFO, "Wrong offset %ld > %ld", offset, meta_.block_size);
+        return -1;
+    } else if (deleted_) {
         return -1;
     }
 
@@ -364,6 +369,12 @@ void Block::DiskWrite() {
         }
     }
     this->DecRef();
+}
+void Block::SetRecover() {
+    is_recover_ = true;
+}
+bool Block::IsRecover() {
+    return is_recover_;
 }
 /// Append to block buffer
 StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
