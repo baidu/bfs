@@ -468,7 +468,6 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
             return;
         }
     } else {
-        block = block_manager_->FindBlock(block_id);
         if (!block) {
             LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
             response->set_status(kNotFound);
