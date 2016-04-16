@@ -867,7 +867,7 @@ void BfsFileImpl::BackgroundWrite() {
         for (size_t i = 0; i < chunkservers_.size(); i++) {
             std::string cs_addr = block_for_write_->chains(i).address();
             bool delay = false;
-            if (!(write_windows_[cs_addr]->UpBound() > write_queue_.top()->Sequence())) {
+            if (write_windows_[cs_addr]->UpBound() < buffer->Sequence()) {
                 delay = true;
             }
             {
