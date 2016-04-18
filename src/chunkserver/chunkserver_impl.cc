@@ -450,7 +450,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t find_start = common::timer::get_micros();
     /// search;
     int64_t sync_time = 0;
-    Block* block;
+    Block* block = NULL;
 
     if (packet_seq == 0) {
         StatusCode s;

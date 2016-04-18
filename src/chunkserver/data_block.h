@@ -63,6 +63,7 @@ public:
     void SetSliceNum(int32_t num);
     /// Is all slice is arrival(Notify by the sliding window)
     bool IsComplete();
+    /// Block is closed
     bool IsFinished();
     /// Read operation.
     int64_t Read(char* buf, int64_t len, int64_t offset);

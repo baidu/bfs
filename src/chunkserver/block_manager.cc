@@ -234,22 +234,21 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
 }
 
 Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status) {
-    MutexLock lock(&mu_, "BlockManger::CreateBlock", 1000);
-    BlockMap::iterator it = block_map_.find(block_id);
-    if (it != block_map_.end()) {
-        // chunkserver has restarted, this block has been closed, we do not support reopen & write yet
-        if (it->second->IsFinished()) {
-            *status = kWriteError;
-            return NULL;
-        } else {
-            *status = kBlockExist;
-            return it->second;
-        }
-    }
-
     BlockMeta meta;
     meta.block_id = block_id;
     Block* block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
+    // for block_map
+    MutexLock lock(&mu_, "BlockManger::AddBlock", 1000);
+    BlockMap::iterator it = block_map_.find(block_id);
+    if (it != block_map_.end()) {
+        delete block;
+        if (it->second->IsFinished()) {
+            *status = kReadOnly;
+            return NULL;
+        }
+        *status = kBlockExist;
+        return it->second;
+    }
     block->AddRef();
     block_map_[block_id] = block;
     // Unlock for write meta & sync
