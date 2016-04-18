@@ -183,6 +183,9 @@ void Block::SetSliceNum(int32_t num) {
 bool Block::IsComplete() {
     return (slice_num_ == last_seq_ + 1);
 }
+bool Block::IsFinished() {
+    return finished_;
+}
 /// Read operation.
 int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
