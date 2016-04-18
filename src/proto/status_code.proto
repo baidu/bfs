@@ -17,6 +17,7 @@ enum StatusCode {
     kNsCreateError = 10;
     kCsCreateError = 11;
     kCsTooMuchPendingBuffer = 12;
+    kReadOnly = 16;
     kSafeMode = 20;
 }
 

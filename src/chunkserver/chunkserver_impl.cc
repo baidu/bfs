@@ -450,7 +450,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     int64_t find_start = common::timer::get_micros();
     /// search;
     int64_t sync_time = 0;
-    Block* block = block_manager_->FindBlock(block_id);
+    Block* block = NULL;
 
     if (packet_seq == 0) {
         StatusCode s;
@@ -658,7 +658,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
         }
     }
     block->DecRef();
-    LOG(INFO, "[PushBlock] failed #%ld", block_id);
+    LOG(INFO, "[PushBlock] failed #%ld ", block_id);
 }
 
 bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver) {

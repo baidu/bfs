@@ -242,6 +242,10 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCod
     BlockMap::iterator it = block_map_.find(block_id);
     if (it != block_map_.end()) {
         delete block;
+        if (it->second->IsFinished()) {
+            *status = kReadOnly;
+            return NULL;
+        }
         *status = kBlockExist;
         return it->second;
     }
