@@ -15,6 +15,7 @@ echo '--nameserver_safemode_time=1' >> bfs.flag
 echo '--block_store_path=./data1,./data2' >> bfs.flag
 echo '--bfs_bug_tolerant=false' >> bfs.flag
 echo '--select_chunkserver_local_factor=0' >> bfs.flag
+echo '--bfs_web_kick_enable=true' >> bfs.flag
 
 cp bfs.flag nameserver/
 
