@@ -92,6 +92,7 @@ private:
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
     volatile bool service_stop_;
+    //block id -> (packet_seq, ack_count)
     std::map<int64_t, std::map<int32_t, int32_t> > secondary_ack_map_;
     Mutex mu_;
 };
