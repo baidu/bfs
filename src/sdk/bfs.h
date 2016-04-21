@@ -79,7 +79,7 @@ public:
     /// Show system status
     virtual bool SysStat(const std::string& stat_name, std::string* result) = 0;
     /// GetFileLocation: get file locate, return chunkserver address and port
-    virtual bool GetFileLocation(const char* path,
+    virtual bool GetFileLocation(const std::string& path,
                                  std::map<int64_t, std::vector<std::string> >* locations) = 0;
 private:
     // No copying allowed

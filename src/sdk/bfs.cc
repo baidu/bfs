@@ -358,7 +358,8 @@ public:
         }
         return true;
     }
-    bool GetFileLocation(const char* path, std::map<int64_t, std::vector<std::string> >* locations) {
+    bool GetFileLocation(const std::string& path,
+                         std::map<int64_t, std::vector<std::string> >* locations) {
         if (locations == NULL) {
             return false;
         }
@@ -369,15 +370,16 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_,
             &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
         if (!ret || response.status() != kOK) {
-            LOG(WARNING, "GetFileLocation(%s) return %s", path,
+            LOG(WARNING, "GetFileLocation(%s) return %s", path.c_str(),
                     StatusCode_Name(response.status()).c_str());
             return false;
         }
         for (int i = 0; i < response.blocks_size(); i++) {
             const LocatedBlock& block = response.blocks(i);
-            locations->insert(std::make_pair(block.block_id(), std::vector<std::string>()));
+            std::map<int64_t, std::vector<std::string> >::iterator it =
+                locations->insert(std::make_pair(block.block_id(), std::vector<std::string>())).first;
             for (int j = 0; j < block.chains_size(); ++j) {
-                (*locations)[block.block_id()].push_back(block.chains(j).address());
+                (it->second).push_back(block.chains(j).address());
             }
         }
         return true;
