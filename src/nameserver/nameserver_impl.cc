@@ -23,6 +23,7 @@
 #include "nameserver/namespace.h"
 #include "proto/status_code.pb.h"
 
+DECLARE_bool(bfs_web_kick_enable);
 DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
@@ -621,7 +622,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         LeaveSafemode();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/kick") {
+    } else if (path == "/dfs/kick" && FLAGS_bfs_web_kick_enable) {
         std::map<std::string, std::string>::const_iterator it =
             request.query_params->find("cs");
         if (it == request.query_params->end()) {
@@ -703,9 +704,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             table_str += "dead";
         } else if (chunkserver.kick()) {
             table_str += "kicked";
-        } else {
+        } else if (FLAGS_bfs_web_kick_enable) {
             table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
                       + "\">kick</a>)";
+        } else {
+            table_str += "alive";
         }
         table_str += "</td><td>";
         table_str += common::NumToString(
