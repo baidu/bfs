@@ -129,7 +129,7 @@ src/version.cc: FORCE
 FORCE:
 
 clean:
-	rm -rf $(BIN)
+	rm -rf $(BIN) $(LIBS)
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
