@@ -219,11 +219,11 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode,
                 path.c_str(), file_info.name().c_str());
             return kBadUser;
         }
-        bool create_permission = CheckPermission(file_info, user_id, 1);
         if (!LookUp(parent_id, paths[i], &file_info)) {
+            bool create_permission = CheckPermission(file_info, user_id, 1);
             if (!create_permission) {
-            LOG(INFO, "CreateFile %s, check write permission %s %d fail",
-                    path.c_str(), file_info.name().c_str(), user_id);
+                LOG(INFO, "CreateFile %s, check write permission %s %d fail",
+                        path.c_str(), file_info.name().c_str(), user_id);
                 return kBadUser;
             }
             file_info.set_type((1<<9)|0755);
