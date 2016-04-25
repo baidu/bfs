@@ -136,17 +136,17 @@ bool NameSpace::LookUp(const std::string& path, int32_t user_id, FileInfo* info)
     int64_t parent_id = kRootEntryid;
     int64_t entry_id = kRootEntryid;
     for (size_t i = 0; i < paths.size(); i++) {
-        if (!CheckPermission(root_path_, user_id, kOpSearch)) {
+        if (!LookUp(entry_id, paths[i], info)) {
             return false;
         }
-        if (!LookUp(entry_id, paths[i], info)) {
+        if (!CheckPermission(*info, user_id, kOpSearch)) {
             return false;
         }
         parent_id = entry_id;
         entry_id = info->entry_id();
         LOG(DEBUG, "LookUp %s entry_id= E%ld ", paths[i].c_str(), entry_id);
     }
-    if (!CheckPermission(root_path_, user_id, kOpRead)) {
+    if (!CheckPermission(*info, user_id, kOpRead)) {
         return false;
     }
     info->set_name(paths[paths.size()-1]);
@@ -214,14 +214,13 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode,
     int depth = paths.size();
     std::string info_value;
     for (int i=0; i < depth-1; ++i) {
-        if (!CheckPermission(file_info, user_id, 0)) {
+        if (!CheckPermission(file_info, user_id, kOpSearch)) {
             LOG(INFO, "CreateFile %s, check search permission %s fail",
                 path.c_str(), file_info.name().c_str());
             return kBadUser;
         }
         if (!LookUp(parent_id, paths[i], &file_info)) {
-            bool create_permission = CheckPermission(file_info, user_id, 1);
-            if (!create_permission) {
+            if (!CheckPermission(file_info, user_id, kOpWrite)) {
                 LOG(INFO, "CreateFile %s, check write permission %s %d fail",
                         path.c_str(), file_info.name().c_str(), user_id);
                 return kBadUser;
@@ -245,7 +244,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode,
         parent_id = file_info.entry_id();
     }
 
-    if (!CheckPermission(file_info, user_id, 1)) {
+    if (!CheckPermission(file_info, user_id, kOpWrite)) {
         LOG(INFO, "CreateFile %s, check write permission %s fail",
                 path.c_str(), file_info.name().c_str());
         return kBadUser;
@@ -430,6 +429,10 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive, i
         return kNotFound;
     } else if (!IsDir(info.type())) {
         LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
+        return kNotOK;
+    } else if (!CheckPermission(info, user_id, kOpWrite)) {
+        LOG(INFO, "Delete Directory, user %d have no permission to write %s",
+                user_id, path.c_str());
         return kNotOK;
     }
     return InternalDeleteDirectory(info, recursive, user_id, files_removed);

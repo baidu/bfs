@@ -16,6 +16,8 @@ echo '--block_store_path=./data1,./data2' >> bfs.flag
 echo '--bfs_bug_tolerant=false' >> bfs.flag
 echo '--select_chunkserver_local_factor=0' >> bfs.flag
 echo '--bfs_web_kick_enable=true' >> bfs.flag
+echo '--user_name=root' >> bfs.flag
+echo '--user_token=bfs' >> bfs.flag
 
 cp bfs.flag nameserver/
 

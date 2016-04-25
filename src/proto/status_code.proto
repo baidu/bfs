@@ -19,7 +19,6 @@ enum StatusCode {
     kCsTooMuchPendingBuffer = 12;
     kReadOnly = 16;
     kBadUser = 17;
-    kUserExist = 18;
     kSafeMode = 20;
 }
 
