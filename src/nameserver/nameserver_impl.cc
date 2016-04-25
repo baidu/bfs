@@ -627,7 +627,7 @@ void NameServerImpl::AddUser(::google::protobuf::RpcController* controller,
                    ::baidu::bfs::AddUserResponse* response,
                    ::google::protobuf::Closure* done) {
     StatusCode status = kOK;
-    int32_t user_id = user_manager_->GetUserId(request->user(), request->token());
+    int32_t user_id = user_manager_->GetUserId(request->admin_user_name(), request->admin_user_token());
     if (user_id < 0) {
         status = kNotOK;
     } else {

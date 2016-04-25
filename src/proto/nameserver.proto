@@ -230,10 +230,10 @@ message SysStatResponse {
 }
 
 message AddUserRequest {
-    optional string user_name = 2;
-    optional bytes user_token = 3;
-    optional string user = 4;
-    optional bytes token = 5;
+    optional string admin_user_name = 2;
+    optional bytes admin_user_token = 3;
+    optional string user_name = 4;
+    optional bytes user_token = 5;
 }
 message AddUserResponse {
     optional StatusCode status = 2;
