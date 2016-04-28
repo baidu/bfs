@@ -25,7 +25,8 @@ public:
     /// User management
     int32_t GetUserId(const std::string& user, const std::string& token);
     void GetUserList(std::vector<std::pair<int32_t, std::string> >* list);
-    StatusCode AddUser(int32_t user_id, const std::string& user_name, const std::string& token);
+    StatusCode AddUser(const std::string& user_name, const std::string& token);
+    StatusCode DeleteUser(const std::string& user_name);
 private:
     leveldb::DB* db_;
     int32_t last_user_id_;

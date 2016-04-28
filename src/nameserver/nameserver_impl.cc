@@ -631,8 +631,23 @@ void NameServerImpl::AddUser(::google::protobuf::RpcController* controller,
     if (user_id < 0) {
         status = kNotOK;
     } else {
-        status = user_manager_->AddUser(user_id, request->user_name(),
-                                        request->user_token());
+        status = user_manager_->AddUser(request->user_name(), request->user_token());
+    }
+    response->set_status(status);
+    done->Run();
+    return;
+}
+
+void NameServerImpl::DeleteUser(::google::protobuf::RpcController* controller,
+                   const ::baidu::bfs::DeleteUserRequest* request,
+                   ::baidu::bfs::DeleteUserResponse* response,
+                   ::google::protobuf::Closure* done) {
+    StatusCode status = kOK;
+    int32_t user_id = user_manager_->GetUserId(request->admin_user_name(), request->admin_user_token());
+    if (user_id < 0) {
+        status = kNotOK;
+    } else {
+        status = user_manager_->DeleteUser(request->user_name());
     }
     response->set_status(status);
     done->Run();

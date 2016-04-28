@@ -238,10 +238,18 @@ message AddUserRequest {
 message AddUserResponse {
     optional StatusCode status = 2;
 }
+message DeleteUserRequest {
+    optional string admin_user_name = 2;
+    optional bytes admin_user_token = 3;
+    optional string user_name = 4;
+}
+message DeleteUserResponse {
+    optional StatusCode status = 2;
+}
 message DelUserRequest {
-    optional string user_name = 2;
-    optional string user = 3;
-    optional bytes token = 4;
+    optional string admin_user__name = 2;
+    optional bytes admin_user_token = 4;
+    optional string user_name = 3;
 }
 message DelUserResponse {
     optional StatusCode status = 2;

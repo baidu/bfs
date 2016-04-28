@@ -22,8 +22,8 @@ UserManager::UserManager() : last_user_id_(-1) {
         db_ = NULL;
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
     }
-    AddUser(0, "root", "bfs");
-    AddUser(0, "share", "");
+    AddUser("root", "bfs");
+    AddUser("share", "");
     int num = 0;
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->SeekToFirst(); it->Valid(); it->Next()) {
@@ -41,16 +41,15 @@ UserManager::UserManager() : last_user_id_(-1) {
 UserManager::~UserManager() {
     delete db_;
 }
-StatusCode UserManager::AddUser(int32_t user_id,
-                        const std::string& user_name,
-                        const std::string& token) {
+StatusCode UserManager::AddUser(const std::string& user_name, const std::string& token) {
     std::string key = user_name;
     std::string value;
     UserInfo user_info;
     leveldb::Status s = db_->Get(leveldb::ReadOptions(), key, &value);
-    if (user_id == 0 && s.ok()) {
+    if (s.ok()) {
         return kUserExist;
-    } else if(user_id == 0) {
+    } else {
+        user_info.set_user_name(user_name);
         user_info.set_token(token);
         user_info.set_user_id(++last_user_id_);
     }
@@ -64,6 +63,15 @@ StatusCode UserManager::AddUser(int32_t user_id,
         return kNotOK;
     }
     return kOK;
+}
+
+StatusCode UserManager::DeleteUser(const std::string& user_name) {
+    leveldb::Status s = db_->Delete(leveldb::WriteOptions(), user_name);
+    if (!s.ok()) {
+        return kNotOK;
+    } else {
+        return kOK;
+    }
 }
 
 void UserManager::GetUserList(std::vector<std::pair<int32_t, std::string> >* list) {

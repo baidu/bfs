@@ -99,6 +99,11 @@ public:
                        const ::baidu::bfs::AddUserRequest* request,
                        ::baidu::bfs::AddUserResponse* response,
                        ::google::protobuf::Closure* done);
+    void DeleteUser(google::protobuf::RpcController* controller,
+                       const ::baidu::bfs::DeleteUserRequest* request,
+                       ::baidu::bfs::DeleteUserResponse* response,
+                       ::google::protobuf::Closure* done);
+
 public:
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
