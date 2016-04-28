@@ -103,6 +103,10 @@ public:
                        const ::baidu::bfs::DeleteUserRequest* request,
                        ::baidu::bfs::DeleteUserResponse* response,
                        ::google::protobuf::Closure* done);
+    void ChangeToken(google::protobuf::RpcController* controller,
+                       const ::baidu::bfs::ChangeTokenRequest* request,
+                       ::baidu::bfs::ChangeTokenResponse* response,
+                       ::google::protobuf::Closure* done);
 
 public:
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);

@@ -27,6 +27,8 @@ public:
     void GetUserList(std::vector<std::pair<int32_t, std::string> >* list);
     StatusCode AddUser(const std::string& user_name, const std::string& token);
     StatusCode DeleteUser(const std::string& user_name);
+    StatusCode ChangeToken(const std::string& user_name, const std::string& old_token,
+                           const std::string& new_token);
 private:
     leveldb::DB* db_;
     int32_t last_user_id_;

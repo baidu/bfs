@@ -654,6 +654,16 @@ void NameServerImpl::DeleteUser(::google::protobuf::RpcController* controller,
     return;
 }
 
+void NameServerImpl::ChangeToken(::google::protobuf::RpcController* controller,
+                             const ChangeTokenRequest* request,
+                             ChangeTokenResponse* response,
+                             ::google::protobuf::Closure* done) {
+    StatusCode status = user_manager_->ChangeToken(request->user_name(), request->old_token(), request->new_token());
+    response->set_status(status);
+    done->Run();
+    return;
+}
+
 void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
                              const SysStatRequest* request,
                              SysStatResponse* response,

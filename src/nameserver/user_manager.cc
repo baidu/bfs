@@ -74,6 +74,36 @@ StatusCode UserManager::DeleteUser(const std::string& user_name) {
     }
 }
 
+StatusCode UserManager::ChangeToken(const std::string& user_name, const std::string& old_token,
+                        const std::string& new_token) {
+    std::string value;
+    leveldb::Status s = db_->Get(leveldb::ReadOptions(), user_name, &value);
+    if (!s.ok()) {
+        LOG(INFO, "Can't find user info: %s", user_name.c_str());
+        return kBadUser;
+    }
+    UserInfo user_info;
+    if (!user_info.ParseFromString(value)) {
+        LOG(WARNING, "Parse user info fail: %s", user_name.c_str());
+        return kNotOK;
+    }
+    if (user_info.token() != old_token) {
+        LOG(INFO, "Wrong token for user %s", user_name.c_str());
+        return kWrongToken;
+    }
+    user_info.set_token(new_token);
+    if (!user_info.SerializeToString(&value)) {
+        LOG(WARNING, "Serialize user to string fail: %s", user_name.c_str());
+        return kNotOK;
+    }
+    s = db_->Put(leveldb::WriteOptions(), user_name, value);
+    if (!s.ok()) {
+        LOG(WARNING, "Can't write user info to db: %s", user_name.c_str());
+        return kNotOK;
+    }
+    return kOK;
+}
+
 void UserManager::GetUserList(std::vector<std::pair<int32_t, std::string> >* list) {
 
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());

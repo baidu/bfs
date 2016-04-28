@@ -248,10 +248,18 @@ message DeleteUserResponse {
 }
 message DelUserRequest {
     optional string admin_user__name = 2;
-    optional bytes admin_user_token = 4;
-    optional string user_name = 3;
+    optional bytes admin_user_token = 3;
+    optional string user_name = 4;
 }
 message DelUserResponse {
+    optional StatusCode status = 2;
+}
+message ChangeTokenRequest {
+    optional string user_name = 2;
+    optional bytes old_token = 3;
+    optional bytes new_token = 4;
+}
+message ChangeTokenResponse {
     optional StatusCode status = 2;
 }
 
@@ -275,6 +283,7 @@ service NameServer {
 
     rpc AddUser(AddUserRequest) returns(AddUserResponse);
     rpc DelUser(AddUserRequest) returns(AddUserResponse);
+    rpc ChangeToken(ChangeTokenRequest) returns(ChangeTokenResponse);
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
 }
 
