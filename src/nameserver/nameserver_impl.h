@@ -7,7 +7,6 @@
 #ifndef  BFS_NAMESERVER_IMPL_H_
 #define  BFS_NAMESERVER_IMPL_H_
 
-#include <common/mutex.h>
 #include <common/thread_pool.h>
 
 #include "proto/nameserver.pb.h"
@@ -25,6 +24,7 @@ namespace bfs {
 class NameSpace;
 class ChunkServerManager;
 class BlockMapping;
+class Sync;
 
 class NameServerImpl : public NameServer {
 public:
@@ -113,6 +113,8 @@ private:
     /// Safemode
     volatile int safe_mode_;
     int64_t start_time_;
+    /// HA module
+    Sync* sync_;
     /// Namespace
     NameSpace* namespace_;
     int64_t namespace_version_;

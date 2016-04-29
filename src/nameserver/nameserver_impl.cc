@@ -21,6 +21,7 @@
 #include "nameserver/block_mapping.h"
 #include "nameserver/chunkserver_manager.h"
 #include "nameserver/namespace.h"
+#include "nameserver/sync.h"
 #include "proto/status_code.pb.h"
 
 DECLARE_bool(bfs_web_kick_enable);
@@ -42,7 +43,8 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
 NameServerImpl::NameServerImpl() : safe_mode_(FLAGS_nameserver_safemode_time) {
-    namespace_ = new NameSpace();
+    sync_ = new MasterSlave();
+    namespace_ = new NameSpace(sync_);
     block_mapping_ = new BlockMapping();
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
@@ -308,6 +310,16 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         int64_t new_block_id = block_mapping_->NewBlockID();
         LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
             path.c_str(), new_block_id, replica_num, request->client_address().c_str());
+        file_info.add_blocks(new_block_id);
+        file_info.set_version(-1);
+        ///TODO: Lost update? Get&Update not atomic.
+        for (int i = 0; i < replica_num; i++) {
+            file_info.add_cs_addrs(chunkserver_manager_->GetChunkServerAddr(chains[i].first));
+        }
+        if (!namespace_->UpdateFileInfo(file_info)) {
+            LOG(WARNING, "Update file info fail: %s", path.c_str());
+            response->set_status(kUpdateError);
+        }
         LocatedBlock* block = response->mutable_block();
         std::vector<int32_t> replicas;
         for (int i = 0; i < replica_num; i++) {
@@ -323,13 +335,6 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);
         response->set_status(kOK);
-        file_info.add_blocks(new_block_id);
-        file_info.set_version(-1);
-        ///TODO: Lost update? Get&Update not atomic.
-        if (!namespace_->UpdateFileInfo(file_info)) {
-            LOG(WARNING, "Update file info fail: %s", path.c_str());
-            response->set_status(kUpdateError);
-        }
     } else {
         LOG(WARNING, "AddBlock for %s failed.", path.c_str());
         response->set_status(kGetChunkserverError);

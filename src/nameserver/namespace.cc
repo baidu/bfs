@@ -18,6 +18,8 @@
 #include <common/atomic.h>
 #include <common/string_util.h>
 
+#include "nameserver/sync.h"
+
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
@@ -27,7 +29,7 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
-NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
+NameSpace::NameSpace(Sync* sync): version_(0), last_entry_id_(1), sync_(sync), sync_seq_(0) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -51,9 +53,9 @@ NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
         version_ = common::timer::get_micros();
         version_str.resize(8);
         *(reinterpret_cast<int64_t*>(&version_str[0])) = version_;
-        s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
+        leveldb::Status s = Put(version_key, version_str, true);
         if (!s.ok()) {
-            LOG(FATAL, "Write namespace version to db fail: %s", s.ToString().c_str());
+            LOG(FATAL, "Write NameSpace version failed %s", s.ToString().c_str());
         }
         LOG(INFO, "Create new namespace version: %ld ", version_);
     }
@@ -155,15 +157,27 @@ bool NameSpace::DeleteFileInfo(const std::string file_key) {
     return s.ok();
 }
 bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
+    FileInfo file_info_for_ldb;
+    file_info_for_ldb.CopyFrom(file_info);
+    file_info_for_ldb.clear_cs_addrs();
+
     std::string file_key;
-    EncodingStoreKey(file_info.parent_entry_id(), file_info.name(), &file_key);
-    std::string infobuf;
-    file_info.SerializeToString(&infobuf);
-    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf);
+    EncodingStoreKey(file_info_for_ldb.parent_entry_id(), file_info_for_ldb.name(), &file_key);
+    std::string infobuf_for_ldb, infobuf_for_sync;
+    file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
+    file_info.SerializeToString(&infobuf_for_sync);
+
+    MutexLock lock(&mu_);
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf_for_ldb);
     if (!s.ok()) {
         LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
         return false;
     }
+    bool ret = sync_->Log(sync_seq_, kDBEntry, file_key, infobuf_for_sync, true);
+    if (!ret) {
+        LOG(FATAL, "Write sync log failed");
+    }
+    ++sync_seq_;
     return true;
 };
 
@@ -191,9 +205,8 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             file_info.SerializeToString(&info_value);
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
-            leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
-            LOG(INFO, "Put %s", common::DebugString(key_str).c_str());
-            assert (s.ok());
+            leveldb::Status s = Put(key_str, info_value, true);
+            assert(s.ok());
             LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
         } else {
             if (!IsDir(file_info.type())) {
@@ -223,7 +236,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     file_info.SerializeToString(&info_value);
     std::string file_key;
     EncodingStoreKey(parent_id, fname, &file_key);
-    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
+    leveldb::Status s = Put(file_key, info_value, true);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
         return kOK;
@@ -487,6 +500,35 @@ std::string NameSpace::NormalizePath(const std::string& path) {
         ret.resize(ret.size() - 1);
     }
     return ret;
+}
+
+leveldb::Status NameSpace::Put(const std::string& key, const std::string& value, bool is_last) {
+    MutexLock lock(&mu_);
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), key, value);
+    if (!s.ok()) {
+        return s;
+    }
+    bool ret = sync_->Log(sync_seq_, kDBEntry, key, value, is_last);
+    if (!ret) {
+        LOG(FATAL, "Write sync log failed");
+    }
+    ++sync_seq_;
+    return s;
+}
+
+bool NameSpace::RecoverLog() {
+    int ret = sync_->ScanLog();
+    if (ret == 0) {
+        return 0;
+    }
+    int64_t seq;
+    int32_t type;
+    char key[128];
+    char value[256];
+    //while (sync_->Next(*seq, *type, key, value)) {
+
+    //}
+    return true;
 }
 
 } // namespace bfs

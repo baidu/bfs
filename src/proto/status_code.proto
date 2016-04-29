@@ -18,6 +18,7 @@ enum StatusCode {
     kCsCreateError = 11;
     kCsTooMuchPendingBuffer = 12;
     kReadOnly = 16;
+    kLogNotOpen = 17;
     kSafeMode = 20;
 }
 
@@ -38,4 +39,9 @@ enum RecoverStat {
     kLost = 5;
     kBlockWriting = 6;
     kAny = 20;
+}
+
+enum SyncStatus {
+    kDBEntry = 0;
+    kMappingEntry = 1;
 }
