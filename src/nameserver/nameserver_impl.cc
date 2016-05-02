@@ -19,13 +19,11 @@
 #include <common/string_util.h>
 
 #include "nameserver/block_mapping.h"
-<<<<<<< HEAD
-#include "nameserver/raft_node.h"
 
-=======
+#include "nameserver/raft_node.h"
 #include "nameserver/chunkserver_manager.h"
 #include "nameserver/namespace.h"
->>>>>>> master
+
 #include "proto/status_code.pb.h"
 
 DECLARE_int32(nameserver_safemode_time);
@@ -562,19 +560,6 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         ret_status = kNotFound;
     }
     response->set_status(ret_status);
-    done->Run();
-}
-
-void NameServerImpl::Vote(::google::protobuf::RpcController* controller,
-                          const ::baidu::bfs::VoteRequest* request,
-                          ::baidu::bfs::VoteResponse* response,
-                          ::google::protobuf::Closure* done) {
-    raft_node_->Vote(controller, request, response, done);
-}
-void NameServerImpl::AppendEntries(::google::protobuf::RpcController* controller,
-                                   const ::baidu::bfs::AppendEntriesRequest* request,
-                                   ::baidu::bfs::AppendEntriesResponse* response,
-                                   ::google::protobuf::Closure* done) {
     done->Run();
 }
 

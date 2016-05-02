@@ -1,0 +1,33 @@
+
+package baidu.bfs;
+
+option cc_generic_services = true;
+
+message VoteRequest {
+    optional int64 term = 2;
+    optional string candidate = 3;
+    optional int64 last_log_index = 4;
+    optional int64 last_log_term = 5;
+}
+message VoteResponse {
+    optional int64 term = 2;
+    optional bool vote_granted = 3;
+}
+
+message AppendEntriesRequest {
+    optional int64 term = 2;
+    optional string leader = 3;
+    optional int64 prev_log_index = 4;
+    optional int64 prev_log_term = 5;
+    repeated bytes entries = 6;
+    optional int64 lead_commit = 7;
+}
+message AppendEntriesResponse {
+    optional int64 term = 2;
+    optional bool success = 3;
+}
+
+service RaftNode {
+    rpc Vote(VoteRequest) returns(VoteResponse);
+    rpc AppendEntries(AppendEntriesRequest) returns(AppendEntriesResponse);
+}

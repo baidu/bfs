@@ -16,15 +16,23 @@
 #include <common/mutex.h>
 #include <common/thread_pool.h>
 
-#include "proto/nameserver.pb.h"
+#include "proto/raft.pb.h"
 
 namespace baidu {
 namespace bfs {
 
-class RaftNode {
+class RpcClient;
+
+enum NodeState {
+    kFollower = 0,
+    kCandidate = 1,
+    kLeader = 2,
+};
+
+class RaftNodeImpl : public RaftNode {
 public:
-    RaftNode();
-    ~RaftNode();
+    RaftNodeImpl();
+    ~RaftNodeImpl();
     void Vote(::google::protobuf::RpcController* controller,
               const ::baidu::bfs::VoteRequest* request,
               ::baidu::bfs::VoteResponse* response,
@@ -37,8 +45,13 @@ public:
     std::string GetLeader();
     void AppendLog(const std::string& log, boost::function<void ()> callback);
 private:
+    void DoReplicateLog();
     void Election();
-    void ElectionCallback();
+    void ElectionCallback(const VoteRequest* request,
+                          VoteResponse* response,
+                          bool failed,
+                          int error,
+                          const std::string& node_addr);
 private:
     std::vector<std::string> nodes_;
     std::string self_;
@@ -59,6 +72,9 @@ private:
     RpcClient*   rpc_client_;
     std::set<std::string> voted_;
     std::string leader_;
+    int64_t election_taskid_;
+
+    NodeState node_state_;
 };
 
 }
