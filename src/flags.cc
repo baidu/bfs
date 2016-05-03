@@ -48,6 +48,7 @@ DEFINE_int32(chunkserver_recover_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 DEFINE_int32(chunkserver_use_root_partition, 1, "Should chunkserver use root partition, 0: forbidden");
 DEFINE_bool(chunkserver_auto_clean, true, "If namespace version mismatch, chunkserver clean itself");
+DEFINE_int64(chunkserver_max_memory_size, 64000, "max memory size that chunkserver can use");
 // SDK
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
