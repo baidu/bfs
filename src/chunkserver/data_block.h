@@ -9,6 +9,7 @@
 
 #include <string>
 #include <vector>
+#include <list>
 
 #include <common/mutex.h>
 #include <common/thread_pool.h>
@@ -97,7 +98,7 @@ private:
     char*       blockbuf_;
     int64_t     buflen_;
     int64_t     bufdatalen_;
-    std::vector<std::pair<const char*,int> > block_buf_list_;
+    std::list<std::pair<const char*,int> > block_buf_list_;
     bool        disk_writing_;
     std::string disk_file_;
     int64_t     disk_file_size_;
