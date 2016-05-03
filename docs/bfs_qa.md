@@ -10,7 +10,7 @@ by 杨策
 
 2.	BlockMapping所占内存空间会成为nameserver的瓶颈么？
 
-	- BlockMapping中每个block都是int64编号的，所以数值上空间不成问题，但由于BlockMapping中存放了所有block的信息，所以实际上，物理机器上的内存大小可能会成为制约因素。目前来看，每个entry占用的内存不到100个字节，几十G的内存粗略估算下应该来可存放亿级别的block数。
+	- BlockMapping中每个block都是int64编号的，所以数值上空间不成问题，但由于BlockMapping中存放了所有block的信息，所以实际上，物理机器上的内存大小可能会成为制约因素。但是，后续可能会考虑将BlockMapping拆分成分布式存储的。目前来看，每个entry占用的内存不到100个字节，几十G的内存粗略估算下应该来可存放亿级别的block数。
 
 3.	为什么namespace的存储设计成这样？为什么不存原路径？
 
