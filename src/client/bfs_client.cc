@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <map>
 
 #include <common/util.h>
 #include <common/timer.h>
@@ -335,6 +336,24 @@ int BfsStat(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
+int BfsLocation(baidu::bfs::FS* fs, int argc, char* argv[]) {
+    std::map<int64_t, std::vector<std::string> > locations;
+    bool ret = fs->GetFileLocation(argv[0], &locations);
+    if (!ret) {
+        fprintf(stderr, "GetFileLocation fail\n");
+        return 1;
+    }
+    for (std::map<int64_t, std::vector<std::string> >::iterator it = locations.begin();
+            it != locations.end(); ++it) {
+        printf("block_id %ld: ", it->first);
+        for (uint64_t i = 0; i < (it->second).size(); ++i) {
+            printf("%s ", (it->second)[i].c_str());
+        }
+        printf("\n");
+    }
+    return 0;
+}
+
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
@@ -398,6 +417,8 @@ int main(int argc, char* argv[]) {
         ret = BfsDu(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "stat") == 0) {
         ret = BfsStat(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "location") == 0) {
+        ret = BfsLocation(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }

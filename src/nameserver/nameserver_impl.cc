@@ -26,6 +26,7 @@
 
 #include "proto/status_code.pb.h"
 
+DECLARE_bool(bfs_web_kick_enable);
 DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
@@ -201,6 +202,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    int priority = 0;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -224,16 +226,18 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
     // recover replica
     if (!safe_mode_) {
-        std::map<int64_t, std::string> recover_blocks;
+        std::map<int64_t, std::vector<std::string> > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks, &hi_num);
-        int priority = 0;
-        for (std::map<int64_t, std::string>::iterator it = recover_blocks.begin();
+        for (std::map<int64_t, std::vector<std::string> >::iterator it = recover_blocks.begin();
                 it != recover_blocks.end(); ++it) {
             ReplicaInfo* rep = response->add_new_replicas();
             rep->set_block_id(it->first);
-            rep->add_chunkserver_address(it->second);
             rep->set_priority(priority++ < hi_num);
+            for (std::vector<std::string>::iterator dest_it = (it->second).begin();
+                 dest_it != (it->second).end(); ++dest_it) {
+                rep->add_chunkserver_address(*dest_it);
+            }
         }
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
@@ -243,18 +247,15 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
-void NameServerImpl::PullBlockReport(::google::protobuf::RpcController* controller,
-                   const PullBlockReportRequest* request,
-                   PullBlockReportResponse* response,
+void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controller,
+                   const PushBlockReportRequest* request,
+                   PushBlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_->ProcessRecoveredBlock(cs_id, request->blocks(i), true);
-    }
-    for (int i = 0; i < request->failed_size(); i++) {
-        block_mapping_->ProcessRecoveredBlock(cs_id, request->failed(i), false);
+        block_mapping_->ProcessRecoveredBlock(cs_id, request->blocks(i));
     }
     done->Run();
 }
@@ -624,7 +625,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         LeaveSafemode();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/kick") {
+    } else if (path == "/dfs/kick" && FLAGS_bfs_web_kick_enable) {
         std::map<std::string, std::string>::const_iterator it =
             request.query_params->find("cs");
         if (it == request.query_params->end()) {
@@ -706,9 +707,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             table_str += "dead";
         } else if (chunkserver.kick()) {
             table_str += "kicked";
-        } else {
+        } else if (FLAGS_bfs_web_kick_enable) {
             table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
                       + "\">kick</a>)";
+        } else {
+            table_str += "alive";
         }
         table_str += "</td><td>";
         table_str += common::NumToString(

@@ -8,6 +8,7 @@
 
 // global
 DEFINE_bool(bfs_bug_tolerant, true, "Tolerate minor bug");
+DEFINE_bool(bfs_web_kick_enable, false, "Enable kick button on website");
 DEFINE_string(bfs_log, "", "BFS log");
 DEFINE_int32(bfs_log_size, 1024, "BFS log size");
 // nameserver
@@ -21,6 +22,7 @@ DEFINE_int32(nameserver_log_level, 4, "Nameserver log level");
 DEFINE_string(nameserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in ms");
 DEFINE_int32(recover_speed, 100, "max num of block to recover for one chunkserver");
+DEFINE_int32(recover_dest_limit, 5, "Number of recover dest");
 DEFINE_int32(recover_timeout, 180, "Recover timeout for one chunkserver");
 DEFINE_bool(clean_redundancy, false, "Clean redundant replica");
 DEFINE_int32(nameserver_report_thread_num, 20, "Threads to handle block report");

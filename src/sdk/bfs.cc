@@ -358,6 +358,32 @@ public:
         }
         return true;
     }
+    bool GetFileLocation(const std::string& path,
+                         std::map<int64_t, std::vector<std::string> >* locations) {
+        if (locations == NULL) {
+            return false;
+        }
+        FileLocationRequest request;
+        FileLocationResponse response;
+        request.set_file_name(path);
+        request.set_sequence_id(0);
+        bool ret = rpc_client_->SendRequest(nameserver_,
+            &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
+        if (!ret || response.status() != kOK) {
+            LOG(WARNING, "GetFileLocation(%s) return %s", path.c_str(),
+                    StatusCode_Name(response.status()).c_str());
+            return false;
+        }
+        for (int i = 0; i < response.blocks_size(); i++) {
+            const LocatedBlock& block = response.blocks(i);
+            std::map<int64_t, std::vector<std::string> >::iterator it =
+                locations->insert(std::make_pair(block.block_id(), std::vector<std::string>())).first;
+            for (int j = 0; j < block.chains_size(); ++j) {
+                (it->second).push_back(block.chains(j).address());
+            }
+        }
+        return true;
+    }
     bool OpenFile(const char* path, int32_t flags, File** file) {
         return OpenFile(path, flags, 0, -1, file);
     }
@@ -867,7 +893,7 @@ void BfsFileImpl::BackgroundWrite() {
         for (size_t i = 0; i < chunkservers_.size(); i++) {
             std::string cs_addr = block_for_write_->chains(i).address();
             bool delay = false;
-            if (!(write_windows_[cs_addr]->UpBound() > write_queue_.top()->Sequence())) {
+            if (write_windows_[cs_addr]->UpBound() < buffer->Sequence()) {
                 delay = true;
             }
             {
