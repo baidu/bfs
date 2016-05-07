@@ -344,7 +344,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     int64_t block_id = request->block_id();
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
-    std::string file_name = request->file_name();
+    std::string file_name = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(INFO, "FinishBlock file not found: #%ld %s", block_id, file_name.c_str());
