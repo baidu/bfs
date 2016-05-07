@@ -2,10 +2,7 @@
 
 ./clear.sh
 
-mkdir -p nameserver/bin
-
 echo '--nameserver=127.0.0.1' > bfs.flag
-echo '--nameserver_port=8828' >> bfs.flag
 echo '--default_replica_num=3' >> bfs.flag
 echo '--chunkserver_log_level=2' >> bfs.flag
 echo '--blockreport_interval=2' >> bfs.flag
@@ -14,9 +11,17 @@ echo '--keepalive_timeout=10' >> bfs.flag
 echo '--nameserver_safemode_time=1' >> bfs.flag
 echo '--block_store_path=./data1,./data2' >> bfs.flag
 echo '--bfs_bug_tolerant=false' >> bfs.flag
+echo '--raft_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829' >> bfs.flag
 
-cp bfs.flag nameserver/
 
+for i in `seq 0 2`;
+do
+    mkdir -p nameserver$i/bin
+    cp -f ../nameserver nameserver$i/bin/
+    cp -f bfs.flag nameserver$i/
+done
+
+echo '--nameserver_port=8828' >> bfs.flag
 for i in `seq 0 3`;
 do
     mkdir -p chunkserver$i/bin
@@ -26,7 +31,6 @@ do
     cp bfs.flag chunkserver$i/
 done
 
-cp -f ../nameserver nameserver/bin/
 cp -f ../bfs_client ./
 
 
