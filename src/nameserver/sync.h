@@ -17,26 +17,22 @@ namespace bfs {
 class Sync {
 public:
     virtual ~Sync() {}
+    virtual void Init() = 0;
     virtual bool GetLeader(std::string* leader_addr) = 0;
-    virtual bool Log(int64_t seq, int32_t type, const std::string& key,
-                     const std::string& value, bool is_last) = 0;
+    virtual bool Log(const std::string& entry) = 0;
     virtual int ScanLog() = 0;
-    virtual int Next(int64_t* seq, int32_t* type, char* key, char* value) = 0;
+    virtual int Next(char* entry) = 0;
 };
 
 class MasterSlave : public Sync {
 public:
     MasterSlave();
     virtual ~MasterSlave() {};
+    virtual void Init();
     virtual bool GetLeader(std::string* leader_addr);
-    virtual bool Log(int64_t seq, int32_t type, const std::string& key,
-                     const std::string& value, bool is_last);
+    virtual bool Log(const std::string& entry);
     virtual int ScanLog();
-    virtual int Next(int64_t* seq, int32_t* type, char* key, char* value);
-private:
-    void EncodeLog(int64_t seq, int32_t type, const std::string& key,
-                   const std::string& value, uint32_t encode_len, char* entry);
-    void DecodeLog(char* const input, int64_t* seq, int32_t* type, char* key, char* value);
+    virtual int Next(char* entry);
 private:
     int log_;
     int scan_log_;

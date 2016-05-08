@@ -14,53 +14,35 @@
 namespace baidu {
 namespace bfs {
 
-MasterSlave::MasterSlave() : scan_log_(0) {
-    log_ = open("sync.log", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR);
-    assert(log_ != -1);
+MasterSlave::MasterSlave() : scan_log_(0) {}
+
+void MasterSlave::Init() {
+    log_ = open("sync.log", O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    if (log_ < 0) {
+        LOG(FATAL, "open sync log failed reason:%s", strerror(errno));
+    }
 }
 
 bool MasterSlave::GetLeader(std::string* leader_addr) {
     return true;
 }
 
-bool MasterSlave::Log(int64_t seq, int32_t type, const std::string& key,
-                      const std::string& value, bool is_last) {
-    uint32_t encode_len = 4 + 8 + 4 + 4 + key.length() + 4 + value.length();
-    char* entry = new char[encode_len];
-    EncodeLog(seq, type, key, value, encode_len, entry);
-    if (is_last) {
-        std::pair<std::multimap<int64_t, std::string>::iterator,
-                  std::multimap<int64_t, std::string>::iterator> ret = entries_.equal_range(seq);
-        for (std::multimap<int64_t, std::string>::iterator it = ret.first; it != ret.second; ++it) {
-            int w = write(log_, it->second.c_str(), it->second.length());
-            if (w < 0) {
-                LOG(WARNING, "[Sync] IOError logging");
-                assert(0);
-            }
-        }
-        int w = write(log_, entry, encode_len);
-        if (w < 0) {
-            LOG(WARNING, "[Sync] IOError logging %s", strerror(errno));
-            assert(0);
-        }
-    } else {
-        LOG(INFO, "[Sync]: sync log insert to map");
-        entries_.insert(std::make_pair(seq, std::string(entry)));
-    }
-    delete[] entry;
-    return true;
+bool MasterSlave::Log(const std::string& entry) {
+    int w = write(log_, entry.c_str(), entry.length());
+    return w >= 0;
 }
 
 int MasterSlave::ScanLog() {
-    scan_log_ = open("sync.log", O_RDONLY, S_IRUSR);
-    if (errno == ENOENT) {
-        return 0;
+    scan_log_ = open("sync.log", O_RDONLY);
+    if (scan_log_ < 0 && errno == ENOENT) {
+        LOG(INFO, "can't find sync log %d", scan_log_);
+        return -1;
     }
     assert(scan_log_ != -1);
     return scan_log_;
 }
 
-int MasterSlave::Next(int64_t* seq, int32_t* type, char* key, char* value) {
+int MasterSlave::Next(char* entry) {
     if (scan_log_ <= 0) {
         return -1;
     }
@@ -70,53 +52,22 @@ int MasterSlave::Next(int64_t* seq, int32_t* type, char* key, char* value) {
     if (ret == 0) {
         close(scan_log_);
         scan_log_ = 0;
+        rename("sync.log", "sync.bak");
         return 0;
+    } else if (ret < 4) {
+        LOG(WARNING, "incomplete record");
+        return ret;
     }
     uint32_t len;
     memcpy(&len, buf, 4);
-    char* entry = new char(len);
+    LOG(INFO, "[Sync] read_len=%u", len);
     ret = read(scan_log_, entry, len);
+    if (ret < len) {
+        LOG(WARNING, "incomplete record");
+        return len;
+    }
     assert(ret == len);
-    DecodeLog(entry, seq, type, key, value);
     return len;
-}
-
-
-void MasterSlave::EncodeLog(int64_t seq, int32_t type, const std::string& key,
-                            const std::string& value, uint32_t encode_len, char* entry) {
-    uint32_t key_len = key.length();
-    uint32_t value_len = value.length();
-
-    char* p = entry;
-    memcpy(p, &encode_len, sizeof(encode_len));
-    p += 4;
-    memcpy(p, &seq, sizeof(seq));
-    p += 8;
-    memcpy(p, &type, sizeof(type));
-    p += 4;
-    memcpy(p, &key_len, sizeof(key_len));
-    p += 4;
-    memcpy(p, key.c_str(), key_len);
-    p += key_len;
-    memcpy(p, &value_len, sizeof(value_len));
-    p += 4;
-    memcpy(p, value.c_str(), value_len);
-}
-
-void MasterSlave::DecodeLog(char* const input, int64_t* seq, int32_t* type, char* key, char* value) {
-    char* p = input;
-    memcpy(seq, input, sizeof(*seq));
-    p += sizeof(*seq);
-    memcpy(type, p, sizeof(*type));
-    p += sizeof(*type);
-    uint32_t key_len, value_len;
-    memcpy(&key_len, p, sizeof(key_len));
-    p += sizeof(key_len);
-    memcpy(key, p, key_len);
-    p += key_len;
-    memcpy(&value_len, p, sizeof(value_len));
-    p += sizeof(value_len);
-    memcpy(value, p, value_len);
 }
 
 } // namespace bfs

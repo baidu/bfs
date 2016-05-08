@@ -29,7 +29,8 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
-NameSpace::NameSpace(Sync* sync): version_(0), last_entry_id_(1), sync_(sync), sync_seq_(0) {
+NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
+    sync_ = new MasterSlave();
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -39,6 +40,9 @@ NameSpace::NameSpace(Sync* sync): version_(0), last_entry_id_(1), sync_(sync), s
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
         return;
     }
+    bool ret = RecoverLog();
+    assert(ret);
+    sync_->Init();
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
@@ -53,10 +57,13 @@ NameSpace::NameSpace(Sync* sync): version_(0), last_entry_id_(1), sync_(sync), s
         version_ = common::timer::get_micros();
         version_str.resize(8);
         *(reinterpret_cast<int64_t*>(&version_str[0])) = version_;
-        leveldb::Status s = Put(version_key, version_str, true);
+
+        MutexLock lock(&mu_);
+        leveldb::Status s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
         if (!s.ok()) {
             LOG(FATAL, "Write NameSpace version failed %s", s.ToString().c_str());
         }
+        LogRemote(version_key, version_str, kSyncWrite);
         LOG(INFO, "Create new namespace version: %ld ", version_);
     }
     SetupRoot();
@@ -153,8 +160,13 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
 }
 
 bool NameSpace::DeleteFileInfo(const std::string file_key) {
+    MutexLock lock(&mu_);
     leveldb::Status s = db_->Delete(leveldb::WriteOptions(), file_key);
-    return s.ok();
+    if (!s.ok()) {
+        return false;
+    }
+    LogRemote(file_key, "", kSyncDelete);
+    return true;
 }
 bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
     FileInfo file_info_for_ldb;
@@ -173,11 +185,7 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
         LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
         return false;
     }
-    bool ret = sync_->Log(sync_seq_, kDBEntry, file_key, infobuf_for_sync, true);
-    if (!ret) {
-        LOG(FATAL, "Write sync log failed");
-    }
-    ++sync_seq_;
+    LogRemote(file_key, infobuf_for_ldb, kSyncWrite);
     return true;
 };
 
@@ -205,8 +213,10 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             file_info.SerializeToString(&info_value);
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
-            leveldb::Status s = Put(key_str, info_value, true);
+            MutexLock lock(&mu_);
+            leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
             assert(s.ok());
+            LogRemote(key_str, info_value, kSyncWrite);
             LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
         } else {
             if (!IsDir(file_info.type())) {
@@ -236,9 +246,11 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     file_info.SerializeToString(&info_value);
     std::string file_key;
     EncodingStoreKey(parent_id, fname, &file_key);
-    leveldb::Status s = Put(file_key, info_value, true);
+    MutexLock lock(&mu_);
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
+        LogRemote(file_key, info_value, kSyncWrite);
         return kOK;
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail %s", path.c_str(), s.ToString().c_str());
@@ -342,11 +354,26 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     leveldb::WriteBatch batch;
     batch.Put(new_key, value);
     batch.Delete(old_key);
+
+    std::string entry;
+    std::string put_entry;
+    EncodeLog(kSyncWrite, new_key, value, &put_entry);
+    entry.assign(put_entry);
+
+    std::string del_entry;
+    EncodeLog(kSyncDelete, old_key, "", &del_entry);
+    entry.append(del_entry);
+
+    MutexLock lock(&mu_);
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Rename %s to %s[%s], replace: %d",
             old_path.c_str(), new_path.c_str(),
             common::DebugString(new_key).c_str(), *need_unlink);
+        bool ret = sync_->Log(entry);
+        if (!ret) {
+            LOG(FATAL, "Write Rename sync log failed");
+        }
         return kOK;
     } else {
         LOG(WARNING, "Rename write leveldb fail: %s %s", old_path.c_str(), s.ToString().c_str());
@@ -418,6 +445,7 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
 
     StatusCode ret_status = kOK;
     leveldb::WriteBatch batch;
+    std::string entry;
     for (; it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
         if (key.compare(key_end) >= 0) {
@@ -436,6 +464,9 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
                 break;
             }
         } else {
+            std::string del_entry;
+            EncodeLog(kSyncDelete, std::string(key.data(), key.size()), "", &del_entry);
+            entry.append(del_entry);
             batch.Delete(key);
             child_info.set_parent_entry_id(entry_id);
             child_info.set_name(entry_name);
@@ -446,13 +477,21 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     }
     delete it;
 
-    std::string store_key;
+    std::string store_key, store_entry;
     EncodingStoreKey(dir_info.parent_entry_id(), dir_info.name(), &store_key);
+    EncodeLog(kSyncDelete, store_key, "", &store_entry);
+    entry.append(store_entry);
     batch.Delete(store_key);
+
+    MutexLock lock(&mu_);
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Delete directory done: %s[%s]",
             dir_info.name().c_str(), common::DebugString(store_key).c_str());
+        bool ret = sync_->Log(entry);
+        if (!ret) {
+            LOG(FATAL, "Write sync log failed InternalDeleteDirectory");
+        }
     } else {
         LOG(FATAL, "Namespace write to storage fail!");
         LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
@@ -502,32 +541,79 @@ std::string NameSpace::NormalizePath(const std::string& path) {
     return ret;
 }
 
-leveldb::Status NameSpace::Put(const std::string& key, const std::string& value, bool is_last) {
-    MutexLock lock(&mu_);
-    leveldb::Status s = db_->Put(leveldb::WriteOptions(), key, value);
-    if (!s.ok()) {
-        return s;
-    }
-    bool ret = sync_->Log(sync_seq_, kDBEntry, key, value, is_last);
+uint32_t NameSpace::EncodeLog(int32_t type, const std::string& key,
+                            const std::string& value, std::string* entry) {
+    uint32_t encode_len = 4 + 4 + 4 + 4 + key.length() + 4 + value.length();
+    char* buf = new char[encode_len];
+    encode_len -= 4;
+    uint32_t key_len = key.length();
+    uint32_t value_len = value.length();
+
+    char* p = buf;
+    memcpy(p, &encode_len, sizeof(encode_len));
+    p += 4;
+    memcpy(p, &type, sizeof(type));
+    p += 4;
+    memcpy(p, &key_len, sizeof(key_len));
+    p += 4;
+    memcpy(p, key.c_str(), key_len);
+    p += key_len;
+    memcpy(p, &value_len, sizeof(value_len));
+    p += 4;
+    memcpy(p, value.c_str(), value_len);
+    entry->assign(buf, encode_len + 4);
+    delete[] buf;
+    return encode_len + 4;
+}
+
+void NameSpace::DecodeLog(char* const input, int32_t* type,
+                            uint32_t* key_len, char* key, uint32_t* value_len, char* value) {
+    char* p = input;
+    memcpy(type, p, sizeof(*type));
+    p += sizeof(*type);
+    memcpy(key_len, p, sizeof(*key_len));
+    p += sizeof(*key_len);
+    memcpy(key, p, *key_len);
+    p += *key_len;
+    memcpy(value_len, p, sizeof(*value_len));
+    p += sizeof(*value_len);
+    memcpy(value, p, *value_len);
+}
+
+void NameSpace::LogRemote(const std::string& key, const std::string& value, int32_t type) {
+    std::string entry;
+    uint32_t encode_len = EncodeLog(type, key, value, &entry);
+    bool ret = sync_->Log(entry);
     if (!ret) {
-        LOG(FATAL, "Write sync log failed");
+        LOG(FATAL, "Write sync log failed kl=%d vl=%d l=%d", key.length(), value.length(), encode_len);
     }
-    ++sync_seq_;
-    return s;
 }
 
 bool NameSpace::RecoverLog() {
     int ret = sync_->ScanLog();
-    if (ret == 0) {
-        return 0;
+    if (ret < 0) {
+        LOG(INFO, "No sync log to recover");
+        return true;
     }
-    int64_t seq;
     int32_t type;
-    char key[128];
+    uint32_t key_len, value_len;
+    char buf[512];
+    char key[256];
     char value[256];
-    //while (sync_->Next(*seq, *type, key, value)) {
-
-    //}
+    LOG(INFO, "Start to Recover log");
+    leveldb::Status s;
+    while (sync_->Next(buf)) {
+        DecodeLog(buf, &type, &key_len, key, &value_len, value);
+        if (type == kSyncWrite) {
+            s = db_->Put(leveldb::WriteOptions(), std::string(key, key_len),
+                         std::string(value, value_len));
+        } else if (type == kSyncDelete) {
+            s = db_->Delete(leveldb::WriteOptions(), std::string(key, key_len));
+        }
+        if (!s.ok()) {
+            LOG(FATAL, "Recover Sync log failed");
+        }
+    }
     return true;
 }
 

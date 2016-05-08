@@ -113,8 +113,6 @@ private:
     /// Safemode
     volatile int safe_mode_;
     int64_t start_time_;
-    /// HA module
-    Sync* sync_;
     /// Namespace
     NameSpace* namespace_;
     int64_t namespace_version_;

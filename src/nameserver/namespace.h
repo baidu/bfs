@@ -24,7 +24,7 @@ class Sync;
 
 class NameSpace {
 public:
-    NameSpace(Sync* sync);
+    NameSpace();
     ~NameSpace();
     /// List a directory
     StatusCode ListDirectory(const std::string& path,
@@ -65,7 +65,11 @@ private:
     StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed);
-    leveldb::Status Put(const std::string& key, const std::string& value, bool is_last);
+    uint32_t EncodeLog(int32_t type, const std::string& key,
+                   const std::string& value, std::string* entry);
+    void DecodeLog(char* const input, int32_t* type,
+                   uint32_t* key_len, char* key, uint32_t* value_len, char* value);
+    void LogRemote(const std::string& key, const std::string& value, int32_t type);
     bool RecoverLog();
 private:
     leveldb::DB* db_;   /// NameSpace storage
@@ -75,7 +79,6 @@ private:
 
     /// HA module
     Sync* sync_;
-    int64_t sync_seq_;
     Mutex mu_;
 };
 

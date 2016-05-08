@@ -21,7 +21,6 @@
 #include "nameserver/block_mapping.h"
 #include "nameserver/chunkserver_manager.h"
 #include "nameserver/namespace.h"
-#include "nameserver/sync.h"
 #include "proto/status_code.pb.h"
 
 DECLARE_bool(bfs_web_kick_enable);
@@ -43,8 +42,7 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
 NameServerImpl::NameServerImpl() : safe_mode_(FLAGS_nameserver_safemode_time) {
-    sync_ = new MasterSlave();
-    namespace_ = new NameSpace(sync_);
+    namespace_ = new NameSpace();
     block_mapping_ = new BlockMapping();
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);

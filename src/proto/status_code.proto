@@ -42,6 +42,6 @@ enum RecoverStat {
 }
 
 enum SyncStatus {
-    kDBEntry = 0;
-    kMappingEntry = 1;
+    kSyncWrite = 0;
+    kSyncDelete = 1;
 }
