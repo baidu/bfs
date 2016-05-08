@@ -1105,7 +1105,8 @@ bool BfsFileImpl::Close() {
     if (bg_error_) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = false;
-    } else if (need_report_finish) {
+    }
+    if (need_report_finish) {
         NameServer_Stub* nameserver = fs_->nameserver_;
         FinishBlockRequest request;
         FinishBlockResponse response;
@@ -1114,6 +1115,7 @@ bool BfsFileImpl::Close() {
         request.set_block_id(block_id);
         request.set_block_version(last_seq_);
         request.set_block_size(write_offset_);
+        request.set_close_with_error(bg_error_);
         ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
         if (!(ret && response.status() == kOK))  {

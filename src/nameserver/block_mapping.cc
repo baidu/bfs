@@ -867,7 +867,6 @@ void BlockMapping::RemoveFromIncomplete(int64_t block_id, int32_t cs_id) {
     }
     if (error) {
         LOG(WARNING, "RemoveFromIncomplete not find C%d #%ld ", cs_id, block_id);
-        abort();
     }
 }
 
@@ -897,6 +896,20 @@ bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) 
         return true;
     }
     return false;
+}
+
+void BlockMapping::MarkIncomplete(int64_t block_id) {
+    MutexLock lock(&mu_);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        return;
+    }
+    for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();
+            it != block->incomplete_replica.end(); ++it) {
+        incomplete_[*it].insert(block_id);
+        LOG(INFO, "Mark #%ld in C%d incomplete", block_id, *it);
+    }
+    SetState(block, kIncomplete);
 }
 
 } // namespace bfs
