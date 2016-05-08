@@ -14,6 +14,7 @@
 
 #include <leveldb/db.h>
 #include <common/mutex.h>
+#include <common/thread.h>
 #include <common/thread_pool.h>
 
 #include "proto/raft.pb.h"
@@ -44,13 +45,15 @@ public:
 public:
     bool GetLeader(std::string* leader);
     void AppendLog(const std::string& log, boost::function<void ()> callback);
-    void AppendLog(const std::string& log);
+    bool AppendLog(const std::string& log, int timeout_ms = 10000);
     void RegisterCallback(boost::function<void (const std::string& log)> callback);
 private:
+    std::string Index2Logkey(int64_t index);
+    void LoadStorage();
     bool CancelElection();
     void ResetElection();
-    void DoReplicateLog();
     void ReplicateLogForNode(int id);
+    void ReplicateLogWorker(int id);
     void Election();
     bool CheckTerm(int64_t term);
     void ElectionCallback(const VoteRequest* request,
@@ -66,17 +69,24 @@ private:
     std::vector<std::string> nodes_;
     std::string self_;
 
-    int64_t current_term_;
-    std::string voted_for_;
-    leveldb::DB* log_db_;
-    int64_t log_index_; /// ????
-    int64_t log_term_;
+    int64_t current_term_;      /// 当前term
+    std::string voted_for_;     /// 当前term下投的票
+    leveldb::DB* log_db_;       /// log持久存储
+    int64_t log_index_;         /// 上一条log的index
+    int64_t log_term_;          /// 上一条log的term
 
-    int64_t commit_index_;
-    int64_t last_applied_;
+    int64_t commit_index_;      /// 提交的log的index
+    int64_t last_applied_;      /// 应用到状态机的index
 
-    std::vector<int64_t> next_index_;
-    std::vector<int64_t> match_index_;
+    bool node_stop_;
+    struct FollowerContext {
+        int64_t next_index;
+        int64_t match_index;
+        common::Thread worker;
+        CondVar condition;
+        FollowerContext(Mutex* mu) : next_index(0), match_index(0), condition(mu) {}
+    };
+    std::vector<FollowerContext*> follower_context;
 
     Mutex mu_;
     common::ThreadPool*  thread_pool_;

@@ -17,7 +17,7 @@ message VoteResponse {
 message LogEntry {
     optional int64 index = 2;
     optional int64 term = 3;
-    optional bytes commond = 4;
+    optional bytes log_data = 4;
 }
 
 message AppendEntriesRequest {

@@ -24,7 +24,8 @@ namespace bfs {
 
 RaftNodeImpl::RaftNodeImpl()
     : current_term_(0), log_index_(0), log_term_(0), commit_index_(0),
-      last_applied_(0), election_taskid_(-1), node_state_(kFollower) {
+      last_applied_(0), node_stop_(false), election_taskid_(-1),
+      node_state_(kFollower) {
     common::SplitString(FLAGS_raft_nodes, ",", &nodes_);
     uint32_t index = FLAGS_raft_node_index;
     if (nodes_.size() < 1U || nodes_.size() <= index) {
@@ -32,7 +33,30 @@ RaftNodeImpl::RaftNodeImpl()
             FLAGS_raft_node_index);
     }
     self_ = nodes_[index];
+
+    LoadStorage();
     LOG(INFO, "Start RaftNode %s (%s)", self_.c_str(), FLAGS_raft_nodes.c_str());
+
+    rpc_client_ = new RpcClient();
+    srand(common::timer::get_micros());
+    thread_pool_ = new common::ThreadPool();
+
+    MutexLock lock(&mu_);
+    ResetElection();
+}
+
+RaftNodeImpl::~RaftNodeImpl() {
+    node_stop_ = true;
+    delete thread_pool_;
+    for (uint32_t i = 0; i < follower_context.size(); i++) {
+        follower_context[i]->condition.Signal();
+        follower_context[i]->worker.Join();
+        delete follower_context[i];
+        follower_context[i] = NULL;
+    }
+}
+
+void RaftNodeImpl::LoadStorage() {
     leveldb::Options options;
     options.create_if_missing = true;
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_raftdb_path, &log_db_);
@@ -40,15 +64,27 @@ RaftNodeImpl::RaftNodeImpl()
         log_db_ = NULL;
         LOG(FATAL, "Open raft db fail: %s\n", s.ToString().c_str());
     }
-    rpc_client_ = new RpcClient();
-    srand(common::timer::get_micros());
-    thread_pool_ = new common::ThreadPool();
-    MutexLock lock(&mu_);
-    ResetElection();
-}
-
-RaftNodeImpl::~RaftNodeImpl() {
-    delete thread_pool_;
+    leveldb::Iterator* it = log_db_->NewIterator(leveldb::ReadOptions());
+    it->SeekToLast();
+    if (!it->Valid()) {
+        log_index_ = 0;
+    } else {
+        LogEntry entry;
+        if (!entry.ParseFromString(it->value().ToString())) {
+            LOG(FATAL, "Parse log entry failed");
+        }
+        log_index_ = entry.index();
+    }
+    delete it;
+    for (uint32_t i = 0; i < nodes_.size(); i++) {
+        if (nodes_[i] == self_) {
+            continue;
+        }
+        FollowerContext* ctx = new FollowerContext(&mu_);
+        ctx->next_index = log_index_ + 1;
+        ctx->worker.Start(boost::bind(&RaftNodeImpl::ReplicateLogWorker, this, i));
+        follower_context.push_back(ctx);
+    }
 }
 
 void RaftNodeImpl::Election() {
@@ -120,7 +156,11 @@ void RaftNodeImpl::ElectionCallback(const VoteRequest* request,
                     node_state_ = kLeader;
                     bool ret = CancelElection();
                     LOG(INFO, "Change state to Leader, cancel election return %d", ret);
-                    thread_pool_->AddTask(boost::bind(&RaftNodeImpl::DoReplicateLog, this));
+                    for (uint32_t i = 0;i < follower_context.size(); i++) {
+                        if (nodes_[i] != self_) {
+                            follower_context[i]->condition.Signal();
+                        }
+                    }
                 }
             } else {
                 LOG(INFO, "Term mismatch %ld / %ld", term, current_term_);
@@ -135,6 +175,7 @@ bool RaftNodeImpl::CancelElection() {
     mu_.AssertHeld();
     while (election_taskid_ != -1) {
         mu_.Unlock();
+        ///TODO: race condition?
         LOG(INFO, "Cancel election %ld", election_taskid_);
         bool ret = thread_pool_->CancelTask(election_taskid_);
         mu_.Lock();
@@ -191,42 +232,107 @@ bool RaftNodeImpl::GetLeader(std::string* leader) {
 }
 
 void RaftNodeImpl::ReplicateLogForNode(int id) {
+    FollowerContext* follower = follower_context[id];
+    int64_t next_index = follower->next_index;
+    int64_t match_index = follower->match_index;
+
+    int64_t max_index = 0;
     AppendEntriesRequest* request = new AppendEntriesRequest;
     AppendEntriesResponse* response = new AppendEntriesResponse;
     request->set_term(current_term_);
     request->set_leader(self_);
+    if (match_index < log_index_) {
+        assert(match_index <= next_index);
+        Index2Logkey(next_index);
+        leveldb::Iterator* it = log_db_->NewIterator(leveldb::ReadOptions());
+        it->Seek(Index2Logkey(next_index));
+        if (it->Valid()) {
+            it->Prev();
+            int64_t prev_index = 0;
+            int64_t prev_term = 0;
+            if (it->Valid()) {
+                LogEntry entry;
+                bool ret = entry.ParseFromString(it->value().ToString());
+                assert(ret);
+                prev_index = entry.index();
+                prev_term = entry.term();
+            }
+            request->set_prev_log_index(prev_index);
+            request->set_prev_log_term(prev_term);
+            it->Next();
+        } else {
+            LOG(FATAL, "No next_index %ld in logdb", next_index);
+        }
+        while (it->Valid()) {
+            LogEntry* entry = request->add_entries();
+            bool ret = !entry->ParseFromString(it->value().ToString());
+            assert(ret);
+            it->Next();
+            max_index = entry->index();
+        }
+        delete it;
+    }
     RaftNode_Stub* node;
     rpc_client_->GetStub(nodes_[id], &node);
-    bool ret = rpc_client_->SendRequest(node, &RaftNode_Stub::AppendEntries, request, response, 1, 1);
+    bool ret = rpc_client_->SendRequest(node, &RaftNode_Stub::AppendEntries,
+                                        request, response, 1, 1);
     LOG(INFO, "Replicate to %s return %d", nodes_[id].c_str(), ret);
     delete node;
-}
-
-void RaftNodeImpl::DoReplicateLog() {
     MutexLock lock(&mu_);
-    if (node_state_ != kLeader) {
-        ResetElection();
-        LOG(INFO, "Not leader, cancel ReplicateLog");
-        return;
-    }
-
-    for (uint32_t i = 0; i < nodes_.size(); ++i) {
-        if (nodes_[i] != self_) {
-            thread_pool_->AddTask(boost::bind(&RaftNodeImpl::ReplicateLogForNode, this, i));
+    if (ret) {
+        int64_t term = response->term();
+        if (CheckTerm(term) && response->success() && max_index) {
+            follower->match_index = max_index;
+            follower->next_index = max_index + 1;
+        } else {
+            if (follower->next_index > 1) {
+                --follower->next_index;
+            }
         }
     }
-    thread_pool_->DelayTask(100, boost::bind(&RaftNodeImpl::DoReplicateLog, this));
 }
 
-void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void ()> callback) {
-    /// append log to entries and wait for commit
-    /*
+void RaftNodeImpl::ReplicateLogWorker(int id) {
+    FollowerContext* follower = follower_context[id];
+    while (true) {
+        MutexLock lock(&mu_);
+        while (node_state_ != kLeader && !node_stop_) {
+            follower->condition.Wait();
+        }
+        if (node_stop_) {
+            return;
+        }
+        ReplicateLogForNode(id);
+        follower->condition.TimeWait(100);
+    }
+}
+
+std::string RaftNodeImpl::Index2Logkey(int64_t index) {
     char idstr[32];
-    snprintf(idstr, sizeof(idstr), "%20d", ++next_logid_);
-    log_db_->Put(leveldb::WriteOptions(), leveldb::Slice(idstr, 20), log);
-    DoReplicateLog();
-    */
-    return;
+    snprintf(idstr, sizeof(idstr), "%20ld", index);
+    return std::string(idstr, 20);
+}
+bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {
+    int64_t index = 0;
+    {
+        MutexLock lock(&mu_);
+        index = ++log_index_;
+        LogEntry entry;
+        entry.set_term(current_term_);
+        entry.set_log_data(log);
+        entry.set_index(index);
+        std::string log_value;
+        entry.SerializeToString(&log_value);
+        log_db_->Put(leveldb::WriteOptions(), Index2Logkey(index), log_value);
+    }
+    for (int i = 0; i < timeout_ms; i++) {
+        usleep(1);
+        if (commit_index_ >= index) {
+            return true;
+        }
+    }
+    LOG(WARNING, "AppendLog timeout %ld", index);
+    return false;
 }
 
 void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
