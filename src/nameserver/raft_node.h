@@ -61,10 +61,15 @@ private:
                           bool failed,
                           int error,
                           const std::string& node_addr);
+    bool StoreLog(int64_t term, int64_t index, const std::string& log);
+    void ApplyLog();
+
     std::string LoadVoteFor();
     void SetVeteFor(const std::string& votefor);
     int64_t LoadCurrentTerm();
     void SetCurrentTerm(int64_t);
+    void SetLastApplied(int64_t index);
+    int64_t GetLastApplied(int64_t index);
 private:
     std::vector<std::string> nodes_;
     std::string self_;
@@ -77,6 +82,7 @@ private:
 
     int64_t commit_index_;      /// 提交的log的index
     int64_t last_applied_;      /// 应用到状态机的index
+    bool applying_;             /// 正在提交到状态机
 
     bool node_stop_;
     struct FollowerContext {
@@ -86,7 +92,7 @@ private:
         common::CondVar condition;
         FollowerContext(Mutex* mu) : next_index(0), match_index(0), worker(1), condition(mu) {}
     };
-    std::vector<FollowerContext*> follower_context;
+    std::vector<FollowerContext*> follower_context_;
 
     Mutex mu_;
     common::ThreadPool*  thread_pool_;

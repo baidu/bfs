@@ -24,7 +24,7 @@ namespace bfs {
 
 RaftNodeImpl::RaftNodeImpl()
     : current_term_(0), log_index_(0), log_term_(0), commit_index_(0),
-      last_applied_(0), node_stop_(false), election_taskid_(-1),
+      last_applied_(0), applying_(false), node_stop_(false), election_taskid_(-1),
       node_state_(kFollower) {
     common::SplitString(FLAGS_raft_nodes, ",", &nodes_);
     uint32_t index = FLAGS_raft_node_index;
@@ -48,11 +48,11 @@ RaftNodeImpl::RaftNodeImpl()
 RaftNodeImpl::~RaftNodeImpl() {
     node_stop_ = true;
     delete thread_pool_;
-    for (uint32_t i = 0; i < follower_context.size(); i++) {
-        follower_context[i]->condition.Signal();
-        follower_context[i]->worker.Stop(true);
-        delete follower_context[i];
-        follower_context[i] = NULL;
+    for (uint32_t i = 0; i < follower_context_.size(); i++) {
+        follower_context_[i]->condition.Signal();
+        follower_context_[i]->worker.Stop(true);
+        delete follower_context_[i];
+        follower_context_[i] = NULL;
     }
 }
 
@@ -78,11 +78,11 @@ void RaftNodeImpl::LoadStorage() {
     delete it;
     for (uint32_t i = 0; i < nodes_.size(); i++) {
         if (nodes_[i] == self_) {
-            follower_context.push_back(NULL);
+            follower_context_.push_back(NULL);
             continue;
         }
         FollowerContext* ctx = new FollowerContext(&mu_);
-        follower_context.push_back(ctx);
+        follower_context_.push_back(ctx);
         LOG(INFO, "New follower context %u %s", i, nodes_[i].c_str());
         ctx->next_index = log_index_ + 1;
         ctx->worker.AddTask(boost::bind(&RaftNodeImpl::ReplicateLogWorker, this, i));
@@ -158,9 +158,11 @@ void RaftNodeImpl::ElectionCallback(const VoteRequest* request,
                     node_state_ = kLeader;
                     bool ret = CancelElection();
                     LOG(INFO, "Change state to Leader, cancel election return %d", ret);
-                    for (uint32_t i = 0;i < follower_context.size(); i++) {
+                    for (uint32_t i = 0;i < follower_context_.size(); i++) {
                         if (nodes_[i] != self_) {
-                            follower_context[i]->condition.Signal();
+                            follower_context_[i]->match_index = 0;
+                            follower_context_[i]->next_index = log_index_ + 1;
+                            follower_context_[i]->condition.Signal();
                         }
                     }
                 }
@@ -234,18 +236,21 @@ bool RaftNodeImpl::GetLeader(std::string* leader) {
 }
 
 void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
-    FollowerContext* follower = follower_context[id];
+    MutexLock lock(&mu_);
+
+    FollowerContext* follower = follower_context_[id];
     int64_t next_index = follower->next_index;
     int64_t match_index = follower->match_index;
 
+    mu_.Unlock();
     int64_t max_index = 0;
     AppendEntriesRequest* request = new AppendEntriesRequest;
     AppendEntriesResponse* response = new AppendEntriesResponse;
     request->set_term(current_term_);
     request->set_leader(self_);
+    request->set_leader_commit(commit_index_);
     if (match_index < log_index_) {
         assert(match_index <= next_index);
-        Index2Logkey(next_index);
         leveldb::Iterator* it = log_db_->NewIterator(leveldb::ReadOptions());
         it->Seek(Index2Logkey(next_index));
         if (it->Valid()) {
@@ -258,16 +263,20 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                 assert(ret);
                 prev_index = entry.index();
                 prev_term = entry.term();
+                it->Next();
+            } else {
+                delete it;
+                it = log_db_->NewIterator(leveldb::ReadOptions());
+                it->Seek(Index2Logkey(next_index));
             }
             request->set_prev_log_index(prev_index);
             request->set_prev_log_term(prev_term);
-            it->Next();
         } else {
             LOG(FATAL, "No next_index %ld in logdb", next_index);
         }
         while (it->Valid()) {
             LogEntry* entry = request->add_entries();
-            bool ret = !entry->ParseFromString(it->value().ToString());
+            bool ret = entry->ParseFromString(it->value().ToString());
             assert(ret);
             it->Next();
             max_index = entry->index();
@@ -278,24 +287,53 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
     rpc_client_->GetStub(nodes_[id], &node);
     bool ret = rpc_client_->SendRequest(node, &RaftNode_Stub::AppendEntries,
                                         request, response, 1, 1);
-    LOG(INFO, "Replicate to %s return %d", nodes_[id].c_str(), ret);
+    LOG(INFO, "Replicate %d entrys to %s return %d",
+        request->entries_size(), nodes_[id].c_str(), ret);
     delete node;
-    MutexLock lock(&mu_);
+
+    mu_.Lock();
     if (ret) {
         int64_t term = response->term();
-        if (CheckTerm(term) && response->success() && max_index) {
-            follower->match_index = max_index;
-            follower->next_index = max_index + 1;
-        } else {
-            if (follower->next_index > 1) {
-                --follower->next_index;
+        if (CheckTerm(term)) {
+            if (response->success()) {
+                if (max_index) {
+                    follower->match_index = max_index;
+                    follower->next_index = max_index + 1;
+                    LOG(INFO, "Replicate to %s success match %ld next %ld",
+                        nodes_[id].c_str(), max_index, max_index + 1);
+                    std::vector<int64_t> match_index;
+                    for (uint32_t i = 0; i < nodes_.size(); i++) {
+                        if (nodes_[i] == self_) {
+                            match_index.push_back(1LL<<60);
+                        } else {
+                            match_index.push_back(follower_context_[i]->match_index);
+                        }
+                    }
+                    std::sort(match_index.begin(), match_index.end());
+                    int mid_pos = (nodes_.size() - 1) / 2;
+                    int64_t commit_index = match_index[mid_pos];
+                    //LOG(INFO, "match vector[ %ld %ld %ld ]",
+                    //    match_index[0], match_index[1], match_index[2]);
+                    assert(commit_index >= commit_index_);
+                    if (commit_index > commit_index_) {
+                        LOG(INFO, "Update commit_index from %ld to %ld",
+                            commit_index_, commit_index);
+                        commit_index_ = commit_index;
+                    }
+                }
+            } else {
+                LOG(INFO, "Replicate fail --next_index %d for %s",
+                    follower->next_index, nodes_[id].c_str());
+                if (follower->next_index > 1) {
+                    --follower->next_index;
+                }
             }
         }
     }
 }
 
 void RaftNodeImpl::ReplicateLogWorker(uint32_t id) {
-    FollowerContext* follower = follower_context[id];
+    FollowerContext* follower = follower_context_[id];
     while (true) {
         MutexLock lock(&mu_);
         while (node_state_ != kLeader && !node_stop_) {
@@ -316,18 +354,29 @@ std::string RaftNodeImpl::Index2Logkey(int64_t index) {
     snprintf(idstr, sizeof(idstr), "%20ld", index);
     return std::string(idstr, 20);
 }
+
+bool RaftNodeImpl::StoreLog(int64_t term, int64_t index, const std::string& log) {
+    LogEntry entry;
+    entry.set_term(term);
+    entry.set_index(index);
+    entry.set_log_data(log);
+    std::string log_value;
+    entry.SerializeToString(&log_value);
+    leveldb::Status s = log_db_->Put(leveldb::WriteOptions(), Index2Logkey(index), log_value);
+    LOG(INFO, "Store %s to logdb", log.c_str());
+    return s.ok();
+}
+
 bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {
     int64_t index = 0;
     {
         MutexLock lock(&mu_);
         index = ++log_index_;
-        LogEntry entry;
-        entry.set_term(current_term_);
-        entry.set_log_data(log);
-        entry.set_index(index);
-        std::string log_value;
-        entry.SerializeToString(&log_value);
-        log_db_->Put(leveldb::WriteOptions(), Index2Logkey(index), log_value);
+        ///TODO: optimize lock
+        if (!StoreLog(current_term_, index, log)) {
+            log_index_ --;
+            return false;
+        }
     }
     for (int i = 0; i < timeout_ms; i++) {
         usleep(1);
@@ -339,6 +388,41 @@ bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {
     return false;
 }
 
+void RaftNodeImpl::SetLastApplied(int64_t index) {
+    ///TODO: a
+}
+
+void RaftNodeImpl::ApplyLog() {
+    MutexLock lock(&mu_);
+    if (applying_) {
+        return;
+    }
+    applying_ = true;
+    if (last_applied_ < commit_index_) {
+        std::string start = Index2Logkey(last_applied_);
+        std::string end = Index2Logkey(commit_index_);
+        leveldb::Iterator* it = log_db_->NewIterator(leveldb::ReadOptions());
+        it->Seek(start);
+        assert(it->Valid());
+        if (it->key().compare(start) <= 0) {
+            it->Next();
+            assert(it->Valid());
+        }
+        do {
+            LogEntry entry;
+            bool ret = entry.ParseFromString(it->value().ToString());
+            assert(ret);
+            mu_.Unlock();
+            log_callback_(entry.log_data());
+            mu_.Lock();
+            last_applied_ = entry.index();
+            it->Next();
+        } while (it->Valid() && it->key().compare(end) <= 0);
+        delete it;
+    }
+    applying_ = false;
+}
+
 void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
                    const ::baidu::bfs::AppendEntriesRequest* request,
                    ::baidu::bfs::AppendEntriesResponse* response,
@@ -347,16 +431,41 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
     int64_t term = request->term();
     CheckTerm(term);
     if (term < current_term_) {
+        LOG(INFO, "AppendEntries old term %ld / %ld", term, current_term_);
         response->set_success(false);
         done->Run();
+        return;
     }
     int64_t leader_commit = request->leader_commit();
+
     /// log match...
-    LOG(INFO, "AppendEntries from %s %ld %d %ld",
-        request->leader().c_str(), term, request->entries_size(), leader_commit);
+    int entry_count = request->entries_size();
+    if (entry_count > 0) {
+        LOG(INFO, "AppendEntries from %s %ld \"%s\" %ld",
+            request->leader().c_str(), term,
+            request->entries(0).log_data().c_str(), leader_commit);
+        for (int i = 0; i < entry_count; i++) {
+            bool ret = StoreLog(current_term_, request->entries(i).index(),
+                                request->entries(0).log_data());
+            if (!ret) {
+                response->set_success(false);
+                done->Run();
+                return;
+            }
+        }
+    }
+    
+    response->set_term(current_term_);
     response->set_success(true);
     ResetElection();
     done->Run();
+
+    if (leader_commit > commit_index_) {
+        commit_index_ = leader_commit;
+    }
+    if (commit_index_ > last_applied_) {
+        thread_pool_->AddTask(boost::bind(&RaftNodeImpl::ApplyLog, this));
+    }
 }
 
 

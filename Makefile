@@ -62,8 +62,9 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test 
-TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/test/file_cache_test.o \
+TESTS = namespace_test raft_test file_cache_test chunkserver_impl_test location_provider_test 
+TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/raft_test.o \
+			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
 UNITTEST_OUTPUT = test/
 
@@ -86,6 +87,9 @@ check: all $(TESTS)
 
 namespace_test: src/nameserver/test/namespace_test.o
 	$(CXX) src/nameserver/namespace.o src/nameserver/test/namespace_test.o $(OBJS) -o $@ $(LDFLAGS)
+
+raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o $(OBJS)
+	$(CXX) $^ -o $@ $(LDFLAGS)
 
 file_cache_test: src/chunkserver/test/file_cache_test.o
 	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)

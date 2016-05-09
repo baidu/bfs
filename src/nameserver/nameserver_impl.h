@@ -25,7 +25,6 @@ namespace bfs {
 class NameSpace;
 class ChunkServerManager;
 class BlockMapping;
-class RaftNode;
 
 class NameServerImpl : public NameServer {
 public:
@@ -118,9 +117,6 @@ private:
     /// Namespace
     NameSpace* namespace_;
     int64_t namespace_version_;
-
-    /// Raftnode
-    RaftNode* raft_node_;
 };
 
 } // namespace bfs
