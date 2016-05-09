@@ -52,8 +52,8 @@ private:
     void LoadStorage();
     bool CancelElection();
     void ResetElection();
-    void ReplicateLogForNode(int id);
-    void ReplicateLogWorker(int id);
+    void ReplicateLogForNode(uint32_t id);
+    void ReplicateLogWorker(uint32_t id);
     void Election();
     bool CheckTerm(int64_t term);
     void ElectionCallback(const VoteRequest* request,
@@ -82,9 +82,9 @@ private:
     struct FollowerContext {
         int64_t next_index;
         int64_t match_index;
-        common::Thread worker;
-        CondVar condition;
-        FollowerContext(Mutex* mu) : next_index(0), match_index(0), condition(mu) {}
+        common::ThreadPool worker;
+        common::CondVar condition;
+        FollowerContext(Mutex* mu) : next_index(0), match_index(0), worker(1), condition(mu) {}
     };
     std::vector<FollowerContext*> follower_context;
 

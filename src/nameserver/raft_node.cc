@@ -50,7 +50,7 @@ RaftNodeImpl::~RaftNodeImpl() {
     delete thread_pool_;
     for (uint32_t i = 0; i < follower_context.size(); i++) {
         follower_context[i]->condition.Signal();
-        follower_context[i]->worker.Join();
+        follower_context[i]->worker.Stop(true);
         delete follower_context[i];
         follower_context[i] = NULL;
     }
@@ -78,12 +78,14 @@ void RaftNodeImpl::LoadStorage() {
     delete it;
     for (uint32_t i = 0; i < nodes_.size(); i++) {
         if (nodes_[i] == self_) {
+            follower_context.push_back(NULL);
             continue;
         }
         FollowerContext* ctx = new FollowerContext(&mu_);
-        ctx->next_index = log_index_ + 1;
-        ctx->worker.Start(boost::bind(&RaftNodeImpl::ReplicateLogWorker, this, i));
         follower_context.push_back(ctx);
+        LOG(INFO, "New follower context %u %s", i, nodes_[i].c_str());
+        ctx->next_index = log_index_ + 1;
+        ctx->worker.AddTask(boost::bind(&RaftNodeImpl::ReplicateLogWorker, this, i));
     }
 }
 
@@ -231,7 +233,7 @@ bool RaftNodeImpl::GetLeader(std::string* leader) {
     return true;
 }
 
-void RaftNodeImpl::ReplicateLogForNode(int id) {
+void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
     FollowerContext* follower = follower_context[id];
     int64_t next_index = follower->next_index;
     int64_t match_index = follower->match_index;
@@ -292,7 +294,7 @@ void RaftNodeImpl::ReplicateLogForNode(int id) {
     }
 }
 
-void RaftNodeImpl::ReplicateLogWorker(int id) {
+void RaftNodeImpl::ReplicateLogWorker(uint32_t id) {
     FollowerContext* follower = follower_context[id];
     while (true) {
         MutexLock lock(&mu_);
@@ -302,7 +304,9 @@ void RaftNodeImpl::ReplicateLogWorker(int id) {
         if (node_stop_) {
             return;
         }
+        mu_.Unlock();
         ReplicateLogForNode(id);
+        mu_.Lock();
         follower->condition.TimeWait(100);
     }
 }
