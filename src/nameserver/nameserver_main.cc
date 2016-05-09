@@ -11,6 +11,7 @@
 #include <common/logging.h>
 
 #include "nameserver/nameserver_impl.h"
+#include "nameserver/raft_node.h"
 #include "version.h"
 
 DECLARE_string(flagfile);
@@ -39,10 +40,11 @@ int main(int argc, char* argv[])
     ::baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
     ::baidu::common::SetWarningFile(FLAGS_nameserver_warninglog.c_str());
 
-    LOG(baidu::common::INFO, "NameServe start ...");
+    LOG(baidu::common::INFO, "NameServer start ...");
 
     // Service
     baidu::bfs::NameServerImpl* nameserver_service = new baidu::bfs::NameServerImpl();
+    baidu::bfs::RaftNodeImpl* raft_service = new baidu::bfs::RaftNodeImpl();
 
     // rpc_server
     sofa::pbrpc::RpcServerOptions options;
@@ -51,8 +53,12 @@ int main(int argc, char* argv[])
 
     // Register
     if (!rpc_server.RegisterService(nameserver_service)) {
-            return EXIT_FAILURE;
+        return EXIT_FAILURE;
     }
+    if (!rpc_server.RegisterService(raft_service)) {
+        return EXIT_FAILURE;
+    }
+
     sofa::pbrpc::Servlet webservice =
         sofa::pbrpc::NewPermanentExtClosure(nameserver_service, &baidu::bfs::NameServerImpl::WebService);
     rpc_server.RegisterWebServlet("/dfs", webservice);

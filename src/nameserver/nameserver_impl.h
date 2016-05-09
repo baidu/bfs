@@ -24,7 +24,6 @@ namespace bfs {
 class NameSpace;
 class ChunkServerManager;
 class BlockMapping;
-class Sync;
 
 class NameServerImpl : public NameServer {
 public:
@@ -94,6 +93,7 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
     void RebuildBlockMapCallback(const FileInfo& file_info);

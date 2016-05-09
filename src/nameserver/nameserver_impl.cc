@@ -19,8 +19,11 @@
 #include <common/string_util.h>
 
 #include "nameserver/block_mapping.h"
+
+#include "nameserver/raft_node.h"
 #include "nameserver/chunkserver_manager.h"
 #include "nameserver/namespace.h"
+
 #include "proto/status_code.pb.h"
 
 DECLARE_bool(bfs_web_kick_enable);
