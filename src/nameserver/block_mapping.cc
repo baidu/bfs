@@ -899,5 +899,19 @@ bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) 
     return false;
 }
 
+void BlockMapping::MarkIncomplete(int64_t block_id) {
+    MutexLock lock(&mu_);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        return;
+    }
+    for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();
+            it != block->incomplete_replica.end(); ++it) {
+        incomplete_[*it].insert(block_id);
+        LOG(INFO, "Mark #%ld in C%d incomplete", block_id, *it);
+    }
+    SetState(block, kIncomplete);
+}
+
 } // namespace bfs
 } // namespace baidu
