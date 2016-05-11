@@ -377,6 +377,7 @@ void Block::DiskWrite() {
                     delete[] frags[i].second.data_;
                 }
             }
+
             delete recv_window_;
             recv_window_ = NULL;
             close_cv_.Signal();
