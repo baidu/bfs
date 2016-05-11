@@ -11,7 +11,7 @@
 #include <common/logging.h>
 
 #include "nameserver/nameserver_impl.h"
-#include "nameserver/raft_node.h"
+#include "nameserver/raft_impl.h"
 #include "nameserver/sync.h"
 #include "version.h"
 
@@ -52,8 +52,8 @@ int main(int argc, char* argv[])
     sofa::pbrpc::RpcServer rpc_server(options);
 
     // Server
-    baidu::bfs::Sync* sync;
-    google::protobuf::Service* sync_service;
+    baidu::bfs::Sync* sync = NULL;
+    google::protobuf::Service* sync_service = NULL;
     if (FLAGS_ha_strategy == "master_slave") {
         baidu::bfs::MasterSlaveImpl* base = new baidu::bfs::MasterSlaveImpl();
         sync = base;
@@ -63,7 +63,9 @@ int main(int argc, char* argv[])
         LOG(baidu::common::INFO, "bugname=%s", bug->name().c_str());
     } else if (FLAGS_ha_strategy == "raft") {
         // TODO: not working yet...
-        //sync = new baidu::bfs::RaftNodeImpl();
+        baidu::bfs::RaftImpl* raft_impl = new baidu::bfs::RaftImpl();
+        sync = raft_impl;
+        sync_service = raft_impl->GetService();
     } else {
         LOG(baidu::common::FATAL, "NameServer start with unknow ha strategy");
     }
