@@ -9,6 +9,7 @@
 #include <string>
 #include <boost/function.hpp>
 #include <common/mutex.h>
+#include <common/thread.h>
 
 #include "proto/status_code.pb.h"
 #include "proto/master_slave.pb.h"
@@ -54,8 +55,10 @@ private:
 private:
     RpcClient* rpc_client_;
     boost::function<void (const std::string& log)> log_callback_;
+    bool exiting_;
     Mutex mu_;
     CondVar cond_;
+    common::Thread worker_;
     bool master_only_;
     int log_;
     int scan_log_;
