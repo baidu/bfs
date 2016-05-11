@@ -23,6 +23,10 @@
 #include <common/string_util.h>
 #include <common/tprinter.h>
 #include <common/util.h>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/sha1.hpp>
 
 #include "proto/status_code.pb.h"
 
@@ -193,6 +197,7 @@ public:
     FSImpl() : rpc_client_(NULL), nameserver_(NULL) {
         local_host_name_ = common::util::GetLocalHostName();
         thread_pool_ = new ThreadPool(FLAGS_sdk_thread_num);
+        heartbeat_thread_ = new ThreadPool(1);
     }
     ~FSImpl() {
         delete nameserver_;
@@ -208,6 +213,10 @@ public:
         }
         rpc_client_ = new RpcClient();
         bool ret = rpc_client_->GetStub(nameserver_address_, &nameserver_);
+        if (ret) {
+            //first regist to nameserver
+            RegistToNameServer();
+        }
         return ret;
     }
     bool CreateDirectory(const char* path) {
@@ -532,12 +541,58 @@ public:
         result->append(tp.ToString());
         return true;
     }
+    void Heartbeat() {
+        ClientHeartbeatRequest request;
+        ClientHeartbeatResponse response;
+        request.set_session_id(GetSessionId());
+        if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ClientHeartbeat,
+                    &request, &response, 15, 1))  {
+            LOG(WARNING, "Heartbeat fail");
+        } else {
+            if (response.status() == kSessionExpired) {
+                LOG(WARNING, "Session %s expired, re-regist", request.session_id().c_str());
+                RegistToNameServer();
+                return;
+            }
+        }
+        heartbeat_thread_->DelayTask(1000, boost::bind(&FSImpl::Heartbeat, this));
+    }
+    std::string GetSessionId() {
+        MutexLock lock(&mu_);
+        return session_id_;
+    }
+private:
+    void GenerateSessionId() {
+        MutexLock lock(&mu_);
+        boost::uuids::uuid uuid = boost::uuids::random_generator()();
+        std::stringstream sm;
+        sm << uuid;
+        session_id_ = local_host_name_ + "#" + sm.str();
+    }
+    void RegistToNameServer() {
+        GenerateSessionId();
+        ClientRegistRequest request;
+        ClientRegistResponse response;
+        request.set_session_id(GetSessionId());
+        if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::RegistNewClient,
+                &request, &response, 15, 3) || response.status() != kOK) {
+            LOG(WARNING, "Regist new session fail");
+            thread_pool_->DelayTask(5 * 1000, boost::bind(&FSImpl::RegistToNameServer, this));
+        } else {
+            LOG(INFO, "Regist success, session id: %s", session_id_.c_str());
+            //block untill first heartbeat
+            Heartbeat();
+        }
+    }
 private:
     RpcClient* rpc_client_;
     NameServer_Stub* nameserver_;
     std::string nameserver_address_;
     std::string local_host_name_;
+    std::string session_id_;
+    Mutex mu_;
     ThreadPool* thread_pool_;
+    ThreadPool* heartbeat_thread_;
 };
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
@@ -738,7 +793,9 @@ int32_t BfsFileImpl::AddBlock() {
     request.set_sequence_id(0);
     request.set_file_name(name_);
     const std::string& local_host_name = fs_->local_host_name_;
+    std::string session_id = fs_->GetSessionId();
     request.set_client_address(local_host_name);
+    request.set_session_id(session_id);
     bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
         &request, &response, 15, 3);
     if (!ret || !response.has_block()) {
@@ -1105,7 +1162,8 @@ bool BfsFileImpl::Close() {
     if (bg_error_) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = false;
-    } else if (need_report_finish) {
+    }
+    if (need_report_finish) {
         NameServer_Stub* nameserver = fs_->nameserver_;
         FinishBlockRequest request;
         FinishBlockResponse response;
@@ -1114,6 +1172,8 @@ bool BfsFileImpl::Close() {
         request.set_block_id(block_id);
         request.set_block_version(last_seq_);
         request.set_block_size(write_offset_);
+        request.set_close_with_error(bg_error_);
+        request.set_session_id(fs_->session_id_);
         ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
         if (!(ret && response.status() == kOK))  {

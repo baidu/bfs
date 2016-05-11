@@ -25,6 +25,7 @@ namespace bfs {
 class NameSpace;
 class ChunkServerManager;
 class BlockMapping;
+class ClientManager;
 
 class NameServerImpl : public NameServer {
 public:
@@ -94,6 +95,14 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void ClientHeartbeat(::google::protobuf::RpcController* controller,
+                       const ClientHeartbeatRequest* request,
+                       ClientHeartbeatResponse* response,
+                       ::google::protobuf::Closure* done);
+    void RegistNewClient(::google::protobuf::RpcController* controller,
+                       const ClientRegistRequest* request,
+                       ClientRegistResponse* response,
+                       ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
@@ -110,6 +119,8 @@ private:
     ChunkServerManager* chunkserver_manager_;
     /// Block map
     BlockMapping* block_mapping_;
+    /// client manager
+    ClientManager*  client_manager_;
     /// Safemode
     volatile int safe_mode_;
     int64_t start_time_;
