@@ -19,9 +19,10 @@ DECLARE_string(master_slave_role);
 namespace baidu {
 namespace bfs {
 
-MasterSlaveImpl::MasterSlaveImpl() : cond_(&mu_), master_only_(false), scan_log_(0),
+MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), cond_(&mu_), master_only_(false), scan_log_(0),
                                      current_offset_(0), sync_offset_(0) {
     rpc_client_ = new RpcClient();
+    worker_.Start(boost::bind(&MasterSlaveImpl::BackgroundLog, this));
 }
 
 void MasterSlaveImpl::Init() {
@@ -51,6 +52,10 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
         return false;
     }
     return true;
+}
+
+void MasterSlaveImpl::Log(const std::string& entry, boost::function<void ()> callback) {
+    return;
 }
 
 void MasterSlaveImpl::RegisterCallback(boost::function<void (const std::string& log)> callback) {
@@ -102,6 +107,10 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     log_callback_(request->log_data().substr(4));
     response->set_success(true);
     done->Run();
+}
+
+void MasterSlaveImpl::BackgroundLog() {
+
 }
 
 } // namespace bfs
