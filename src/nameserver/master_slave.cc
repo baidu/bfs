@@ -8,31 +8,54 @@
 #include <errno.h>
 #include <common/string_util.h>
 #include <common/logging.h>
+#include <gflags/gflags.h>
 
 #include "nameserver/sync.h"
+#include "rpc/rpc_client.h"
+
+DECLARE_string(slave_node);
+DECLARE_string(master_slave_role);
 
 namespace baidu {
 namespace bfs {
 
-MasterSlave::MasterSlave() : scan_log_(0) {}
+MasterSlaveImpl::MasterSlaveImpl() : scan_log_(0) {
+    rpc_client_ = new RpcClient();
+}
 
-void MasterSlave::Init() {
+void MasterSlaveImpl::Init() {
     log_ = open("sync.log", O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     if (log_ < 0) {
         LOG(FATAL, "open sync log failed reason:%s", strerror(errno));
     }
+    rpc_client_->GetStub(FLAGS_slave_node, &slave_stub_);
 }
 
-bool MasterSlave::GetLeader(std::string* leader_addr) {
-    return true;
+bool MasterSlaveImpl::IsLeader(std::string* leader_addr) {
+    return FLAGS_master_slave_role == "master";
 }
 
-bool MasterSlave::Log(const std::string& entry) {
+bool MasterSlaveImpl::Log(const std::string& entry) {
+    if (!IsLeader()) {
+        LOG(FATAL, "slave does not need to log");
+        return true;
+    }
+    master_slave::AppendLogRequest request;
+    master_slave::AppendLogResponse response;
+    request.set_log_data(entry);
+    if (!rpc_client_->SendRequest(slave_stub_, &master_slave::MasterSlave_Stub::AppendLog, &request, &response, 15, 1)) {
+        LOG(FATAL, "LogRemote fail\n");
+    }
+
     int w = write(log_, entry.c_str(), entry.length());
     return w >= 0;
 }
 
-int MasterSlave::ScanLog() {
+void MasterSlaveImpl::RegisterCallback(boost::function<void (const std::string& log)> callback) {
+    log_callback_ = callback;
+}
+
+int MasterSlaveImpl::ScanLog() {
     scan_log_ = open("sync.log", O_RDONLY);
     if (scan_log_ < 0 && errno == ENOENT) {
         LOG(INFO, "can't find sync log %d", scan_log_);
@@ -42,7 +65,7 @@ int MasterSlave::ScanLog() {
     return scan_log_;
 }
 
-int MasterSlave::Next(char* entry) {
+int MasterSlaveImpl::Next(char* entry) {
     if (scan_log_ <= 0) {
         return -1;
     }
@@ -68,6 +91,15 @@ int MasterSlave::Next(char* entry) {
     }
     assert(ret == len);
     return len;
+}
+
+void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
+                                const master_slave::AppendLogRequest* request,
+                                master_slave::AppendLogResponse* response,
+                                ::google::protobuf::Closure* done) {
+    log_callback_(request->log_data().substr(4));
+    response->set_success(true);
+    done->Run();
 }
 
 } // namespace bfs

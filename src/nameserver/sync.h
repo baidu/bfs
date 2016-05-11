@@ -7,36 +7,49 @@
 #define  BFS_NAMESERVER_SYNC_SYNC_H_
 
 #include <string>
-#include <map>
+#include <boost/function.hpp>
 
 #include "proto/status_code.pb.h"
+#include "proto/master_slave.pb.h"
 
 namespace baidu {
 namespace bfs {
+
+class RpcClient;
 
 class Sync {
 public:
     virtual ~Sync() {}
     virtual void Init() = 0;
-    virtual bool GetLeader(std::string* leader_addr) = 0;
+    virtual bool IsLeader(std::string* leader_addr = NULL) = 0;
     virtual bool Log(const std::string& entry) = 0;
+    virtual void RegisterCallback(boost::function<void (const std::string& log)> callback) = 0;
     virtual int ScanLog() = 0;
     virtual int Next(char* entry) = 0;
 };
 
-class MasterSlave : public Sync {
+class MasterSlaveImpl : public Sync, public master_slave::MasterSlave {
 public:
-    MasterSlave();
-    virtual ~MasterSlave() {};
+    MasterSlaveImpl();
+    virtual ~MasterSlaveImpl() {};
     virtual void Init();
-    virtual bool GetLeader(std::string* leader_addr);
+    virtual bool IsLeader(std::string* leader_addr = NULL);
     virtual bool Log(const std::string& entry);
+    virtual void RegisterCallback(boost::function<void (const std::string& log)> callback);
     virtual int ScanLog();
     virtual int Next(char* entry);
+
+    // rpc
+    void AppendLog(::google::protobuf::RpcController* controller,
+                   const master_slave::AppendLogRequest* request,
+                   master_slave::AppendLogResponse* response,
+                   ::google::protobuf::Closure* done);
 private:
+    RpcClient* rpc_client_;
+    boost::function<void (const std::string& log)> log_callback_;
     int log_;
     int scan_log_;
-    std::multimap<int64_t, std::string> entries_;
+    master_slave::MasterSlave_Stub* slave_stub_;
 };
 
 } // namespace bfs

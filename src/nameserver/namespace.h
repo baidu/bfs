@@ -24,7 +24,7 @@ class Sync;
 
 class NameSpace {
 public:
-    NameSpace();
+    NameSpace(Sync* sync);
     ~NameSpace();
     /// List a directory
     StatusCode ListDirectory(const std::string& path,
@@ -53,6 +53,8 @@ public:
     bool RebuildBlockMap(boost::function<void (const FileInfo&)> callback);
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
+    /// ha - tail log from leader/master
+    void TailLog(const std::string& log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
@@ -67,10 +69,10 @@ private:
                                 std::vector<FileInfo>* files_removed);
     uint32_t EncodeLog(int32_t type, const std::string& key,
                    const std::string& value, std::string* entry);
-    void DecodeLog(char* const input, int32_t* type,
+    void DecodeLog(const char* input, int32_t* type,
                    uint32_t* key_len, char* key, uint32_t* value_len, char* value);
     void LogRemote(const std::string& key, const std::string& value, int32_t type);
-    bool RecoverLog();
+    //bool RecoverLog();
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
