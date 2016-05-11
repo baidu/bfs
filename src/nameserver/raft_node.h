@@ -48,6 +48,11 @@ public:
     bool AppendLog(const std::string& log, int timeout_ms = 10000);
     void RegisterCallback(boost::function<void (const std::string& log)> callback);
 private:
+    bool StoreContext(const std::string& context, int64_t value);
+    bool StoreContext(const std::string& context, const std::string& value);
+    bool GetContext(const std::string& context, int64_t* value);
+    bool GetContext(const std::string& context, std::string* value);
+
     std::string Index2Logkey(int64_t index);
     void LoadStorage();
     bool CancelElection();
