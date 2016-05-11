@@ -12,6 +12,7 @@
 
 #include "nameserver/nameserver_impl.h"
 #include "nameserver/raft_node.h"
+#include "nameserver/sync.h"
 #include "version.h"
 
 DECLARE_string(flagfile);
@@ -21,6 +22,7 @@ DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
 DECLARE_string(bfs_log);
 DECLARE_int32(bfs_log_size);
+DECLARE_string(ha_strategy);
 
 int main(int argc, char* argv[])
 {
@@ -31,7 +33,9 @@ int main(int argc, char* argv[])
             return 0;
         }
     }
-    FLAGS_flagfile = "./bfs.flag";
+    if (FLAGS_flagfile == "") {
+        FLAGS_flagfile = "./bfs.flag";
+    }
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     if (FLAGS_bfs_log != "") {
         baidu::common::SetLogFile(FLAGS_bfs_log.c_str());
@@ -42,20 +46,35 @@ int main(int argc, char* argv[])
 
     LOG(baidu::common::INFO, "NameServer start ...");
 
-    // Service
-    baidu::bfs::NameServerImpl* nameserver_service = new baidu::bfs::NameServerImpl();
-    baidu::bfs::RaftNodeImpl* raft_service = new baidu::bfs::RaftNodeImpl();
-
     // rpc_server
     sofa::pbrpc::RpcServerOptions options;
 
     sofa::pbrpc::RpcServer rpc_server(options);
 
+    // Server
+    baidu::bfs::Sync* sync;
+    google::protobuf::Service* sync_service;
+    if (FLAGS_ha_strategy == "master_slave") {
+        baidu::bfs::MasterSlaveImpl* base = new baidu::bfs::MasterSlaveImpl();
+        sync = base;
+        sync_service = base;
+        LOG(baidu::common::INFO, "master_slave");
+        const google::protobuf::ServiceDescriptor* bug = sync_service->GetDescriptor();
+        LOG(baidu::common::INFO, "bugname=%s", bug->name().c_str());
+    } else if (FLAGS_ha_strategy == "raft") {
+        // TODO: not working yet...
+        //sync = new baidu::bfs::RaftNodeImpl();
+    } else {
+        LOG(baidu::common::FATAL, "NameServer start with unknow ha strategy");
+    }
+
+    baidu::bfs::NameServerImpl* nameserver_service = new baidu::bfs::NameServerImpl(sync);
+
     // Register
     if (!rpc_server.RegisterService(nameserver_service)) {
         return EXIT_FAILURE;
     }
-    if (!rpc_server.RegisterService(raft_service)) {
+    if (!rpc_server.RegisterService(sync_service)) {
         return EXIT_FAILURE;
     }
 

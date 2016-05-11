@@ -12,11 +12,11 @@
 #include <leveldb/cache.h>
 #include <leveldb/write_batch.h>
 #include <common/logging.h>
-
 #include <common/timer.h>
 #include <common/util.h>
 #include <common/atomic.h>
 #include <common/string_util.h>
+#include <boost/bind.hpp>
 
 #include "nameserver/sync.h"
 
@@ -29,44 +29,46 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
-NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
-    sync_ = new MasterSlave();
+NameSpace::NameSpace(Sync* sync): version_(0), last_entry_id_(1), sync_(sync) {
+    leveldb::Status s;
+    LOG(INFO, "IsLeader %d", sync_->IsLeader());
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
-    leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
+    s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
         db_ = NULL;
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
         return;
     }
-    bool ret = RecoverLog();
-    assert(ret);
+    sync_->RegisterCallback(boost::bind(&NameSpace::TailLog, this, _1));
     sync_->Init();
-    std::string version_key(8, 0);
-    version_key.append("version");
-    std::string version_str;
-    s = db_->Get(leveldb::ReadOptions(), version_key, &version_str);
-    if (s.ok()) {
-        if (version_str.size() != sizeof(int64_t)) {
-            LOG(FATAL, "Bad namespace version len= %lu.", version_str.size());
-        }
-        version_ = *(reinterpret_cast<int64_t*>(&version_str[0]));
-        LOG(INFO, "Load namespace version: %ld ", version_);
-    } else {
-        version_ = common::timer::get_micros();
-        version_str.resize(8);
-        *(reinterpret_cast<int64_t*>(&version_str[0])) = version_;
+    if (sync_->IsLeader()) {
+        std::string version_key(8, 0);
+        version_key.append("version");
+        std::string version_str;
+        s = db_->Get(leveldb::ReadOptions(), version_key, &version_str);
+        if (s.ok()) {
+            if (version_str.size() != sizeof(int64_t)) {
+                LOG(FATAL, "Bad namespace version len= %lu.", version_str.size());
+            }
+            version_ = *(reinterpret_cast<int64_t*>(&version_str[0]));
+            LOG(INFO, "Load namespace version: %ld ", version_);
+        } else {
+            version_ = common::timer::get_micros();
+            version_str.resize(8);
+            *(reinterpret_cast<int64_t*>(&version_str[0])) = version_;
 
-        MutexLock lock(&mu_);
-        leveldb::Status s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
-        if (!s.ok()) {
-            LOG(FATAL, "Write NameSpace version failed %s", s.ToString().c_str());
+            MutexLock lock(&mu_);
+            leveldb::Status s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
+            if (!s.ok()) {
+                LOG(FATAL, "Write NameSpace version failed %s", s.ToString().c_str());
+            }
+            LogRemote(version_key, version_str, kSyncWrite);
+            LOG(INFO, "Create new namespace version: %ld ", version_);
         }
-        LogRemote(version_key, version_str, kSyncWrite);
-        LOG(INFO, "Create new namespace version: %ld ", version_);
+        SetupRoot();
     }
-    SetupRoot();
 }
 
 NameSpace::~NameSpace() {
@@ -501,6 +503,10 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
 }
 
 bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
+    if (!sync_->IsLeader()) {
+        LOG(INFO, "slave skip RebuildBlockMap");
+        return true;
+    }
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;
@@ -541,8 +547,27 @@ std::string NameSpace::NormalizePath(const std::string& path) {
     return ret;
 }
 
-uint32_t NameSpace::EncodeLog(int32_t type, const std::string& key,
-                            const std::string& value, std::string* entry) {
+void NameSpace::TailLog(const std::string& log) {
+    int32_t type;
+    uint32_t key_len, value_len;
+    LOG(INFO, "logen=%d", log.length());
+    char key[256], value[256];
+    DecodeLog(log.c_str(), &type, &key_len, key, &value_len, value);
+    LOG(INFO, "kl=%d vl=%d", key_len, value_len);
+    leveldb::Status s;
+    if (type == kSyncWrite) {
+        s = db_->Put(leveldb::WriteOptions(), std::string(key, key_len),
+                     std::string(value, value_len));
+    } else if (type == kSyncDelete) {
+        s = db_->Delete(leveldb::WriteOptions(), std::string(key, key_len));
+    }
+    if (!s.ok()) {
+        LOG(FATAL, "TailLog failed");
+    }
+}
+
+uint32_t NameSpace::EncodeLog(int32_t type, const std::string& key, const std::string& value,
+                              std::string* entry) {
     uint32_t encode_len = 4 + 4 + 4 + 4 + key.length() + 4 + value.length();
     char* buf = new char[encode_len];
     encode_len -= 4;
@@ -566,9 +591,9 @@ uint32_t NameSpace::EncodeLog(int32_t type, const std::string& key,
     return encode_len + 4;
 }
 
-void NameSpace::DecodeLog(char* const input, int32_t* type,
-                            uint32_t* key_len, char* key, uint32_t* value_len, char* value) {
-    char* p = input;
+void NameSpace::DecodeLog(const char* input, int32_t* type, uint32_t* key_len, char* key,
+                          uint32_t* value_len, char* value) {
+    const char* p = input;
     memcpy(type, p, sizeof(*type));
     p += sizeof(*type);
     memcpy(key_len, p, sizeof(*key_len));
@@ -589,6 +614,7 @@ void NameSpace::LogRemote(const std::string& key, const std::string& value, int3
     }
 }
 
+/*
 bool NameSpace::RecoverLog() {
     int ret = sync_->ScanLog();
     if (ret < 0) {
@@ -616,6 +642,7 @@ bool NameSpace::RecoverLog() {
     }
     return true;
 }
+*/
 
 } // namespace bfs
 } // namespace baidu

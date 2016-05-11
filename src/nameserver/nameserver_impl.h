@@ -24,10 +24,11 @@ namespace bfs {
 class NameSpace;
 class ChunkServerManager;
 class BlockMapping;
+class Sync;
 
 class NameServerImpl : public NameServer {
 public:
-    NameServerImpl();
+    NameServerImpl(Sync* sync);
     virtual ~NameServerImpl();
     void CreateFile(::google::protobuf::RpcController* controller,
                        const CreateFileRequest* request,
@@ -116,6 +117,8 @@ private:
     /// Namespace
     NameSpace* namespace_;
     int64_t namespace_version_;
+    /// ha
+    Sync* sync_;
 };
 
 } // namespace bfs

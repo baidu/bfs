@@ -21,7 +21,7 @@ DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 4, "Nameserver log level");
 DEFINE_string(nameserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in ms");
-DEFINE_int32(recover_speed, 100, "max num of block to recover for one chunkserver");
+DEFINE_int32(recover_speed, 100, "Max num of block to recover for one chunkserver");
 DEFINE_int32(recover_dest_limit, 5, "Number of recover dest");
 DEFINE_int32(recover_timeout, 180, "Recover timeout for one chunkserver");
 DEFINE_bool(clean_redundancy, false, "Clean redundant replica");
@@ -29,7 +29,14 @@ DEFINE_int32(nameserver_report_thread_num, 20, "Threads to handle block report")
 DEFINE_int32(nameserver_work_thread_num, 20, "Work threads num");
 DEFINE_bool(select_chunkserver_by_zone, false, "Select chunkserver by zone");
 DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locality");
-// raft
+
+// ha
+DEFINE_string(ha_strategy,"master_slave", "[master_slave, raft]");
+// ha - master_slave
+DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
+DEFINE_string(slave_node, "127.0.0.1:8829", "Slave node address");
+DEFINE_string(master_slave_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
+// ha - raft
 DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
 DEFINE_string(raft_nodes,"127.0.0.1:8828", "Raft nodes list");
 DEFINE_int32(raft_node_index, 0, "Raft nodes index");

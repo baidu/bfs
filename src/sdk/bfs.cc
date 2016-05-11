@@ -28,8 +28,9 @@
 
 #include "bfs.h"
 
-DECLARE_string(nameserver);
+//DECLARE_string(nameserver);
 DECLARE_string(nameserver_port);
+DECLARE_string(master_slave_nodes);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
@@ -190,7 +191,7 @@ private:
 class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
-    FSImpl() : rpc_client_(NULL), nameserver_(NULL) {
+    FSImpl() : rpc_client_(NULL), nameserver_(NULL), leader_nameserver_idx_(0) {
         local_host_name_ = common::util::GetLocalHostName();
         thread_pool_ = new ThreadPool(FLAGS_sdk_thread_num);
     }
@@ -202,13 +203,19 @@ public:
     }
     bool ConnectNameServer(const char* nameserver) {
         if (nameserver != NULL) {
-            nameserver_address_ = nameserver;
+            common::SplitString(nameserver, ",", &nameserver_addresses_);
         } else {
-            nameserver_address_ = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
+            common::SplitString(FLAGS_master_slave_nodes, ",", &nameserver_addresses_);
         }
-        rpc_client_ = new RpcClient();
-        bool ret = rpc_client_->GetStub(nameserver_address_, &nameserver_);
-        return ret;
+        for (uint32_t i = 0; i < nameserver_addresses_.size(); ++i) {
+            rpc_client_ = new RpcClient();
+            bool ret = rpc_client_->GetStub(nameserver_addresses_[i], &nameserver_);
+            if (ret) {
+                leader_nameserver_idx_ = i;
+                return true;
+            }
+        }
+        return false;
     }
     bool CreateDirectory(const char* path) {
         CreateFileRequest request;
@@ -235,9 +242,13 @@ public:
         bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ListDirectory,
             &request, &response, 15, 3);
         if (!ret || response.status() != kOK) {
-            LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
-                path, ret, StatusCode_Name(response.status()).c_str());
-            return false;
+            if (response.status() == kIsFollower) {
+                GetNextNameserver();
+            } else {
+                LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
+                    path, ret, StatusCode_Name(response.status()).c_str());
+                    return false;
+            }
         }
         if (response.files_size() != 0) {
             *num = response.files_size();
@@ -533,9 +544,27 @@ public:
         return true;
     }
 private:
+    // TODO con-currency
+    bool GetNextNameserver() {
+        uint32_t nameserver_size = nameserver_addresses_.size();
+        for (uint32_t i = leader_nameserver_idx_ + 1; i < nameserver_size - 1; ++i) {
+            rpc_client_ = new RpcClient();
+            bool ret = rpc_client_->GetStub(nameserver_addresses_[i % nameserver_size], &nameserver_);
+            if (ret) {
+                leader_nameserver_idx_ = i % nameserver_size;
+                LOG(INFO, "GetNextNameserver %s",
+                    nameserver_addresses_[leader_nameserver_idx_].c_str());
+                return true;
+            }
+        }
+        return false;
+    }
+private:
     RpcClient* rpc_client_;
     NameServer_Stub* nameserver_;
-    std::string nameserver_address_;
+    std::vector<std::string> nameserver_addresses_;
+    int32_t leader_nameserver_idx_;
+    //std::string nameserver_address_;
     std::string local_host_name_;
     ThreadPool* thread_pool_;
 };
