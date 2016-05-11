@@ -8,6 +8,7 @@
 
 #include <string>
 #include <boost/function.hpp>
+#include <common/mutex.h>
 
 #include "proto/status_code.pb.h"
 #include "proto/master_slave.pb.h"
@@ -22,7 +23,8 @@ public:
     virtual ~Sync() {}
     virtual void Init() = 0;
     virtual bool IsLeader(std::string* leader_addr = NULL) = 0;
-    virtual bool Log(const std::string& entry) = 0;
+    virtual bool Log(const std::string& entry, int timeout_ms = 10000) = 0;
+    virtual void Log(const std::string& entry, boost::function<void ()> callback) = 0;
     virtual void RegisterCallback(boost::function<void (const std::string& log)> callback) = 0;
     virtual int ScanLog() = 0;
     virtual int Next(char* entry) = 0;
@@ -34,7 +36,8 @@ public:
     virtual ~MasterSlaveImpl() {};
     virtual void Init();
     virtual bool IsLeader(std::string* leader_addr = NULL);
-    virtual bool Log(const std::string& entry);
+    virtual bool Log(const std::string& entry, int timeout_ms = 10000);
+    virtual void Log(const std::string& entry, boost::function<void ()> callback);
     virtual void RegisterCallback(boost::function<void (const std::string& log)> callback);
     virtual int ScanLog();
     virtual int Next(char* entry);
@@ -44,11 +47,20 @@ public:
                    const master_slave::AppendLogRequest* request,
                    master_slave::AppendLogResponse* response,
                    ::google::protobuf::Closure* done);
+
+private:
+    void BackgroundLog();
+
 private:
     RpcClient* rpc_client_;
     boost::function<void (const std::string& log)> log_callback_;
+    Mutex mu_;
+    CondVar cond_;
+    bool master_only_;
     int log_;
     int scan_log_;
+    int current_offset_;
+    int sync_offset_;
     master_slave::MasterSlave_Stub* slave_stub_;
 };
 

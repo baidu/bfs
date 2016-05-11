@@ -19,7 +19,8 @@ DECLARE_string(master_slave_role);
 namespace baidu {
 namespace bfs {
 
-MasterSlaveImpl::MasterSlaveImpl() : scan_log_(0) {
+MasterSlaveImpl::MasterSlaveImpl() : cond_(&mu_), master_only_(false), scan_log_(0),
+                                     current_offset_(0), sync_offset_(0) {
     rpc_client_ = new RpcClient();
 }
 
@@ -35,20 +36,21 @@ bool MasterSlaveImpl::IsLeader(std::string* leader_addr) {
     return FLAGS_master_slave_role == "master";
 }
 
-bool MasterSlaveImpl::Log(const std::string& entry) {
+bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
     if (!IsLeader()) {
         LOG(FATAL, "slave does not need to log");
-        return true;
     }
+    int w = write(log_, entry.c_str(), entry.length());
+    assert(w >= 0);
+    current_offset_ += w;
+
     master_slave::AppendLogRequest request;
     master_slave::AppendLogResponse response;
     request.set_log_data(entry);
-    if (!rpc_client_->SendRequest(slave_stub_, &master_slave::MasterSlave_Stub::AppendLog, &request, &response, 15, 1)) {
-        LOG(FATAL, "LogRemote fail\n");
+    if (!rpc_client_->SendRequest(slave_stub_, &master_slave::MasterSlave_Stub::AppendLog, &request, &response, timeout_ms / 1000, 1)) {
+        return false;
     }
-
-    int w = write(log_, entry.c_str(), entry.length());
-    return w >= 0;
+    return true;
 }
 
 void MasterSlaveImpl::RegisterCallback(boost::function<void (const std::string& log)> callback) {

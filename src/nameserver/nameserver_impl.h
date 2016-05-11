@@ -117,6 +117,7 @@ private:
     /// Namespace
     NameSpace* namespace_;
     int64_t namespace_version_;
+    /// ha
     Sync* sync_;
 };
 
