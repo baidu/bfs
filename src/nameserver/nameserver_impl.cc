@@ -20,7 +20,7 @@
 
 #include "nameserver/block_mapping.h"
 
-#include "nameserver/raft_node.h"
+#include "nameserver/sync.h"
 #include "nameserver/chunkserver_manager.h"
 #include "nameserver/namespace.h"
 
@@ -44,8 +44,8 @@ common::Counter g_create_file;
 common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
-NameServerImpl::NameServerImpl() : safe_mode_(FLAGS_nameserver_safemode_time) {
-    namespace_ = new NameSpace();
+NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time), sync_(sync) {
+    namespace_ = new NameSpace(sync);
     block_mapping_ = new BlockMapping();
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
@@ -93,6 +93,10 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
                          const HeartBeatRequest* request,
                          HeartBeatResponse* response,
                          ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     g_heart_beat.Inc();
     // printf("Receive HeartBeat() from %s\n", request->data_server_addr().c_str());
     int64_t version = request->namespace_version();
@@ -109,6 +113,10 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
                    const ::baidu::bfs::RegisterRequest* request,
                    ::baidu::bfs::RegisterResponse* response,
                    ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     sofa::pbrpc::RpcController* sofa_cntl =
         reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     const std::string& address = request->chunkserver_addr();
@@ -133,6 +141,10 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
                        const BlockReceivedRequest* request,
                        BlockReceivedResponse* response,
                        ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         boost::function<void ()> task =
@@ -181,6 +193,10 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    const BlockReportRequest* request,
                    BlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     g_block_report.Inc();
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
@@ -251,6 +267,10 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
                    const PushBlockReportRequest* request,
                    PushBlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     response->set_sequence_id(request->sequence_id());
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
@@ -264,6 +284,10 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                         const CreateFileRequest* request,
                         CreateFileResponse* response,
                         ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     g_create_file.Inc();
     response->set_sequence_id(request->sequence_id());
     std::string path = NameSpace::NormalizePath(request->file_name());
@@ -282,6 +306,10 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                          const AddBlockRequest* request,
                          AddBlockResponse* response,
                          ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     response->set_sequence_id(request->sequence_id());
     if (safe_mode_) {
         LOG(INFO, "AddBlock for %s failed, safe mode.", request->file_name().c_str());
@@ -347,6 +375,10 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          const FinishBlockRequest* request,
                          FinishBlockResponse* response,
                          ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     int64_t block_id = request->block_id();
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
@@ -380,6 +412,10 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                       const FileLocationRequest* request,
                       FileLocationResponse* response,
                       ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     response->set_sequence_id(request->sequence_id());
     std::string path = NameSpace::NormalizePath(request->file_name());
     LOG(INFO, "NameServerImpl::GetFileLocation: %s\n", request->file_name().c_str());
@@ -428,6 +464,10 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
                         const ListDirectoryRequest* request,
                         ListDirectoryResponse* response,
                         ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     g_block_report.Inc();
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
@@ -450,6 +490,10 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
                           const StatRequest* request,
                           StatResponse* response,
                           ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     response->set_sequence_id(request->sequence_id());
     std::string path = NameSpace::NormalizePath(request->path());
     LOG(INFO, "Stat: %s\n", path.c_str());
@@ -484,6 +528,10 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
                             const RenameRequest* request,
                             RenameResponse* response,
                             ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     response->set_sequence_id(request->sequence_id());
     std::string oldpath = NameSpace::NormalizePath(request->oldpath());
     std::string newpath = NameSpace::NormalizePath(request->newpath());
@@ -502,6 +550,10 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                             const UnlinkRequest* request,
                             UnlinkResponse* response,
                             ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     g_unlink.Inc();
     response->set_sequence_id(request->sequence_id());
     std::string path = NameSpace::NormalizePath(request->path());
@@ -520,6 +572,10 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
                                      const DeleteDirectoryRequest* request,
                                      DeleteDirectoryResponse* response,
                                      ::google::protobuf::Closure* done)  {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     response->set_sequence_id(request->sequence_id());
     std::string path = NameSpace::NormalizePath(request->path());
     bool recursive = request->recursive();
@@ -540,6 +596,10 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
                                       const ChangeReplicaNumRequest* request,
                                       ChangeReplicaNumResponse* response,
                                       ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
     int32_t replica_num = request->replica_num();
@@ -580,6 +640,10 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
                              const SysStatRequest* request,
                              SysStatResponse* response,
                              ::google::protobuf::Closure* done) {
+    if (!sync_->IsLeader()) {
+        response->set_status(kIsFollower);
+        done->Run();
+    }
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "SysStat from %s", ctl->RemoteAddress().c_str());
     chunkserver_manager_->ListChunkServers(response->mutable_chunkservers());

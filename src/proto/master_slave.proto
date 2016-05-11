@@ -1,0 +1,15 @@
+package baidu.bfs.master_slave;
+
+option cc_generic_services = true;
+
+message AppendLogRequest {
+    optional bytes log_data = 1;
+}
+
+message AppendLogResponse {
+    optional bool success = 1;
+}
+
+service MasterSlave {
+    rpc AppendLog(AppendLogRequest) returns(AppendLogResponse);
+}
