@@ -503,10 +503,6 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
 }
 
 bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
-    if (!sync_->IsLeader()) {
-        LOG(INFO, "slave skip RebuildBlockMap");
-        return true;
-    }
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;

@@ -30,7 +30,7 @@
 
 //DECLARE_string(nameserver);
 DECLARE_string(nameserver_port);
-DECLARE_string(master_slave_nodes);
+DECLARE_string(nameserver_nodes);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
@@ -205,7 +205,7 @@ public:
         if (nameserver != NULL) {
             common::SplitString(nameserver, ",", &nameserver_addresses_);
         } else {
-            common::SplitString(FLAGS_master_slave_nodes, ",", &nameserver_addresses_);
+            common::SplitString(FLAGS_nameserver_nodes, ",", &nameserver_addresses_);
         }
         for (uint32_t i = 0; i < nameserver_addresses_.size(); ++i) {
             rpc_client_ = new RpcClient();
@@ -239,15 +239,19 @@ public:
         ListDirectoryResponse response;
         request.set_path(path);
         request.set_sequence_id(0);
-        bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ListDirectory,
-            &request, &response, 15, 3);
-        if (!ret || response.status() != kOK) {
-            if (response.status() == kIsFollower) {
+        bool ret = false;
+        while (true) {
+            ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ListDirectory,
+                &request, &response, 15, 3);
+            if (ret && response.status() == kOK) {
+                break;
+            }
+            if (!ret || response.status() == kIsFollower) {
                 GetNextNameserver();
             } else {
                 LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
                     path, ret, StatusCode_Name(response.status()).c_str());
-                    return false;
+                return false;
             }
         }
         if (response.files_size() != 0) {
@@ -547,11 +551,11 @@ private:
     // TODO con-currency
     bool GetNextNameserver() {
         uint32_t nameserver_size = nameserver_addresses_.size();
-        for (uint32_t i = leader_nameserver_idx_ + 1; i < nameserver_size - 1; ++i) {
-            rpc_client_ = new RpcClient();
-            bool ret = rpc_client_->GetStub(nameserver_addresses_[i % nameserver_size], &nameserver_);
+        for (uint32_t i = 1; i < nameserver_size; ++i) {
+            leader_nameserver_idx_ =  (leader_nameserver_idx_ + 1) % nameserver_size;
+            bool ret = rpc_client_->GetStub(nameserver_addresses_[leader_nameserver_idx_],
+                                            &nameserver_);
             if (ret) {
-                leader_nameserver_idx_ = i % nameserver_size;
                 LOG(INFO, "GetNextNameserver %s",
                     nameserver_addresses_[leader_nameserver_idx_].c_str());
                 return true;

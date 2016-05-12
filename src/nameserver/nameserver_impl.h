@@ -97,6 +97,7 @@ public:
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
+    void CheckLeader();
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
     void Register();
@@ -118,7 +119,9 @@ private:
     NameSpace* namespace_;
     int64_t namespace_version_;
     /// ha
+    Mutex mu_;
     Sync* sync_;
+    bool is_leader_;
 };
 
 } // namespace bfs

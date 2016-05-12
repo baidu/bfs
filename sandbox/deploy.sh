@@ -14,6 +14,8 @@ echo '--bfs_bug_tolerant=false' >> bfs.flag
 echo '--raft_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829' >> bfs.flag
 echo '--select_chunkserver_local_factor=0' >> bfs.flag
 echo '--bfs_web_kick_enable=true' >> bfs.flag
+echo '--ha_strategy=raft' >> bfs.flag
+echo '--nameserver_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829' >> bfs.flag
 
 for i in `seq 0 2`;
 do
