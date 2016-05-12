@@ -1173,7 +1173,7 @@ bool BfsFileImpl::Close() {
         request.set_block_version(last_seq_);
         request.set_block_size(write_offset_);
         request.set_close_with_error(bg_error_);
-        request.set_session_id(fs_->session_id_);
+        request.set_session_id(fs_->GetSessionId());
         ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
                 &request, &response, 15, 3);
         if (!(ret && response.status() == kOK))  {

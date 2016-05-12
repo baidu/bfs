@@ -905,12 +905,15 @@ void BlockMapping::MarkIncomplete(int64_t block_id) {
     if (!GetBlockPtr(block_id, &block)) {
         return;
     }
-    for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();
-            it != block->incomplete_replica.end(); ++it) {
-        incomplete_[*it].insert(block_id);
-        LOG(INFO, "Mark #%ld in C%d incomplete", block_id, *it);
+    // maybe cs is down and block have been marked with incomplete
+    if (!block->incomplete_replica.empty()) {
+        for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();
+                it != block->incomplete_replica.end(); ++it) {
+            incomplete_[*it].insert(block_id);
+            LOG(INFO, "Mark #%ld in C%d incomplete", block_id, *it);
+        }
+        SetState(block, kIncomplete);
     }
-    SetState(block, kIncomplete);
 }
 
 } // namespace bfs
