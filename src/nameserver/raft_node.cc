@@ -15,29 +15,26 @@
 
 #include "rpc/rpc_client.h"
 
-DECLARE_string(raftdb_path);
-DECLARE_string(raft_nodes);
-DECLARE_int32(raft_node_index);
-
 namespace baidu {
 namespace bfs {
 
 const std::string kLogEndMark = "Raft:";
 
-RaftNodeImpl::RaftNodeImpl()
+RaftNodeImpl::RaftNodeImpl(const std::string& raft_nodes,
+                           int node_index,
+                           const std::string& db_path)
     : current_term_(0), log_index_(0), log_term_(0), commit_index_(0),
       last_applied_(0), applying_(false), node_stop_(false), election_taskid_(-1),
       node_state_(kFollower) {
-    common::SplitString(FLAGS_raft_nodes, ",", &nodes_);
-    uint32_t index = FLAGS_raft_node_index;
-    if (nodes_.size() < 1U || nodes_.size() <= index) {
-        LOG(FATAL, "Wrong flags raft_nodes: %s %ld", FLAGS_raft_nodes.c_str(),
-            FLAGS_raft_node_index);
+    common::SplitString(raft_nodes, ",", &nodes_);
+    if (nodes_.size() < 1U || static_cast<int>(nodes_.size()) <= node_index) {
+        LOG(FATAL, "Wrong flags raft_nodes: %s %d", raft_nodes.c_str(),
+            node_index);
     }
-    self_ = nodes_[index];
+    self_ = nodes_[node_index];
 
-    LoadStorage();
-    LOG(INFO, "Start RaftNode %s (%s)", self_.c_str(), FLAGS_raft_nodes.c_str());
+    LoadStorage(db_path);
+    LOG(INFO, "Start RaftNode %s (%s)", self_.c_str(), raft_nodes.c_str());
 
     rpc_client_ = new RpcClient();
     srand(common::timer::get_micros());
@@ -58,10 +55,10 @@ RaftNodeImpl::~RaftNodeImpl() {
     }
 }
 
-void RaftNodeImpl::LoadStorage() {
+void RaftNodeImpl::LoadStorage(const std::string& db_path) {
     leveldb::Options options;
     options.create_if_missing = true;
-    leveldb::Status s = leveldb::DB::Open(options, FLAGS_raftdb_path, &log_db_);
+    leveldb::Status s = leveldb::DB::Open(options, db_path, &log_db_);
     if (!s.ok()) {
         log_db_ = NULL;
         LOG(FATAL, "Open raft db fail: %s\n", s.ToString().c_str());
@@ -448,7 +445,7 @@ bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {
 
 void RaftNodeImpl::ApplyLog() {
     MutexLock lock(&mu_);
-    if (applying_) {
+    if (applying_ || log_callback_.empty()) {
         return;
     }
     applying_ = true;
@@ -528,6 +525,7 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
 
 void RaftNodeImpl::RegisterCallback(boost::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
+    ApplyLog();
 }
 
 }

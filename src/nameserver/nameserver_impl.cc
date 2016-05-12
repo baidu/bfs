@@ -50,13 +50,27 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_);
-    namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
+    CheckLeader();
     start_time_ = common::timer::get_micros();
     work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
     work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
+}
+
+void NameServerImpl::CheckLeader() {
+    MutexLock lock(&mu_);
+    if (!sync_ || sync_->IsLeader()) {
+        is_leader_ = true;
+        LOG(INFO, "Leader nameserver, rebuild block map.");
+        namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
+
+    } else {
+        is_leader_ = false;
+        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckLeader, this));
+        LOG(INFO, "No leader delay check");
+    }
 }
 
 void NameServerImpl::CheckSafemode() {
@@ -93,7 +107,7 @@ void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
                          const HeartBeatRequest* request,
                          HeartBeatResponse* response,
                          ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -114,7 +128,7 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
                    const ::baidu::bfs::RegisterRequest* request,
                    ::baidu::bfs::RegisterResponse* response,
                    ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -143,7 +157,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
                        const BlockReceivedRequest* request,
                        BlockReceivedResponse* response,
                        ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -196,7 +210,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    const BlockReportRequest* request,
                    BlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -271,7 +285,7 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
                    const PushBlockReportRequest* request,
                    PushBlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -289,7 +303,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                         const CreateFileRequest* request,
                         CreateFileResponse* response,
                         ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -312,7 +326,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                          const AddBlockRequest* request,
                          AddBlockResponse* response,
                          ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -382,7 +396,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          const FinishBlockRequest* request,
                          FinishBlockResponse* response,
                          ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -420,7 +434,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
                       const FileLocationRequest* request,
                       FileLocationResponse* response,
                       ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -473,7 +487,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
                         const ListDirectoryRequest* request,
                         ListDirectoryResponse* response,
                         ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -500,7 +514,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
                           const StatRequest* request,
                           StatResponse* response,
                           ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -539,7 +553,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
                             const RenameRequest* request,
                             RenameResponse* response,
                             ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -562,7 +576,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                             const UnlinkRequest* request,
                             UnlinkResponse* response,
                             ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -585,7 +599,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
                                      const DeleteDirectoryRequest* request,
                                      DeleteDirectoryResponse* response,
                                      ::google::protobuf::Closure* done)  {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -610,7 +624,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
                                       const ChangeReplicaNumRequest* request,
                                       ChangeReplicaNumResponse* response,
                                       ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -655,7 +669,7 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
                              const SysStatRequest* request,
                              SysStatResponse* response,
                              ::google::protobuf::Closure* done) {
-    if (!sync_->IsLeader()) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;

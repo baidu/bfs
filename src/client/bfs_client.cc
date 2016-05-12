@@ -20,7 +20,7 @@
 #include "sdk/bfs.h"
 
 DECLARE_string(flagfile);
-DECLARE_string(nameserver);
+DECLARE_string(nameserver_nodes);
 DECLARE_string(nameserver_port);
 
 void print_usage() {
@@ -366,7 +366,7 @@ int main(int argc, char* argv[]) {
     }
 
     baidu::bfs::FS* fs;
-    std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
+    std::string ns_address = FLAGS_nameserver_nodes;
     if (!baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &fs)) {
         fprintf(stderr, "Open filesytem %s fail\n", ns_address.c_str());
         return 1;

@@ -34,7 +34,7 @@ message FileLocationRequest {
 }
 
 message FileLocationResponse {
-    required int64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     required StatusCode status = 2;
     repeated LocatedBlock blocks = 3;
 }
@@ -44,7 +44,7 @@ message ListDirectoryRequest {
     required string path = 2;
 }
 message ListDirectoryResponse {
-    required int64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     required StatusCode status = 2;
     repeated FileInfo files = 3;
 }
@@ -75,7 +75,7 @@ message AddBlockRequest {
     optional string client_address = 3;
 }
 message AddBlockResponse {
-    required int64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional StatusCode status = 2;
     optional LocatedBlock block = 3;
 }
@@ -88,7 +88,7 @@ message FinishBlockRequest {
     optional int64 block_size = 5;
 }
 message FinishBlockResponse {
-    required int64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional StatusCode status = 2;
 }
 
@@ -97,7 +97,7 @@ message UnlinkRequest {
     required string path = 2;
 }
 message UnlinkResponse {
-    required int64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional StatusCode status = 2;
 }
 
@@ -107,7 +107,7 @@ message DeleteDirectoryRequest {
     required bool recursive = 3;
 }
 message DeleteDirectoryResponse {
-    required int64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional StatusCode status = 2;
 }
 

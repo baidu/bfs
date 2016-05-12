@@ -32,13 +32,12 @@ DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locali
 
 // ha
 DEFINE_string(ha_strategy,"master_slave", "[master_slave, raft]");
+DEFINE_string(nameserver_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 // ha - master_slave
 DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
 DEFINE_string(slave_node, "127.0.0.1:8829", "Slave node address");
-DEFINE_string(master_slave_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 // ha - raft
 DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
-DEFINE_string(raft_nodes,"127.0.0.1:8828", "Raft nodes list");
 DEFINE_int32(raft_node_index, 0, "Raft nodes index");
 
 // chunkserver

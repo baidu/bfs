@@ -58,16 +58,15 @@ int main(int argc, char* argv[])
         baidu::bfs::MasterSlaveImpl* base = new baidu::bfs::MasterSlaveImpl();
         sync = base;
         sync_service = base;
-        LOG(baidu::common::INFO, "master_slave");
-        const google::protobuf::ServiceDescriptor* bug = sync_service->GetDescriptor();
-        LOG(baidu::common::INFO, "bugname=%s", bug->name().c_str());
+        LOG(baidu::common::INFO, "HA strategy: master_slave");
     } else if (FLAGS_ha_strategy == "raft") {
         // TODO: not working yet...
         baidu::bfs::RaftImpl* raft_impl = new baidu::bfs::RaftImpl();
         sync = raft_impl;
         sync_service = raft_impl->GetService();
+        LOG(baidu::common::INFO, "HA strategy: raft");
     } else {
-        LOG(baidu::common::FATAL, "NameServer start with unknow ha strategy");
+        LOG(baidu::common::INFO, "HA strategy: none");
     }
 
     baidu::bfs::NameServerImpl* nameserver_service = new baidu::bfs::NameServerImpl(sync);
@@ -76,7 +75,7 @@ int main(int argc, char* argv[])
     if (!rpc_server.RegisterService(nameserver_service)) {
         return EXIT_FAILURE;
     }
-    if (!rpc_server.RegisterService(sync_service)) {
+    if (sync_service && !rpc_server.RegisterService(sync_service)) {
         return EXIT_FAILURE;
     }
 
