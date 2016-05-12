@@ -4,6 +4,7 @@ OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 
 include depends.mk
+#CXX=/opt/compiler/gcc-4.8.2/bin/g++
 
 INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \

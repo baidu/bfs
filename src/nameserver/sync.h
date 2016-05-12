@@ -51,20 +51,27 @@ public:
 
 private:
     void BackgroundLog();
+    void ReplicateLog();
+    void LogProgress();
 
 private:
     RpcClient* rpc_client_;
+    master_slave::MasterSlave_Stub* slave_stub_;
+
     boost::function<void (const std::string& log)> log_callback_;
     bool exiting_;
+    bool master_only_;
+
     Mutex mu_;
     CondVar cond_;
     common::Thread worker_;
-    bool master_only_;
+    common::Thread logger_;
+
     int log_;
+    int read_log_;
     int scan_log_;
     int current_offset_;
     int sync_offset_;
-    master_slave::MasterSlave_Stub* slave_stub_;
 };
 
 } // namespace bfs
