@@ -23,10 +23,6 @@
 #include <common/string_util.h>
 #include <common/tprinter.h>
 #include <common/util.h>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/uuid/sha1.hpp>
 
 #include "proto/status_code.pb.h"
 
@@ -564,10 +560,8 @@ public:
 private:
     void GenerateSessionId() {
         MutexLock lock(&mu_);
-        boost::uuids::uuid uuid = boost::uuids::random_generator()();
-        std::stringstream sm;
-        sm << uuid;
-        session_id_ = local_host_name_ + "#" + sm.str();
+        session_id_ = local_host_name_ + ":" + common::NumToString(getpid())
+                          + ":" + common::NumToString(common::timer::now_time());
     }
     void RegistToNameServer() {
         GenerateSessionId();

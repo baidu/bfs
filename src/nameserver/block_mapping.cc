@@ -906,7 +906,7 @@ void BlockMapping::MarkIncomplete(int64_t block_id) {
         return;
     }
     // maybe cs is down and block have been marked with incomplete
-    if (!block->incomplete_replica.empty()) {
+    if (block->recover_stat == kBlockWriting) {
         for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();
                 it != block->incomplete_replica.end(); ++it) {
             incomplete_[*it].insert(block_id);
