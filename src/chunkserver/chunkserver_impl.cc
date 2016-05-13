@@ -49,7 +49,7 @@ DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
-DECLARE_int32(chunkserver_max_unfinished_bytes);
+DECLARE_int64(chunkserver_max_unfinished_bytes);
 DECLARE_bool(chunkserver_auto_clean);
 
 namespace baidu {
