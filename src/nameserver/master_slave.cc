@@ -22,11 +22,6 @@ namespace bfs {
 MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false), cond_(&mu_),
                                      read_log_(-1), scan_log_(-1),
                                      current_offset_(0), sync_offset_(0) {
-    rpc_client_ = new RpcClient();
-    if (IsLeader()) {
-        worker_.Start(boost::bind(&MasterSlaveImpl::BackgroundLog, this));
-        logger_.Start(boost::bind(&MasterSlaveImpl::LogProgress, this));
-    }
 }
 
 void MasterSlaveImpl::Init() {
@@ -59,7 +54,13 @@ void MasterSlaveImpl::Init() {
     }
     int offset = lseek(read_log_, sync_offset_, SEEK_SET);
     assert(offset == sync_offset_);
+
+    rpc_client_ = new RpcClient();
     rpc_client_->GetStub(FLAGS_slave_node, &slave_stub_);
+    if (IsLeader()) {
+        worker_.Start(boost::bind(&MasterSlaveImpl::BackgroundLog, this));
+        logger_.Start(boost::bind(&MasterSlaveImpl::LogProgress, this));
+    }
 }
 
 bool MasterSlaveImpl::IsLeader(std::string* leader_addr) {
@@ -223,6 +224,7 @@ void MasterSlaveImpl::ReplicateLog() {
 
 void MasterSlaveImpl::LogProgress() {
     while (!exiting_) {
+        sleep(10);
         int fp = open("prog.tmp", O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
         if (fp < 0) {
             LOG(FATAL, "[Sync] open prog.tmp failed reason: %s", strerror(errno));
@@ -234,7 +236,6 @@ void MasterSlaveImpl::LogProgress() {
             rename("prog.tmp", "prog.log");
         }
         close(fp);
-        sleep(10);
     }
 
 }

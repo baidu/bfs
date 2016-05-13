@@ -31,7 +31,6 @@ namespace bfs {
 
 NameSpace::NameSpace(Sync* sync): version_(0), last_entry_id_(1), sync_(sync) {
     leveldb::Status s;
-    LOG(INFO, "IsLeader %d", sync_->IsLeader());
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
