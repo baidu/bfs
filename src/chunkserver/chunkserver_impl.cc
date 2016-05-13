@@ -49,7 +49,7 @@ DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
-DECLARE_int32(chunkserver_max_unfinished_writes);
+DECLARE_int32(chunkserver_max_unfinished_bytes);
 DECLARE_bool(chunkserver_auto_clean);
 
 namespace baidu {
@@ -61,7 +61,7 @@ extern common::Counter g_buffers_delete;
 extern common::Counter g_blocks;
 extern common::Counter g_writing_blocks;
 extern common::Counter g_pending_writes;
-extern common::Counter g_unfinished_writes;
+extern common::Counter g_unfinished_bytes;
 extern common::Counter g_writing_bytes;
 extern common::Counter g_read_ops;
 extern common::Counter g_read_bytes;
@@ -327,17 +327,17 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
 
-    if (g_unfinished_writes.Inc() > FLAGS_chunkserver_max_unfinished_writes) {
+    if (g_unfinished_bytes.Add(databuf.size()) > FLAGS_chunkserver_max_unfinished_bytes) {
         if (!request->has_sequence_id()) {
             response->set_sequence_id(request->sequence_id());
         }
         response->set_sequence_id(request->sequence_id());
         g_refuse_ops.Inc();
         LOG(WARNING, "[WriteBlock] Too much unfinished write request(%ld), reject #%ld seq:%d offset:%ld len:%lu ts%lu",
-                g_unfinished_writes.Get(), block_id, packet_seq, offset, databuf.size(), request->sequence_id());
+                g_unfinished_bytes.Get(), block_id, packet_seq, offset, databuf.size(), request->sequence_id());
         response->set_status(kCsTooMuchUnfinishedWrite);
         done->Run();
-        g_unfinished_writes.Dec();
+        g_unfinished_bytes.Sub(databuf.size());
         return;
     }
     if (!response->has_sequence_id()) {
@@ -350,7 +350,7 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
             done->Run();
             g_refuse_ops.Inc();
-            g_unfinished_writes.Dec();
+            g_unfinished_bytes.Sub(databuf.size());
             return;
         }
         LOG(DEBUG, "[WriteBlock] dispatch #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
@@ -479,7 +479,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
                 LOG(INFO, "[LocalWriteBlock] #%ld exist block size = %ld", block_id, block->Size());
             }
             response->set_status(s);
-            g_unfinished_writes.Dec();
+            g_unfinished_bytes.Sub(databuf.size());
             done->Run();
             return;
         }
@@ -488,7 +488,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
         if (!block) {
             LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
             response->set_status(kNotFound);
-            g_unfinished_writes.Dec();
+            g_unfinished_bytes.Sub(databuf.size());
             done->Run();
             return;
         }
@@ -503,7 +503,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), &add_used)) {
         block->DecRef();
         response->set_status(kWriteError);
-        g_unfinished_writes.Dec();
+        g_unfinished_bytes.Sub(databuf.size());
         done->Run();
         return;
     }
@@ -542,7 +542,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     g_rpc_delay_all.Add(time_end - request->sequence_id());
     g_rpc_count.Inc();
     g_write_ops.Inc();
-    g_unfinished_writes.Dec();
+    g_unfinished_bytes.Sub(databuf.size());
     done->Run();
     block->DecRef();
     block = NULL;
