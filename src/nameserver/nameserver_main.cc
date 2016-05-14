@@ -86,8 +86,9 @@ int main(int argc, char* argv[])
     // Start
     std::string server_host = std::string("0.0.0.0:") + FLAGS_nameserver_port;
     if (!rpc_server.Start(server_host)) {
-            return EXIT_FAILURE;
+        return EXIT_FAILURE;
     }
+    LOG(baidu::common::INFO, "RpcServer start.");
 
     rpc_server.Run();
 

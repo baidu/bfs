@@ -140,11 +140,15 @@ void RaftNodeImpl::Election() {
 bool RaftNodeImpl::CheckTerm(int64_t term) {
     mu_.AssertHeld();
     if (term > current_term_) {
+        if (node_state_ == kLeader) {
+            LOG(FATAL, "Leader change to Follower, exit");
+        } else {
+            LOG(INFO, "Change state to Follower, reset election");
+        }
         current_term_ = term;
         voted_for_ = "";
         node_state_ = kFollower;
         ResetElection();
-        LOG(INFO, "Change state to Follower, reset election");
         return false;
     }
     return true;
@@ -161,8 +165,9 @@ void RaftNodeImpl::ElectionCallback(const VoteRequest* request,
         && node_state_ != kLeader) {
         bool granted = response->vote_granted();
         int64_t term = response->term();
-        LOG(INFO, "ElectionCallback granted %d by %s %ld / %ld",
-            granted, node_addr.c_str(), term, current_term_);
+        LOG(INFO, "ElectionCallback %s by %s %ld / %ld",
+            granted ? "granted" : "reject",
+            node_addr.c_str(), term, current_term_);
         if (granted) {
             if (term == current_term_) {
                 voted_.insert(node_addr);
@@ -222,7 +227,9 @@ void RaftNodeImpl::Vote(::google::protobuf::RpcController* controller,
     const std::string& candidate = request->candidate();
     int64_t last_log_index = request->last_log_index();
     int64_t last_log_term = request->last_log_term();
-    LOG(INFO, "Recv vote request: %s %ld / %ld", candidate.c_str(), term, current_term_);
+    LOG(INFO, "Recv vote request: %s %ld %ld / (%s %ld %ld)",
+        candidate.c_str(), term, last_log_term,
+        voted_for_.c_str(), current_term_, log_term_);
     MutexLock lock(&mu_);
     CheckTerm(term);
     if (term >= current_term_
@@ -390,7 +397,7 @@ bool RaftNodeImpl::StoreLog(int64_t term, int64_t index, const std::string& log)
     std::string log_value;
     entry.SerializeToString(&log_value);
     leveldb::Status s = log_db_->Put(leveldb::WriteOptions(), Index2Logkey(index), log_value);
-    LOG(INFO, "Store %ld %ld %s to logdb", term, index, log.c_str());
+    LOG(INFO, "Store %ld %ld %s to logdb", term, index, common::DebugString(log).c_str());
     return s.ok();
 }
 
@@ -400,6 +407,7 @@ bool RaftNodeImpl::StoreContext(const std::string& context, int64_t value) {
 
 bool RaftNodeImpl::StoreContext(const std::string& context, const std::string& value) {
     std::string key = kLogEndMark + context;
+    LOG(INFO, "Store %s %s", key.c_str(), common::DebugString(value).c_str());
     leveldb::Status s = log_db_->Put(leveldb::WriteOptions(), key, value);
     return s.ok();
 }
@@ -408,7 +416,8 @@ bool RaftNodeImpl::GetContext(const std::string& context, int64_t* value) {
     std::string str;
     if (GetContext(context, &str)) {
         assert(str.size() == 8U);
-        *value = *(reinterpret_cast<int64_t*>(&value[0]));
+        *value = *(reinterpret_cast<int64_t*>(&str[0]));
+        LOG(INFO, "Load %s %ld", context.c_str(), *value);
         return true;
     }
     return false;
@@ -419,6 +428,7 @@ bool RaftNodeImpl::GetContext(const std::string& context, std::string* value) {
     }
     std::string key = kLogEndMark + context;
     leveldb::Status s = log_db_->Get(leveldb::ReadOptions(), key, value);
+    LOG(INFO, "Load %s %s", context.c_str(), common::DebugString(*value).c_str());
     return s.ok();
 }
 
@@ -464,6 +474,8 @@ void RaftNodeImpl::ApplyLog() {
             bool ret = entry.ParseFromString(it->value().ToString());
             assert(ret);
             mu_.Unlock();
+            LOG(INFO, "Callback %ld %s",
+                entry.index(), common::DebugString(entry.log_data()).c_str());
             log_callback_(entry.log_data());
             mu_.Lock();
             last_applied_ = entry.index();

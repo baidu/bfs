@@ -216,6 +216,12 @@ message SysStatResponse {
     optional int64 data_size = 5;
 }
 
+message NameServerLog {
+    optional int32 type = 1;
+    optional bytes key = 2;
+    optional bytes value = 3;
+}
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);

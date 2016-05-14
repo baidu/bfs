@@ -64,12 +64,13 @@ void NameServerImpl::CheckLeader() {
     if (!sync_ || sync_->IsLeader()) {
         is_leader_ = true;
         LOG(INFO, "Leader nameserver, rebuild block map.");
+        namespace_->Activate();
         namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
 
     } else {
         is_leader_ = false;
-        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckLeader, this));
-        LOG(INFO, "No leader delay check");
+        work_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
+        //LOG(INFO, "Delay CheckLeader");
     }
 }
 

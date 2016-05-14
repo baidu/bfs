@@ -25,6 +25,7 @@ class Sync;
 class NameSpace {
 public:
     NameSpace(Sync* sync);
+    void Activate();
     ~NameSpace();
     /// List a directory
     StatusCode ListDirectory(const std::string& path,
@@ -68,9 +69,9 @@ private:
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed);
     uint32_t EncodeLog(int32_t type, const std::string& key,
-                   const std::string& value, std::string* entry);
-    void DecodeLog(const char* input, int32_t* type,
-                   uint32_t* key_len, char* key, uint32_t* value_len, char* value);
+                       const std::string& value, std::string* entry);
+    void DecodeLog(const std::string& input, int32_t* type,
+                   std::string* key, std::string* value);
     void LogRemote(const std::string& key, const std::string& value, int32_t type);
     //bool RecoverLog();
 private:
