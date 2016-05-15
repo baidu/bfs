@@ -357,14 +357,9 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     batch.Put(new_key, value);
     batch.Delete(old_key);
 
-    std::string entry;
-    std::string put_entry;
-    EncodeLog(kSyncWrite, new_key, value, &put_entry);
-    entry.assign(put_entry);
-
-    std::string del_entry;
-    EncodeLog(kSyncDelete, old_key, "", &del_entry);
-    entry.append(del_entry);
+    NameServerLog log;
+    EncodeLog(&log, kSyncWrite, new_key, value);
+    EncodeLog(&log, kSyncDelete, old_key, "");
 
     MutexLock lock(&mu_);
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
@@ -372,10 +367,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         LOG(INFO, "Rename %s to %s[%s], replace: %d",
             old_path.c_str(), new_path.c_str(),
             common::DebugString(new_key).c_str(), *need_unlink);
-        bool ret = sync_->Log(entry);
-        if (!ret) {
-            LOG(FATAL, "Write Rename sync log failed");
-        }
+        SyncLog(log);
         return kOK;
     } else {
         LOG(WARNING, "Rename write leveldb fail: %s %s", old_path.c_str(), s.ToString().c_str());
@@ -447,7 +439,7 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
 
     StatusCode ret_status = kOK;
     leveldb::WriteBatch batch;
-    std::string entry;
+    NameServerLog log;
     for (; it->Valid(); it->Next()) {
         leveldb::Slice key = it->key();
         if (key.compare(key_end) >= 0) {
@@ -466,9 +458,7 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
                 break;
             }
         } else {
-            std::string del_entry;
-            EncodeLog(kSyncDelete, std::string(key.data(), key.size()), "", &del_entry);
-            entry.append(del_entry);
+            EncodeLog(&log, kSyncDelete, std::string(key.data(), key.size()), "");
             batch.Delete(key);
             child_info.set_parent_entry_id(entry_id);
             child_info.set_name(entry_name);
@@ -479,21 +469,17 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     }
     delete it;
 
-    std::string store_key, store_entry;
+    std::string store_key;
     EncodingStoreKey(dir_info.parent_entry_id(), dir_info.name(), &store_key);
-    EncodeLog(kSyncDelete, store_key, "", &store_entry);
-    entry.append(store_entry);
     batch.Delete(store_key);
+    EncodeLog(&log, kSyncDelete, store_key, "");
 
     MutexLock lock(&mu_);
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Delete directory done: %s[%s]",
             dir_info.name().c_str(), common::DebugString(store_key).c_str());
-        bool ret = sync_->Log(entry);
-        if (!ret) {
-            LOG(FATAL, "Write sync log failed InternalDeleteDirectory");
-        }
+        SyncLog(log);
     } else {
         LOG(FATAL, "Namespace write to storage fail!");
         LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
@@ -502,6 +488,17 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     return ret_status;
 }
 
+bool NameSpace::SyncLog(const NameServerLog& log) {
+    std::string logstr;
+    if (!log.SerializeToString(&logstr)) {
+        LOG(FATAL, "Serialize log fail");
+    }
+    bool ret = sync_->Log(logstr);
+    if (!ret) {
+        LOG(FATAL, "NameServer sync log failed");
+    }
+    return ret;
+}
 bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
@@ -543,48 +540,41 @@ std::string NameSpace::NormalizePath(const std::string& path) {
     return ret;
 }
 
-void NameSpace::TailLog(const std::string& log) {
-    LOG(INFO, "logen=%d", log.length());
-    int32_t type = 0;
-    std::string key;
-    std::string value;
-    DecodeLog(log, &type, &key, &value);
-    LOG(INFO, "kl=%lu vl=%lu", key.size(), value.size());
-    leveldb::Status s;
-    if (type == kSyncWrite) {
-        s = db_->Put(leveldb::WriteOptions(), key, value);
-    } else if (type == kSyncDelete) {
-        s = db_->Delete(leveldb::WriteOptions(), key);
+void NameSpace::TailLog(const std::string& logstr) {
+    LOG(INFO, "logen=%d", logstr.length());
+    NameServerLog log;
+    if(!log.ParseFromString(logstr)) {
+        LOG(FATAL, "Parse log fail: %s", common::DebugString(logstr).c_str());
     }
-    if (!s.ok()) {
-        LOG(FATAL, "TailLog failed");
+    for (int i = 0; i < log.entries_size(); i++) {
+        const NsLogEntry& entry = log.entries(i);
+        LOG(INFO, "kl=%lu vl=%lu", entry.key().size(), entry.value().size());
+        int type = entry.type();
+        leveldb::Status s;
+        if (type == kSyncWrite) {
+            s = db_->Put(leveldb::WriteOptions(), entry.key(), entry.value());
+        } else if (type == kSyncDelete) {
+            s = db_->Delete(leveldb::WriteOptions(), entry.key());
+        }
+        if (!s.ok()) {
+            LOG(FATAL, "TailLog failed");
+        }
     }
 }
 
-uint32_t NameSpace::EncodeLog(int32_t type, const std::string& key, const std::string& value,
-                              std::string* entry) {
-    NameServerLog log;
-    log.set_type(type);
-    log.set_key(key);
-    log.set_value(value);
-    log.SerializeToString(entry);
-    return entry->size();
-}
-
-void NameSpace::DecodeLog(const std::string& input, int32_t* type,
-                          std::string* key, std::string* value) {
-    NameServerLog log;
-    bool ret = log.ParseFromString(input);
-    assert(ret);
-    *type = log.type();
-    *key = log.key();
-    *value = log.value();
+uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
+                              const std::string& key, const std::string& value) {
+    NsLogEntry* entry = log->add_entries();
+    entry->set_type(type);
+    entry->set_key(key);
+    entry->set_value(value);
+    return entry->ByteSize();
 }
 
 void NameSpace::LogRemote(const std::string& key, const std::string& value, int32_t type) {
-    std::string entry;
-    uint32_t encode_len = EncodeLog(type, key, value, &entry);
-    bool ret = sync_->Log(entry);
+    NameServerLog log;
+    uint32_t encode_len = EncodeLog(&log, type, key, value);
+    bool ret = SyncLog(log);
     if (!ret) {
         LOG(FATAL, "Write sync log failed kl=%d vl=%d l=%d", key.length(), value.length(), encode_len);
     }

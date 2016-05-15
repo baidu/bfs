@@ -68,10 +68,9 @@ private:
     StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed);
-    uint32_t EncodeLog(int32_t type, const std::string& key,
-                       const std::string& value, std::string* entry);
-    void DecodeLog(const std::string& input, int32_t* type,
-                   std::string* key, std::string* value);
+    uint32_t EncodeLog(NameServerLog* log, int32_t type,
+                       const std::string& key, const std::string& value);
+    bool SyncLog(const NameServerLog& log);
     void LogRemote(const std::string& key, const std::string& value, int32_t type);
     //bool RecoverLog();
 private:
