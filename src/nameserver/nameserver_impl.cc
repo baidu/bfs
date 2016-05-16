@@ -352,12 +352,15 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
                                      bool ret) {
     if (!ret) {
         controller->SetFailed("SyncLogFail");
-    }
-    for (uint32_t i = 0; i < removed->size(); i++) {
-        block_mapping_->RemoveBlocksForFile((*removed)[i]);
+    } else if (removed) {
+        for (uint32_t i = 0; i < removed->size(); i++) {
+            block_mapping_->RemoveBlocksForFile((*removed)[i]);
+        }
     }
     done->Run();
-    LOG(FATAL, "SyncLog fail");
+    if (!ret) {
+        LOG(FATAL, "SyncLog fail");
+    }
 }
 
 void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
@@ -613,16 +616,17 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     NameServerLog log;
     StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file, &log);
     response->set_status(status);
-    if (status == kOK) {
-        std::vector<FileInfo>* removed = NULL;
-        if (need_unlink) {
-            removed = new std::vector<FileInfo>;
-            removed->push_back(remove_file);
-        }
-        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
-                                   controller, request, response, done, removed, _1));
+    if (status != kOK) {
+        done->Run();
+        return;
     }
-    done->Run();
+    std::vector<FileInfo>* removed = NULL;
+    if (need_unlink) {
+        removed = new std::vector<FileInfo>;
+        removed->push_back(remove_file);
+    }
+    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done, removed, _1));
 }
 
 void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
@@ -643,14 +647,15 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     StatusCode status = namespace_->RemoveFile(path, &file_info, &log);
     LOG(INFO, "Unlink: %s return %s", path.c_str(), StatusCode_Name(status).c_str());
     response->set_status(status);
-    if (status == kOK) {
-        std::vector<FileInfo>* removed = new std::vector<FileInfo>;
-        removed->push_back(file_info);
-        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
-                                   controller, request, response, done,
-                                   removed, _1));
+    if (status != kOK) {
+        done->Run();
+        return;
     }
-    done->Run();
+    std::vector<FileInfo>* removed = new std::vector<FileInfo>;
+    removed->push_back(file_info);
+    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done,
+                               removed, _1));
 }
 
 void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controller,
@@ -673,6 +678,10 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     NameServerLog log;
     StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed, &log);
     response->set_status(ret_status);
+    if (ret_status != kOK) {
+        done->Run();
+        return;
+    }
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done, removed, _1));
 }

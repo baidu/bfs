@@ -44,7 +44,7 @@ public:
                        ::google::protobuf::Closure* done);
 public:
     bool GetLeader(std::string* leader);
-    void AppendLog(const std::string& log, boost::function<void ()> callback);
+    void AppendLog(const std::string& log, boost::function<void (bool)> callback);
     bool AppendLog(const std::string& log, int timeout_ms = 10000);
     void RegisterCallback(boost::function<void (const std::string& log)> callback);
 private:
@@ -107,6 +107,7 @@ private:
     int64_t election_taskid_;
 
     boost::function<void (const std::string& log)> log_callback_;
+    std::map<int64_t, boost::function<void (bool)> > callback_map_;
     NodeState node_state_;
 };
 
