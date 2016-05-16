@@ -60,7 +60,7 @@ void RaftNodeImpl::LoadStorage(const std::string& db_path) {
     options.create_if_missing = true;
     leveldb::Status s = leveldb::DB::Open(options, db_path, &log_db_);
     if (!s.ok()) {
-        log_db_ = NULL;
+        //log_db_ = NULL;
         LOG(FATAL, "Open raft db fail: %s\n", s.ToString().c_str());
     }
     if (!GetContext("last_applied", &last_applied_)) {
@@ -267,7 +267,7 @@ bool RaftNodeImpl::GetLeader(std::string* leader) {
 }
 
 void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
-    MutexLock lock(&mu_);
+    mu_.AssertHeld();
 
     FollowerContext* follower = follower_context_[id];
     int64_t next_index = follower->next_index;
@@ -375,9 +375,7 @@ void RaftNodeImpl::ReplicateLogWorker(uint32_t id) {
         if (node_stop_) {
             return;
         }
-        mu_.Unlock();
         ReplicateLogForNode(id);
-        mu_.Lock();
         follower->condition.TimeWait(100);
     }
 }
@@ -483,6 +481,7 @@ void RaftNodeImpl::ApplyLog() {
         } while (it->Valid() && it->key().compare(end) <= 0);
         delete it;
     }
+    LOG(INFO, "Apply to %ld", last_applied_);
     StoreContext("last_applied", last_applied_);
     applying_ = false;
 }
@@ -500,9 +499,31 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    int64_t leader_commit = request->leader_commit();
+
+    ResetElection();
+    int64_t prev_log_term = request->prev_log_term();
+    int64_t prev_log_index = request->prev_log_index();
+    if (prev_log_index > 0) {   // check prev term
+        std::string value;
+        leveldb::Status s = log_db_->Get(leveldb::ReadOptions(),
+                                         Index2Logkey(prev_log_index),
+                                         &value);
+        LogEntry entry;
+        if (!s.IsNotFound() && !entry.ParseFromString(value)) {
+            LOG(FATAL, "Paser logdb value fail:%d", prev_log_index);
+        }
+        if (s.IsNotFound() || entry.term() != prev_log_term) {
+            LOG(INFO, "[Raft] Last index %ld term %ld / %ld mismatch",
+                prev_log_index, prev_log_term, entry.term());
+            response->set_success(false);
+            done->Run();
+            return;
+        }
+        LOG(INFO, "[Raft] Last index %ld term %ld match", prev_log_index, prev_log_term);
+    }
 
     /// log match...
+    int64_t leader_commit = request->leader_commit();
     int entry_count = request->entries_size();
     if (entry_count > 0) {
         LOG(INFO, "AppendEntries from %s %ld \"%s\" %ld",
@@ -523,7 +544,6 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
     
     response->set_term(current_term_);
     response->set_success(true);
-    ResetElection();
     done->Run();
 
     if (leader_commit > commit_index_) {

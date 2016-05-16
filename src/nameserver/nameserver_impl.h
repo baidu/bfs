@@ -117,7 +117,6 @@ private:
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;
-    int64_t namespace_version_;
     /// ha
     Mutex mu_;
     Sync* sync_;
