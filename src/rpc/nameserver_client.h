@@ -32,10 +32,11 @@ public:
     bool SendRequest(void(NameServer_Stub::*func)(google::protobuf::RpcController*,
                                                   const Request*, Response*, Callback*),
                      const Request* request, Response* response,
-                     int32_t rpc_timeout, int retry_times) {
+                     int32_t rpc_timeout, int retry_times = 1) {
         bool ret = false;
         for (uint32_t i = 0; i < stubs_.size(); i++) {
-            ret = rpc_client_->SendRequest(stubs_[leader_id_], func, request, response, rpc_timeout, retry_times);
+            ret = rpc_client_->SendRequest(stubs_[leader_id_], func, request, response,
+                                           rpc_timeout, retry_times);
             if (ret && response->status() != kIsFollower) {
                 LOG(INFO, "Send rpc to %d %s return %s", 
                     leader_id_, nameserver_nodes_[leader_id_].c_str(),
