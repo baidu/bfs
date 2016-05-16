@@ -104,6 +104,13 @@ private:
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
+    bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
+    void SyncLogCallback(::google::protobuf::RpcController* controller,
+                         const ::google::protobuf::Message* request,
+                         ::google::protobuf::Message* response,
+                         ::google::protobuf::Closure* done,
+                         std::vector<FileInfo>* removed,
+                         bool ret);
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;

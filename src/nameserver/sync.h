@@ -26,6 +26,7 @@ public:
     virtual bool IsLeader(std::string* leader_addr = NULL) = 0;
     virtual bool Log(const std::string& entry, int timeout_ms = 10000) = 0;
     virtual void Log(const std::string& entry, boost::function<void ()> callback) = 0;
+    virtual void Log(const std::string& entry, boost::function<void (bool)> callback) = 0;
     virtual void RegisterCallback(boost::function<void (const std::string& log)> callback) = 0;
     virtual int ScanLog() = 0;
     virtual int Next(char* entry) = 0;
@@ -39,6 +40,7 @@ public:
     virtual bool IsLeader(std::string* leader_addr = NULL);
     virtual bool Log(const std::string& entry, int timeout_ms = 10000);
     virtual void Log(const std::string& entry, boost::function<void ()> callback);
+    virtual void Log(const std::string& entry, boost::function<void (bool)> callback) {}
     virtual void RegisterCallback(boost::function<void (const std::string& log)> callback);
     virtual int ScanLog();
     virtual int Next(char* entry);

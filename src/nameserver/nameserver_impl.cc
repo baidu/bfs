@@ -64,7 +64,11 @@ void NameServerImpl::CheckLeader() {
     if (!sync_ || sync_->IsLeader()) {
         is_leader_ = true;
         LOG(INFO, "Leader nameserver, rebuild block map.");
-        namespace_->Activate();
+        NameServerLog log;
+        namespace_->Activate(&log);
+        if (!LogRemote(log, boost::function<void (bool)>())) {
+            LOG(FATAL, "LogRemote namespace update fail");
+        }
         namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
 
     } else {
@@ -318,9 +322,42 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         mode = 0644;    // default mode
     }
     int replica_num = request->replica_num();
-    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num);
+    NameServerLog log;
+    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &log);
     response->set_status(status);
+    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done,
+                               (std::vector<FileInfo>*)NULL, _1));
+}
+
+bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (bool)> callback) {
+
+    std::string logstr;
+    if (!log.SerializeToString(&logstr)) {
+        LOG(FATAL, "Serialize log fail");
+    }
+    if (callback.empty()) {
+        return sync_->Log(logstr);
+    } else {
+        sync_->Log(logstr, callback);
+        return true;
+    }
+}
+
+void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controller,
+                                     const ::google::protobuf::Message* request,
+                                     ::google::protobuf::Message* response,
+                                     ::google::protobuf::Closure* done,
+                                     std::vector<FileInfo>* removed,
+                                     bool ret) {
+    if (!ret) {
+        controller->SetFailed("SyncLogFail");
+    }
+    for (uint32_t i = 0; i < removed->size(); i++) {
+        block_mapping_->RemoveBlocksForFile((*removed)[i]);
+    }
     done->Run();
+    LOG(FATAL, "SyncLog fail");
 }
 
 void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
@@ -367,7 +404,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         for (int i = 0; i < replica_num; i++) {
             file_info.add_cs_addrs(chunkserver_manager_->GetChunkServerAddr(chains[i].first));
         }
-        if (!namespace_->UpdateFileInfo(file_info)) {
+        NameServerLog log;
+        if (!namespace_->UpdateFileInfo(file_info, &log)) {
             LOG(WARNING, "Update file info fail: %s", path.c_str());
             response->set_status(kUpdateError);
         }
@@ -386,11 +424,14 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);
         response->set_status(kOK);
+        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, done,
+                                   (std::vector<FileInfo>*)NULL, _1));
     } else {
         LOG(WARNING, "AddBlock for %s failed.", path.c_str());
         response->set_status(kGetChunkserverError);
+        done->Run();
     }
-    done->Run();
 }
 
 void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
@@ -415,20 +456,24 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     }
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
-    if (!namespace_->UpdateFileInfo(file_info)) {
+    NameServerLog log;
+    if (!namespace_->UpdateFileInfo(file_info, &log)) {
         LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
         response->set_status(kUpdateError);
         done->Run();
         return;
     }
     StatusCode ret = block_mapping_->CheckBlockVersion(block_id, block_version);
+    response->set_status(ret);
     if (ret != kOK) {
         LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
+        done->Run();
     } else {
         LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
+        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, done,
+                                   (std::vector<FileInfo>*)NULL, _1));
     }
-    response->set_status(ret);
-    done->Run();
 }
 
 void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controller,
@@ -565,11 +610,18 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
 
     bool need_unlink;
     FileInfo remove_file;
-    StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file);
-    if (status == kOK && need_unlink) {
-        block_mapping_->RemoveBlocksForFile(remove_file);
-    }
+    NameServerLog log;
+    StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file, &log);
     response->set_status(status);
+    if (status == kOK) {
+        std::vector<FileInfo>* removed = NULL;
+        if (need_unlink) {
+            removed = new std::vector<FileInfo>;
+            removed->push_back(remove_file);
+        }
+        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, done, removed, _1));
+    }
     done->Run();
 }
 
@@ -587,12 +639,17 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     std::string path = NameSpace::NormalizePath(request->path());
 
     FileInfo file_info;
-    StatusCode status = namespace_->RemoveFile(path, &file_info);
-    if (status == kOK) {
-        block_mapping_->RemoveBlocksForFile(file_info);
-    }
+    NameServerLog log;
+    StatusCode status = namespace_->RemoveFile(path, &file_info, &log);
     LOG(INFO, "Unlink: %s return %s", path.c_str(), StatusCode_Name(status).c_str());
     response->set_status(status);
+    if (status == kOK) {
+        std::vector<FileInfo>* removed = new std::vector<FileInfo>;
+        removed->push_back(file_info);
+        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, done,
+                                   removed, _1));
+    }
     done->Run();
 }
 
@@ -612,13 +669,12 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
         response->set_status(kBadParameter);
         done->Run();
     }
-    std::vector<FileInfo> removed;
-    StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, &removed);
-    for (uint32_t i = 0; i < removed.size(); i++) {
-        block_mapping_->RemoveBlocksForFile(removed[i]);
-    }
+    std::vector<FileInfo>* removed = new std::vector<FileInfo>;
+    NameServerLog log;
+    StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed, &log);
     response->set_status(ret_status);
-    done->Run();
+    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done, removed, _1));
 }
 
 void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,
@@ -637,7 +693,8 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     FileInfo file_info;
     if (namespace_->GetFileInfo(file_name, &file_info)) {
         file_info.set_replicas(replica_num);
-        bool ret = namespace_->UpdateFileInfo(file_info);
+        NameServerLog log;
+        bool ret = namespace_->UpdateFileInfo(file_info, &log);
         assert(ret);
         for (int i = 0; i < file_info.blocks_size(); i++) {
             if (block_mapping_->ChangeReplicaNum(file_info.blocks(i), replica_num)) {
@@ -649,6 +706,11 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
                 break;
             }
         }
+        response->set_status(kOK);
+        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, done,
+                                   (std::vector<FileInfo>*)NULL, _1));
+        return;
     } else {
         LOG(INFO, "Change replica num not found: %s", file_name.c_str());
         ret_status = kNotFound;

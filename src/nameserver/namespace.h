@@ -25,29 +25,31 @@ class Sync;
 class NameSpace {
 public:
     NameSpace(Sync* sync);
-    void Activate();
+    void Activate(NameServerLog* log);
     ~NameSpace();
     /// List a directory
     StatusCode ListDirectory(const std::string& path,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
-    StatusCode CreateFile(const std::string& file_name, int flags, int mode, int replica_num);
+    StatusCode CreateFile(const std::string& file_name, int flags, int mode,
+                          int replica_num, NameServerLog* log);
     /// Remove file by name
-    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed);
+    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log);
     /// Remove director.
     StatusCode DeleteDirectory(const std::string& path, bool recursive,
-                        std::vector<FileInfo>* files_removed);
+                        std::vector<FileInfo>* files_removed, NameServerLog* log);
     /// File rename
     StatusCode Rename(const std::string& old_path,
                const std::string& new_path,
                bool* need_unlink,
-               FileInfo* remove_file);
+               FileInfo* remove_file,
+               NameServerLog* log);
     /// Get file
     bool GetFileInfo(const std::string& path, FileInfo* file_info);
     /// Update file
-    bool UpdateFileInfo(const FileInfo& file_info);
+    bool UpdateFileInfo(const FileInfo& file_info, NameServerLog* log);
     /// Delete file
-    bool DeleteFileInfo(const std::string file_key);
+    bool DeleteFileInfo(const std::string file_key, NameServerLog* log);
     /// Namespace version
     int64_t Version() const;
     /// Rebuild blockmap
@@ -67,10 +69,10 @@ private:
     bool LookUp(int64_t pid, const std::string& name, FileInfo* info);
     StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
-                                std::vector<FileInfo>* files_removed);
+                                std::vector<FileInfo>* files_removed,
+                                NameServerLog* log);
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
-    bool SyncLog(const NameServerLog& log);
     void LogRemote(const std::string& key, const std::string& value, int32_t type);
     //bool RecoverLog();
 private:
