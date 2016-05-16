@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <common/string_util.h>
 #include <common/logging.h>
+#include <common/timer.h>
 #include <gflags/gflags.h>
 
 #include "nameserver/sync.h"
@@ -20,7 +21,7 @@ namespace baidu {
 namespace bfs {
 
 MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false), cond_(&mu_),
-                                     read_log_(-1), scan_log_(-1),
+                                     log_done_(&mu_), read_log_(-1), scan_log_(-1),
                                      current_offset_(0), sync_offset_(0) {
 }
 
@@ -68,42 +69,50 @@ bool MasterSlaveImpl::IsLeader(std::string* leader_addr) {
 }
 
 bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
-    if (!IsLeader()) {
-        LOG(FATAL, "[Sync] slave does not need to log");
-    }
-    int w = write(log_, entry.c_str(), entry.length());
-    assert(w >= 0);
-    int last_offset = current_offset_;
-    mu_.Lock();
-    current_offset_ += w;
-    cond_.Signal();
-    mu_.Unlock();
-    usleep(500);
-
+    int last_offset = LogLocal(entry);
     // slave is way behind, do no wait
     if (master_only_ && sync_offset_ < last_offset) {
         LOG(WARNING, "[Sync] Sync in maset-only mode, do not wait");
         return true;
     }
 
-    for (int i = 0; i < timeout_ms / 1000; i++) {
-        if (sync_offset_ == current_offset_) {
+    int64_t start_point = common::timer::get_micros();
+    int64_t stop_point = start_point + timeout_ms * 1000;
+    while (sync_offset_ != current_offset_ && common::timer::get_micros() < stop_point) {
+        MutexLock lock(&mu_);
+        int wait_time = (stop_point - common::timer::get_micros()) / 1000;
+        if (log_done_.TimeWait(wait_time)) {
+            if (sync_offset_ != current_offset_) {
+                continue;
+            }
             if (master_only_) {
                 LOG(INFO, "[Sync] leaves master-only mode");
                 master_only_ = false;
             }
+            LOG(INFO, "[Sync] sync log takes %ld ms", common::timer::get_micros() - start_point);
             return true;
         } else {
-            LOG(INFO, "[Sync] waiting for ReplicateLog... timer %d", i);
+            break;
         }
-        sleep(1);
     }
-    LOG(WARNING, "[Sync] Sync is in master-only mode");
+    // log replicate in time
+    if (sync_offset_ == current_offset_) {
+        if (master_only_) {
+            LOG(INFO, "[Sync] leaves master-only mode");
+            master_only_ = false;
+            return true;
+        }
+        return true;
+    }
+    // log replicate time out
+    LOG(WARNING, "[Sync] Sync log timeout, Sync is in master-only mode");
     master_only_ = true;
     return true;
 }
 
 void MasterSlaveImpl::Log(const std::string& entry, boost::function<void ()> callback) {
+    int last_offset = LogLocal(entry);
+    callbacks_.insert(std::make_pair(last_offset, callback));
     return;
 }
 
@@ -215,11 +224,16 @@ void MasterSlaveImpl::ReplicateLog() {
                 sync_offset_, current_offset_);
             sleep(5);
         }
+        std::map<int, boost::function<void ()> >::iterator it = callbacks_.find(sync_offset_);
         sync_offset_ += 4 + len;
         LOG(INFO, "[Sync] Replicate log done. sync_offset_ = %d, current_offset_ = %d",
                 sync_offset_, current_offset_);
         delete[] entry;
+        if (it != callbacks_.end()) {
+            (it->second)();
+        }
     }
+    log_done_.Signal();
 }
 
 void MasterSlaveImpl::LogProgress() {
@@ -238,6 +252,20 @@ void MasterSlaveImpl::LogProgress() {
         close(fp);
     }
 
+}
+
+int MasterSlaveImpl::LogLocal(const std::string& entry) {
+    if (!IsLeader()) {
+        LOG(FATAL, "[Sync] slave does not need to log");
+    }
+    int w = write(log_, entry.c_str(), entry.length());
+    assert(w >= 0);
+    int last_offset = current_offset_;
+    mu_.Lock();
+    current_offset_ += w;
+    cond_.Signal();
+    mu_.Unlock();
+    return last_offset;
 }
 } // namespace bfs
 } // namespace baidu

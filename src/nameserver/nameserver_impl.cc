@@ -317,9 +317,11 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         mode = 0644;    // default mode
     }
     int replica_num = request->replica_num();
-    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num);
-    response->set_status(status);
-    done->Run();
+
+    boost::function<void ()> callback = boost::bind(&NameServerImpl::CreateFileCallback, this, request, response, done);
+    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, callback);
+    //response->set_status(status);
+    //done->Run();
 }
 
 void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
@@ -710,6 +712,13 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     str += "</div></body><html>";
     response->content->Append(str);
     return;
+}
+
+void NameServerImpl::CreateFileCallback(const CreateFileRequest* request, CreateFileResponse * response,
+                        ::google::protobuf::Closure* done) {
+    LOG(INFO, "Create file success %s", request->file_name().c_str());
+    response->set_status(kOK);
+    done->Run();
 }
 
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,

@@ -96,6 +96,7 @@ public:
                        ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
+
 private:
     void CheckLeader();
     void RebuildBlockMapCallback(const FileInfo& file_info);
@@ -104,6 +105,9 @@ private:
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
+
+    void CreateFileCallback(const CreateFileRequest* request, CreateFileResponse * response,
+                            ::google::protobuf::Closure* done);
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;

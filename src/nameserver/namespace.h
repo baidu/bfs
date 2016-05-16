@@ -30,7 +30,8 @@ public:
     StatusCode ListDirectory(const std::string& path,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
-    StatusCode CreateFile(const std::string& file_name, int flags, int mode, int replica_num);
+    StatusCode CreateFile(const std::string& file_name, int flags, int mode, int replica_num,
+                          boost::function<void ()> callback);
     /// Remove file by name
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed);
     /// Remove director.
@@ -72,6 +73,8 @@ private:
     void DecodeLog(const char* input, int32_t* type,
                    uint32_t* key_len, char* key, uint32_t* value_len, char* value);
     void LogRemote(const std::string& key, const std::string& value, int32_t type);
+    void LogRemote(const std::string& key, const std::string& value, int32_t type,
+                   boost::function<void ()> callback);
     //bool RecoverLog();
 private:
     leveldb::DB* db_;   /// NameSpace storage

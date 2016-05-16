@@ -7,6 +7,7 @@
 #define  BFS_NAMESERVER_SYNC_SYNC_H_
 
 #include <string>
+#include <map>
 #include <boost/function.hpp>
 #include <common/mutex.h>
 #include <common/thread.h>
@@ -48,6 +49,7 @@ public:
                    const master_slave::AppendLogRequest* request,
                    master_slave::AppendLogResponse* response,
                    ::google::protobuf::Closure* done);
+    int LogLocal(const std::string& entry);
 
 private:
     void BackgroundLog();
@@ -64,6 +66,7 @@ private:
 
     Mutex mu_;
     CondVar cond_;
+    CondVar log_done_;
     common::Thread worker_;
     common::Thread logger_;
 
@@ -72,6 +75,8 @@ private:
     int scan_log_;
     int current_offset_;
     int sync_offset_;
+
+    std::map<int, boost::function<void ()> > callbacks_;
 };
 
 } // namespace bfs

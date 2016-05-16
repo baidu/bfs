@@ -194,7 +194,8 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return LookUp(path, file_info);
 }
 
-StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
+StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num,
+                                 boost::function<void ()> callback) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "CreateFile split fail %s", path.c_str());
@@ -217,7 +218,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             MutexLock lock(&mu_);
             leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
             assert(s.ok());
-            LogRemote(key_str, info_value, kSyncWrite);
+            LogRemote(key_str, info_value, kSyncWrite, callback);
             LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
         } else {
             if (!IsDir(file_info.type())) {
@@ -251,7 +252,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
-        LogRemote(file_key, info_value, kSyncWrite);
+        LogRemote(file_key, info_value, kSyncWrite, callback);
         return kOK;
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail %s", path.c_str(), s.ToString().c_str());
@@ -609,6 +610,12 @@ void NameSpace::LogRemote(const std::string& key, const std::string& value, int3
     }
 }
 
+void NameSpace::LogRemote(const std::string& key, const std::string& value, int32_t type,
+                          boost::function<void ()> callback) {
+    std::string entry;
+    EncodeLog(type, key, value, &entry);
+    sync_->Log(entry, callback);
+}
 /*
 bool NameSpace::RecoverLog() {
     int ret = sync_->ScanLog();
