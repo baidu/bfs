@@ -96,7 +96,6 @@ do
 done;
 
 sleep 5
-cd -
 ./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
 
