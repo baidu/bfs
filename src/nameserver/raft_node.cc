@@ -305,7 +305,9 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
         } else {
             LOG(FATAL, "No next_index %ld in logdb", next_index);
         }
-        while (it->Valid() && it->key().compare(kLogEndMark) < 0) {
+        while (it->Valid()
+            && it->key().compare(kLogEndMark) < 0
+            && request->ByteSize() < 1024*1024) {
             LogEntry* entry = request->add_entries();
             bool ret = entry->ParseFromString(it->value().ToString());
             assert(ret);
