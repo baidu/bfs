@@ -336,8 +336,8 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         LOG(WARNING, "[WriteBlock] Too much unfinished write request(%ld), reject #%ld seq:%d offset:%ld len:%lu ts%lu",
                 g_unfinished_bytes.Get(), block_id, packet_seq, offset, databuf.size(), request->sequence_id());
         response->set_status(kCsTooMuchUnfinishedWrite);
-        done->Run();
         g_unfinished_bytes.Sub(databuf.size());
+        done->Run();
         return;
     }
     if (!response->has_sequence_id()) {
@@ -348,9 +348,9 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
             LOG(WARNING, "[WriteBlock] pending buf[%ld] req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
                 g_block_buffers.Get(), work_thread_pool_->PendingNum(),
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
+            g_unfinished_bytes.Sub(databuf.size());
             done->Run();
             g_refuse_ops.Inc();
-            g_unfinished_bytes.Sub(databuf.size());
             return;
         }
         LOG(DEBUG, "[WriteBlock] dispatch #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
