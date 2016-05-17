@@ -13,6 +13,9 @@
 
 #include "nameserver/raft_node.h"
 
+
+DEFINE_string(raft_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
+
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_port);
 DECLARE_int32(nameserver_log_level);
@@ -20,6 +23,8 @@ DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
 DECLARE_string(bfs_log);
 DECLARE_int32(bfs_log_size);
+DECLARE_int32(raft_node_index);
+DECLARE_string(raftdb_path);
 
 namespace baidu {
 namespace bfs {
@@ -46,7 +51,7 @@ public:
             if (raft_node_->GetLeader(&leader) && leader == self) {
                 applied_index_ ++;
                 char buf[64];
-                snprintf(buf, sizeof(buf), "LogEntry-%05d", applied_index_);
+                snprintf(buf, sizeof(buf), "LogEntry-%05ld", applied_index_);
                 bool ret = raft_node_->AppendLog(buf);
                 LOG(INFO, "[RaftTest] Append log: \"%s\" return %d", buf, ret);
             } else {
@@ -77,7 +82,8 @@ int main(int argc, char* argv[])
     LOG(baidu::common::INFO, "NameServer start ...");
 
     // Service
-    baidu::bfs::RaftNodeImpl* raft_service = new baidu::bfs::RaftNodeImpl();
+    baidu::bfs::RaftNodeImpl* raft_service =
+        new baidu::bfs::RaftNodeImpl(FLAGS_raft_nodes, FLAGS_raft_node_index, FLAGS_raftdb_path);
 
     // rpc_server
     sofa::pbrpc::RpcServerOptions options;

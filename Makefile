@@ -39,6 +39,9 @@ CHUNKSERVER_SRC = $(wildcard src/chunkserver/*.cc)
 CHUNKSERVER_OBJ = $(patsubst %.cc, %.o, $(CHUNKSERVER_SRC))
 CHUNKSERVER_HEADER = $(wildcard src/chunkserver/*.h)
 
+RPC_SRC = $(wildcard src/rpc/*.cc)
+RPC_OBJ = $(patsubst %.cc, %.o, $(RPC_SRC))
+
 SDK_SRC = $(wildcard src/sdk/*.cc)
 SDK_OBJ = $(patsubst %.cc, %.o, $(SDK_SRC))
 SDK_HEADER = $(wildcard src/sdk/*.h)
@@ -51,10 +54,9 @@ CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
 LEVELDB = ./thirdparty/leveldb/libleveldb.a
 
-COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
 FLAGS_OBJ = src/flags.o
 VERSION_OBJ = src/version.o
-OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
+OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client

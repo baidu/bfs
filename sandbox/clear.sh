@@ -9,3 +9,4 @@ rm -rf master* slave*
 #rm -rf bfs_client
 rm -rf bfs.flag
 rm -rf client.*
+rm -rf core.*

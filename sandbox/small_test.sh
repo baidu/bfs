@@ -84,11 +84,18 @@ kill -9 `cat chunkserver1/pid`
 rm -rf ./binary
 
 # Nameserver restart
-kill -9 `cat nameserver/pid`
-cd nameserver
-./bin/nameserver 1>nlog2 2>&1 &
-sleep 3
-cd -
+killall -9 nameserver
+
+for i in `seq 0 2`;
+do
+    cd nameserver$i;
+    port=$((i+8827))
+    ./bin/nameserver --raft_node_index=$i --nameserver_port=$port 1>nlog 2>&1 &
+    echo $! > pid
+    cd -
+done;
+
+sleep 5
 ./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
 

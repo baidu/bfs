@@ -69,7 +69,12 @@ bool MasterSlaveImpl::IsLeader(std::string* leader_addr) {
 }
 
 bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
-    int last_offset = LogLocal(entry);
+    int len = LogLocal(entry);
+    int last_offset = current_offset_;
+    mu_.Lock();
+    current_offset_ += len;
+    cond_.Signal();
+    mu_.Unlock();
     // slave is way behind, do no wait
     if (master_only_ && sync_offset_ < last_offset) {
         LOG(WARNING, "[Sync] Sync in maset-only mode, do not wait");
@@ -110,9 +115,16 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
     return true;
 }
 
-void MasterSlaveImpl::Log(const std::string& entry, boost::function<void ()> callback) {
-    int last_offset = LogLocal(entry);
-    callbacks_.insert(std::make_pair(last_offset, callback));
+void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)> callback) {
+    LOG(INFO, "[Sync] in async log");
+    int len = LogLocal(entry);
+    LOG(INFO, "[Sync] log entry len = %d", len);
+    mu_.Lock();
+    callbacks_.insert(std::make_pair(current_offset_, callback));
+    LOG(INFO, "[Sync] insert callback current_offset_ = %d", current_offset_);
+    current_offset_ += len;
+    cond_.Signal();
+    mu_.Unlock();
     return;
 }
 
@@ -224,14 +236,23 @@ void MasterSlaveImpl::ReplicateLog() {
                 sync_offset_, current_offset_);
             sleep(5);
         }
-        std::map<int, boost::function<void ()> >::iterator it = callbacks_.find(sync_offset_);
+        boost::function<void (bool)> callback;
+        mu_.Lock();
+        std::map<int, boost::function<void (bool)> >::iterator it = callbacks_.find(sync_offset_);
+        if (it != callbacks_.end()) {
+            callback = it->second;
+            callbacks_.erase(it);
+            mu_.Unlock();
+            callback(true);
+            mu_.Lock();
+        } else {
+            LOG(INFO, "[Sync] can not find callback sync_offset_ = %d", sync_offset_);
+        }
+        mu_.Unlock();
         sync_offset_ += 4 + len;
         LOG(INFO, "[Sync] Replicate log done. sync_offset_ = %d, current_offset_ = %d",
                 sync_offset_, current_offset_);
         delete[] entry;
-        if (it != callbacks_.end()) {
-            (it->second)();
-        }
     }
     log_done_.Signal();
 }
@@ -251,21 +272,19 @@ void MasterSlaveImpl::LogProgress() {
         }
         close(fp);
     }
-
 }
 
 int MasterSlaveImpl::LogLocal(const std::string& entry) {
     if (!IsLeader()) {
         LOG(FATAL, "[Sync] slave does not need to log");
     }
+    int len = entry.length();
+    char buf[4];
+    memcpy(buf, &len, 4);
+    write(log_, buf, 4);
     int w = write(log_, entry.c_str(), entry.length());
     assert(w >= 0);
-    int last_offset = current_offset_;
-    mu_.Lock();
-    current_offset_ += w;
-    cond_.Signal();
-    mu_.Unlock();
-    return last_offset;
+    return w + 4;
 }
 } // namespace bfs
 } // namespace baidu

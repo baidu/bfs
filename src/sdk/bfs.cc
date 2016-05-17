@@ -15,6 +15,8 @@
 #include "proto/nameserver.pb.h"
 #include "proto/chunkserver.pb.h"
 #include "rpc/rpc_client.h"
+#include "rpc/nameserver_client.h"
+
 #include <common/atomic.h>
 #include <common/mutex.h>
 #include <common/timer.h>
@@ -191,31 +193,24 @@ private:
 class FSImpl : public FS {
 public:
     friend class BfsFileImpl;
-    FSImpl() : rpc_client_(NULL), nameserver_(NULL), leader_nameserver_idx_(0) {
+    FSImpl() : rpc_client_(NULL), nameserver_client_(NULL), leader_nameserver_idx_(0) {
         local_host_name_ = common::util::GetLocalHostName();
         thread_pool_ = new ThreadPool(FLAGS_sdk_thread_num);
     }
     ~FSImpl() {
-        delete nameserver_;
+        delete nameserver_client_;
         delete rpc_client_;
         thread_pool_->Stop(true);
         delete thread_pool_;
     }
     bool ConnectNameServer(const char* nameserver) {
+        std::string nameserver_nodes = FLAGS_nameserver_nodes;
         if (nameserver != NULL) {
-            common::SplitString(nameserver, ",", &nameserver_addresses_);
-        } else {
-            common::SplitString(FLAGS_nameserver_nodes, ",", &nameserver_addresses_);
+            nameserver_nodes = std::string(nameserver);
         }
-        for (uint32_t i = 0; i < nameserver_addresses_.size(); ++i) {
-            rpc_client_ = new RpcClient();
-            bool ret = rpc_client_->GetStub(nameserver_addresses_[i], &nameserver_);
-            if (ret) {
-                leader_nameserver_idx_ = i;
-                return true;
-            }
-        }
-        return false;
+        rpc_client_ = new RpcClient();
+        nameserver_client_ = new NameServerClient(rpc_client_, nameserver_nodes);
+        return true;
     }
     bool CreateDirectory(const char* path) {
         CreateFileRequest request;
@@ -223,7 +218,7 @@ public:
         request.set_file_name(path);
         request.set_mode(0755|(1<<9));
         request.set_sequence_id(0);
-        bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
             &request, &response, 15, 3);
         if (!ret || response.status() != kOK) {
             return false;
@@ -239,20 +234,12 @@ public:
         ListDirectoryResponse response;
         request.set_path(path);
         request.set_sequence_id(0);
-        bool ret = false;
-        while (true) {
-            ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ListDirectory,
-                &request, &response, 15, 3);
-            if (ret && response.status() == kOK) {
-                break;
-            }
-            if (!ret || response.status() == kIsFollower) {
-                GetNextNameserver();
-            } else {
-                LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
-                    path, ret, StatusCode_Name(response.status()).c_str());
-                return false;
-            }
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ListDirectory,
+                &request, &response, 15, 1);
+        if (!ret || response.status() != kOK) {
+            LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
+                path, ret, StatusCode_Name(response.status()).c_str());
+            return false;
         }
         if (response.files_size() != 0) {
             *num = response.files_size();
@@ -274,8 +261,8 @@ public:
         request.set_sequence_id(0);
         request.set_path(path);
         request.set_recursive(recursive);
-        bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::DeleteDirectory,
-                &request, &response, 15, 3);
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DeleteDirectory,
+                &request, &response, 15, 1);
         if (!ret) {
             LOG(WARNING, "DeleteDirectory fail: %s\n", path);
             return false;
@@ -290,8 +277,8 @@ public:
         StatResponse response;
         request.set_path(path);
         request.set_sequence_id(0);
-        bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Stat,
-            &request, &response, 15, 3);
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Stat,
+            &request, &response, 15, 1);
         if (!ret) {
             LOG(WARNING, "Stat fail: %s\n", path);
             return false;
@@ -303,8 +290,8 @@ public:
         StatResponse response;
         request.set_path(path);
         request.set_sequence_id(0);
-        bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Stat,
-            &request, &response, 15, 3);
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Stat,
+            &request, &response, 15, 1);
         if (!ret) {
             LOG(WARNING, "Stat rpc fail: %s", path);
             return false;
@@ -327,8 +314,8 @@ public:
         FileLocationResponse response;
         request.set_file_name(path);
         request.set_sequence_id(0);
-        bool ret = rpc_client_->SendRequest(nameserver_,
-            &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
+            &request, &response, 15, 1);
         if (!ret || response.status() != kOK) {
             LOG(WARNING, "GetFileSize(%s) return %s", path, StatusCode_Name(response.status()).c_str());
             return false;
@@ -382,8 +369,8 @@ public:
         FileLocationResponse response;
         request.set_file_name(path);
         request.set_sequence_id(0);
-        bool ret = rpc_client_->SendRequest(nameserver_,
-            &NameServer_Stub::GetFileLocation, &request, &response, 15, 3);
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
+                                                   &request, &response, 15, 1);
         if (!ret || response.status() != kOK) {
             LOG(WARNING, "GetFileLocation(%s) return %s", path.c_str(),
                     StatusCode_Name(response.status()).c_str());
@@ -415,14 +402,14 @@ public:
             request.set_flags(flags);
             request.set_mode(mode&0777);
             request.set_replica_num(replica);
-            ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::CreateFile,
-                &request, &response, 15, 3);
+            ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
+                &request, &response, 15, 1);
             if (!ret || response.status() != kOK) {
                 LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
                     path, ret, StatusCode_Name(response.status()).c_str());
                 ret = false;
             } else {
-                //printf("Open file %s\n", path);
+                printf("Open file %s\n", path);
                 *file = new BfsFileImpl(this, rpc_client_, path, flags);
             }
         } else if (flags == O_RDONLY) {
@@ -430,8 +417,8 @@ public:
             FileLocationResponse response;
             request.set_file_name(path);
             request.set_sequence_id(0);
-            ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::GetFileLocation,
-                &request, &response, 15, 3);
+            ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
+                &request, &response, 15, 1);
             if (ret && response.status() == kOK) {
                 BfsFileImpl* f = new BfsFileImpl(this, rpc_client_, path, flags);
                 f->located_blocks_.CopyFrom(response.blocks());
@@ -458,7 +445,7 @@ public:
         int64_t seq = common::timer::get_micros();
         request.set_sequence_id(seq);
         // printf("Delete file: %s\n", path);
-        bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Unlink,
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Unlink,
             &request, &response, 15, 1);
         if (!ret) {
             LOG(WARNING, "Unlink rpc fail: %s", path);
@@ -476,8 +463,8 @@ public:
         request.set_oldpath(oldpath);
         request.set_newpath(newpath);
         request.set_sequence_id(0);
-        bool ret = rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Rename,
-            &request, &response, 15, 3);
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Rename,
+            &request, &response, 15, 1);
         if (!ret) {
             LOG(WARNING, "Rename rpc fail: %s to %s\n", oldpath, newpath);
             return false;
@@ -495,9 +482,8 @@ public:
         request.set_file_name(file_name);
         request.set_replica_num(replica_num);
         request.set_sequence_id(0);
-        bool ret = rpc_client_->SendRequest(nameserver_,
-                &NameServer_Stub::ChangeReplicaNum,
-                &request, &response, 15, 3);
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ChangeReplicaNum,
+                                                   &request, &response, 15, 1);
         if (!ret) {
             LOG(WARNING, "Change %s replica num to %d rpc fail\n",
                     file_name, replica_num);
@@ -513,9 +499,8 @@ public:
     bool SysStat(const std::string& stat_name, std::string* result) {
         SysStatRequest request;
         SysStatResponse response;
-        bool ret = rpc_client_->SendRequest(nameserver_,
-                &NameServer_Stub::SysStat,
-                &request, &response, 15, 3);
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::SysStat,
+                                                   &request, &response, 15, 1);
         if (!ret) {
             LOG(WARNING, "SysStat fail %s", StatusCode_Name(response.status()).c_str());
             return false;
@@ -548,24 +533,9 @@ public:
         return true;
     }
 private:
-    // TODO con-currency
-    bool GetNextNameserver() {
-        uint32_t nameserver_size = nameserver_addresses_.size();
-        for (uint32_t i = 1; i < nameserver_size; ++i) {
-            leader_nameserver_idx_ =  (leader_nameserver_idx_ + 1) % nameserver_size;
-            bool ret = rpc_client_->GetStub(nameserver_addresses_[leader_nameserver_idx_],
-                                            &nameserver_);
-            if (ret) {
-                LOG(INFO, "GetNextNameserver %s",
-                    nameserver_addresses_[leader_nameserver_idx_].c_str());
-                return true;
-            }
-        }
-        return false;
-    }
-private:
     RpcClient* rpc_client_;
-    NameServer_Stub* nameserver_;
+    NameServerClient* nameserver_client_;
+    //NameServer_Stub* nameserver_;
     std::vector<std::string> nameserver_addresses_;
     int32_t leader_nameserver_idx_;
     //std::string nameserver_address_;
@@ -772,8 +742,8 @@ int32_t BfsFileImpl::AddBlock() {
     request.set_file_name(name_);
     const std::string& local_host_name = fs_->local_host_name_;
     request.set_client_address(local_host_name);
-    bool ret = rpc_client_->SendRequest(fs_->nameserver_, &NameServer_Stub::AddBlock,
-        &request, &response, 15, 3);
+    bool ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::AddBlock,
+                                                    &request, &response, 15, 1);
     if (!ret || !response.has_block()) {
         LOG(WARNING, "Nameserver AddBlock fail: %s, ret= %d, status= %s",
             name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
@@ -1139,7 +1109,6 @@ bool BfsFileImpl::Close() {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = false;
     } else if (need_report_finish) {
-        NameServer_Stub* nameserver = fs_->nameserver_;
         FinishBlockRequest request;
         FinishBlockResponse response;
         request.set_sequence_id(0);
@@ -1147,8 +1116,8 @@ bool BfsFileImpl::Close() {
         request.set_block_id(block_id);
         request.set_block_version(last_seq_);
         request.set_block_size(write_offset_);
-        ret = rpc_client_->SendRequest(nameserver, &NameServer_Stub::FinishBlock,
-                &request, &response, 15, 3);
+        ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::FinishBlock,
+                                                   &request, &response, 15, 1);
         if (!(ret && response.status() == kOK))  {
             LOG(WARNING, "Close file %s fail, finish report returns %d, status: %s",
                     name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
