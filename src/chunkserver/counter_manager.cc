@@ -60,6 +60,7 @@ void CounterManager::GatherCounters() {
     counters.recover_bytes = g_recover_bytes.Clear() * 1000000 / interval;
     counters.buffers_new = g_buffers_new.Clear() * 1000000 / interval;
     counters.buffers_delete = g_buffers_delete.Clear() * 1000000 / interval;
+    counters.unfinished_write_bytes = g_unfinished_bytes.Get();
     MutexLock lock(&counters_lock_);
     counters_ = counters;
 }

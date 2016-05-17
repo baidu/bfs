@@ -32,6 +32,7 @@ public:
         //int64_t file_cache_miss;
         int64_t buffers_new;
         int64_t buffers_delete;
+        int64_t unfinished_write_bytes;
     };
     CounterManager();
     void GatherCounters();

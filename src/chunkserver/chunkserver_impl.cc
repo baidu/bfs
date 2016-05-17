@@ -122,13 +122,15 @@ void ChunkServerImpl::LogStatus(bool routine) {
     CounterManager::Counters counters = counter_manager_->GetCounters();
 
     LOG(INFO, "[Status] blocks %ld %ld buffers %ld pending %ld data %sB, "
-              "find %ld read %ld write %ld %ld %.2f MB, rpc %ld %ld %ld",
+              "find %ld read %ld write %ld %ld %.2f MB, rpc %ld %ld %ld, "
+              "unfinished: %ld",
         g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(), g_pending_writes.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
         counters.find_ops, counters.read_ops,
         counters.write_ops, counters.refuse_ops,
         counters.write_bytes / 1024.0 / 1024,
-        counters.rpc_delay, counters.delay_all, work_thread_pool_->PendingNum());
+        counters.rpc_delay, counters.delay_all, work_thread_pool_->PendingNum(),
+        counters.unfinished_write_bytes);
     if (routine) {
         heartbeat_thread_->DelayTask(1000,
             boost::bind(&ChunkServerImpl::LogStatus, this, true));
@@ -327,7 +329,8 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     int64_t offset = request->offset();
     int32_t packet_seq = request->packet_seq();
 
-    if (g_unfinished_bytes.Add(databuf.size()) > FLAGS_chunkserver_max_unfinished_bytes) {
+    if (!response->has_sequence_id() &&
+            g_unfinished_bytes.Add(databuf.size()) > FLAGS_chunkserver_max_unfinished_bytes) {
         if (!request->has_sequence_id()) {
             response->set_sequence_id(request->sequence_id());
         }
