@@ -93,7 +93,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
             bytes += len;
             write(1, buf, len);
         }
-        delete file;
+    //    delete file;
     }
     return len;
 }
@@ -149,7 +149,7 @@ int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
         fwrite(buf, len, 1, fp);
     }
     printf("Read %ld bytes from %s\n", bytes, source.c_str());
-    delete file;
+//    delete file;
     fclose(fp);
     return len;
 }
@@ -213,7 +213,7 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "close fail: %s\n", target.c_str());
         ret = 1;
     }
-    delete file;
+    //delete file;
     printf("Put file to bfs %s %ld bytes\n", target.c_str(), len);
     return ret;
 }
