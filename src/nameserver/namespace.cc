@@ -528,14 +528,12 @@ std::string NameSpace::NormalizePath(const std::string& path) {
 }
 
 void NameSpace::TailLog(const std::string& logstr) {
-    LOG(INFO, "logen=%d", logstr.length());
     NameServerLog log;
     if(!log.ParseFromString(logstr)) {
         LOG(FATAL, "Parse log fail: %s", common::DebugString(logstr).c_str());
     }
     for (int i = 0; i < log.entries_size(); i++) {
         const NsLogEntry& entry = log.entries(i);
-        LOG(INFO, "kl=%lu vl=%lu", entry.key().size(), entry.value().size());
         int type = entry.type();
         leveldb::Status s;
         if (type == kSyncWrite) {

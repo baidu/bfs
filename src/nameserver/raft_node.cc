@@ -352,6 +352,19 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                         LOG(INFO, "Update commit_index from %ld to %ld",
                             commit_index_, commit_index);
                         commit_index_ = commit_index;
+                        while (last_applied_ < commit_index) {
+                            last_applied_ ++;
+                            LOG(INFO, "[Raft] Apply %ld to leader", last_applied_);
+                            std::map<int64_t, boost::function<void (bool)> >::iterator calllback =
+                                callback_map_.find(last_applied_);
+                            if (calllback != callback_map_.end()) {
+                                mu_.Unlock();
+                                (calllback->second)(true);
+                                LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
+                                mu_.Lock();
+                                callback_map_.erase(calllback);
+                            }
+                        }
                         last_applied_ = commit_index;
                         StoreContext("last_applied", last_applied_);
                     }
@@ -430,6 +443,18 @@ bool RaftNodeImpl::GetContext(const std::string& context, std::string* value) {
     leveldb::Status s = log_db_->Get(leveldb::ReadOptions(), key, value);
     LOG(INFO, "Load %s %s", context.c_str(), common::DebugString(*value).c_str());
     return s.ok();
+}
+
+void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void (bool)> callback) {
+    MutexLock lock(&mu_);
+    int64_t index = ++log_index_;
+    ///TODO: optimize lock
+    if (!StoreLog(current_term_, index, log)) {
+        log_index_ --;
+        thread_pool_->AddTask(boost::bind(callback,false));
+        return;
+    }
+    callback_map_.insert(std::make_pair(index, callback));
 }
 
 bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {

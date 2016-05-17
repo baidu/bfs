@@ -69,9 +69,9 @@ bool MasterSlaveImpl::IsLeader(std::string* leader_addr) {
 }
 
 bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
+    mu_.Lock();
     int len = LogLocal(entry);
     int last_offset = current_offset_;
-    mu_.Lock();
     current_offset_ += len;
     cond_.Signal();
     mu_.Unlock();
@@ -100,15 +100,6 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
             break;
         }
     }
-    // log replicate in time
-    if (sync_offset_ == current_offset_) {
-        if (master_only_) {
-            LOG(INFO, "[Sync] leaves master-only mode");
-            master_only_ = false;
-            return true;
-        }
-        return true;
-    }
     // log replicate time out
     LOG(WARNING, "[Sync] Sync log timeout, Sync is in master-only mode");
     master_only_ = true;
@@ -117,9 +108,9 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
 
 void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)> callback) {
     LOG(INFO, "[Sync] in async log");
+    mu_.Lock();
     int len = LogLocal(entry);
     LOG(INFO, "[Sync] log entry len = %d", len);
-    mu_.Lock();
     callbacks_.insert(std::make_pair(current_offset_, callback));
     LOG(INFO, "[Sync] insert callback current_offset_ = %d", current_offset_);
     current_offset_ += len;
@@ -130,44 +121,6 @@ void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)>
 
 void MasterSlaveImpl::RegisterCallback(boost::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
-}
-
-int MasterSlaveImpl::ScanLog() {
-    scan_log_ = open("sync.log", O_RDONLY);
-    if (scan_log_ < 0 && errno == ENOENT) {
-        LOG(INFO, "[Sync] can't find sync log %d", scan_log_);
-        return -1;
-    }
-    assert(scan_log_ != -1);
-    return scan_log_;
-}
-
-int MasterSlaveImpl::Next(char* entry) {
-    if (scan_log_ < 0) {
-        return -1;
-    }
-    char buf[4];
-    uint32_t ret = read(scan_log_, buf, 4);
-    assert(ret >= 0);
-    if (ret == 0) {
-        close(scan_log_);
-        scan_log_ = 0;
-        rename("sync.log", "sync.bak");
-        return 0;
-    } else if (ret < 4) {
-        LOG(WARNING, "incomplete record");
-        return ret;
-    }
-    uint32_t len;
-    memcpy(&len, buf, 4);
-    LOG(INFO, "[Sync] read_len=%u", len);
-    ret = read(scan_log_, entry, len);
-    if (ret < len) {
-        LOG(WARNING, "incomplete record");
-        return len;
-    }
-    assert(ret == len);
-    return len;
 }
 
 void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
@@ -206,8 +159,14 @@ void MasterSlaveImpl::BackgroundLog() {
 
 void MasterSlaveImpl::ReplicateLog() {
     while (sync_offset_ < current_offset_) {
+        mu_.Lock();
+        if (sync_offset_ == current_offset_) {
+            mu_.Unlock();
+            break;
+        }
         LOG(INFO, "[Sync] ReplicateLog sync_offset_ = %d, current_offset_ = %d",
                 sync_offset_, current_offset_);
+        mu_.Unlock();
         if (read_log_ < 0) {
             LOG(FATAL, "[Sync] read_log_ error");
         }
@@ -242,16 +201,23 @@ void MasterSlaveImpl::ReplicateLog() {
         if (it != callbacks_.end()) {
             callback = it->second;
             callbacks_.erase(it);
+            LOG(INFO, "[Sync] calling callback %d", it->first);
             mu_.Unlock();
             callback(true);
             mu_.Lock();
         } else {
             LOG(INFO, "[Sync] can not find callback sync_offset_ = %d", sync_offset_);
+            if (sync_offset_ != 0) {
+                for (std::map<int, boost::function<void (bool)> >::iterator t = callbacks_.begin(); t != callbacks_.end(); ++t) {
+                    LOG(INFO, "[Sync] callbacks_ %d", t->first);
+                }
+                assert(0);
+            }
         }
-        mu_.Unlock();
         sync_offset_ += 4 + len;
         LOG(INFO, "[Sync] Replicate log done. sync_offset_ = %d, current_offset_ = %d",
                 sync_offset_, current_offset_);
+        mu_.Unlock();
         delete[] entry;
     }
     log_done_.Signal();
