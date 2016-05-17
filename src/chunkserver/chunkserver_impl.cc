@@ -438,6 +438,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
             response->set_status(next_response->status());
         }
         delete next_response;
+        g_unfinished_bytes.Sub(databuf.size());
         done->Run();
         return;
     } else {
