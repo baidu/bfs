@@ -765,11 +765,12 @@ int32_t BfsFileImpl::AddBlock() {
         create_request.set_packet_seq(0);
         WriteBlockResponse create_response;
         if (FLAGS_sdk_write_mode == "chains") {
-            for (int i = 1; i < block_for_write_->chains_size(); i++) {
+            for (int i = 0; i < block_for_write_->chains_size(); i++) {
                 const std::string& cs_addr = block_for_write_->chains(i).address();
                 create_request.add_chunkservers(cs_addr);
             }
         }
+        create_request.set_cs_offset(0);
         bool ret = rpc_client_->SendRequest(chunkservers_[addr],
                                             &ChunkServer_Stub::WriteBlock,
                                             &create_request, &create_response,
@@ -922,6 +923,7 @@ void BfsFileImpl::BackgroundWrite() {
                     request->add_chunkservers(addr);
                 }
             }
+            request->set_cs_offset(0);
             const int max_retry_times = 5;
             ChunkServer_Stub* stub = chunkservers_[cs_addr];
             boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
