@@ -50,6 +50,7 @@ DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_bool(chunkserver_auto_clean);
+DECLARE_int64(chunkserver_max_memory_size);
 
 namespace baidu {
 namespace bfs {
@@ -95,6 +96,7 @@ ChunkServerImpl::ChunkServerImpl()
     counter_manager_ = new CounterManager;
     heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this, true));
     heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
+    work_thread_pool_->AddTask(boost::bind(&ChunkServerImpl::GetMemoryUsed, this));
 }
 
 ChunkServerImpl::~ChunkServerImpl() {
@@ -334,6 +336,13 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
             LOG(WARNING, "[WriteBlock] pending buf[%ld] req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
                 g_block_buffers.Get(), work_thread_pool_->PendingNum(),
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
+            done->Run();
+            g_refuse_ops.Inc();
+            return;
+        }
+        if (memory_used_ > FLAGS_chunkserver_max_memory_size) {
+            LOG(WARNING, "Chunkserver use too much memory %ld MB, hold for a while", memory_used_ << 10);
+            response->set_status(kCsOutOfMemory);
             done->Run();
             g_refuse_ops.Inc();
             return;
@@ -796,6 +805,31 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     response.content->Append(str);
     return true;
 }
+
+void ChunkServerImpl::GetMemoryUsed()
+{
+    static pid_t my_pid = getpid();
+    static std::string path = "/proc/" + common::NumToString(my_pid) + "/status";
+    FILE* fd = fopen(path.c_str(), "r");
+    boost::function<void ()> task = boost::bind(&ChunkServerImpl::GetMemoryUsed, this);
+    if (!fd) {
+        LOG(WARNING, "Open proc file %s fail", path.c_str());
+    } else {
+        char buf[100];
+        //skip header
+        for (int i = 0; i < 14; i++) {
+            fgets(buf, sizeof(buf), fd);
+        }
+        fgets(buf, sizeof(buf), fd);
+        char title[20];
+        int64_t memory_size;
+        sscanf(buf, "%s %ld", title, &memory_size);
+        memory_used_ = memory_size;
+        fclose(fd);
+    }
+    work_thread_pool_->DelayTask(3000, task);
+}
+
 } // namespace bfs
 } //namespace baidu
 

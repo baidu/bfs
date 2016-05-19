@@ -77,6 +77,7 @@ private:
     bool WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver);
     void CloseIncompleteBlock(int64_t block_id);
     void StopBlockReport();
+    void GetMemoryUsed();
 private:
     BlockManager*   block_manager_;
     std::string     data_server_addr_;
@@ -93,6 +94,7 @@ private:
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
     volatile bool service_stop_;
+    int64_t memory_used_;
 };
 
 } // namespace bfs
