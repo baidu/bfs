@@ -27,7 +27,7 @@ namespace bfs {
 
 const int kChunkserverLoadMax = -1;
 
-ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping)
+ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, std::vector<BlockMapping*>* block_mapping)
     : thread_pool_(thread_pool),
       block_mapping_(block_mapping),
       chunkserver_num_(0),
@@ -52,7 +52,16 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     chunkserver_block_map_.erase(id);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
-    block_mapping_->DealWithDeadNode(id, blocks);
+    std::vector<std::set<int64_t> > blocks_array;
+    blocks_array.resize((*block_mapping_).size());
+    for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        int bucket_offset = (*it) % (*block_mapping_).size();
+        blocks_array[bucket_offset].insert(*it);
+    }
+    std::set<int64_t>().swap(blocks);
+    for (size_t i = 0; i < (*block_mapping_).size(); i++) {
+        (*block_mapping_)[i]->DealWithDeadNode(id, blocks_array[i]);
+    }
     mu_.Lock("CleanChunkserverRelock", 10);
     cs->set_w_qps(0);
     cs->set_w_speed(0);
@@ -471,7 +480,9 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         }
     }
     std::map<int64_t, std::set<int32_t> > blocks;
-    block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
+    for (size_t i = 0; i < (*block_mapping_).size(); i++) {
+        (*block_mapping_)[i]->PickRecoverBlocks(cs_id, FLAGS_recover_speed / (*block_mapping_).size() + 1, &blocks, hi_num);
+    }
     for (std::map<int64_t, std::set<int32_t> >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
@@ -480,7 +491,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         if (GetRecoverChains(it->second, &(recover_it->second))) {
             //
         } else {
-            block_mapping_->ProcessRecoveredBlock(cs_id, it->first);
+            (*block_mapping_)[it->first]->ProcessRecoveredBlock(cs_id, it->first);
             recover_blocks->erase(recover_it);
         }
     }

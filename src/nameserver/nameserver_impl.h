@@ -102,6 +102,7 @@ private:
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
+    int64_t GetNewBlockId();
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;
@@ -109,7 +110,9 @@ private:
     /// Chunkserver map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
-    BlockMapping* block_mapping_;
+    std::vector<BlockMapping*> block_mapping_bucket_;
+    int64_t next_block_id_;
+    Mutex mu_;
     /// Safemode
     volatile int safe_mode_;
     int64_t start_time_;
