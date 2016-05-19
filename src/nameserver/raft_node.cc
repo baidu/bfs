@@ -7,6 +7,7 @@
 #include "nameserver/raft_node.h"
 
 #include <boost/bind.hpp>
+#include <boost/scoped_ptr.hpp>
 #include <gflags/gflags.h>
 #include <common/mutex.h>
 #include <common/logging.h>
@@ -48,6 +49,9 @@ RaftNodeImpl::~RaftNodeImpl() {
     node_stop_ = true;
     delete thread_pool_;
     for (uint32_t i = 0; i < follower_context_.size(); i++) {
+        if (follower_context_[i] == NULL) {
+            continue;
+        }
         follower_context_[i]->condition.Signal();
         follower_context_[i]->worker.Stop(true);
         delete follower_context_[i];
@@ -106,6 +110,7 @@ void RaftNodeImpl::Election() {
         return;
     }
 
+    voted_.clear();
     current_term_ ++;
     node_state_ = kCandidate;
     voted_for_ = self_;
@@ -113,7 +118,7 @@ void RaftNodeImpl::Election() {
         LOG(FATAL, "Store term & vote_for fail %s %ld", voted_for_.c_str(), current_term_);
     }
     voted_.insert(self_);
-    LOG(INFO, "Start Election: %d %ld %ld", current_term_, log_index_, log_term_);
+    LOG(INFO, "Start Election: %ld %ld %ld", current_term_, log_index_, log_term_);
     
     for (uint32_t i = 0; i < nodes_.size(); i++) {
         if (nodes_[i] == self_) {
@@ -159,40 +164,41 @@ void RaftNodeImpl::ElectionCallback(const VoteRequest* request,
                                     bool failed,
                                     int error,
                                     const std::string& node_addr) {
+    boost::scoped_ptr<const VoteRequest> req(request);
+    boost::scoped_ptr<VoteResponse> res(response);
+    if (failed) {
+        return;
+    }
+
+    int64_t term = response->term();
+    bool granted = response->vote_granted();
+    assert(term >= request->term() && (term == request->term() || !granted));
+
+    LOG(INFO, "ElectionCallback %s by %s %ld / %ld",
+        granted ? "granted" : "reject",
+        node_addr.c_str(), term, current_term_);
+
     MutexLock lock(&mu_);
-    if (!failed
-        && CheckTerm(response->term())
-        && node_state_ != kLeader) {
-        bool granted = response->vote_granted();
-        int64_t term = response->term();
-        LOG(INFO, "ElectionCallback %s by %s %ld / %ld",
-            granted ? "granted" : "reject",
-            node_addr.c_str(), term, current_term_);
-        if (granted) {
-            if (term == current_term_) {
-                voted_.insert(node_addr);
-                if (voted_.size() >= (nodes_.size() / 2) + 1) {
-                    leader_ = self_;
-                    node_state_ = kLeader;
-                    bool ret = CancelElection();
-                    LOG(INFO, "Change state to Leader, cancel election return %d", ret);
-                    LOG(INFO, "term %ld index %ld commit %ld applied %ld",
-                        current_term_, log_index_, commit_index_, last_applied_);
-                    for (uint32_t i = 0;i < follower_context_.size(); i++) {
-                        if (nodes_[i] != self_) {
-                            follower_context_[i]->match_index = 0;
-                            follower_context_[i]->next_index = log_index_ + 1;
-                            follower_context_[i]->condition.Signal();
-                        }
-                    }
-                }
-            } else {
-                LOG(INFO, "Term mismatch %ld / %ld", term, current_term_);
+    CheckTerm(term);
+    if (term != current_term_ || !granted || node_state_ == kLeader) {
+        return;
+    }
+
+    voted_.insert(node_addr);
+    if (voted_.size() >= (nodes_.size() / 2) + 1) {
+        leader_ = self_;
+        node_state_ = kLeader;
+        CancelElection();
+        LOG(INFO, "Change state to Leader, term %ld index %ld commit %ld applied %ld",
+            current_term_, log_index_, commit_index_, last_applied_);
+        for (uint32_t i = 0;i < follower_context_.size(); i++) {
+            if (nodes_[i] != self_) {
+                follower_context_[i]->match_index = 0;
+                follower_context_[i]->next_index = log_index_ + 1;
+                follower_context_[i]->condition.Signal();
             }
         }
     }
-    delete request;
-    delete response;
 }
 
 bool RaftNodeImpl::CancelElection() {
@@ -363,6 +369,8 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                                 LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
                                 mu_.Lock();
                                 callback_map_.erase(calllback);
+                            } else {
+                                LOG(INFO, "[Raft] no callback for %ld", last_applied_);
                             }
                         }
                         last_applied_ = commit_index;
@@ -370,7 +378,7 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                     }
                 }
             } else {
-                LOG(INFO, "Replicate fail --next_index %d for %s",
+                LOG(INFO, "Replicate fail --next_index %ld for %s",
                     follower->next_index, nodes_[id].c_str());
                 if (follower->next_index > 1) {
                     --follower->next_index;
@@ -390,8 +398,12 @@ void RaftNodeImpl::ReplicateLogWorker(uint32_t id) {
         if (node_stop_) {
             return;
         }
+        int64_t s = common::timer::get_micros();
         ReplicateLogForNode(id);
-        follower->condition.TimeWait(100);
+        int64_t d = 100 - (common::timer::get_micros() - s) / 1000;
+        if (d > 0) {
+            follower->condition.TimeWait(d);
+        }
     }
 }
 
@@ -519,12 +531,16 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
                    ::google::protobuf::Closure* done) {
     MutexLock lock(&mu_);
     int64_t term = request->term();
-    CheckTerm(term);
     if (term < current_term_) {
         LOG(INFO, "AppendEntries old term %ld / %ld", term, current_term_);
         response->set_success(false);
         done->Run();
         return;
+    }
+
+    CheckTerm(term);
+    if (term == current_term_ && node_state_ == kCandidate) {
+        node_state_ = kFollower;
     }
 
     ResetElection();
@@ -537,7 +553,7 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
                                          &value);
         LogEntry entry;
         if (!s.IsNotFound() && !entry.ParseFromString(value)) {
-            LOG(FATAL, "Paser logdb value fail:%d", prev_log_index);
+            LOG(FATAL, "Paser logdb value fail:%ld", prev_log_index);
         }
         if (s.IsNotFound() || entry.term() != prev_log_term) {
             LOG(INFO, "[Raft] Last index %ld term %ld / %ld mismatch",
