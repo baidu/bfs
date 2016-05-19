@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
     }
     sofa::pbrpc::Servlet webservice =
         sofa::pbrpc::NewPermanentExtClosure(chunkserver_service, &baidu::bfs::ChunkServerImpl::WebService);
-    rpc_server->RegisterWebServlet("/dfs", webservice);
+    rpc_server->RegisterWebServlet("/bfs", webservice);
 
     std::string server_host = std::string("0.0.0.0:") + FLAGS_chunkserver_port;
     if (!rpc_server->Start(server_host)) {

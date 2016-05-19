@@ -615,14 +615,14 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
-    if (path == "/dfs/details") {
+    if (path == "/bfs/details") {
         ListRecover(&response);
         return true;
-    } else if (path == "/dfs/leave_safemode") {
+    } else if (path == "/bfs/leave_safemode") {
         LeaveSafemode();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/kick" && FLAGS_bfs_web_kick_enable) {
+    } else if (path == "/bfs/kick" && FLAGS_bfs_web_kick_enable) {
         std::map<std::string, std::string>::const_iterator it =
             request.query_params->find("cs");
         if (it == request.query_params->end()) {
@@ -679,7 +679,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.id());
         table_str += "</td><td>";
-        table_str += "<a href=\"http://" + chunkserver.address() + "/dfs\">"
+        table_str += "<a href=\"http://" + chunkserver.address() + "/bfs\">"
                + chunkserver.address() + "</a>";
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.block_num());
@@ -705,7 +705,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         } else if (chunkserver.kick()) {
             table_str += "kicked";
         } else if (FLAGS_bfs_web_kick_enable) {
-            table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
+            table_str += "alive (<a href=\"/bfs/kick?cs=" + common::NumToString(chunkserver.id())
                       + "\">kick</a>)";
         } else {
             table_str += "alive";
@@ -734,7 +734,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
     str += "Safemode: " + common::NumToString(safe_mode_);
     if (safe_mode_) {
-        str += " <a href=\"/dfs/leave_safemode\">leave</a>";
+        str += " <a href=\"/bfs/leave_safemode\">leave</a>";
     }
     str += "</br>";
     str += "Pending tasks: "
@@ -748,7 +748,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Pending: " + common::NumToString(hi_pending) + "/" + common::NumToString(lo_pending) + "</br>";
     str += "Lost: " + common::NumToString(lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
-    str += "<a href=\"/dfs/details\">Details</a>";
+    str += "<a href=\"/bfs/details\">Details</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
