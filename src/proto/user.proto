@@ -1,0 +1,11 @@
+
+package baidu.bfs;
+
+message UserInfo {
+    optional int32 user_id = 1;
+    //maybe unnecessary to store user name
+    optional string user_name = 2;
+    optional bytes token = 3;
+    optional bool admin = 4;
+}
+

@@ -12,6 +12,7 @@ message CreateFileRequest {
     optional int32 flags = 4;
     optional int32 replica_num = 5;
     optional string user = 7;
+    optional bytes token = 8;
 }
 
 message CreateFileResponse {
@@ -31,6 +32,7 @@ message FileLocationRequest {
     optional int64 offset = 3;
     optional int32 block_num = 4 [default = 10];
     optional string user = 5;
+    optional bytes token = 6;
 }
 
 message FileLocationResponse {
@@ -42,6 +44,8 @@ message FileLocationResponse {
 message ListDirectoryRequest {
     required int64 sequence_id = 1;
     required string path = 2;
+    optional string user = 3;
+    optional bytes token = 4;
 }
 message ListDirectoryResponse {
     required int64 sequence_id = 1;
@@ -51,7 +55,9 @@ message ListDirectoryResponse {
 
 message StatRequest {
     optional int64 sequence_id = 1;
-    required string path = 2;
+    optional string path = 2;
+    optional string user = 3;
+    optional bytes token = 4;
 }
 message StatResponse {
     optional int64 sequence_id = 1;
@@ -63,6 +69,8 @@ message RenameRequest {
     optional int64 sequence_id = 1;
     required string oldpath = 2;
     required string newpath = 3;
+    optional string user = 4;
+    optional bytes token = 5;
 }
 message RenameResponse {
     optional int64 sequence_id = 1;
@@ -95,6 +103,8 @@ message FinishBlockResponse {
 message UnlinkRequest {
     required int64 sequence_id = 1;
     required string path = 2;
+    optional string user = 3;
+    optional bytes token = 4;
 }
 message UnlinkResponse {
     required int64 sequence_id = 1;
@@ -105,6 +115,8 @@ message DeleteDirectoryRequest {
     required int64 sequence_id = 1;
     required string path = 2;
     required bool recursive = 3;
+    optional string user = 4;
+    optional bytes token = 5;
 }
 message DeleteDirectoryResponse {
     required int64 sequence_id = 1;
@@ -115,6 +127,8 @@ message ChangeReplicaNumRequest {
     optional int64 sequence_id = 1;
     required string file_name = 2;
     required int32 replica_num = 3;
+    optional string user = 4;
+    optional bytes token = 5;
 }
 message ChangeReplicaNumResponse {
     optional int64 sequence_id = 1;
@@ -208,12 +222,45 @@ message PushBlockReportResponse {
 message SysStatRequest {
     optional string stat_name = 2;
 }
-
 message SysStatResponse {
     optional StatusCode status = 2;
     repeated ChunkServerInfo chunkservers = 3;
     optional int64 block_num = 4;
     optional int64 data_size = 5;
+}
+
+message AddUserRequest {
+    optional string admin_user_name = 2;
+    optional bytes admin_user_token = 3;
+    optional string user_name = 4;
+    optional bytes user_token = 5;
+}
+message AddUserResponse {
+    optional StatusCode status = 2;
+}
+message DeleteUserRequest {
+    optional string admin_user_name = 2;
+    optional bytes admin_user_token = 3;
+    optional string user_name = 4;
+}
+message DeleteUserResponse {
+    optional StatusCode status = 2;
+}
+message DelUserRequest {
+    optional string admin_user__name = 2;
+    optional bytes admin_user_token = 3;
+    optional string user_name = 4;
+}
+message DelUserResponse {
+    optional StatusCode status = 2;
+}
+message ChangeTokenRequest {
+    optional string user_name = 2;
+    optional bytes old_token = 3;
+    optional bytes new_token = 4;
+}
+message ChangeTokenResponse {
+    optional StatusCode status = 2;
 }
 
 service NameServer {
@@ -234,6 +281,9 @@ service NameServer {
     rpc BlockReceived(BlockReceivedRequest) returns(BlockReceivedResponse);
     rpc PushBlockReport(PushBlockReportRequest) returns(PushBlockReportResponse);
 
+    rpc AddUser(AddUserRequest) returns(AddUserResponse);
+    rpc DelUser(AddUserRequest) returns(AddUserResponse);
+    rpc ChangeToken(ChangeTokenRequest) returns(ChangeTokenResponse);
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
 }
 

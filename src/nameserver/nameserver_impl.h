@@ -23,6 +23,7 @@ namespace baidu {
 namespace bfs {
 
 class NameSpace;
+class UserManager;
 class ChunkServerManager;
 class BlockMapping;
 
@@ -94,6 +95,20 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void AddUser(::google::protobuf::RpcController* controller,
+                       const ::baidu::bfs::AddUserRequest* request,
+                       ::baidu::bfs::AddUserResponse* response,
+                       ::google::protobuf::Closure* done);
+    void DeleteUser(google::protobuf::RpcController* controller,
+                       const ::baidu::bfs::DeleteUserRequest* request,
+                       ::baidu::bfs::DeleteUserResponse* response,
+                       ::google::protobuf::Closure* done);
+    void ChangeToken(google::protobuf::RpcController* controller,
+                       const ::baidu::bfs::ChangeTokenRequest* request,
+                       ::baidu::bfs::ChangeTokenResponse* response,
+                       ::google::protobuf::Closure* done);
+
+public:
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
@@ -116,6 +131,8 @@ private:
     /// Namespace
     NameSpace* namespace_;
     int64_t namespace_version_;
+    /// User management
+    UserManager* user_manager_;
 };
 
 } // namespace bfs

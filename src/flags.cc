@@ -14,6 +14,7 @@ DEFINE_int32(bfs_log_size, 1024, "BFS log size");
 // nameserver
 DEFINE_string(namedb_path, "./db", "Namespace database");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
+DEFINE_string(userdb_path, "./user", "User information database");
 DEFINE_string(nameserver, "127.0.0.1", "Nameserver host");
 DEFINE_string(nameserver_port, "8828", "Nameserver port");
 DEFINE_int32(keepalive_timeout, 10, "Chunkserver keepalive timeout");
@@ -53,5 +54,7 @@ DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
 DEFINE_string(sdk_write_mode, "chains", "Sdk write mode: chains/fan-out");
 DEFINE_int32(sdk_createblock_retry, 5, "Create block retry times before fail");
+DEFINE_string(user_name, "share", "User name");
+DEFINE_string(user_token, "", "User token");
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
