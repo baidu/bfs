@@ -119,7 +119,6 @@ void RaftNodeImpl::Election() {
     }
     voted_.insert(self_);
     LOG(INFO, "Start Election: %ld %ld %ld", current_term_, log_index_, log_term_);
-    
     for (uint32_t i = 0; i < nodes_.size(); i++) {
         if (nodes_[i] == self_) {
             continue;
@@ -138,7 +137,7 @@ void RaftNodeImpl::Election() {
         rpc_client_->AsyncRequest(raft_node, &RaftNode_Stub::Vote, request, response, callback, 60, 1);
         delete raft_node;
     }
-    election_taskid_ = 
+    election_taskid_ =
         thread_pool_->DelayTask(150 + rand() % 150, boost::bind(&RaftNodeImpl::Election, this));
 }
 
@@ -221,7 +220,7 @@ void RaftNodeImpl::ResetElection() {
     if (election_taskid_ != -1) {
         CancelElection();
     }
-    election_taskid_ = 
+    election_taskid_ =
         thread_pool_->DelayTask(150 + rand() % 150, boost::bind(&RaftNodeImpl::Election, this));
     //LOG(INFO, "Reset election %ld", election_taskid_);
 }
@@ -240,7 +239,7 @@ void RaftNodeImpl::Vote(::google::protobuf::RpcController* controller,
     CheckTerm(term);
     if (term >= current_term_
         && (voted_for_ == "" || voted_for_ == candidate)
-        && (last_log_term > log_term_ || 
+        && (last_log_term > log_term_ ||
         (last_log_term == log_term_ && last_log_index >= log_index_))) {
         voted_for_ = candidate;
         if (!StoreContext("current_term", current_term_) || !StoreContext("voted_for", voted_for_)) {

@@ -73,7 +73,6 @@ private:
                                 NameServerLog* log);
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
-    void LogRemote(const std::string& key, const std::string& value, int32_t type);
     //bool RecoverLog();
 private:
     leveldb::DB* db_;   /// NameSpace storage

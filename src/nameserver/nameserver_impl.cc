@@ -337,9 +337,12 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (b
         LOG(FATAL, "Serialize log fail");
     }
     if (callback.empty()) {
+        LOG(INFO, "[Sync] log sync");
         return sync_->Log(logstr);
     } else {
+        LOG(INFO, "[Sync] log async");
         sync_->Log(logstr, callback);
+        LOG(INFO, "[Sync] log async done");
         return true;
     }
 }
@@ -787,7 +790,10 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
-    if (path == "/dfs/details") {
+    if (path == "/dfs/switchtoleader") {
+        sync_->SwitchToLeader();
+        return true;
+    } else if (path == "/dfs/details") {
         ListRecover(&response);
         return true;
     } else if (path == "/dfs/leave_safemode") {

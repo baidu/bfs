@@ -30,7 +30,6 @@ namespace baidu {
 namespace bfs {
 
 NameSpace::NameSpace(Sync* sync): version_(0), last_entry_id_(1), sync_(sync) {
-    LOG(INFO, "IsLeader %d", sync_->IsLeader());
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -529,14 +528,12 @@ std::string NameSpace::NormalizePath(const std::string& path) {
 }
 
 void NameSpace::TailLog(const std::string& logstr) {
-    LOG(INFO, "logen=%d", logstr.length());
     NameServerLog log;
     if(!log.ParseFromString(logstr)) {
         LOG(FATAL, "Parse log fail: %s", common::DebugString(logstr).c_str());
     }
     for (int i = 0; i < log.entries_size(); i++) {
         const NsLogEntry& entry = log.entries(i);
-        LOG(INFO, "kl=%lu vl=%lu", entry.key().size(), entry.value().size());
         int type = entry.type();
         leveldb::Status s;
         if (type == kSyncWrite) {
@@ -558,7 +555,6 @@ uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
     entry->set_value(value);
     return entry->ByteSize();
 }
-
 /*
 bool NameSpace::RecoverLog() {
     int ret = sync_->ScanLog();

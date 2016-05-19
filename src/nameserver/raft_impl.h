@@ -29,11 +29,9 @@ public:
     void Init() {};
     bool IsLeader(std::string* leader_addr = NULL);
     bool Log(const std::string& entry, int timeout_ms = 10000);
-    void Log(const std::string& entry, boost::function<void ()> callback) {};
     void Log(const std::string& entry, boost::function<void (bool)> callback);
     void RegisterCallback(boost::function<void (const std::string& log)> callback);
-    int ScanLog() {return 0;}
-    int Next(char* entry) {return 0;}
+    void SwitchToLeader() {}
 public:
     google::protobuf::Service* GetService();
 private:
