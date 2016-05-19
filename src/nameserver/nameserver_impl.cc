@@ -790,7 +790,10 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
-    if (path == "/dfs/details") {
+    if (path == "/dfs/switchtoleader") {
+        sync_->SwitchToLeader();
+        return true;
+    } else if (path == "/dfs/details") {
         ListRecover(&response);
         return true;
     } else if (path == "/dfs/leave_safemode") {

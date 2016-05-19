@@ -11,6 +11,7 @@
 #include <boost/function.hpp>
 #include <common/mutex.h>
 #include <common/thread.h>
+#include <common/thread_pool.h>
 
 #include "proto/status_code.pb.h"
 #include "proto/master_slave.pb.h"
@@ -28,6 +29,7 @@ public:
     virtual bool Log(const std::string& entry, int timeout_ms = 10000) = 0;
     virtual void Log(const std::string& entry, boost::function<void (bool)> callback) = 0;
     virtual void RegisterCallback(boost::function<void (const std::string& log)> callback) = 0;
+    virtual void SwitchToLeader() = 0;
 };
 
 class MasterSlaveImpl : public Sync, public master_slave::MasterSlave {
@@ -37,9 +39,9 @@ public:
     virtual void Init();
     virtual bool IsLeader(std::string* leader_addr = NULL);
     virtual bool Log(const std::string& entry, int timeout_ms = 10000);
-    virtual void Log(const std::string& entry, boost::function<void ()> callback){}
     virtual void Log(const std::string& entry, boost::function<void (bool)> callback);
     virtual void RegisterCallback(boost::function<void (const std::string& log)> callback);
+    virtual void SwitchToLeader();
 
     // rpc
     void AppendLog(::google::protobuf::RpcController* controller,
@@ -49,9 +51,11 @@ public:
     int LogLocal(const std::string& entry);
 
 private:
+    bool ReadEntry(std::string* entry);
     void BackgroundLog();
     void ReplicateLog();
-    void LogProgress();
+    void LogStatus();
+    void PorcessCallbck(int offset, int len, bool timeout_check);
 
 private:
     RpcClient* rpc_client_;
@@ -60,17 +64,21 @@ private:
     boost::function<void (const std::string& log)> log_callback_;
     bool exiting_;
     bool master_only_;
+    bool is_leader_;
+    std::string master_addr_;
+    std::string slave_addr_;
 
     Mutex mu_;
     CondVar cond_;
     CondVar log_done_;
     common::Thread worker_;
-    common::Thread logger_;
+    ThreadPool* thread_pool_;
 
     int log_;
     int read_log_;
     int scan_log_;
     int current_offset_;
+    int applied_offset_;
     int sync_offset_;
 
     std::map<int, boost::function<void (bool)> > callbacks_;
