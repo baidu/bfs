@@ -87,7 +87,7 @@ rm -rf ./binary
 kill -9 `cat nameserver/pid`
 cd nameserver
 ./bin/nameserver 1>nlog2 2>&1 &
-sleep 3
+sleep 10
 cd -
 ./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
