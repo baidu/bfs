@@ -981,7 +981,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
             }
             if (--retry_times == 0) {
                 LOG(WARNING, "BackgroundWrite error %s"
-                    "#%ld seq:%d, offset:%ld, len:%d]"
+                    " #%ld seq:%d, offset:%ld, len:%d"
                     " status: %s, retry_times: %d",
                     name_.c_str(),
                     buffer->block_id(), buffer->Sequence(),
