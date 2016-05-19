@@ -351,14 +351,19 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     LOG(INFO, "[WriteBlock] #%ld seq:%d, offset:%ld, len:%lu",
            block_id, packet_seq, offset, databuf.size());
 
-    WriteBlockRequest* write_request = const_cast<WriteBlockRequest*>(request);
-    write_request->set_cs_offset(write_request->cs_offset() + 1);
-    if (request->chunkservers_size() && request->chunkservers_size() != request->cs_offset()) {
+    int next_cs_offset = -1;
+    for (int i = 0; i < request->chunkservers_size(); i++) {
+        if (request->chunkservers(i) == data_server_addr_) {
+            next_cs_offset = i + 1;
+            break;
+        }
+    }
+    if (next_cs_offset >= 0 && next_cs_offset < request->chunkservers_size()) {
         // share same write request
         const WriteBlockRequest* next_request = request;
         WriteBlockResponse* next_response = new WriteBlockResponse();
         ChunkServer_Stub* stub = NULL;
-        const std::string& next_server = request->chunkservers(request->cs_offset());
+        const std::string& next_server = request->chunkservers(next_cs_offset);
         rpc_client_->GetStub(next_server, &stub);
         WriteNext(next_server, stub, next_request, next_response, request, response, done);
     } else {
