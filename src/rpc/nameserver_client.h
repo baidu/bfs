@@ -38,9 +38,6 @@ public:
             ret = rpc_client_->SendRequest(stubs_[leader_id_], func, request, response,
                                            rpc_timeout, retry_times);
             if (ret && response->status() != kIsFollower) {
-                LOG(INFO, "Send rpc to %d %s return %s", 
-                    leader_id_, nameserver_nodes_[leader_id_].c_str(),
-                    StatusCode_Name(response->status()).c_str());
                 return true;
             }
             MutexLock lock(&mu_);

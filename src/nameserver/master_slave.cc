@@ -37,6 +37,7 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     }
     master_addr_ = FLAGS_master_slave_role == "master" ? FLAGS_nameserver : another_server;
     slave_addr_ = FLAGS_master_slave_role == "slave" ? FLAGS_nameserver : another_server;
+    is_leader_ = FLAGS_master_slave_role == "master";
     thread_pool_ = new common::ThreadPool(10);
 }
 
