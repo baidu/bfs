@@ -266,7 +266,8 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_bucket_[request->blocks(i)]->ProcessRecoveredBlock(cs_id, request->blocks(i));
+        int bucket_offset = request->blocks(i) % FLAGS_nameserver_report_thread_num;;
+        block_mapping_bucket_[bucket_offset]->ProcessRecoveredBlock(cs_id, request->blocks(i));
     }
     done->Run();
 }
@@ -312,7 +313,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
 
     if (file_info.blocks_size() > 0) {
         for (int i = 0; i < file_info.blocks_size(); i++) {
-            block_mapping_bucket_[file_info.blocks(i)]->RemoveBlocksForFile(file_info);
+            int bucket_offset = file_info.blocks(i) % FLAGS_nameserver_report_thread_num;
+            block_mapping_bucket_[bucket_offset]->RemoveBlocksForFile(file_info);
         }
         file_info.clear_blocks();
     }

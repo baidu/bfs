@@ -491,7 +491,8 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         if (GetRecoverChains(it->second, &(recover_it->second))) {
             //
         } else {
-            (*block_mapping_)[it->first]->ProcessRecoveredBlock(cs_id, it->first);
+            int bucket_offset = (it->first) % (*block_mapping_).size();
+            (*block_mapping_)[bucket_offset]->ProcessRecoveredBlock(cs_id, it->first);
             recover_blocks->erase(recover_it);
         }
     }
