@@ -917,7 +917,7 @@ void BfsFileImpl::BackgroundWrite() {
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
             if (FLAGS_sdk_write_mode == "chains") {
-                for (int i = 1; i < block_for_write_->chains_size(); i++) {
+                for (int i = 0; i < block_for_write_->chains_size(); i++) {
                     std::string addr = block_for_write_->chains(i).address();
                     request->add_chunkservers(addr);
                 }
