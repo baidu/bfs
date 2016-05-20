@@ -368,6 +368,7 @@ void Block::DiskWrite() {
                 file_desc_ = -1;
                 g_writing_blocks.Dec();
             }
+            assert(recv_window_);
             if (recv_window_->Size()) {
                 LOG(INFO, "#%ld recv_window fragments: %d\n",
                         meta_.block_id, recv_window_->Size());
