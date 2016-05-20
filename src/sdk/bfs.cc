@@ -610,8 +610,8 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         if (located_blocks_.blocks_.empty()) {
             return 0;
         } else if (located_blocks_.blocks_[0].chains_size() == 0) {
-            LOG(WARNING, "No located servers or located_blocks_[%lu]",
-                located_blocks_.blocks_.size());
+            LOG(WARNING, "No located chunkserver of block #%ld",
+                located_blocks_.blocks_[0].block_id());
             return -3;
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
