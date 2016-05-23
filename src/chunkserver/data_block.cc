@@ -328,8 +328,8 @@ void Block::DiskWrite() {
             this->DecRef();
             return;
         }
+        disk_writing_ = true;
         if (!deleted_) {
-            disk_writing_ = true;
             while (!block_buf_list_.empty() && !deleted_) {
                 if (!OpenForWrite()) assert(0);
                 const char* buf = block_buf_list_[0].first;
@@ -357,7 +357,6 @@ void Block::DiskWrite() {
                 g_buffers_delete.Inc();
                 disk_file_size_ += len;
             }
-            disk_writing_ = false;
         }
         if (finished_ || deleted_) {
             assert (deleted_ || block_buf_list_.empty());
@@ -382,6 +381,7 @@ void Block::DiskWrite() {
             recv_window_ = NULL;
             close_cv_.Signal();
         }
+        disk_writing_ = false;
     }
     this->DecRef();
 }
