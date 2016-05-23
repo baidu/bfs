@@ -328,8 +328,8 @@ void Block::DiskWrite() {
             this->DecRef();
             return;
         }
+        disk_writing_ = true;
         if (!deleted_) {
-            disk_writing_ = true;
             while (!block_buf_list_.empty() && !deleted_) {
                 if (!OpenForWrite()) assert(0);
                 const char* buf = block_buf_list_[0].first;
@@ -357,7 +357,6 @@ void Block::DiskWrite() {
                 g_buffers_delete.Inc();
                 disk_file_size_ += len;
             }
-            disk_writing_ = false;
         }
         if (finished_ || deleted_) {
             assert (deleted_ || block_buf_list_.empty());
@@ -365,11 +364,23 @@ void Block::DiskWrite() {
                 int ret = close(file_desc_);
                 LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
                 assert(ret == 0);
+                file_desc_ = -1;
                 g_writing_blocks.Dec();
             }
-            file_desc_ = -1;
+            if (recv_window_ && recv_window_->Size()) {
+                LOG(INFO, "#%ld recv_window fragments: %d\n",
+                        meta_.block_id, recv_window_->Size());
+                std::vector<std::pair<int32_t,Buffer> > frags;
+                recv_window_->GetFragments(&frags);
+                for (uint32_t i = 0; i < frags.size(); i++) {
+                    delete[] frags[i].second.data_;
+                }
+            }
+            delete recv_window_;
+            recv_window_ = NULL;
             close_cv_.Signal();
         }
+        disk_writing_ = false;
     }
     this->DecRef();
 }
