@@ -29,6 +29,7 @@ DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
+DECLARE_int32(blockmapping_bucket_num);
 
 namespace baidu {
 namespace bfs {
@@ -44,7 +45,7 @@ common::Counter g_report_blocks;
 
 NameServerImpl::NameServerImpl() : next_block_id_(1), safe_mode_(FLAGS_nameserver_safemode_time) {
     namespace_ = new NameSpace();
-    block_mapping_bucket_.resize(FLAGS_nameserver_report_thread_num);
+    block_mapping_bucket_.resize(FLAGS_blockmapping_bucket_num);
     for (size_t i = 0; i < block_mapping_bucket_.size(); i++) {
         block_mapping_bucket_[i] = new BlockMapping();
     }
@@ -170,7 +171,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
             cs_id, block_id, block_version, block_size);
         // update block -> cs;
-        int bucket_offset = block_id % FLAGS_nameserver_report_thread_num;
+        int bucket_offset = block_id % FLAGS_blockmapping_bucket_num;
         if (block_mapping_bucket_[bucket_offset]->UpdateBlockInfo(block_id, cs_id,
                                             block_size,
                                             block_version)) {
@@ -219,7 +220,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
         // update block -> cs
         int64_t block_version = block.version();
-        int bucket_offset = cur_block_id % FLAGS_nameserver_report_thread_num;
+        int bucket_offset = cur_block_id % FLAGS_blockmapping_bucket_num;
         if (!block_mapping_bucket_[bucket_offset]->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
                                              block_version)) {
@@ -338,7 +339,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
         }
-        int bucket_offset = new_block_id % FLAGS_nameserver_report_thread_num;
+        int bucket_offset = new_block_id % FLAGS_blockmapping_bucket_num;
         block_mapping_bucket_[bucket_offset]->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);
         response->set_status(kOK);
@@ -379,7 +380,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    int bucket_offset = block_id % FLAGS_nameserver_report_thread_num;
+    int bucket_offset = block_id % FLAGS_blockmapping_bucket_num;
     StatusCode ret = block_mapping_bucket_[bucket_offset]->CheckBlockVersion(block_id, block_version);
     if (ret != kOK) {
         LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
@@ -411,7 +412,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             std::vector<int32_t> replica;
             int64_t block_size = 0;
-            int bucket_offset = block_id % FLAGS_nameserver_report_thread_num;
+            int bucket_offset = block_id % FLAGS_blockmapping_bucket_num;
             if (!block_mapping_bucket_[bucket_offset]->GetLocatedBlock(block_id, &replica, &block_size)) {
                 LOG(WARNING, "GetFileLocation GetBlockReplica fail #%ld ", block_id);
                 break;
@@ -479,7 +480,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
             for (int i = 0; i < out_info->blocks_size(); i++) {
                 int64_t block_id = out_info->blocks(i);
                 NSBlock nsblock;
-                int bucket_offset = block_id % FLAGS_nameserver_report_thread_num;
+                int bucket_offset = block_id % FLAGS_blockmapping_bucket_num;
                 if (!block_mapping_bucket_[bucket_offset]->GetBlock(block_id, &nsblock)) {
                     continue;
                 }
@@ -597,7 +598,7 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
-        int bucket_offset = block_id % FLAGS_nameserver_report_thread_num;
+        int bucket_offset = block_id % FLAGS_blockmapping_bucket_num;
         block_mapping_bucket_[bucket_offset]->AddNewBlock(block_id, file_info.replicas(),
                                     version, file_info.size(), NULL);
         MutexLock lock(&mu_);
