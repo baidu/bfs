@@ -351,16 +351,19 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     LOG(INFO, "[WriteBlock] #%ld seq:%d, offset:%ld, len:%lu",
            block_id, packet_seq, offset, databuf.size());
 
-    if (request->chunkservers_size()) {
-        // New request for next chunkserver
-        WriteBlockRequest* next_request = new WriteBlockRequest(*request);
-        WriteBlockResponse* next_response = new WriteBlockResponse();
-        next_request->clear_chunkservers();
-        for (int i = 1; i < request->chunkservers_size(); i++) {
-            next_request->add_chunkservers(request->chunkservers(i));
+    int next_cs_offset = -1;
+    for (int i = 0; i < request->chunkservers_size(); i++) {
+        if (request->chunkservers(i) == data_server_addr_) {
+            next_cs_offset = i + 1;
+            break;
         }
+    }
+    if (next_cs_offset >= 0 && next_cs_offset < request->chunkservers_size()) {
+        // share same write request
+        const WriteBlockRequest* next_request = request;
+        WriteBlockResponse* next_response = new WriteBlockResponse();
         ChunkServer_Stub* stub = NULL;
-        const std::string& next_server = request->chunkservers(0);
+        const std::string& next_server = request->chunkservers(next_cs_offset);
         rpc_client_->GetStub(next_server, &stub);
         WriteNext(next_server, stub, next_request, next_response, request, response, done);
     } else {
@@ -405,7 +408,6 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         work_thread_pool_->DelayTask(10, callback);
         return;
     }
-    delete next_request;
     delete stub;
 
     int64_t block_id = request->block_id();
