@@ -82,7 +82,6 @@ private:
 
     /// HA module
     Sync* sync_;
-    Mutex mu_;
 };
 
 } // namespace bfs

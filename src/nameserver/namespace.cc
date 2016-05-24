@@ -59,7 +59,6 @@ void NameSpace::Activate(NameServerLog* log) {
         version_str.resize(8);
         *(reinterpret_cast<int64_t*>(&version_str[0])) = version_;
 
-        MutexLock lock(&mu_);
         leveldb::Status s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
         if (!s.ok()) {
             LOG(FATAL, "Write NameSpace version failed %s", s.ToString().c_str());
@@ -160,7 +159,6 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
 }
 
 bool NameSpace::DeleteFileInfo(const std::string file_key, NameServerLog* log) {
-    MutexLock lock(&mu_);
     leveldb::Status s = db_->Delete(leveldb::WriteOptions(), file_key);
     if (!s.ok()) {
         return false;
@@ -179,7 +177,6 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
     file_info.SerializeToString(&infobuf_for_sync);
 
-    MutexLock lock(&mu_);
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf_for_ldb);
     if (!s.ok()) {
         LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
@@ -214,7 +211,6 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             file_info.SerializeToString(&info_value);
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
-            MutexLock lock(&mu_);
             leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
             assert(s.ok());
             EncodeLog(log, kSyncWrite, key_str, info_value);
@@ -247,7 +243,6 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     file_info.SerializeToString(&info_value);
     std::string file_key;
     EncodingStoreKey(parent_id, fname, &file_key);
-    MutexLock lock(&mu_);
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
@@ -361,7 +356,6 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     EncodeLog(log, kSyncWrite, new_key, value);
     EncodeLog(log, kSyncDelete, old_key, "");
 
-    MutexLock lock(&mu_);
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Rename %s to %s[%s], replace: %d",
@@ -473,7 +467,6 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     batch.Delete(store_key);
     EncodeLog(log, kSyncDelete, store_key, "");
 
-    MutexLock lock(&mu_);
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Delete directory done: %s[%s]",

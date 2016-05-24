@@ -15,21 +15,20 @@
 
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
-DECLARE_string(nameserver_port);
 
-DEFINE_int32(put, 3, "put thread num");
+DEFINE_int32(put, 5, "put thread num");
+DEFINE_int32(thread, 30, "thread num");
 
 namespace baidu {
 namespace bfs {
 
 Mark::Mark() : fs_(NULL) {
-    std::string ns_address = FLAGS_nameserver_nodes;
-    if (!FS::OpenFileSystem(ns_address.c_str(), &fs_)) {
-        fprintf(stderr, "Open filesytem %s fail\n", ns_address.c_str());
+    if (!FS::OpenFileSystem(FLAGS_nameserver_nodes.c_str(), &fs_)) {
+        fprintf(stderr, "Open filesytem %s fail\n", FLAGS_nameserver_nodes.c_str());
         assert(0);
     }
 
-    thread_pool_ = new common::ThreadPool(10);
+    thread_pool_ = new common::ThreadPool(FLAGS_thread);
 }
 
 void Mark::Put(const std::string& filename, int len) {
@@ -65,7 +64,7 @@ void Mark::PutWrapper(int thread_id) {
     }
 }
 void Mark::PrintStat() {
-    std::cout << "Put\t\t" << put_counter_.Get() << " \t" << "Del\t\t" << del_counter_.Get() << std::endl;
+    std::cout << "Put\t" << put_counter_.Get() << " \t" << "Del\t" << del_counter_.Get() << std::endl;
     put_counter_.Set(0);
     del_counter_.Set(0);
     thread_pool_->DelayTask(1000, boost::bind(&Mark::PrintStat, this));
@@ -86,8 +85,7 @@ void Mark::Run() {
 
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "bfs.flag";
-    int gflags_argc = 1;
-    ::google::ParseCommandLineFlags(&gflags_argc, &argv, false);
+    ::google::ParseCommandLineFlags(&argc, &argv, false);
     baidu::bfs::Mark mark;
     mark.Run();
     return 0;

@@ -337,12 +337,9 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (b
         LOG(FATAL, "Serialize log fail");
     }
     if (callback.empty()) {
-        LOG(INFO, "[Sync] log sync");
         return sync_->Log(logstr);
     } else {
-        LOG(INFO, "[Sync] log async");
         sync_->Log(logstr, callback);
-        LOG(INFO, "[Sync] log async done");
         return true;
     }
 }
