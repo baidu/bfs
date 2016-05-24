@@ -37,6 +37,7 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     }
     master_addr_ = FLAGS_master_slave_role == "master" ? FLAGS_nameserver : another_server;
     slave_addr_ = FLAGS_master_slave_role == "slave" ? FLAGS_nameserver : another_server;
+    is_leader_ = FLAGS_master_slave_role == "master";
     thread_pool_ = new common::ThreadPool(10);
 }
 
@@ -131,16 +132,16 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
 }
 
 void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)> callback) {
-    LOG(INFO, "[Sync] in async log");
     mu_.Lock();
     int len = LogLocal(entry);
-    LOG(INFO, "[Sync] log entry len = %d", len);
     if (master_only_ && sync_offset_ < current_offset_) { // slave is behind, do not wait
+        mu_.Unlock();
         callback(true);
+        mu_.Lock();
         applied_offset_ = current_offset_;
     } else {
         callbacks_.insert(std::make_pair(current_offset_, callback));
-        LOG(INFO, "[Sync] insert callback current_offset_ = %d", current_offset_);
+        LOG(DEBUG, "[Sync] insert callback current_offset_ = %d", current_offset_);
         thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::PorcessCallbck,
                                                    this, current_offset_, entry.length() + 4,
                                                    true));
@@ -203,7 +204,7 @@ bool MasterSlaveImpl::ReadEntry(std::string* entry) {
     int ret = read(read_log_, buf, 4);
     assert(ret == 4);
     memcpy(&len, buf, 4);
-    LOG(INFO, "[Sync] record length = %u", len);
+    LOG(DEBUG, "[Sync] record length = %u", len);
     char* tmp = new char[len];
     ret = read(read_log_, tmp, len);
     if (ret == len) {
@@ -219,13 +220,13 @@ void MasterSlaveImpl::BackgroundLog() {
     while (true) {
         MutexLock lock(&mu_);
         while (!exiting_ && sync_offset_ == current_offset_) {
-            LOG(INFO, "[Sync] BackgroundLog waiting...");
+            LOG(DEBUG, "[Sync] BackgroundLog waiting...");
             cond_.Wait();
         }
         if (exiting_) {
             return;
         }
-        LOG(INFO, "[Sync] BackgroundLog logging...");
+        LOG(DEBUG, "[Sync] BackgroundLog logging...");
         mu_.Unlock();
         ReplicateLog();
         mu_.Lock();
@@ -239,7 +240,7 @@ void MasterSlaveImpl::ReplicateLog() {
             mu_.Unlock();
             break;
         }
-        LOG(INFO, "[Sync] ReplicateLog sync_offset_ = %d, current_offset_ = %d",
+        LOG(DEBUG, "[Sync] ReplicateLog sync_offset_ = %d, current_offset_ = %d",
                 sync_offset_, current_offset_);
         mu_.Unlock();
         std::string entry;
@@ -264,14 +265,15 @@ void MasterSlaveImpl::ReplicateLog() {
                 sync_offset_ = response.offset();
                 int offset = lseek(read_log_, sync_offset_, SEEK_SET);
                 assert(offset == sync_offset_);
-                LOG(INFO, "[Sync] set sync_offset_ to %d", sync_offset_);
+                LOG(DEBUG, "[Sync] set sync_offset_ to %d", sync_offset_);
             }
             continue;
         }
-        PorcessCallbck(sync_offset_, entry.length() + 4, false);
+        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,
+                                this, sync_offset_, entry.length() + 4, false));
         mu_.Lock();
         sync_offset_ += 4 + entry.length();
-        LOG(INFO, "[Sync] Replicate log done. sync_offset_ = %d, current_offset_ = %d",
+        LOG(DEBUG, "[Sync] Replicate log done. sync_offset_ = %d, current_offset_ = %d",
                 sync_offset_, current_offset_);
         if (master_only_ && sync_offset_ == current_offset_) {
             master_only_ = false;
@@ -303,7 +305,7 @@ void MasterSlaveImpl::PorcessCallbck(int offset, int len, bool timeout_check) {
     if (it != callbacks_.end()) {
         callback = it->second;
         callbacks_.erase(it);
-        LOG(INFO, "[Sync] calling callback %d", it->first);
+        LOG(DEBUG, "[Sync] calling callback %d", it->first);
         mu_.Unlock();
         callback(true);
         mu_.Lock();

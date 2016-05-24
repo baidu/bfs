@@ -51,6 +51,7 @@ FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
 FUSE_HEADER = $(wildcard fuse/*.h)
 
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
+MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
 
 LEVELDB = ./thirdparty/leveldb/libleveldb.a
 
@@ -117,8 +118,11 @@ libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
+mark: $(MARK_OBJ) $(LIBS) $(LEVELDB)
+	$(CXX) $(MARK_OBJ) $(LIBS) -o $@ $(LDFLAGS)
+
 bfs_mount: $(FUSE_OBJ) $(LIBS)
-	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS) 
+	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
 $(LEVELDB):
 	cd thirdparty/leveldb; make -j4
 
@@ -136,7 +140,7 @@ src/version.cc: FORCE
 FORCE:
 
 clean:
-	rm -rf $(BIN)
+	rm -rf $(BIN) mark
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
@@ -155,3 +159,5 @@ install:
 test:
 	cd sandbox; sh small_test.sh; sh small_test.sh raft
 
+test_mark: mark
+	@echo 'Done'
