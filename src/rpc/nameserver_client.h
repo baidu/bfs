@@ -35,18 +35,21 @@ public:
                      int32_t rpc_timeout, int retry_times = 1) {
         bool ret = false;
         for (uint32_t i = 0; i < stubs_.size(); i++) {
-            ret = rpc_client_->SendRequest(stubs_[leader_id_], func, request, response,
+            int ns_id = leader_id_;
+            ret = rpc_client_->SendRequest(stubs_[ns_id], func, request, response,
                                            rpc_timeout, retry_times);
             if (ret && response->status() != kIsFollower) {
-                LOG(INFO, "Send rpc to %d %s return %s", 
-                    leader_id_, nameserver_nodes_[leader_id_].c_str(),
-                    StatusCode_Name(response->status()).c_str());
+            //    LOG(DEBUG, "Send rpc to %d %s return %s", 
+            //        leader_id_, nameserver_nodes_[leader_id_].c_str(),
+            //        StatusCode_Name(response->status()).c_str());
                 return true;
             }
             MutexLock lock(&mu_);
-            leader_id_ = (leader_id_ + 1) % stubs_.size();
-            LOG(INFO, "Try next nameserver %d %s",
-                leader_id_, nameserver_nodes_[leader_id_].c_str());
+            if (ns_id == leader_id_) {
+                leader_id_ = (leader_id_ + 1) % stubs_.size();
+            }
+            //LOG(INFO, "Try next nameserver %d %s",
+            //    leader_id_, nameserver_nodes_[leader_id_].c_str());
         }
         return ret;
     }

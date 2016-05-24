@@ -20,11 +20,9 @@
 namespace baidu {
 namespace bfs {
 
-class Sync;
-
 class NameSpace {
 public:
-    NameSpace(Sync* sync);
+    NameSpace();
     void Activate(NameServerLog* log);
     ~NameSpace();
     /// List a directory
@@ -32,24 +30,24 @@ public:
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
     StatusCode CreateFile(const std::string& file_name, int flags, int mode,
-                          int replica_num, NameServerLog* log);
+                          int replica_num, NameServerLog* log = NULL);
     /// Remove file by name
-    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log);
+    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
     StatusCode DeleteDirectory(const std::string& path, bool recursive,
-                        std::vector<FileInfo>* files_removed, NameServerLog* log);
+                        std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
     /// File rename
     StatusCode Rename(const std::string& old_path,
                const std::string& new_path,
                bool* need_unlink,
                FileInfo* remove_file,
-               NameServerLog* log);
+               NameServerLog* log = NULL);
     /// Get file
     bool GetFileInfo(const std::string& path, FileInfo* file_info);
     /// Update file
-    bool UpdateFileInfo(const FileInfo& file_info, NameServerLog* log);
+    bool UpdateFileInfo(const FileInfo& file_info, NameServerLog* log = NULL);
     /// Delete file
-    bool DeleteFileInfo(const std::string file_key, NameServerLog* log);
+    bool DeleteFileInfo(const std::string file_key, NameServerLog* log = NULL);
     /// Namespace version
     int64_t Version() const;
     /// Rebuild blockmap
@@ -81,8 +79,8 @@ private:
     FileInfo root_path_;
 
     /// HA module
-    Sync* sync_;
-    Mutex mu_;
+    //Sync* sync_;
+    //Mutex mu_;
 };
 
 } // namespace bfs

@@ -1,6 +1,11 @@
 #! /bin/sh
 
-for i in `seq 0 2`;
+ns_num=1
+if [ "$1x" == "raftx" ]; then
+    ns_num=3;
+fi
+
+for((i=0;i<$ns_num;i++))
 do
     cd nameserver$i;
     port=$((i+8827))

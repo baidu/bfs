@@ -2,9 +2,18 @@
 set -e
 set -x
 
-sh ./clear.sh
-sh ./deploy.sh
-sh ./start_bfs.sh
+strategy=none;
+ns_num=1
+if [ "$1x" == "raftx" ]; then
+    strategy=raft
+    ns_num=3
+    sh ./deploy.sh raft
+    sh ./start_bfs.sh raft
+else
+    sh ./deploy.sh
+    sh ./start_bfs.sh
+fi
+
 
 sleep 3
 
@@ -86,7 +95,7 @@ rm -rf ./binary
 # Nameserver restart
 killall -9 nameserver
 
-for i in `seq 0 2`;
+for((i=0;i<$ns_num;i++));
 do
     cd nameserver$i;
     port=$((i+8827))

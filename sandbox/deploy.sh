@@ -2,6 +2,16 @@
 
 ./clear.sh
 
+ns_num=2
+strategy=$1
+
+if [ "$1x" == "x" ]; then
+    strategy="none";
+    ns_num=1;
+elif [ "$1x" == "raftx" ]; then
+    ns_num=3
+fi
+
 echo '--default_replica_num=3' >> bfs.flag
 echo '--chunkserver_log_level=2' >> bfs.flag
 echo '--blockreport_interval=2' >> bfs.flag
@@ -12,10 +22,10 @@ echo '--block_store_path=./data1,./data2' >> bfs.flag
 echo '--bfs_bug_tolerant=false' >> bfs.flag
 echo '--select_chunkserver_local_factor=0' >> bfs.flag
 echo '--bfs_web_kick_enable=true' >> bfs.flag
-echo '--ha_strategy=raft' >> bfs.flag
+echo "--ha_strategy=$strategy" >> bfs.flag
 echo '--nameserver_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829' >> bfs.flag
 
-for i in `seq 0 2`;
+for((i=0;i<$ns_num;i++));
 do
     mkdir -p nameserver$i/bin
     cp -f ../nameserver nameserver$i/bin/

@@ -45,7 +45,11 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time), sync_(sync) {
-    namespace_ = new NameSpace(sync);
+    namespace_ = new NameSpace();
+    if (sync_) {
+        sync_->RegisterCallback(boost::bind(&NameSpace::TailLog, namespace_, _1));
+        sync_->Init();
+    }
     block_mapping_ = new BlockMapping();
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
@@ -331,7 +335,12 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
 }
 
 bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (bool)> callback) {
-
+    if (sync_ == NULL) {
+        if (!callback.empty()) {
+            work_thread_pool_->AddTask(boost::bind(callback, true));
+        }
+        return true;
+    }
     std::string logstr;
     if (!log.SerializeToString(&logstr)) {
         LOG(FATAL, "Serialize log fail");
@@ -791,7 +800,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
     if (path == "/dfs/switchtoleader") {
-        sync_->SwitchToLeader();
+        if (sync_) {
+            sync_->SwitchToLeader();
+        }
         return true;
     } else if (path == "/dfs/details") {
         ListRecover(&response);

@@ -409,7 +409,6 @@ public:
                     path, ret, StatusCode_Name(response.status()).c_str());
                 ret = false;
             } else {
-                printf("Open file %s\n", path);
                 *file = new BfsFileImpl(this, rpc_client_, path, flags);
             }
         } else if (flags == O_RDONLY) {
