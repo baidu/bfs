@@ -64,8 +64,8 @@ private:
     StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed);
-    bool NameSpace::LoadLastEntryId();
-    void NameSpace::RecordLastEntryId(int64_t entry_id);
+    bool LoadLastEntryId();
+    void RecordLastEntryId(int64_t entry_id);
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
