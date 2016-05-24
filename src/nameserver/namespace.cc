@@ -15,7 +15,6 @@
 
 #include <common/timer.h>
 #include <common/util.h>
-#include <common/atomic.h>
 #include <common/string_util.h>
 
 DECLARE_string(namedb_path);
@@ -27,7 +26,7 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
-NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
+NameSpace::NameSpace(): version_(0), last_entry_id_(kRootEntryid - 1) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -49,7 +48,7 @@ NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
         LOG(INFO, "Load namespace version: %ld ", version_);
     } else {
         version_ = common::timer::get_micros();
-        version_str.resize(8);
+        version_str.resize(sizeof(int64_t));
         *(reinterpret_cast<int64_t*>(&version_str[0])) = version_;
         s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
         if (!s.ok()) {
@@ -57,12 +56,51 @@ NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
         }
         LOG(INFO, "Create new namespace version: %ld ", version_);
     }
+    if (!LoadLastEntryId()) {
+        GetNewEntryId();
+    }
     SetupRoot();
 }
 
 NameSpace::~NameSpace() {
     delete db_;
     db_ = NULL;
+}
+
+bool NameSpace::LoadLastEntryId() {
+    std::string last_entry_id_key(8, 0);
+    last_entry_id_key.append("last_entry_id");
+    std::string last_entry_id_str;
+    leveldb::Status s = db_->Get(leveldb::ReadOptions(), last_entry_id_key, &last_entry_id_str);
+    if (s.ok()) {
+        if (last_entry_id_str.size() != sizeof(int64_t)) {
+            LOG(FATAL, "Bad max block id len= %lu", last_entry_id_str.size());
+        }
+        last_entry_id_ = *(reinterpret_cast<int64_t*>(&last_entry_id_str[0]));
+        LOG(INFO, "Load last entry id: %ld", last_entry_id_);
+        return true;
+    }
+    return false;
+}
+
+void NameSpace::RecordLastEntryId(int64_t entry_id) {
+    mu_.AssertHeld();
+    std::string last_entry_id_key(8, 0);
+    last_entry_id_key.append("last_entry_id");
+    std::string last_entry_id_str;
+    last_entry_id_str.resize(sizeof(int64_t));
+    *(reinterpret_cast<int64_t*>(&last_entry_id_str[0])) = entry_id;
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), last_entry_id_key, last_entry_id_str);
+    if (!s.ok()) {
+        LOG(FATAL, "Write last entry id to db fail: %s", s.ToString().c_str());
+    }
+}
+
+int64_t NameSpace::GetNewEntryId() {
+    MutexLock lock(&mu_);
+    last_entry_id_++;
+    RecordLastEntryId(last_entry_id_);
+    return last_entry_id_;
 }
 
 int64_t NameSpace::Version() const {
@@ -187,7 +225,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
         if (!LookUp(parent_id, paths[i], &file_info)) {
             file_info.set_type((1<<9)|0755);
             file_info.set_ctime(time(NULL));
-            file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
+            file_info.set_entry_id(GetNewEntryId());
             file_info.SerializeToString(&info_value);
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
@@ -216,7 +254,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     } else {
         file_info.set_type(0755);
     }
-    file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
+    file_info.set_entry_id(GetNewEntryId());
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
     //file_info.add_blocks();
@@ -453,9 +491,6 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
-        if (last_entry_id_ < file_info.entry_id()) {
-            last_entry_id_ = file_info.entry_id();
-        }
         assert(ret);
         if (!IsDir(file_info.type())) {
             //a file
@@ -463,7 +498,7 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
         }
     }
     delete it;
-    LOG(INFO, "RebuildBlockMap done. last_entry_id= E%ld", last_entry_id_);
+    LOG(INFO, "RebuildBlockMap done.");
     return true;
 }
 
