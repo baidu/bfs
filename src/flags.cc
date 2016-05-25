@@ -20,7 +20,7 @@ DEFINE_int32(keepalive_timeout, 10, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 4, "Nameserver log level");
 DEFINE_string(nameserver_warninglog, "./wflog", "Warning log file");
-DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in ms");
+DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in second");
 DEFINE_int32(recover_speed, 100, "max num of block to recover for one chunkserver");
 DEFINE_int32(recover_dest_limit, 5, "Number of recover dest");
 DEFINE_int32(recover_timeout, 180, "Recover timeout for one chunkserver");
