@@ -9,6 +9,8 @@
 
 #include <gflags/gflags.h>
 
+#include <leveldb/db.h>
+
 #include <common/mutex.h>
 #include <common/thread_pool.h>
 #include "proto/status_code.pb.h"
@@ -82,12 +84,16 @@ private:
     bool UpdateIncompleteBlock(NSBlock* nsblock,int32_t cs_id, int64_t block_size,
                                int64_t block_version);
 private:
+    void UpdateBlockIdUpbound();
+private:
     Mutex mu_;
     ThreadPool thread_pool_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
     int64_t next_block_id_;
+    int64_t block_id_upbound_;
     bool safe_mode_;
+    leveldb::DB* db_;
 
     CheckList hi_recover_check_;
     CheckList lo_recover_check_;
