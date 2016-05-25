@@ -364,8 +364,8 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                                 callback_map_.find(last_applied_);
                             if (calllback != callback_map_.end()) {
                                 mu_.Unlock();
-                                (calllback->second)(true);
                                 LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
+                                (calllback->second)(true);
                                 mu_.Lock();
                                 callback_map_.erase(calllback);
                             } else {
