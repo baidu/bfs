@@ -53,13 +53,13 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     cs->set_status(kCsCleaning);
     mu_.Unlock();
     std::vector<std::set<int64_t> > blocks_array;
-    blocks_array.resize((*block_mapping_).size());
+    blocks_array.resize(block_mapping_->size());
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        int bucket_offset = (*it) % (*block_mapping_).size();
+        int bucket_offset = (*it) % block_mapping_->size();
         blocks_array[bucket_offset].insert(*it);
     }
     std::set<int64_t>().swap(blocks);
-    for (size_t i = 0; i < (*block_mapping_).size(); i++) {
+    for (size_t i = 0; i < block_mapping_->size(); i++) {
         (*block_mapping_)[i]->DealWithDeadNode(id, blocks_array[i]);
     }
     mu_.Lock("CleanChunkserverRelock", 10);
@@ -480,8 +480,8 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         }
     }
     std::map<int64_t, std::set<int32_t> > blocks;
-    for (size_t i = 0; i < (*block_mapping_).size(); i++) {
-        (*block_mapping_)[i]->PickRecoverBlocks(cs_id, FLAGS_recover_speed / (*block_mapping_).size() + 1, &blocks, hi_num);
+    for (size_t i = 0; i < block_mapping_->size(); i++) {
+        (*block_mapping_)[i]->PickRecoverBlocks(cs_id, FLAGS_recover_speed / block_mapping_->size() + 1, &blocks, hi_num);
     }
     for (std::map<int64_t, std::set<int32_t> >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
@@ -491,7 +491,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         if (GetRecoverChains(it->second, &(recover_it->second))) {
             //
         } else {
-            int bucket_offset = (it->first) % (*block_mapping_).size();
+            int bucket_offset = (it->first) % block_mapping_->size();
             (*block_mapping_)[bucket_offset]->ProcessRecoveredBlock(cs_id, it->first);
             recover_blocks->erase(recover_it);
         }
