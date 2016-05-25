@@ -4,7 +4,7 @@ set -x
 
 strategy=none;
 ns_num=1
-if [ "$1x" == "raftx" ]; then
+if [ "$1"x = "raft"x ]; then
     strategy=raft
     ns_num=3
     sh ./deploy.sh raft
