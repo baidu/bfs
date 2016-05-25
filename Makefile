@@ -92,6 +92,20 @@ check: all $(TESTS)
 namespace_test: src/nameserver/test/namespace_test.o
 	$(CXX) src/nameserver/namespace.o src/nameserver/test/namespace_test.o $(OBJS) -o $@ $(LDFLAGS)
 
+#NAMESERVER_OBJ_NO_MAIN := $(filter out "nameserver_main.o", $(NAMESERVER_OBJ))
+#nameserver_test: src/nameserver/test/nameserver_impl_test.o $(NAMESERVER_OBJ_NO_MAIN)
+	#$(CXX) src/nameserver/test/nameserver_impl_test.o $(NAMESERVER_OBJ_NO_MAIN) $(OBJS) -o $@ $(LDFLAGS)
+nameserver_test: src/nameserver/test/nameserver_impl_test.o \
+	src/nameserver/block_mapping.o src/nameserver/chunkserver_manager.o \
+	src/nameserver/location_provider.o src/nameserver/master_slave.o \
+	src/nameserver/nameserver_impl.o  src/nameserver/namespace.o \
+	src/nameserver/raft_impl.o  src/nameserver/raft_node.o
+	$(CXX) src/nameserver/nameserver_impl.o src/nameserver/test/nameserver_impl_test.o \
+	src/nameserver/block_mapping.o src/nameserver/chunkserver_manager.o \
+	src/nameserver/location_provider.o src/nameserver/master_slave.o \
+	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
+	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
+
 raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o $(OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
