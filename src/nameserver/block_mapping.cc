@@ -15,6 +15,7 @@ DECLARE_int32(recover_speed);
 DECLARE_int32(recover_timeout);
 DECLARE_bool(bfs_bug_tolerant);
 DECLARE_bool(clean_redundancy);
+DECLARE_int32(block_id_batch_size);
 
 namespace baidu {
 namespace bfs {
@@ -30,15 +31,54 @@ NSBlock::NSBlock(int64_t block_id, int32_t replica,
       recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover) {
 }
 
-BlockMapping::BlockMapping() : next_block_id_(1), safe_mode_(true) {}
+BlockMapping::BlockMapping() : block_id_upbound_(0), safe_mode_(true) {
+    leveldb::Options options;
+    options.create_if_missing = true;
+    leveldb::Status s = leveldb::DB::Open(options, "./block_mapping_db", &db_);
+    if (!s.ok()) {
+        db_ = NULL;
+        LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
+    }
+    std::string block_id_upbound_key = "block_id_upbound";
+    std::string block_id_upbound_str;
+    s = db_->Get(leveldb::ReadOptions(), block_id_upbound_key, &block_id_upbound_str);
+    if (!s.ok()) {
+        LOG(INFO, "Can't read block id upbound: %s", s.ToString().c_str());
+        UpdateBlockIdUpbound();
+    } else {
+        block_id_upbound_ = *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0]));
+        LOG(INFO, "Load block id upbound: %ld", block_id_upbound_);
+        UpdateBlockIdUpbound();
+    }
+}
 
 void BlockMapping::SetSafeMode(bool safe_mode) {
     safe_mode_ = safe_mode;
 }
 
+void BlockMapping::UpdateBlockIdUpbound() {
+    std::string block_id_upbound_key = "block_id_upbound";
+    std::string block_id_upbound_str;
+    block_id_upbound_str.resize(8);
+    next_block_id_ = block_id_upbound_ + 1;
+    block_id_upbound_ += FLAGS_block_id_batch_size;
+    *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
+    if (!s.ok()) {
+        LOG(FATAL, "Update block id upbound fail: %s", s.ToString().c_str());
+    } else {
+        LOG(INFO, "Update block id upbound to %ld", block_id_upbound_);
+    }
+}
+
 int64_t BlockMapping::NewBlockID() {
     MutexLock lock(&mu_, "BlockMapping::NewBlockID", 1000);
-    return next_block_id_++;
+    if (next_block_id_ == block_id_upbound_) {
+        UpdateBlockIdUpbound();
+        return next_block_id_;
+    } else {
+        return next_block_id_++;
+    }
 }
 
 bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
@@ -107,9 +147,6 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
     std::pair<NSBlockMap::iterator, bool> ret =
         block_map_.insert(std::make_pair(block_id,nsblock));
     assert(ret.second == true);
-    if (next_block_id_ <= block_id) {
-        next_block_id_ = block_id + 1;
-    }
 }
 
 bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
