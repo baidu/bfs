@@ -267,7 +267,7 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        int bucket_offset = request->blocks(i) % FLAGS_nameserver_report_thread_num;;
+        int bucket_offset = request->blocks(i) % FLAGS_blockmapping_bucket_num;;
         block_mapping_bucket_[bucket_offset]->ProcessRecoveredBlock(cs_id, request->blocks(i));
     }
     done->Run();
@@ -314,7 +314,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
 
     if (file_info.blocks_size() > 0) {
         for (int i = 0; i < file_info.blocks_size(); i++) {
-            int bucket_offset = file_info.blocks(i) % FLAGS_nameserver_report_thread_num;
+            int bucket_offset = file_info.blocks(i) % FLAGS_blockmapping_bucket_num;
             block_mapping_bucket_[bucket_offset]->RemoveBlocksForFile(file_info);
         }
         file_info.clear_blocks();
@@ -510,7 +510,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file);
     if (status == kOK && need_unlink) {
         for (int i = 0; i < remove_file.blocks_size(); i++) {
-            int bucket_offset = remove_file.blocks(i) % FLAGS_nameserver_report_thread_num;
+            int bucket_offset = remove_file.blocks(i) % FLAGS_blockmapping_bucket_num;
             block_mapping_bucket_[bucket_offset]->RemoveBlock(remove_file.blocks(i));
         }
     }
@@ -530,7 +530,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     StatusCode status = namespace_->RemoveFile(path, &file_info);
     if (status == kOK) {
         for (int i = 0; i < file_info.blocks_size(); i++) {
-            int bucket_offset = file_info.blocks(i) % FLAGS_nameserver_report_thread_num;
+            int bucket_offset = file_info.blocks(i) % FLAGS_blockmapping_bucket_num;
             block_mapping_bucket_[bucket_offset]->RemoveBlock(file_info.blocks(i));
         }
     }
@@ -554,7 +554,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, &removed);
     for (uint32_t i = 0; i < removed.size(); i++) {
         for (int j = 0; j < removed[i].blocks_size(); j++) {
-            int bucket_offset = removed[i].blocks(j) % FLAGS_nameserver_report_thread_num;
+            int bucket_offset = removed[i].blocks(j) % FLAGS_blockmapping_bucket_num;
             block_mapping_bucket_[bucket_offset]->RemoveBlock(removed[i].blocks(j));
         }
     }
@@ -576,7 +576,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         bool ret = namespace_->UpdateFileInfo(file_info);
         assert(ret);
         for (int i = 0; i < file_info.blocks_size(); i++) {
-            int bucket_offset = file_info.blocks(i) % FLAGS_nameserver_report_thread_num;
+            int bucket_offset = file_info.blocks(i) % FLAGS_blockmapping_bucket_num;
             if (block_mapping_bucket_[bucket_offset]->ChangeReplicaNum(file_info.blocks(i), replica_num)) {
                 LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
             } else {
