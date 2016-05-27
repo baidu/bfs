@@ -102,7 +102,6 @@ private:
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
-    int64_t GetNewBlockId();
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;

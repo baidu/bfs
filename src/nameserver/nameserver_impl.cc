@@ -58,10 +58,6 @@ NameServerImpl::NameServerImpl() : next_block_id_(1), safe_mode_(FLAGS_nameserve
 NameServerImpl::~NameServerImpl() {
 }
 
-int64_t NameServerImpl::GetNewBlockId() {
-    return common::atomic_add64(&next_block_id_, 1) + 1;
-}
-
 void NameServerImpl::CheckSafemode() {
     int now_time = (common::timer::get_micros() - start_time_) / 1000000;
     int safe_mode = safe_mode_;
@@ -311,7 +307,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
-        int64_t new_block_id = GetNewBlockId();
+        int64_t new_block_id = namespace_->GetNewBlockId();
         LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
             path.c_str(), new_block_id, replica_num, request->client_address().c_str());
         LocatedBlock* block = response->mutable_block();

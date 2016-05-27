@@ -12,6 +12,7 @@
 #include <boost/function.hpp>
 
 #include <leveldb/db.h>
+#include <common/mutex.h>
 
 #include "proto/nameserver.pb.h"
 #include "proto/status_code.pb.h"
@@ -50,6 +51,7 @@ public:
     bool RebuildBlockMap(boost::function<void (const FileInfo&)> callback);
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
+    int64_t GetNewBlockId();
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
@@ -62,11 +64,15 @@ private:
     StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed);
+    void UpdateBlockIdUpbound();
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;
+    int64_t next_block_id_;
+    int64_t block_id_upbound_;
+    Mutex mu_;
 };
 
 } // namespace bfs
