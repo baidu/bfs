@@ -331,9 +331,6 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
 
     if (!response->has_sequence_id() &&
             g_unfinished_bytes.Add(databuf.size()) > FLAGS_chunkserver_max_unfinished_bytes) {
-        if (!request->has_sequence_id()) {
-            response->set_sequence_id(request->sequence_id());
-        }
         response->set_sequence_id(request->sequence_id());
         g_refuse_ops.Inc();
         LOG(WARNING, "[WriteBlock] Too much unfinished write request(%ld), reject #%ld seq:%d offset:%ld len:%lu ts%lu",
