@@ -43,7 +43,7 @@ common::Counter g_create_file;
 common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
-NameServerImpl::NameServerImpl() : next_block_id_(1), safe_mode_(FLAGS_nameserver_safemode_time) {
+NameServerImpl::NameServerImpl() : safe_mode_(FLAGS_nameserver_safemode_time) {
     namespace_ = new NameSpace();
     block_mapping_manager_ = new BlockMappingManager();
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
@@ -569,10 +569,6 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         int64_t version = file_info.version();
         block_mapping_manager_->AddNewBlock(block_id, file_info.replicas(), version,
                                     file_info.size(), NULL);
-        MutexLock lock(&mu_);
-        if (block_id > next_block_id_) {
-            next_block_id_ = block_id + 1;
-        }
     }
 }
 

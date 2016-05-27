@@ -110,8 +110,6 @@ private:
     ChunkServerManager* chunkserver_manager_;
     /// Block map
     BlockMappingManager* block_mapping_manager_;
-    int64_t next_block_id_;
-    Mutex mu_;
     /// Safemode
     volatile int safe_mode_;
     int64_t start_time_;
