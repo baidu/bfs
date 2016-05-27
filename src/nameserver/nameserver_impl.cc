@@ -511,9 +511,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     StatusCode status = namespace_->RemoveFile(path, &file_info);
     if (status == kOK) {
-        for (int i = 0; i < file_info.blocks_size(); i++) {
-            block_mapping_manager_->RemoveBlock(file_info.blocks(i));
-        }
+        block_mapping_manager_->RemoveBlocksForFile(file_info);
     }
     LOG(INFO, "Unlink: %s return %s", path.c_str(), StatusCode_Name(status).c_str());
     response->set_status(status);
@@ -534,9 +532,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     std::vector<FileInfo> removed;
     StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, &removed);
     for (uint32_t i = 0; i < removed.size(); i++) {
-        for (int j = 0; j < removed[i].blocks_size(); j++) {
-            block_mapping_manager_->RemoveBlock(removed[i].blocks(j));
-        }
+        block_mapping_manager_->RemoveBlocksForFile(removed[i]);
     }
     response->set_status(ret_status);
     done->Run();
