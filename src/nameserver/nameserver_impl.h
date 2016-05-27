@@ -24,7 +24,7 @@ namespace bfs {
 
 class NameSpace;
 class ChunkServerManager;
-class BlockMapping;
+class BlockMappingManager;
 
 class NameServerImpl : public NameServer {
 public:
@@ -110,7 +110,7 @@ private:
     /// Chunkserver map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
-    std::vector<BlockMapping*> block_mapping_bucket_;
+    BlockMappingManager* block_mapping_manager_;
     int64_t next_block_id_;
     Mutex mu_;
     /// Safemode
