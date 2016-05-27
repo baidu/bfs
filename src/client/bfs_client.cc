@@ -266,7 +266,31 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         }
     }
     baidu::bfs::BfsFileInfo* files = NULL;
-    int num;
+    baidu::bfs::BfsFileInfo path_info;
+    if (!fs->Stat(path.c_str(), &path_info)) {
+        fprintf(stderr, "Get path %s info fail\n", path.c_str());
+        return 1;
+    }
+    if ((path_info.mode & (1 << 9)) == 0) {
+        //in fact it's a file
+        path.resize(path.size() - 1);
+        int32_t type = path_info.mode;
+        char statbuf[16] = "drwxrwxrwx";
+        for (int j = 0; j < 10; j++) {
+            if ((type & (1<<(9-j))) == 0) {
+                statbuf[j] = '-';
+            }
+        }
+        char timestr[64];
+        struct tm stm;
+        time_t ctime = path_info.ctime;
+        localtime_r(&ctime, &stm);
+        snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
+                stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
+        printf("%s\t%s  %s\n", statbuf, timestr, path.c_str());
+        return 0;
+    }
+    int num = 0;
     bool ret = fs->ListDirectory(path.c_str(), &files, &num);
     if (!ret) {
         fprintf(stderr, "List dir %s fail\n", path.c_str());
