@@ -109,8 +109,8 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
     int64_t start_point = common::timer::get_micros();
     int64_t stop_point = start_point + timeout_ms * 1000;
     while (sync_offset_ != current_offset_ && common::timer::get_micros() < stop_point) {
-        MutexLock lock(&mu_);
         int wait_time = (stop_point - common::timer::get_micros()) / 1000;
+        MutexLock lock(&mu_);
         if (log_done_.TimeWait(wait_time)) {
             if (sync_offset_ != current_offset_) {
                 continue;
