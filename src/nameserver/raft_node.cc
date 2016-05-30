@@ -360,14 +360,15 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                         while (last_applied_ < commit_index) {
                             last_applied_ ++;
                             LOG(INFO, "[Raft] Apply %ld to leader", last_applied_);
-                            std::map<int64_t, boost::function<void (bool)> >::iterator calllback =
+                            std::map<int64_t, boost::function<void (bool)> >::iterator cb_it =
                                 callback_map_.find(last_applied_);
-                            if (calllback != callback_map_.end()) {
+                            if (cb_it != callback_map_.end()) {
+                                boost::function<void (bool)> callback = cb_it->second;
+                                callback_map_.erase(cb_it);
                                 mu_.Unlock();
-                                (calllback->second)(true);
                                 LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
+                                callback(true);
                                 mu_.Lock();
-                                callback_map_.erase(calllback);
                             } else {
                                 LOG(INFO, "[Raft] no callback for %ld", last_applied_);
                             }
@@ -379,7 +380,8 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
             } else {
                 LOG(INFO, "Replicate fail --next_index %ld for %s",
                     follower->next_index, nodes_[id].c_str());
-                if (follower->next_index > 1) {
+                if (follower->next_index > follower->match_index
+                    && follower->next_index > 1) {
                     --follower->next_index;
                 }
             }
@@ -466,6 +468,11 @@ void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void (bool)
         return;
     }
     callback_map_.insert(std::make_pair(index, callback));
+    for (uint32_t i = 0; i < nodes_.size(); i++) {
+        if (follower_context_[i]) {
+            follower_context_[i]->condition.Signal();
+        }
+    }
 }
 
 bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {

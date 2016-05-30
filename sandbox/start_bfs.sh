@@ -1,7 +1,7 @@
-#! /bin/sh
+#! /bin/bash
 
 ns_num=1
-if [ "$1x" == "raftx" ]; then
+if [ "$1"x = "raft"x ]; then
     ns_num=3;
 fi
 

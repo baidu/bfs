@@ -98,7 +98,7 @@ Block::~Block() {
     block_buf_list_.clear();
 
     if (file_desc_ >= 0) {
-        //close(file_desc_);
+        close(file_desc_);
         g_writing_blocks.Dec();
         file_desc_ = -1;
     }
@@ -164,17 +164,15 @@ bool Block::OpenForWrite() {
     std::string dir = disk_file_.substr(0, disk_file_.rfind('/'));
     // Mkdir dir for data block, ignore error, may already exist.
     mkdir(dir.c_str(), 0755);
-    //int fd  = open(disk_file_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR);
+    int fd  = open(disk_file_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR);
     mu_.Lock("Block::OpenForWrite");
-    /*
     if (fd < 0) {
         LOG(WARNING, "Open block #%ld %s fail: %s",
             meta_.block_id, disk_file_.c_str(), strerror(errno));
         return false;
     }
-    */
     g_writing_blocks.Inc();
-    file_desc_ = 1; //fd;
+    file_desc_ = fd;
     return true;
 }
 /// Set expected slice num, for IsComplete.
@@ -341,8 +339,7 @@ void Block::DiskWrite() {
                 mu_.Unlock();
                 int wlen = 0;
                 while (wlen < len) {
-                    //int w = write(file_desc_, buf + wlen, len - wlen);
-                    int w = len - wlen;
+                    int w = write(file_desc_, buf + wlen, len - wlen);
                     if (w < 0) {
                         LOG(WARNING, "IOError write #%ld %s return %s",
                             meta_.block_id, disk_file_.c_str(), strerror(errno));
@@ -365,9 +362,9 @@ void Block::DiskWrite() {
         if (finished_ || deleted_) {
             assert (deleted_ || block_buf_list_.empty());
             if (file_desc_ != -1) {
-                //int ret = close(file_desc_);
+                int ret = close(file_desc_);
                 LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
-                //assert(ret == 0);
+                assert(ret == 0);
                 g_writing_blocks.Dec();
             }
             file_desc_ = -1;

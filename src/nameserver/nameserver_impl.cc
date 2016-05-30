@@ -45,7 +45,7 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time), sync_(sync) {
-    namespace_ = new NameSpace();
+    namespace_ = new NameSpace(false);
     if (sync_) {
         sync_->RegisterCallback(boost::bind(&NameSpace::TailLog, namespace_, _1));
         sync_->Init();

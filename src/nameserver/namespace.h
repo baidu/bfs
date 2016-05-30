@@ -22,7 +22,7 @@ namespace bfs {
 
 class NameSpace {
 public:
-    NameSpace();
+    NameSpace(bool standalone = true);
     void Activate(NameServerLog* log);
     ~NameSpace();
     /// List a directory

@@ -1,21 +1,21 @@
-#! /bin/sh
+#! /bin/bash
 set -e
 set -x
 
 strategy=none;
 ns_num=1
-if [ "$1x" == "raftx" ]; then
+if [ "$1"x = "raft"x ]; then
     strategy=raft
     ns_num=3
-    sh ./deploy.sh raft
-    sh ./start_bfs.sh raft
+    bash ./deploy.sh raft
+    bash ./start_bfs.sh raft
 else
-    sh ./deploy.sh
-    sh ./start_bfs.sh
+    bash ./deploy.sh
+    bash ./start_bfs.sh
 fi
 
 
-sleep 3
+sleep 5
 
 # Test sl
 ./bfs_client ls /
@@ -104,7 +104,7 @@ do
     cd -
 done;
 
-sleep 5
+sleep 10
 ./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
 

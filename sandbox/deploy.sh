@@ -1,11 +1,11 @@
-#! /bin/sh
+#! /bin/bash
 
-./clear.sh
+bash ./clear.sh
 
 ns_num=2
 strategy=$1
 
-if [ "$1x" == "x" ]; then
+if [ "$1"x = "x" ]; then
     strategy="none";
     ns_num=1;
 elif [ "$1x" == "raftx" ]; then
