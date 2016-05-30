@@ -345,11 +345,10 @@ int BfsLocation(baidu::bfs::FS* fs, int argc, char* argv[]) {
     }
     for (std::map<int64_t, std::vector<std::string> >::iterator it = locations.begin();
             it != locations.end(); ++it) {
-        printf("block_id %ld: ", it->first);
+        printf("block_id %ld:\n", it->first);
         for (uint64_t i = 0; i < (it->second).size(); ++i) {
-            printf("%s ", (it->second)[i].c_str());
+            printf("%s\n", (it->second)[i].c_str());
         }
-        printf("\n");
     }
     return 0;
 }
