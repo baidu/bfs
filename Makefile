@@ -172,6 +172,3 @@ install:
 .PHONY: test
 test:
 	cd sandbox; ./small_test.sh; ./small_test.sh raft
-
-test_mark: mark
-	@echo 'Done'

@@ -19,7 +19,7 @@ DECLARE_string(nameserver_nodes);
 DEFINE_string(mode, "put", "[put | read]");
 DEFINE_int64(count, 0, "put/read/delete file count");
 DEFINE_int32(thread, 5, "thread num");
-DEFINE_int32(seed, 301, "random seet");
+DEFINE_int32(seed, 301, "random seed");
 DEFINE_int32(file_size, 1024, "file size in KB");
 
 namespace baidu {
@@ -39,15 +39,15 @@ public:
         if (seed_ > M) {
             seed_ -= M;
         }
-    return seed_;
+        return seed_;
     }
     uint32_t Uniform(int n) { return Next() % n; }
 };
 
 Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10), exit_(false) {
     if (!FS::OpenFileSystem(FLAGS_nameserver_nodes.c_str(), &fs_)) {
-        fprintf(stderr, "Open filesytem %s fail\n", FLAGS_nameserver_nodes.c_str());
-        assert(0);
+        std::cerr << "Open filesytem failed " << FLAGS_nameserver_nodes << std::endl;
+        exit(EXIT_FAILURE);
     }
 
     thread_pool_ = new common::ThreadPool(FLAGS_thread + 1);
@@ -60,27 +60,28 @@ Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10), exit_(false) {
 void Mark::Put(const std::string& filename, const std::string& base, int thread_id) {
     File* file;
     if (!fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, -1, &file)) {
-        assert(0);
+        std::cerr << "OpenFile failed " << filename << std::endl;
+        exit(EXIT_FAILURE);
     }
-    uint64_t len = 0;
-    uint64_t buf_size = 1 << 20;
-    uint64_t buf_base_size = buf_size / 2;
+    int64_t len = 0;
+    int64_t base_size = (1 << 20) / 2;
     while (len < file_size_) {
-        uint32_t w = buf_base_size + rand_[thread_id]->Uniform(buf_base_size);
-        if (file_size_ - len < w) {
-            file->Write(base.c_str(), file_size_ - len);
-            break;
-        }
+        uint32_t w = base_size + rand_[thread_id]->Uniform(base_size);
+
         int write_len = file->Write(base.c_str(), w);
-        if ((uint64_t)write_len != w) {
-            assert(0);
+        if (write_len != w) {
+            std::cerr << "Write length does not match write_len = "
+                    << write_len << " should be " << w << std::endl;
+            exit(EXIT_FAILURE);
         }
         len += write_len;
     }
     if (!file->Close()) {
-        assert(0);
+        std::cerr << "Close file failed " << filename << std::endl;
+        exit(EXIT_FAILURE);
     }
     delete file;
+    rand_[thread_id]->Next();
     put_counter_.Inc();
 }
 
@@ -89,22 +90,35 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     if (!fs_->OpenFile(filename.c_str(), O_RDONLY, &file)) {
         assert(0);
     }
-    uint64_t buf_size = 1 << 20;
-    uint64_t buf_base_size = buf_size / 2;
+    int64_t buf_size = 1 << 20;
+    int64_t base_size = buf_size / 2;
     char buf[buf_size];
-    uint64_t bytes = 0;
+    int64_t bytes = 0;
     int32_t len = 0;
     while (1) {
-        uint32_t r = buf_base_size + rand_[thread_id]->Uniform(buf_base_size);
+        uint32_t r = base_size + rand_[thread_id]->Uniform(base_size);
         len = file->Read(buf, r);
-        assert(len >= 0);
+        if (len < 0) {
+            std::cerr << "Read length error" << std::endl;
+            exit(EXIT_FAILURE);
+        }
         if (len == 0) {
             break;
         }
-        assert(base.substr(0, r) == std::string(buf, len));
+        if (base.substr(0, len) != std::string(buf, len)) {
+            std::cerr << "Read varify failed " << filename << " : bytes = " << bytes
+                    << " len = " << len << " r = " << r << std::endl;
+            exit(EXIT_FAILURE);
+        }
         bytes += len;
     }
-    assert(bytes == file_size_);
+    BfsFileInfo info;
+    fs_->Stat(filename.c_str(), &info);
+    if (bytes != info.size) {
+        std::cerr << "File size mismatch " << filename << " size = " << bytes
+                << " should be " << info.size << std::endl;
+        exit(EXIT_FAILURE);
+    }
     delete file;
     read_counter_.Inc();
 }
@@ -171,10 +185,7 @@ void Mark::Run() {
     }
     thread_pool_->Stop(true);
     if (FLAGS_count != 0) {
-        std::cout << "Total Put " << FLAGS_count * FLAGS_thread << std::endl;
-    }
-    if (FLAGS_count != 0) {
-        std::cout << "Total Read " << FLAGS_count * FLAGS_thread << std::endl;
+        std::cout << "Total " << FLAGS_mode << " " << FLAGS_count * FLAGS_thread << std::endl;
     }
 }
 
