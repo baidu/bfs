@@ -46,6 +46,9 @@ FUSE_SRC = $(wildcard fuse/*.cc)
 FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
 FUSE_HEADER = $(wildcard fuse/*.h)
 
+TOOLS_SRC = $(wildcard tools/*.cc)
+TOOLS_OBJ = $(patsubst %.cc, %.o, $(TOOLS_SRC))
+
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 
 LEVELDB = ./thirdparty/leveldb/libleveldb.a
@@ -57,12 +60,13 @@ OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
+TOOLS = read_all_replica file_writer
 
 ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test 
+TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test
 TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
 UNITTEST_OUTPUT = test/
@@ -71,10 +75,10 @@ all: $(BIN)
 	@echo 'Done'
 
 # Depends
-$(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)
+$(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ) $(TOOLS_OBJ): $(PROTO_HEADER)
 $(NAMESERVER_OBJ): $(NAMESERVER_HEADER)
 $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
-$(SDK_OBJ): $(SDK_HEADER)
+$(SDK_OBJ) $(TOOLS_OBJ): $(SDK_HEADER)
 $(FUSE_OBJ): $(FUSE_HEADER)
 
 # Targets
@@ -83,6 +87,9 @@ check: all $(TESTS)
 	mkdir -p $(UNITTEST_OUTPUT)
 	mv $(TESTS) $(UNITTEST_OUTPUT)
 	cd $(UNITTEST_OUTPUT); for t in $(TESTS); do echo "***** Running $$t"; ./$$t || exit 1; done
+
+tools: $(TOOLS)
+	mv $(TOOLS) tools/
 
 namespace_test: src/nameserver/test/namespace_test.o
 	$(CXX) src/nameserver/namespace.o src/nameserver/test/namespace_test.o $(OBJS) -o $@ $(LDFLAGS)
@@ -111,7 +118,14 @@ bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
 bfs_mount: $(FUSE_OBJ) $(LIBS)
-	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS) 
+	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
+
+read_all_replica: tools/read_all_replica.o $(LIBS)
+	$(CXX) $^ $(LIBS) -o $@  -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
+
+file_writer: tools/file_writer.o $(LIBS)
+	$(CXX) $^ $(LIBS) -o $@  -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
+
 $(LEVELDB):
 	cd thirdparty/leveldb; make -j4
 
