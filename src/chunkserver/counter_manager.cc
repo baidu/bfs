@@ -18,6 +18,7 @@ common::Counter g_buffers_delete;
 common::Counter g_blocks;
 common::Counter g_writing_blocks;
 common::Counter g_pending_writes;
+common::Counter g_unfinished_bytes;
 common::Counter g_writing_bytes;
 common::Counter g_find_ops;
 common::Counter g_read_ops;
@@ -59,6 +60,7 @@ void CounterManager::GatherCounters() {
     counters.recover_bytes = g_recover_bytes.Clear() * 1000000 / interval;
     counters.buffers_new = g_buffers_new.Clear() * 1000000 / interval;
     counters.buffers_delete = g_buffers_delete.Clear() * 1000000 / interval;
+    counters.unfinished_write_bytes = g_unfinished_bytes.Get();
     MutexLock lock(&counters_lock_);
     counters_ = counters;
 }
