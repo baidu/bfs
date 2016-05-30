@@ -946,6 +946,9 @@ void BfsFileImpl::BackgroundWrite() {
         mu_.Lock("BackgroundWriteRelock", 1000);
     }
     common::atomic_dec(&back_writing_);    // for AddTask
+    if (back_writing_ == 0) {
+        sync_signal_.Broadcast();
+    }
 }
 
 void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer,
@@ -960,7 +963,10 @@ void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer,
     rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
         request, response, callback, 60, 1);
 
-    common::atomic_dec(&back_writing_);    // for DelayTask
+    int ret = common::atomic_add(&back_writing_, -1);    // for DelayTask
+    if (ret == 1) {
+        sync_signal_.Broadcast();
+    }
 }
 
 void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
@@ -1021,6 +1027,11 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         LOG(DEBUG, "BackgroundWrite done bid:%ld, seq:%d, offset:%ld, len:%d, back_writing_:%d",
             buffer->block_id(), buffer->Sequence(), buffer->offset(),
             buffer->Size(), back_writing_);
+        int64_t diff = common::timer::get_micros() - request->sequence_id();
+        if (diff > 200000) {
+            LOG(INFO, "Write %s #%ld request use %.3f ms ",
+                name_.c_str(), request->block_id(), diff / 1000.0);
+        }
         int r = write_windows_[cs_addr]->Add(buffer->Sequence(), 0);
         assert(r == 0);
         buffer->DecRef();
@@ -1091,8 +1102,8 @@ bool BfsFileImpl::Close() {
         int wait_time = 0;
         while (back_writing_) {
             bool finish = sync_signal_.TimeWait(1000, (name_ + " Close wait").c_str());
-            if (++wait_time >= 30 && (wait_time % 10 == 0)) {
-                LOG(WARNING, "Close timeout %d s, %s back_writing_= %d, finish= %d",
+            if (!finish && ++wait_time > 30 && (wait_time %10 == 0)) {
+                LOG(WARNING, "Close timeout %d s, %s back_writing_= %d",
                 wait_time, name_.c_str(), back_writing_, finish);
             }
         }
