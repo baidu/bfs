@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 
 ns_num=1
 if [ "$1"x = "raft"x ]; then

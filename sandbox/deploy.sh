@@ -1,6 +1,6 @@
-#! /bin/sh
+#! /bin/bash
 
-./clear.sh
+bash ./clear.sh
 
 ns_num=2
 strategy=$1

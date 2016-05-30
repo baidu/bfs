@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 
 killall -9 nameserver
 killall -9 chunkserver

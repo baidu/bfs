@@ -373,10 +373,8 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                                 LOG(INFO, "[Raft] no callback for %ld", last_applied_);
                             }
                         }
-                        if (last_applied_ < commit_index) {
-                            last_applied_ = commit_index;
-                            StoreContext("last_applied", last_applied_);
-                        }
+                        last_applied_ = commit_index;
+                        StoreContext("last_applied", last_applied_);
                     }
                 }
             } else {
