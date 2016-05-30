@@ -15,7 +15,7 @@ else
 fi
 
 
-sleep 3
+sleep 5
 
 # Test sl
 ./bfs_client ls /
@@ -104,7 +104,7 @@ do
     cd -
 done;
 
-sleep 5
+sleep 10
 ./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
 
