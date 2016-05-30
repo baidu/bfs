@@ -360,20 +360,23 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                         while (last_applied_ < commit_index) {
                             last_applied_ ++;
                             LOG(INFO, "[Raft] Apply %ld to leader", last_applied_);
-                            std::map<int64_t, boost::function<void (bool)> >::iterator calllback =
+                            std::map<int64_t, boost::function<void (bool)> >::iterator cb_it =
                                 callback_map_.find(last_applied_);
-                            if (calllback != callback_map_.end()) {
+                            if (cb_it != callback_map_.end()) {
+                                boost::function<void (bool)> callback = cb_it->second;
+                                callback_map_.erase(cb_it);
                                 mu_.Unlock();
                                 LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
-                                (calllback->second)(true);
+                                callback(true);
                                 mu_.Lock();
-                                callback_map_.erase(calllback);
                             } else {
                                 LOG(INFO, "[Raft] no callback for %ld", last_applied_);
                             }
                         }
-                        last_applied_ = commit_index;
-                        StoreContext("last_applied", last_applied_);
+                        if (last_applied_ < commit_index) {
+                            last_applied_ = commit_index;
+                            StoreContext("last_applied", last_applied_);
+                        }
                     }
                 }
             } else {
