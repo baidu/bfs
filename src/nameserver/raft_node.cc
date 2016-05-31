@@ -260,6 +260,9 @@ void RaftNodeImpl::Vote(::google::protobuf::RpcController* controller,
 
 bool RaftNodeImpl::GetLeader(std::string* leader) {
     if (leader == NULL || node_state_ != kLeader) {
+        if (leader_ != "" && leader_ != self_ && leader) {
+            *leader = leader_;
+        }
         return false;
     }
     if (last_applied_ < log_index_) {
@@ -548,7 +551,7 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
     if (term == current_term_ && node_state_ == kCandidate) {
         node_state_ = kFollower;
     }
-
+    leader_ = request->leader();
     ResetElection();
     int64_t prev_log_term = request->prev_log_term();
     int64_t prev_log_index = request->prev_log_index();
