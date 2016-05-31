@@ -23,7 +23,7 @@ public:
     void PrintStat();
     void Run();
 private:
-    void RandomString(std::string* out, int size, int rand_index1);
+    void RandomString(std::string* out, int size, int rand_index);
 private:
     FS* fs_;
     common::Counter put_counter_;
@@ -31,7 +31,7 @@ private:
     common::Counter read_counter_;
     common::ThreadPool* thread_pool_;
     Random** rand_;
-    uint64_t file_size_;
+    int64_t file_size_;
     bool exit_;
 };
 
