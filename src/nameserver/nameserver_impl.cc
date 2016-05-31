@@ -329,6 +329,10 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     NameServerLog log;
     StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &log);
     response->set_status(status);
+    if (status != kOK) {
+        done->Run();
+        return;
+    }
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
                                (std::vector<FileInfo>*)NULL, _1));
