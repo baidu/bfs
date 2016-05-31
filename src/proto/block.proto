@@ -3,7 +3,7 @@ package baidu.bfs;
 
 message BlockMeta {
     optional int64 block_id = 1;
-    optional int64 block_size = 2 [default = 0];
+    optional int64 block_size = 2;
     optional int64 checksum = 3;
     optional int64 version = 4 [default = -1];
     optional string store_path = 5;

@@ -159,6 +159,11 @@ bool BlockManager::LoadStorage() {
             remove(file_path.c_str());
             continue;
         } else {
+            if (std::find(store_path_list_.begin(), store_path_list_.end(), meta.store_path())
+                    == store_path_list_.end()) {
+                LOG(WARNING, "Store path of %s not in current store configuration, ignore it", file_path.c_str());
+                continue;
+            }
             struct stat st;
             if (stat(file_path.c_str(), &st) ||
                 st.st_size != meta.block_size() ||
