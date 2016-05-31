@@ -24,7 +24,7 @@ namespace bfs {
 
 class BlockManager;
 class RpcClient;
-class NameServer_Stub;
+class NameServerClient;
 class ChunkServer_Stub;
 class Block;
 class CounterManager;
@@ -86,7 +86,7 @@ private:
     ThreadPool*     write_thread_pool_;
     ThreadPool*     recover_thread_pool_;
     ThreadPool*     heartbeat_thread_;
-    NameServer_Stub* nameserver_;
+    NameServerClient* nameserver_;
     int32_t chunkserver_id_;
     CounterManager* counter_manager_;
     int64_t heartbeat_task_id_;

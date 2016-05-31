@@ -7,7 +7,6 @@
 #ifndef  BFS_NAMESERVER_IMPL_H_
 #define  BFS_NAMESERVER_IMPL_H_
 
-#include <common/mutex.h>
 #include <common/thread_pool.h>
 
 #include "proto/nameserver.pb.h"
@@ -25,10 +24,11 @@ namespace bfs {
 class NameSpace;
 class ChunkServerManager;
 class BlockMapping;
+class Sync;
 
 class NameServerImpl : public NameServer {
 public:
-    NameServerImpl();
+    NameServerImpl(Sync* sync);
     virtual ~NameServerImpl();
     void CreateFile(::google::protobuf::RpcController* controller,
                        const CreateFileRequest* request,
@@ -94,14 +94,24 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
+
 private:
+    void CheckLeader();
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
     void Register();
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
+    bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
+    void SyncLogCallback(::google::protobuf::RpcController* controller,
+                         const ::google::protobuf::Message* request,
+                         ::google::protobuf::Message* response,
+                         ::google::protobuf::Closure* done,
+                         std::vector<FileInfo>* removed,
+                         bool ret);
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;
@@ -115,7 +125,9 @@ private:
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;
-    int64_t namespace_version_;
+    /// ha
+    Sync* sync_;
+    bool is_leader_;
 };
 
 } // namespace bfs

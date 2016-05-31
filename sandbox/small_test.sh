@@ -1,12 +1,21 @@
-#! /bin/sh
+#! /bin/bash
 set -e
 set -x
 
-sh ./clear.sh
-sh ./deploy.sh
-sh ./start_bfs.sh
+strategy=none;
+ns_num=1
+if [ "$1"x = "raft"x ]; then
+    strategy=raft
+    ns_num=3
+    bash ./deploy.sh raft
+    bash ./start_bfs.sh raft
+else
+    bash ./deploy.sh
+    bash ./start_bfs.sh
+fi
 
-sleep 3
+
+sleep 5
 
 # Test sl
 ./bfs_client ls /
@@ -84,11 +93,18 @@ kill -9 `cat chunkserver1/pid`
 rm -rf ./binary
 
 # Nameserver restart
-kill -9 `cat nameserver/pid`
-cd nameserver
-./bin/nameserver 1>nlog2 2>&1 &
+killall -9 nameserver
+
+for((i=0;i<$ns_num;i++));
+do
+    cd nameserver$i;
+    port=$((i+8827))
+    ./bin/nameserver --node_index=$i 1>nlog 2>&1 &
+    echo $! > pid
+    cd -
+done;
+
 sleep 10
-cd -
 ./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
 
