@@ -65,13 +65,14 @@ void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callba
     if (fp < 0 && errno != ENOENT) {
         LOG(FATAL, "[Sync] open applied.log failed, reason: %s", strerror(errno));
     }
-    if (fp > 0) {
+    if (fp >= 0) {
         char buf[4];
         int ret = read(fp, buf, 4);
         if (ret == 4) {
             memcpy(&applied_offset_, buf, 4);
             assert(applied_offset_ <= current_offset_);
-            fseek(read_log_, applied_offset_, SEEK_SET);
+            int offset = fseek(read_log_, applied_offset_, SEEK_SET);
+            assert(offset == applied_offset_);
         }
         close(fp);
     }
