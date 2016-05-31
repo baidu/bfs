@@ -47,8 +47,7 @@ common::Counter g_report_blocks;
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time), sync_(sync) {
     namespace_ = new NameSpace(false);
     if (sync_) {
-        sync_->RegisterCallback(boost::bind(&NameSpace::TailLog, namespace_, _1));
-        sync_->Init();
+        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1));
     }
     block_mapping_ = new BlockMapping();
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
@@ -64,9 +63,7 @@ NameServerImpl::~NameServerImpl() {
 }
 
 void NameServerImpl::CheckLeader() {
-    MutexLock lock(&mu_);
     if (!sync_ || sync_->IsLeader()) {
-        is_leader_ = true;
         LOG(INFO, "Leader nameserver, rebuild block map.");
         NameServerLog log;
         namespace_->Activate(&log);
@@ -74,7 +71,7 @@ void NameServerImpl::CheckLeader() {
             LOG(FATAL, "LogRemote namespace update fail");
         }
         namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
-
+        is_leader_ = true;
     } else {
         is_leader_ = false;
         work_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));

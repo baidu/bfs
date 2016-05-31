@@ -41,8 +41,8 @@ void RaftImpl::Log(const std::string& entry, boost::function<void (bool)> callba
     raft_node_->AppendLog(entry, callback);
 }
 
-void RaftImpl::RegisterCallback(boost::function<void (const std::string& log)> callback) {
-    return raft_node_->RegisterCallback(callback);
+void RaftImpl::Init(boost::function<void (const std::string& log)> callback) {
+    return raft_node_->Init(callback);
 }
 
 google::protobuf::Service* RaftImpl::GetService() {

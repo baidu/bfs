@@ -13,6 +13,7 @@
 #include "nameserver/nameserver_impl.h"
 #include "nameserver/raft_impl.h"
 #include "nameserver/sync.h"
+#include "nameserver/master_slave.h"
 #include "version.h"
 
 DECLARE_string(flagfile);

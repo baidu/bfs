@@ -126,7 +126,6 @@ private:
     /// Namespace
     NameSpace* namespace_;
     /// ha
-    Mutex mu_;
     Sync* sync_;
     bool is_leader_;
 };

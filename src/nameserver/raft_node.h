@@ -46,7 +46,7 @@ public:
     bool GetLeader(std::string* leader);
     void AppendLog(const std::string& log, boost::function<void (bool)> callback);
     bool AppendLog(const std::string& log, int timeout_ms = 10000);
-    void RegisterCallback(boost::function<void (const std::string& log)> callback);
+    void Init(boost::function<void (const std::string& log)> callback);
 private:
     bool StoreContext(const std::string& context, int64_t value);
     bool StoreContext(const std::string& context, const std::string& value);
