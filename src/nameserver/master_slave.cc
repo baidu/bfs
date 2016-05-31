@@ -15,7 +15,7 @@
 #include "rpc/rpc_client.h"
 
 DECLARE_string(nameserver_nodes);
-DECLARE_string(nameserver);
+DECLARE_int32(node_index);
 DECLARE_string(master_slave_role);
 
 namespace baidu {
@@ -27,16 +27,17 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
                                      current_offset_(0), applied_offset_(0), sync_offset_(0) {
     std::vector<std::string> nodes;
     common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);
+    std::string this_server = nodes[FLAGS_node_index];
     std::string another_server;
-    if (FLAGS_nameserver == nodes[0]) {
+    if (FLAGS_node_index == 0) {
         another_server = nodes[1];
-    } else if (FLAGS_nameserver == nodes[1]) {
+    } else if (FLAGS_node_index == 1) {
         another_server = nodes[0];
     } else {
         LOG(FATAL, "[Sync] Nameserver does not belong to this cluster");
     }
-    master_addr_ = FLAGS_master_slave_role == "master" ? FLAGS_nameserver : another_server;
-    slave_addr_ = FLAGS_master_slave_role == "slave" ? FLAGS_nameserver : another_server;
+    master_addr_ = FLAGS_master_slave_role == "master" ? this_server: another_server;
+    slave_addr_ = FLAGS_master_slave_role == "slave" ? this_server: another_server;
     is_leader_ = FLAGS_master_slave_role == "master";
     if (IsLeader()) {
         LOG(INFO, "[Sync] I am Leader");
@@ -141,7 +142,7 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
 }
 
 void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)> callback) {
-    if (!is_leader_()) {
+    if (!IsLeader()) {
         return;
     }
     MutexLock lock(&mu_);

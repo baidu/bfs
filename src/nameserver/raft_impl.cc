@@ -10,14 +10,14 @@
 #include <gflags/gflags.h>
 
 DECLARE_string(nameserver_nodes);
-DECLARE_int32(raft_node_index);
+DECLARE_int32(node_index);
 DECLARE_string(raftdb_path);
 
 namespace baidu {
 namespace bfs {
 
 RaftImpl::RaftImpl() {
-    raft_node_ = new RaftNodeImpl(FLAGS_nameserver_nodes, FLAGS_raft_node_index, FLAGS_raftdb_path);
+    raft_node_ = new RaftNodeImpl(FLAGS_nameserver_nodes, FLAGS_node_index, FLAGS_raftdb_path);
 }
 
 RaftImpl::~RaftImpl() {

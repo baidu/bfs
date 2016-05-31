@@ -10,7 +10,7 @@ if [ "$1"x = "x" ]; then
     ns_num=1;
 elif [ "$1x" == "raftx" ]; then
     ns_num=3
-elif [ "$1x" == "ms" ]; then
+elif [ "$1x" == "master_slave" ]; then
     ns_num=2
 fi
 

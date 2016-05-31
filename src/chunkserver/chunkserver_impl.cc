@@ -38,7 +38,6 @@
 
 DECLARE_string(block_store_path);
 DECLARE_string(nameserver_nodes);
-DECLARE_string(nameserver_port);
 DECLARE_string(chunkserver_port);
 DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);

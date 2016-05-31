@@ -3,20 +3,19 @@
 ns_num=1
 if [ "$1"x = "raft"x ]; then
     ns_num=3;
-elif [ "$1"x == "ms"x ]; then
+elif [ "$1"x == "master_slave"x ]; then
     ns_num=0;
 fi
 
 for((i=0;i<$ns_num;i++))
 do
     cd nameserver$i;
-    port=$((i+8827))
-    ./bin/nameserver --raft_node_index=$i 1>nlog 2>&1 &
+    ./bin/nameserver --node_index=$i 1>nlog 2>&1 &
     echo $! > pid
     cd -
 done;
 
-if [ "$1"x == "ms"x ]; then
+if [ "$1"x == "master_slave"x ]; then
     cd nameserver0;
     ./bin/nameserver --master_slave_role=slave --node_index=0 1>nlog 2>&1 &
     echo $! > pid

@@ -21,7 +21,6 @@
 
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
-DECLARE_string(nameserver_port);
 
 void print_usage() {
     printf("Use:\nbfs_client <commond> path\n");

@@ -17,7 +17,6 @@
 DEFINE_string(raft_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 
 DECLARE_string(flagfile);
-DECLARE_string(nameserver_port);
 DECLARE_int32(nameserver_log_level);
 DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
