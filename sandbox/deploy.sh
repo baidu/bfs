@@ -10,6 +10,8 @@ if [ "$1"x = "x" ]; then
     ns_num=1;
 elif [ "$1x" == "raftx" ]; then
     ns_num=3
+elif [ "$1x" == "ms" ]; then
+    ns_num=2
 fi
 
 echo '--default_replica_num=3' >> bfs.flag
@@ -32,7 +34,6 @@ do
     cp -f bfs.flag nameserver$i/
 done
 
-echo '--nameserver_port=8828' >> bfs.flag
 for i in `seq 0 3`;
 do
     mkdir -p chunkserver$i/bin

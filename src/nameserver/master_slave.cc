@@ -69,7 +69,7 @@ void MasterSlaveImpl::Init() {
         }
         close(fp);
     }
-    while (applied_offset_ < sync_offset_) {
+    while (applied_offset_ < current_offset_) {
         std::string entry;
         if (!ReadEntry(&entry)) {
             assert(0);
@@ -77,7 +77,7 @@ void MasterSlaveImpl::Init() {
         log_callback_(entry);
         applied_offset_ += entry.length() + 4;
     }
-    assert(applied_offset_ == sync_offset_);
+    assert(applied_offset_ == current_offset_);
 
     rpc_client_ = new RpcClient();
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
@@ -132,23 +132,22 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
 }
 
 void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)> callback) {
-    mu_.Lock();
+    MutexLock lock(&mu_);
     int len = LogLocal(entry);
-    if (master_only_ && sync_offset_ < current_offset_) { // slave is behind, do not wait
-        mu_.Unlock();
-        callback(true);
-        mu_.Lock();
-        applied_offset_ = current_offset_;
+    int last_offset = current_offset_;
+    current_offset_ += len;
+    if (master_only_ && sync_offset_ < last_offset) { // slave is behind, do not wait
+        callbacks_.insert(std::make_pair(last_offset, callback));
+        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,this,
+                                            last_offset, entry.length() + 4, true));
     } else {
-        callbacks_.insert(std::make_pair(current_offset_, callback));
-        LOG(DEBUG, "[Sync] insert callback current_offset_ = %d", current_offset_);
+        callbacks_.insert(std::make_pair(last_offset, callback));
+        LOG(DEBUG, "[Sync] insert callback last_offset = %d", last_offset);
         thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::PorcessCallbck,
-                                                   this, current_offset_, entry.length() + 4,
+                                                   this, last_offset, entry.length() + 4,
                                                    true));
         cond_.Signal();
     }
-    current_offset_ += len;
-    mu_.Unlock();
     return;
 }
 
@@ -157,6 +156,9 @@ void MasterSlaveImpl::RegisterCallback(boost::function<void (const std::string& 
 }
 
 void MasterSlaveImpl::SwitchToLeader() {
+    if (IsLeader()) {
+        return;
+    }
     is_leader_ = true;
     sync_offset_ = 0;
     lseek(read_log_, 0, SEEK_SET);
@@ -173,6 +175,11 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
                                 const master_slave::AppendLogRequest* request,
                                 master_slave::AppendLogResponse* response,
                                 ::google::protobuf::Closure* done) {
+    if (IsLeader()) { // already switched to leader, does not accept new append entries
+        response->set_success(false);
+        done->Run();
+        return;
+    }
     if (request->offset() > current_offset_) {
         response->set_offset(current_offset_);
         response->set_success(false);
@@ -186,13 +193,11 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    int len = request->log_data().size();
-    char buf[4];
-    memcpy(buf, &len, 4);
-    write(log_, buf, 4);
-    write(log_, request->log_data().c_str(), len);
+    mu_.Lock();
+    int len = LogLocal(request->log_data());
+    mu_.Unlock();
     log_callback_(request->log_data());
-    current_offset_ += len + 4;
+    current_offset_ += len;
     applied_offset_ = current_offset_;
     response->set_success(true);
     done->Run();
@@ -286,6 +291,7 @@ void MasterSlaveImpl::ReplicateLog() {
 }
 
 int MasterSlaveImpl::LogLocal(const std::string& entry) {
+    mu_.AssertHeld();
     if (!IsLeader()) {
         LOG(FATAL, "[Sync] slave does not need to log");
     }
