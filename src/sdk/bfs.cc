@@ -211,7 +211,7 @@ public:
         bool ret = rpc_client_->GetStub(nameserver_address_, &nameserver_);
         if (ret) {
             //first regist to nameserver
-            RegistToNameServer();
+            RegisterToNameServeer();
         }
         return ret;
     }
@@ -547,7 +547,7 @@ public:
         } else {
             if (response.status() == kSessionExpired) {
                 LOG(WARNING, "Session %s expired, re-regist", request.session_id().c_str());
-                RegistToNameServer();
+                RegisterToNameServeer();
                 return;
             }
         }
@@ -563,7 +563,7 @@ private:
         session_id_ = local_host_name_ + ":" + common::NumToString(getpid())
                           + ":" + common::NumToString(common::timer::now_time());
     }
-    void RegistToNameServer() {
+    void RegisterToNameServeer() {
         GenerateSessionId();
         ClientRegistRequest request;
         ClientRegistResponse response;
@@ -571,7 +571,7 @@ private:
         if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::RegistNewClient,
                 &request, &response, 15, 3) || response.status() != kOK) {
             LOG(WARNING, "Regist new session fail");
-            thread_pool_->DelayTask(5 * 1000, boost::bind(&FSImpl::RegistToNameServer, this));
+            thread_pool_->DelayTask(5 * 1000, boost::bind(&FSImpl::RegisterToNameServeer, this));
         } else {
             LOG(INFO, "Regist success, session id: %s", session_id_.c_str());
             //block untill first heartbeat
