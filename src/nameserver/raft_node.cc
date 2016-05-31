@@ -151,6 +151,11 @@ bool RaftNodeImpl::CheckTerm(int64_t term) {
         }
         current_term_ = term;
         voted_for_ = "";
+        if (!StoreContext("current_term", current_term_)
+            || !StoreContext("voted_for", voted_for_)) {
+            LOG(FATAL, "Store term & vote_for fail %s %ld",
+                voted_for_.c_str(), current_term_);
+        }
         node_state_ = kFollower;
         ResetElection();
         return false;
@@ -190,6 +195,7 @@ void RaftNodeImpl::ElectionCallback(const VoteRequest* request,
         CancelElection();
         LOG(INFO, "Change state to Leader, term %ld index %ld commit %ld applied %ld",
             current_term_, log_index_, commit_index_, last_applied_);
+        StoreLog(current_term_, ++log_index_, "", kRaftCmd);
         for (uint32_t i = 0;i < follower_context_.size(); i++) {
             if (nodes_[i] != self_) {
                 follower_context_[i]->match_index = 0;
@@ -283,6 +289,7 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
 
     mu_.Unlock();
     int64_t max_index = 0;
+    int64_t max_term = -1;
     AppendEntriesRequest* request = new AppendEntriesRequest;
     AppendEntriesResponse* response = new AppendEntriesResponse;
     request->set_term(current_term_);
@@ -321,6 +328,7 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
             assert(ret);
             it->Next();
             max_index = entry->index();
+            max_term = entry->term();
         }
         delete it;
     }
@@ -337,7 +345,7 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
         int64_t term = response->term();
         if (CheckTerm(term)) {
             if (response->success()) {
-                if (max_index) {
+                if (max_index && max_term == current_term_) {
                     follower->match_index = max_index;
                     follower->next_index = max_index + 1;
                     LOG(INFO, "Replicate to %s success match %ld next %ld",
@@ -417,12 +425,13 @@ std::string RaftNodeImpl::Index2Logkey(int64_t index) {
     return std::string(idstr, 20);
 }
 
-bool RaftNodeImpl::StoreLog(int64_t term, int64_t index, const std::string& log) {
+bool RaftNodeImpl::StoreLog(int64_t term, int64_t index, const std::string& log, LogType type) {
     mu_.AssertHeld();
     LogEntry entry;
     entry.set_term(term);
     entry.set_index(index);
     entry.set_log_data(log);
+    entry.set_type(type);
     std::string log_value;
     entry.SerializeToString(&log_value);
     leveldb::Status s = log_db_->Put(leveldb::WriteOptions(), Index2Logkey(index), log_value);
@@ -519,11 +528,13 @@ void RaftNodeImpl::ApplyLog() {
             LogEntry entry;
             bool ret = entry.ParseFromString(it->value().ToString());
             assert(ret);
-            mu_.Unlock();
-            LOG(INFO, "Callback %ld %s",
-                entry.index(), common::DebugString(entry.log_data()).c_str());
-            log_callback_(entry.log_data());
-            mu_.Lock();
+            if (entry.type() == kUserLog) {
+                mu_.Unlock();
+                LOG(INFO, "Callback %ld %s",
+                    entry.index(), common::DebugString(entry.log_data()).c_str());
+                    log_callback_(entry.log_data());
+                mu_.Lock();
+            }
             last_applied_ = entry.index();
             it->Next();
         } while (it->Valid() && it->key().compare(end) <= 0);

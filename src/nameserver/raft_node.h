@@ -66,7 +66,7 @@ private:
                           bool failed,
                           int error,
                           const std::string& node_addr);
-    bool StoreLog(int64_t term, int64_t index, const std::string& log);
+    bool StoreLog(int64_t term, int64_t index, const std::string& log, LogType type = kUserLog);
     void ApplyLog();
 
     std::string LoadVoteFor();

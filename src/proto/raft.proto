@@ -14,10 +14,15 @@ message VoteResponse {
     optional bool vote_granted = 3;
 }
 
+enum LogType {
+    kUserLog = 0;
+    kRaftCmd = 1;
+}
 message LogEntry {
     optional int64 index = 2;
     optional int64 term = 3;
     optional bytes log_data = 4;
+    optional LogType type = 5;
 }
 
 message AppendEntriesRequest {
