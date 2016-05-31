@@ -9,6 +9,7 @@
 #include <sofa/pbrpc/pbrpc.h>
 #include <gflags/gflags.h>
 #include <common/logging.h>
+#include <common/string_util.h>
 
 #include "nameserver/nameserver_impl.h"
 #include "nameserver/raft_impl.h"
@@ -16,7 +17,8 @@
 #include "version.h"
 
 DECLARE_string(flagfile);
-DECLARE_string(nameserver_port);
+DECLARE_string(nameserver_nodes);
+DECLARE_int32(node_index);
 DECLARE_int32(nameserver_log_level);
 DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
@@ -84,8 +86,16 @@ int main(int argc, char* argv[])
     rpc_server.RegisterWebServlet("/dfs", webservice);
 
     // Start
-    std::string server_host = std::string("0.0.0.0:") + FLAGS_nameserver_port;
-    if (!rpc_server.Start(server_host)) {
+    std::vector<std::string> nameserver_nodes;
+    baidu::common::SplitString(FLAGS_nameserver_nodes, ",", &nameserver_nodes);
+    if (static_cast<int>(nameserver_nodes.size()) <= FLAGS_node_index) {
+        LOG(baidu::common::FATAL, "Bad nodes or index: %s, %d",
+            FLAGS_nameserver_nodes.c_str(), FLAGS_node_index);
+        return EXIT_FAILURE;
+    }
+    std::string server_addr = nameserver_nodes[FLAGS_node_index];
+    std::string listen_addr = std::string("0.0.0.0") + server_addr.substr(server_addr.rfind(':'));
+    if (!rpc_server.Start(listen_addr)) {
         return EXIT_FAILURE;
     }
     LOG(baidu::common::INFO, "RpcServer start.");

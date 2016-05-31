@@ -30,8 +30,6 @@
 
 #include "bfs.h"
 
-//DECLARE_string(nameserver);
-DECLARE_string(nameserver_port);
 DECLARE_string(nameserver_nodes);
 DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);

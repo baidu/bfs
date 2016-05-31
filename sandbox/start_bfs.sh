@@ -8,8 +8,7 @@ fi
 for((i=0;i<$ns_num;i++))
 do
     cd nameserver$i;
-    port=$((i+8827))
-    ./bin/nameserver --raft_node_index=$i --nameserver_port=$port 1>nlog 2>&1 &
+    ./bin/nameserver --node_index=$i 1>nlog 2>&1 &
     echo $! > pid
     cd -
 done;

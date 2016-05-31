@@ -32,7 +32,6 @@ do
     cp -f bfs.flag nameserver$i/
 done
 
-echo '--nameserver_port=8828' >> bfs.flag
 for i in `seq 0 3`;
 do
     mkdir -p chunkserver$i/bin
