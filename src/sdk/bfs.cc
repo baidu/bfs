@@ -568,15 +568,13 @@ private:
         ClientRegistRequest request;
         ClientRegistResponse response;
         request.set_session_id(GetSessionId());
-        if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::RegistNewClient,
-                &request, &response, 15, 3) || response.status() != kOK) {
+        // retry untill register success
+        while (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::RegistNewClient,
+                &request, &response, 15, 1) || response.status() != kOK) {
             LOG(WARNING, "Regist new session fail");
-            thread_pool_->DelayTask(5 * 1000, boost::bind(&FSImpl::RegisterToNameServeer, this));
-        } else {
-            LOG(INFO, "Regist success, session id: %s", session_id_.c_str());
-            //block untill first heartbeat
-            Heartbeat();
         }
+        LOG(INFO, "Regist success, session id: %s", session_id_.c_str());
+        Heartbeat();
     }
 private:
     RpcClient* rpc_client_;
