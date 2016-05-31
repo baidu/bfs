@@ -659,8 +659,8 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         if (located_blocks_.blocks_.empty()) {
             return 0;
         } else if (located_blocks_.blocks_[0].chains_size() == 0) {
-            LOG(WARNING, "No located servers or located_blocks_[%lu]",
-                located_blocks_.blocks_.size());
+            LOG(WARNING, "No located chunkserver of block #%ld",
+                located_blocks_.blocks_[0].block_id());
             return -3;
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
@@ -816,7 +816,7 @@ int32_t BfsFileImpl::AddBlock() {
         create_request.set_packet_seq(0);
         WriteBlockResponse create_response;
         if (FLAGS_sdk_write_mode == "chains") {
-            for (int i = 1; i < block_for_write_->chains_size(); i++) {
+            for (int i = 0; i < block_for_write_->chains_size(); i++) {
                 const std::string& cs_addr = block_for_write_->chains(i).address();
                 create_request.add_chunkservers(cs_addr);
             }
@@ -968,7 +968,7 @@ void BfsFileImpl::BackgroundWrite() {
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
             if (FLAGS_sdk_write_mode == "chains") {
-                for (int i = 1; i < block_for_write_->chains_size(); i++) {
+                for (int i = 0; i < block_for_write_->chains_size(); i++) {
                     std::string addr = block_for_write_->chains(i).address();
                     request->add_chunkservers(addr);
                 }
@@ -1032,7 +1032,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
             }
             if (--retry_times == 0) {
                 LOG(WARNING, "BackgroundWrite error %s"
-                    "#%ld seq:%d, offset:%ld, len:%d]"
+                    " #%ld seq:%d, offset:%ld, len:%d"
                     " status: %s, retry_times: %d",
                     name_.c_str(),
                     buffer->block_id(), buffer->Sequence(),

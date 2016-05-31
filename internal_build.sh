@@ -170,6 +170,7 @@ echo "BOOST_PATH=./thirdparty/boost_1_57_0" >> depends.mk
 echo "GFLAG_PATH=./thirdparty" >> depends.mk
 echo "GTEST_PATH=./thirdparty" >> depends.mk
 echo "COMMON_PATH=./thirdparty" >> depends.mk
+echo "TCMALLOC_PATH=./thirdparty" >> depends.mk
 
 ########################################
 # build tera
