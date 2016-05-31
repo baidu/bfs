@@ -605,7 +605,7 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
             }
         }
     }
-    
+
     response->set_term(current_term_);
     response->set_success(true);
     done->Run();
@@ -619,7 +619,7 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
 }
 
 
-void RaftNodeImpl::RegisterCallback(boost::function<void (const std::string& log)> callback) {
+void RaftNodeImpl::Init(boost::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
     ApplyLog();
 }
