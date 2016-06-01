@@ -148,6 +148,7 @@ if [ ! -f "${FLAG_DIR}/common" ] \
     git clone https://github.com/baidu/common
     cd common
     sed -i 's/^PREFIX=.*/PREFIX=..\/..\/thirdparty/' config.mk
+    sed -i '/^INCLUDE_PATH=*/s/$/ -I..\/..\/thirdaprty\/boost_1_57_0/g' Makefile
     make -j4
     make install
     cd -
