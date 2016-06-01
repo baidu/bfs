@@ -18,7 +18,7 @@ message WriteBlockRequest {
 }
 
 message WriteBlockResponse {
-    required int64 sequence_id = 1;
+    optional int64 sequence_id = 1;
     optional StatusCode status = 2;
     optional string bad_chunkserver = 3;
     optional int64 current_size = 4;

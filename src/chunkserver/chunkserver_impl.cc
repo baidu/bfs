@@ -27,7 +27,7 @@
 #include <common/string_util.h>
 #include "proto/nameserver.pb.h"
 #include "proto/status_code.pb.h"
-#include "rpc/rpc_client.h"
+#include "rpc/nameserver_client.h"
 
 #include "chunkserver/counter_manager.h"
 #include "chunkserver/data_block.h"
@@ -37,8 +37,7 @@
 #include <common/logging.h>
 
 DECLARE_string(block_store_path);
-DECLARE_string(nameserver);
-DECLARE_string(nameserver_port);
+DECLARE_string(nameserver_nodes);
 DECLARE_string(chunkserver_port);
 DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);
@@ -90,10 +89,7 @@ ChunkServerImpl::ChunkServerImpl()
     bool s_ret = block_manager_->LoadStorage();
     assert(s_ret == true);
     rpc_client_ = new RpcClient();
-    std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
-    if (!rpc_client_->GetStub(ns_address, &nameserver_)) {
-        assert(0);
-    }
+    nameserver_ = new NameServerClient(rpc_client_, FLAGS_nameserver_nodes);
     counter_manager_ = new CounterManager;
     heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this, true));
     heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
@@ -145,8 +141,7 @@ void ChunkServerImpl::Register() {
 
     LOG(INFO, "Send Register request with version %ld ", request.namespace_version());
     RegisterResponse response;
-    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::Register,
-            &request, &response, 20, 3)) {
+    if (!nameserver_->SendRequest(&NameServer_Stub::Register, &request, &response, 20)) {
         LOG(WARNING, "Register fail, wait and retry");
         work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
         return;
@@ -208,8 +203,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_r_speed(counters.read_bytes);
     request.set_recover_speed(counters.recover_bytes);
     HeartBeatResponse response;
-    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::HeartBeat,
-            &request, &response, 15, 1)) {
+    if (!nameserver_->SendRequest(&NameServer_Stub::HeartBeat, &request, &response, 15)) {
         LOG(WARNING, "Heart beat fail\n");
     } else if (response.status() != kOK) {
         if (block_manager_->NameSpaceVersion() != response.namespace_version()) {
@@ -255,8 +249,7 @@ void ChunkServerImpl::SendBlockReport() {
     }
 
     BlockReportResponse response;
-    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::BlockReport,
-            &request, &response, 20, 3)) {
+    if (!nameserver_->SendRequest(&NameServer_Stub::BlockReport, &request, &response, 20)) {
         LOG(WARNING, "Block reprot fail\n");
     } else {
         if (response.status() != kOK) {
@@ -310,8 +303,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     info->set_block_size(block->Size());
     info->set_version(block->GetVersion());
     BlockReceivedResponse response;
-    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::BlockReceived,
-            &request, &response, 20, 3)) {
+    if (!nameserver_->SendRequest(&NameServer_Stub::BlockReceived, &request, &response, 20)) {
         LOG(WARNING, "Reprot finish fail: #%ld ", block->Id());
         return false;
     }
@@ -646,8 +638,8 @@ void ChunkServerImpl::PushBlock(const ReplicaInfo& new_replica_info) {
     PushBlockProcess(new_replica_info);
     report_request.add_blocks(block_id);
     PushBlockReportResponse report_response;
-    if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::PushBlockReport,
-                &report_request, &report_response, 15, 3)) {
+    if (!nameserver_->SendRequest(&NameServer_Stub::PushBlockReport,
+                                  &report_request, &report_response, 15)) {
         LOG(WARNING, "Report push finish fail #%ld ", block_id);
     } else {
         LOG(INFO, "Report push finish done #%ld ", block_id);

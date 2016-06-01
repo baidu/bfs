@@ -4,6 +4,7 @@ OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 
 include depends.mk
+#CXX=/opt/compiler/gcc-4.8.2/bin/g++
 
 INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
@@ -38,6 +39,9 @@ CHUNKSERVER_SRC = $(wildcard src/chunkserver/*.cc)
 CHUNKSERVER_OBJ = $(patsubst %.cc, %.o, $(CHUNKSERVER_SRC))
 CHUNKSERVER_HEADER = $(wildcard src/chunkserver/*.h)
 
+RPC_SRC = $(wildcard src/rpc/*.cc)
+RPC_OBJ = $(patsubst %.cc, %.o, $(RPC_SRC))
+
 SDK_SRC = $(wildcard src/sdk/*.cc)
 SDK_OBJ = $(patsubst %.cc, %.o, $(SDK_SRC))
 SDK_HEADER = $(wildcard src/sdk/*.h)
@@ -47,13 +51,13 @@ FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
 FUSE_HEADER = $(wildcard fuse/*.h)
 
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
+MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
 
 LEVELDB = ./thirdparty/leveldb/libleveldb.a
 
-COMMON_OBJ = $(patsubst %.cc, %.o, $(wildcard src/common/*.cc))
 FLAGS_OBJ = src/flags.o
 VERSION_OBJ = src/version.o
-OBJS = $(FLAGS_OBJ) $(COMMON_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
+OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client
@@ -62,8 +66,9 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test 
-TEST_OBJS = src/nameserver/test/namespace_test.o src/chunkserver/test/file_cache_test.o \
+TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test
+TEST_OBJS = src/nameserver/test/namespace_test.o \
+			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
 UNITTEST_OUTPUT = test/
 
@@ -86,6 +91,23 @@ check: all $(TESTS)
 
 namespace_test: src/nameserver/test/namespace_test.o
 	$(CXX) src/nameserver/namespace.o src/nameserver/test/namespace_test.o $(OBJS) -o $@ $(LDFLAGS)
+
+#NAMESERVER_OBJ_NO_MAIN := $(filter out "nameserver_main.o", $(NAMESERVER_OBJ))
+#nameserver_test: src/nameserver/test/nameserver_impl_test.o $(NAMESERVER_OBJ_NO_MAIN)
+	#$(CXX) src/nameserver/test/nameserver_impl_test.o $(NAMESERVER_OBJ_NO_MAIN) $(OBJS) -o $@ $(LDFLAGS)
+nameserver_test: src/nameserver/test/nameserver_impl_test.o \
+	src/nameserver/block_mapping.o src/nameserver/chunkserver_manager.o \
+	src/nameserver/location_provider.o src/nameserver/master_slave.o \
+	src/nameserver/nameserver_impl.o  src/nameserver/namespace.o \
+	src/nameserver/raft_impl.o  src/nameserver/raft_node.o
+	$(CXX) src/nameserver/nameserver_impl.o src/nameserver/test/nameserver_impl_test.o \
+	src/nameserver/block_mapping.o src/nameserver/chunkserver_manager.o \
+	src/nameserver/location_provider.o src/nameserver/master_slave.o \
+	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
+	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
+
+raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o $(OBJS)
+	$(CXX) $^ -o $@ $(LDFLAGS)
 
 file_cache_test: src/chunkserver/test/file_cache_test.o
 	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
@@ -110,8 +132,11 @@ libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
+mark: $(MARK_OBJ) $(LIBS) $(LEVELDB)
+	$(CXX) $(MARK_OBJ) $(LIBS) -o $@ $(LDFLAGS)
+
 bfs_mount: $(FUSE_OBJ) $(LIBS)
-	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS) 
+	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
 $(LEVELDB):
 	cd thirdparty/leveldb; make -j4
 
@@ -129,7 +154,7 @@ src/version.cc: FORCE
 FORCE:
 
 clean:
-	rm -rf $(BIN)
+	rm -rf $(BIN) mark
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
@@ -146,5 +171,4 @@ install:
 
 .PHONY: test
 test:
-	cd sandbox; sh small_test.sh
-
+	cd sandbox; ./small_test.sh; ./small_test.sh raft
