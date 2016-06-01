@@ -69,10 +69,9 @@ private:
     bool LookUp(int64_t pid, const std::string& name, FileInfo* info);
     StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
-                                std::vector<FileInfo>* files_removed);
-    void UpdateBlockIdUpbound();
                                 std::vector<FileInfo>* files_removed,
                                 NameServerLog* log);
+    void UpdateBlockIdUpbound();
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
     //bool RecoverLog();
