@@ -22,8 +22,7 @@ namespace baidu {
 namespace bfs {
 
 MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
-                                     cond_(&mu_),
-                                     log_done_(&mu_), read_log_(NULL), scan_log_(-1),
+                                     cond_(&mu_), log_done_(&mu_), read_log_(NULL),
                                      current_offset_(0), applied_offset_(0), sync_offset_(0) {
     std::vector<std::string> nodes;
     common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);

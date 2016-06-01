@@ -66,7 +66,6 @@ private:
 
     int log_;
     FILE* read_log_;
-    int scan_log_;
     int current_offset_;
     int applied_offset_;
     int sync_offset_;
