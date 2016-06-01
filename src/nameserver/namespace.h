@@ -71,7 +71,6 @@ private:
                                 NameServerLog* log);
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
-    //bool RecoverLog();
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
