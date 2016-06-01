@@ -366,6 +366,7 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
         for (uint32_t i = 0; i < removed->size(); i++) {
             block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
         }
+        delete removed;
     }
     done->Run();
     if (!ret) {
