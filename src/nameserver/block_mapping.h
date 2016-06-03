@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifndef BFS_BLOCK_MAPPING_H_
+#define BFS_BLOCK_MAPPING_H_
+
 #include <set>
 #include <map>
 #include <queue>
@@ -35,7 +38,6 @@ struct NSBlock {
 class BlockMapping {
 public:
     BlockMapping();
-    int64_t NewBlockID();
     bool GetBlock(int64_t block_id, NSBlock* block);
     bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
@@ -56,13 +58,13 @@ public:
     void GetStat(int64_t* lo_recover_num, int64_t* hi_recover_num,
                  int64_t* lo_pending, int64_t* hi_pending,
                  int64_t* lost_num, int64_t* incomplete_num);
-    void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
+    bool ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                      std::string* hi_check, std::string* lo_check, std::string* incomplete);
     void SetSafeMode(bool safe_mode);
 private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
-    void ListCheckList(const CheckList& check_list, std::string* output);
+    bool ListCheckList(const CheckList& check_list, std::string* output);
     void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
                             std::map<int64_t, std::set<int32_t> >* recover_blocks,
                             std::set<int64_t>* check_set);
@@ -86,7 +88,6 @@ private:
     ThreadPool thread_pool_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
-    int64_t next_block_id_;
     bool safe_mode_;
 
     CheckList hi_recover_check_;
@@ -99,3 +100,5 @@ private:
 
 } // namespace bfs
 } // namespace baidu
+
+#endif

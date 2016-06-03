@@ -11,7 +11,7 @@
 namespace baidu {
 namespace bfs {
 
-class BlockMapping;
+class BlockMappingManager;
 
 class ChunkServerManager {
 public:
@@ -22,7 +22,7 @@ public:
         int64_t r_speed;
         int64_t recover_speed;
     };
-    ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping);
+    ChunkServerManager(ThreadPool* thread_pool, BlockMappingManager* block_mapping_mamager);
     void HandleRegister(const std::string& ip,
                         const RegisterRequest* request,
                         RegisterResponse* response);
@@ -56,7 +56,7 @@ private:
         std::vector<std::pair<int32_t,std::string> >* chains);
 private:
     ThreadPool* thread_pool_;
-    BlockMapping* block_mapping_;
+    BlockMappingManager* block_mapping_manager_;
     Mutex mu_;      /// chunkserver_s list mutext;
     Stats stats_;
     typedef std::map<int32_t, ChunkServerInfo*> ServerMap;

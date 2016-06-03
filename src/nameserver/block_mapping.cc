@@ -30,15 +30,10 @@ NSBlock::NSBlock(int64_t block_id, int32_t replica,
       recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover) {
 }
 
-BlockMapping::BlockMapping() : next_block_id_(1), safe_mode_(true) {}
+BlockMapping::BlockMapping() : safe_mode_(true) {}
 
 void BlockMapping::SetSafeMode(bool safe_mode) {
     safe_mode_ = safe_mode;
-}
-
-int64_t BlockMapping::NewBlockID() {
-    MutexLock lock(&mu_, "BlockMapping::NewBlockID", 1000);
-    return next_block_id_++;
 }
 
 bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
@@ -107,9 +102,6 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
     std::pair<NSBlockMap::iterator, bool> ret =
         block_map_.insert(std::make_pair(block_id,nsblock));
     assert(ret.second == true);
-    if (next_block_id_ <= block_id) {
-        next_block_id_ = block_id + 1;
-    }
 }
 
 bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
@@ -688,7 +680,8 @@ void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* hi_recover_num,
     }
 }
 
-void BlockMapping::ListCheckList(const CheckList& check_list, std::string* output) {
+bool BlockMapping::ListCheckList(const CheckList& check_list, std::string* output) {
+    bool cont = true;
     for (CheckList::const_iterator it = check_list.begin(); it != check_list.end(); ++it) {
         output->append(common::NumToString(it->first) + ": ");
         const std::set<int64_t>& block_set = it->second;
@@ -698,21 +691,25 @@ void BlockMapping::ListCheckList(const CheckList& check_list, std::string* outpu
             output->append(common::NumToString(*block_it) + " ");
             if (output->size() - last > 1024) {
                 output->append("...");
+                cont = false;
                 break;
             }
             last = output->size();
         }
         output->append("<br>");
     }
+    return cont;
 }
-void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover,
+bool BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover,
                                std::string* lost, std::string* hi_check,
                                std::string* lo_check, std::string* incomplete) {
+    bool cont = true;
     MutexLock lock(&mu_);
     for (std::set<int64_t>::iterator it = lo_pri_recover_.begin(); it != lo_pri_recover_.end(); ++it) {
         lo_recover->append(common::NumToString(*it) + " ");
         if (lo_recover->size() > 1024) {
             lo_recover->append("...");
+            cont = false;
             break;
         }
     }
@@ -721,6 +718,7 @@ void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover,
         hi_recover->append(common::NumToString(*it) + " ");
         if (hi_recover->size() > 1024) {
             hi_recover->append("...");
+            cont = false;
             break;
         }
     }
@@ -729,13 +727,21 @@ void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover,
         lost->append(common::NumToString(*it) + " ");
         if (lost->size() > 1024) {
             lost->append("...");
+            cont = false;
             break;
         }
     }
 
-    ListCheckList(hi_recover_check_, hi_check);
-    ListCheckList(lo_recover_check_, lo_check);
-    ListCheckList(incomplete_, incomplete);
+    if (!ListCheckList(hi_recover_check_, hi_check)) {
+        cont = false;
+    }
+    if (!ListCheckList(lo_recover_check_, lo_check)) {
+        cont = false;
+    }
+    if (!ListCheckList(incomplete_, incomplete)) {
+        cont = false;
+    }
+    return cont;
 }
 
 void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,

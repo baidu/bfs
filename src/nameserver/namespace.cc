@@ -23,6 +23,7 @@
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
+DECLARE_int32(block_id_allocation_size);
 
 const int64_t kRootEntryid = 1;
 
@@ -66,6 +67,18 @@ void NameSpace::Activate(NameServerLog* log) {
         }
         EncodeLog(log, kSyncWrite, version_key, version_str);
         LOG(INFO, "Create new namespace version: %ld ", version_);
+    }
+    std::string block_id_upbound_key(8, 0);
+    block_id_upbound_key.append("block_id_upbound");
+    std::string block_id_upbound_str;
+    s = db_->Get(leveldb::ReadOptions(), block_id_upbound_key, &block_id_upbound_str);
+    if (!s.ok()) {
+        LOG(INFO, "Can't read block id upbound: %s", s.ToString().c_str());
+        UpdateBlockIdUpbound();
+    } else {
+        block_id_upbound_ = *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0]));
+        LOG(INFO, "Load block id upbound: %ld", block_id_upbound_);
+        UpdateBlockIdUpbound();
     }
     SetupRoot();
 }
@@ -519,6 +532,32 @@ std::string NameSpace::NormalizePath(const std::string& path) {
         ret.resize(ret.size() - 1);
     }
     return ret;
+}
+
+void NameSpace::UpdateBlockIdUpbound() {
+    std::string block_id_upbound_key(8, 0);
+    block_id_upbound_key.append("block_id_upbound");
+    std::string block_id_upbound_str;
+    block_id_upbound_str.resize(8);
+    next_block_id_ = block_id_upbound_ + 1;
+    block_id_upbound_ += FLAGS_block_id_allocation_size;
+    *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
+    if (!s.ok()) {
+        LOG(FATAL, "Update block id upbound fail: %s", s.ToString().c_str());
+    } else {
+        LOG(INFO, "Update block id upbound to %ld", block_id_upbound_);
+    }
+}
+
+int64_t NameSpace::GetNewBlockId() {
+    MutexLock lock(&mu_);
+    if (next_block_id_ == block_id_upbound_) {
+        UpdateBlockIdUpbound();
+        return next_block_id_;
+    } else {
+        return next_block_id_++;
+    }
 }
 
 void NameSpace::TailLog(const std::string& logstr) {
