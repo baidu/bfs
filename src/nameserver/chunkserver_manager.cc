@@ -11,7 +11,7 @@
 #include <common/string_util.h>
 #include <common/util.h>
 #include "proto/status_code.pb.h"
-#include "nameserver/block_mapping.h"
+#include "nameserver/block_mapping_manager.h"
 #include "nameserver/location_provider.h"
 
 DECLARE_int32(keepalive_timeout);
@@ -27,9 +27,9 @@ namespace bfs {
 
 const int kChunkserverLoadMax = -1;
 
-ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping)
+ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingManager* block_mapping_manager)
     : thread_pool_(thread_pool),
-      block_mapping_(block_mapping),
+      block_mapping_manager_(block_mapping_manager),
       chunkserver_num_(0),
       next_chunkserver_id_(1) {
     memset(&stats_, 0, sizeof(stats_));
@@ -52,7 +52,7 @@ void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string
     chunkserver_block_map_.erase(id);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
-    block_mapping_->DealWithDeadNode(id, blocks);
+    block_mapping_manager_->DealWithDeadNode(id, blocks);
     mu_.Lock("CleanChunkserverRelock", 10);
     cs->set_w_qps(0);
     cs->set_w_speed(0);
@@ -471,7 +471,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         }
     }
     std::map<int64_t, std::set<int32_t> > blocks;
-    block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
+    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
     for (std::map<int64_t, std::set<int32_t> >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
@@ -480,7 +480,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         if (GetRecoverChains(it->second, &(recover_it->second))) {
             //
         } else {
-            block_mapping_->ProcessRecoveredBlock(cs_id, it->first);
+            block_mapping_manager_->ProcessRecoveredBlock(cs_id, it->first);
             recover_blocks->erase(recover_it);
         }
     }

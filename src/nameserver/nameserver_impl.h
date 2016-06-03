@@ -23,7 +23,7 @@ namespace bfs {
 
 class NameSpace;
 class ChunkServerManager;
-class BlockMapping;
+class BlockMappingManager;
 class Sync;
 
 class NameServerImpl : public NameServer {
@@ -119,7 +119,7 @@ private:
     /// Chunkserver map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
-    BlockMapping* block_mapping_;
+    BlockMappingManager* block_mapping_manager_;
     /// Safemode
     volatile int safe_mode_;
     int64_t start_time_;
