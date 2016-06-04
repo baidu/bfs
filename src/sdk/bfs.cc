@@ -646,7 +646,8 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     if (sequential_ratio_ > 2
         && reada
         && read_len < FLAGS_sdk_file_reada_len) {
-        rlen = std::min(FLAGS_sdk_file_reada_len, sequential_ratio_ * read_len);
+        rlen = std::min(static_cast<int64_t>(FLAGS_sdk_file_reada_len),
+                        static_cast<int64_t>(sequential_ratio_) * read_len);
         LOG(DEBUG, "Pread(%s, %ld, %d) sequential_ratio_: %d, readahead to %d",
             name_.c_str(), offset, read_len, sequential_ratio_, rlen);
     }
