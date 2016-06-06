@@ -566,7 +566,7 @@ uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
     entry->set_value(value);
     return entry->ByteSize();
 }
-void NameSpace::UpdateBlockIdUpbound() {
+void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     std::string block_id_upbound_key(8, 0);
     block_id_upbound_key.append("block_id_upbound");
     std::string block_id_upbound_str;
@@ -580,12 +580,13 @@ void NameSpace::UpdateBlockIdUpbound() {
     } else {
         LOG(INFO, "Update block id upbound to %ld", block_id_upbound_);
     }
+    EncodeLog(log, kSyncWrite, block_id_upbound_key, block_id_upbound_str);
 }
 
-int64_t NameSpace::GetNewBlockId() {
+int64_t NameSpace::GetNewBlockId(NameServerLog* log) {
     MutexLock lock(&mu_);
     if (next_block_id_ == block_id_upbound_) {
-        UpdateBlockIdUpbound();
+        UpdateBlockIdUpbound(log);
         return next_block_id_;
     } else {
         return next_block_id_++;
