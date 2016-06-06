@@ -21,6 +21,7 @@ DEFINE_int64(count, 0, "put/read/delete file count");
 DEFINE_int32(thread, 5, "thread num");
 DEFINE_int32(seed, 301, "random seed");
 DEFINE_int32(file_size, 1024, "file size in KB");
+DEFINE_string(folder, "test", "write data to which folder");
 
 namespace baidu {
 namespace bfs {
@@ -68,7 +69,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     while (len < file_size_) {
         uint32_t w = base_size + rand_[thread_id]->Uniform(base_size);
 
-        int write_len = file->Write(base.c_str(), w);
+        uint32_t write_len = file->Write(base.c_str(), w);
         if (write_len != w) {
             std::cerr << "Write length does not match write_len = "
                     << write_len << " should be " << w << std::endl;
@@ -83,6 +84,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     delete file;
     rand_[thread_id]->Next();
     put_counter_.Inc();
+    all_counter_.Inc();
 }
 
 void Mark::Read(const std::string& filename, const std::string& base, int thread_id) {
@@ -121,6 +123,7 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     }
     delete file;
     read_counter_.Inc();
+    all_counter_.Inc();
 }
 
 void Mark::Delete(const std::string& filename) {
@@ -137,7 +140,7 @@ void Mark::PutWrapper(int thread_id) {
     std::string base;
     RandomString(&base, 1<<20, thread_id);
     while (FLAGS_count == 0 || count != FLAGS_count) {
-        std::string filename = "/" + prefix + "/" + common::NumToString(name_id);
+        std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" + common::NumToString(name_id);
         Put(filename, base, thread_id);
         ++name_id;
         ++count;
@@ -152,7 +155,7 @@ void Mark::ReadWrapper(int thread_id) {
     std::string base;
     RandomString(&base, 1<<20, thread_id);
     while (FLAGS_count == 0 || count != FLAGS_count) {
-        std::string filename = "/" + prefix + "/" + common::NumToString(name_id);
+        std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" + common::NumToString(name_id);
         Read(filename, base, thread_id);
         ++name_id;
         ++count;
@@ -162,7 +165,7 @@ void Mark::ReadWrapper(int thread_id) {
 
 void Mark::PrintStat() {
     std::cout << "Put\t" << put_counter_.Get() << "\tDel\t" << del_counter_.Get()
-              << "\tRead\t" << read_counter_.Get() << std::endl;
+              << "\tRead\t" << read_counter_.Get() << "\tAll\t" << all_counter_.Get() << std::endl;
     put_counter_.Set(0);
     del_counter_.Set(0);
     read_counter_.Set(0);

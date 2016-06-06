@@ -72,7 +72,9 @@ void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callba
             memcpy(&applied_offset_, buf, 4);
             assert(applied_offset_ <= current_offset_);
             int offset = fseek(read_log_, applied_offset_, SEEK_SET);
-            assert(offset == applied_offset_);
+            if (offset != applied_offset_) {
+                LOG(FATAL, "offset = %d applied_offset_ = %d", offset, current_offset_);
+            }
         }
         close(fp);
     }
@@ -328,7 +330,8 @@ void MasterSlaveImpl::PorcessCallbck(int offset, int len, bool timeout_check) {
             return;
         }
     }
-    if (master_only_ && offset + len == current_offset_) {
+    int sync_offset = ftell(read_log_);
+    if (master_only_ && sync_offset + len >= current_offset_) {
         LOG(INFO, "[Sync] leaves master-only mode");
         master_only_ = false;
     }
