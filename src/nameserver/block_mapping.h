@@ -59,13 +59,13 @@ public:
     void GetStat(int64_t* lo_recover_num, int64_t* hi_recover_num,
                  int64_t* lo_pending, int64_t* hi_pending,
                  int64_t* lost_num, int64_t* incomplete_num);
-    bool ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
+    void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                      std::string* hi_check, std::string* lo_check, std::string* incomplete);
     void SetSafeMode(bool safe_mode);
 private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
-    bool ListCheckList(const CheckList& check_list, std::string* output);
+    void ListCheckList(const CheckList& check_list, std::string* output);
     void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
                             std::map<int64_t, std::set<int32_t> >* recover_blocks,
                             std::set<int64_t>* check_set);

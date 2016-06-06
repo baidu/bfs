@@ -121,9 +121,7 @@ void BlockMappingManager::GetStat(int64_t* lo_recover_num, int64_t* hi_recover_n
 void BlockMappingManager::ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                  std::string* hi_check, std::string* lo_check, std::string* incomplete) {
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        if (!block_mapping_[i]->ListRecover(hi_recover, lo_recover, lost, hi_check, lo_check, incomplete)) {
-            return;
-        }
+        block_mapping_[i]->ListRecover(hi_recover, lo_recover, lost, hi_check, lo_check, incomplete);
     }
 }
 
