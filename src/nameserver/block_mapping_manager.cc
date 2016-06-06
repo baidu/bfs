@@ -82,11 +82,14 @@ StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t vers
 void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                        std::map<int64_t, std::set<int32_t> >* recover_blocks,
                        int32_t* hi_num) {
-    for (size_t i = 0; i < block_mapping_.size(); i++) {
+    int end_offset = rand() % blockmapping_bucket_num_;
+    int cur_offset = end_offset;
+    do {
         int hi = 0;
-        block_mapping_[i]->PickRecoverBlocks(cs_id, block_num / block_mapping_.size() + 1, recover_blocks, &hi);
+        block_mapping_[cur_offset]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, &hi);
         *(hi_num) += hi;
-    }
+        cur_offset = (cur_offset + 1) % blockmapping_bucket_num_;
+    } while (cur_offset != end_offset);
 }
 
 void BlockMappingManager::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id) {
