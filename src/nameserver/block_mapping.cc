@@ -581,22 +581,25 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                      std::map<int64_t, std::set<int32_t> >* recover_blocks,
-                                     int32_t* hi_num) {
+                                     std::string pri, int32_t* hi_num) {
     MutexLock lock(&mu_);
-    if (hi_pri_recover_.empty() && lo_pri_recover_.empty()) {
+    if ((pri == "hi" && hi_pri_recover_.empty()) ||
+            (pri == "low" && lo_pri_recover_.empty())) {
         return;
     }
-    std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
     std::set<int64_t>& hi_check_set = hi_recover_check_[cs_id];
-    int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
+    std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
     LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
         cs_id, hi_check_set.size(), lo_check_set.size());
+    int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
     quota = quota < block_num ? quota : block_num;
-    LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ",
-        hi_pri_recover_.size(), lo_pri_recover_.size());
-    PickRecoverFromSet(cs_id, quota, &hi_pri_recover_, recover_blocks, &hi_check_set);
-    if (hi_num) *hi_num = recover_blocks->size();
-    PickRecoverFromSet(cs_id, quota, &lo_pri_recover_, recover_blocks, &lo_check_set);
+    LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
+        cs_id, hi_check_set.size(), lo_check_set.size());
+    std::set<int64_t>& target_set = pri == "hi" ? hi_pri_recover_ : lo_pri_recover_;
+    PickRecoverFromSet(cs_id, quota, &target_set, recover_blocks, &hi_check_set);
+    if (hi_num) {
+        *hi_num += recover_blocks->size();
+    }
     LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
