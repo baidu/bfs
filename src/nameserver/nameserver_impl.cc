@@ -31,6 +31,7 @@ DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
+DECLARE_int32(blockmapping_bucket_num);
 
 namespace baidu {
 namespace bfs {
@@ -49,7 +50,7 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     if (sync_) {
         sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1));
     }
-    block_mapping_manager_ = new BlockMappingManager();
+    block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);

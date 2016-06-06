@@ -4,13 +4,12 @@
 
 #include "block_mapping_manager.h"
 
-DECLARE_int32(blockmapping_bucket_num);
-
 namespace baidu {
 namespace bfs {
 
-BlockMappingManager::BlockMappingManager() {
-    block_mapping_.resize(FLAGS_blockmapping_bucket_num);
+BlockMappingManager::BlockMappingManager(int32_t bucket_num) :
+    blockmapping_bucket_num_(bucket_num) {
+    block_mapping_.resize(blockmapping_bucket_num_);
     for (size_t i = 0; i < block_mapping_.size(); i++) {
         block_mapping_[i] = new BlockMapping();
     }
@@ -19,8 +18,8 @@ BlockMappingManager::BlockMappingManager() {
 BlockMappingManager::~BlockMappingManager() {
 }
 
-int32_t GetBucketOffset(int64_t block_id) {
-    return block_id % FLAGS_blockmapping_bucket_num;
+int32_t BlockMappingManager::GetBucketOffset(int64_t block_id) {
+    return block_id % blockmapping_bucket_num_;
 }
 
 bool BlockMappingManager::GetBlock(int64_t block_id, NSBlock* block) {

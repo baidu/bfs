@@ -14,7 +14,7 @@ namespace bfs {
 
 class BlockMappingManager {
 public :
-    BlockMappingManager();
+    BlockMappingManager(int32_t bucket_num);
     ~BlockMappingManager();
     bool GetBlock(int64_t block_id, NSBlock* block);
     bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size);
@@ -40,6 +40,9 @@ public :
                      std::string* hi_check, std::string* lo_check, std::string* incomplete);
     void SetSafeMode(bool safe_mode);
 private:
+    int32_t GetBucketOffset(int64_t block_id);
+private:
+    int32_t blockmapping_bucket_num_;
     std::vector<BlockMapping*> block_mapping_;
 };
 
