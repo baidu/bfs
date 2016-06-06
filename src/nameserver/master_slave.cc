@@ -71,9 +71,9 @@ void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callba
         if (ret == 4) {
             memcpy(&applied_offset_, buf, 4);
             assert(applied_offset_ <= current_offset_);
-            int offset = fseek(read_log_, applied_offset_, SEEK_SET);
-            if (offset != applied_offset_) {
-                LOG(FATAL, "offset = %d applied_offset_ = %d", offset, current_offset_);
+            ret = fseek(read_log_, applied_offset_, SEEK_SET);
+            if (ret != 0) {
+                LOG(FATAL, "offset = %d applied_offset_ = %d", ftell(read_log_), applied_offset_);
             }
         }
         close(fp);
@@ -282,8 +282,8 @@ void MasterSlaveImpl::ReplicateLog() {
             MutexLock lock(&mu_);
             if (response.offset() != -1) {
                 sync_offset = response.offset();
-                int offset = fseek(read_log_, sync_offset, SEEK_SET);
-                assert(offset == sync_offset);
+                int ret = fseek(read_log_, sync_offset, SEEK_SET);
+                assert(ret == 0);
                 LOG(DEBUG, "[Sync] set sync_offset to %d", sync_offset);
             }
             continue;
