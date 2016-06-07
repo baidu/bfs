@@ -595,8 +595,6 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
     quota = quota < block_num ? quota : block_num;
     */
-    LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
-        cs_id, hi_check_set.size(), lo_check_set.size());
     std::set<int64_t>& target_set = pri == "hi" ? hi_pri_recover_ : lo_pri_recover_;
     PickRecoverFromSet(cs_id, block_num, &target_set, recover_blocks, &hi_check_set);
     if (hi_num) {
