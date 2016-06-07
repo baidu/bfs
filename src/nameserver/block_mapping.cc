@@ -581,10 +581,10 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                      std::map<int64_t, std::set<int32_t> >* recover_blocks,
-                                     std::string pri) {
+                                     RecoverPri pri) {
     MutexLock lock(&mu_);
-    if ((pri == "hi" && hi_pri_recover_.empty()) ||
-            (pri == "low" && lo_pri_recover_.empty())) {
+    if ((pri == kHigh && hi_pri_recover_.empty()) ||
+            (pri == kLow && lo_pri_recover_.empty())) {
         return;
     }
     std::set<int64_t>& hi_check_set = hi_recover_check_[cs_id];
@@ -596,7 +596,7 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     quota = quota < block_num ? quota : block_num;
     */
     std::set<int64_t>* target_set = NULL, *check_set = NULL;
-    if (pri == "hi") {
+    if (pri == kHigh) {
         target_set = &hi_pri_recover_;
         check_set = &hi_check_set;
     } else {
