@@ -91,8 +91,8 @@ void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     block_num -= cur_check_num;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, "hi");
-        *(hi_num) += recover_blocks->size();
     }
+    *(hi_num) += recover_blocks->size();
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, "low");
     }
