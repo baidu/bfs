@@ -62,6 +62,7 @@ public:
     void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                      std::string* hi_check, std::string* lo_check, std::string* incomplete);
     void SetSafeMode(bool safe_mode);
+    int32_t GetCheckNum();
 private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;

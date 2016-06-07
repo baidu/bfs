@@ -82,6 +82,11 @@ StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t vers
 void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                        std::map<int64_t, std::set<int32_t> >* recover_blocks,
                        int32_t* hi_num) {
+    int cur_check_num = 0;
+    for (int i = 0; i < blockmapping_bucket_num_; i++) {
+        cur_check_num += block_mapping_[i]->GetCheckNum();
+    }
+    block_num -= cur_check_num;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         int hi = 0;
         block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, "hi", &hi);

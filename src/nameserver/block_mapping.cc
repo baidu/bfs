@@ -591,12 +591,14 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
     LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
         cs_id, hi_check_set.size(), lo_check_set.size());
+    /*
     int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
     quota = quota < block_num ? quota : block_num;
+    */
     LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
         cs_id, hi_check_set.size(), lo_check_set.size());
     std::set<int64_t>& target_set = pri == "hi" ? hi_pri_recover_ : lo_pri_recover_;
-    PickRecoverFromSet(cs_id, quota, &target_set, recover_blocks, &hi_check_set);
+    PickRecoverFromSet(cs_id, block_num, &target_set, recover_blocks, &hi_check_set);
     if (hi_num) {
         *hi_num += recover_blocks->size();
     }
@@ -900,6 +902,17 @@ bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) 
         return true;
     }
     return false;
+}
+int32_t BlockMapping::GetCheckNum() {
+    MutexLock lock(&mu_);
+    int32_t num = 0;
+    for (CheckList::iterator it = hi_recover_check_.begin(); it != hi_recover_check_.end(); ++it) {
+        num += it->second.size();
+    }
+    for (CheckList::iterator it = lo_recover_check_.begin(); it != lo_recover_check_.end(); ++it) {
+        num += it->second.size();
+    }
+    return num;
 }
 
 } // namespace bfs
