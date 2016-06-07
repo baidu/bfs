@@ -581,7 +581,7 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                      std::map<int64_t, std::set<int32_t> >* recover_blocks,
-                                     std::string pri, int32_t* hi_num) {
+                                     std::string pri) {
     MutexLock lock(&mu_);
     if ((pri == "hi" && hi_pri_recover_.empty()) ||
             (pri == "low" && lo_pri_recover_.empty())) {
@@ -595,11 +595,15 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
     quota = quota < block_num ? quota : block_num;
     */
-    std::set<int64_t>& target_set = pri == "hi" ? hi_pri_recover_ : lo_pri_recover_;
-    PickRecoverFromSet(cs_id, block_num, &target_set, recover_blocks, &hi_check_set);
-    if (hi_num) {
-        *hi_num += recover_blocks->size();
+    std::set<int64_t>* target_set = NULL, *check_set = NULL;
+    if (pri == "hi") {
+        target_set = &hi_pri_recover_;
+        check_set = &hi_check_set;
+    } else {
+        target_set = &lo_pri_recover_;;
+        check_set = &lo_check_set;
     }
+    PickRecoverFromSet(cs_id, block_num, target_set, recover_blocks, check_set);
     LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
@@ -900,17 +904,6 @@ bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) 
         return true;
     }
     return false;
-}
-int32_t BlockMapping::GetCheckNum() {
-    MutexLock lock(&mu_);
-    int32_t num = 0;
-    for (CheckList::iterator it = hi_recover_check_.begin(); it != hi_recover_check_.end(); ++it) {
-        num += it->second.size();
-    }
-    for (CheckList::iterator it = lo_recover_check_.begin(); it != lo_recover_check_.end(); ++it) {
-        num += it->second.size();
-    }
-    return num;
 }
 
 } // namespace bfs
