@@ -906,7 +906,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t lo_recover_num, hi_recover_num, lo_pending, hi_pending, lost_num, incomplete_num;
+    int64_t lo_recover_num = 0, hi_recover_num = 0, lo_pending = 0, hi_pending = 0, lost_num = 0, incomplete_num = 0;
     block_mapping_manager_->GetStat(&lo_recover_num, &hi_recover_num, &lo_pending, &hi_pending,
                             &lost_num, &incomplete_num);
     int32_t w_qps, r_qps;
