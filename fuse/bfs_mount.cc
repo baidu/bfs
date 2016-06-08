@@ -60,6 +60,7 @@ int bfs_getattr(const char* path, struct stat* st) {
     st->st_atime = file.ctime;
     st->st_ctime = file.ctime;
     st->st_mtime = file.ctime;
+    st->st_nlink = 1;
     return 0;
 }
 
