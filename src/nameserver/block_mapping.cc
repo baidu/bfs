@@ -695,49 +695,32 @@ void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* hi_recover_num,
     }
 }
 
-void BlockMapping::ListCheckList(const CheckList& check_list, std::string* output) {
+void BlockMapping::ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result) {
     for (CheckList::const_iterator it = check_list.begin(); it != check_list.end(); ++it) {
-        output->append(common::NumToString(it->first) + ": ");
         const std::set<int64_t>& block_set = it->second;
-        uint32_t last = output->size();
         for (std::set<int64_t>::iterator block_it = block_set.begin();
                 block_it != block_set.end(); ++block_it) {
-            output->append(common::NumToString(*block_it) + " ");
-            if (output->size() - last > 1024) {
-                output->append("...");
-                break;
-            }
-            last = output->size();
+            (*result)[it->first].insert(*block_it);
         }
-        output->append("<br>");
     }
 }
-void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover,
-                               std::string* lost, std::string* hi_check,
-                               std::string* lo_check, std::string* incomplete) {
+void BlockMapping::ListRecover(std::set<int64_t>* hi_recover,
+                               std::set<int64_t>* lo_recover,
+                               std::set<int64_t>* lost,
+                               std::map<int32_t, std::set<int64_t> >* hi_check,
+                               std::map<int32_t, std::set<int64_t> >* lo_check,
+                               std::map<int32_t, std::set<int64_t> >* incomplete) {
     MutexLock lock(&mu_);
     for (std::set<int64_t>::iterator it = lo_pri_recover_.begin(); it != lo_pri_recover_.end(); ++it) {
-        lo_recover->append(common::NumToString(*it) + " ");
-        if (lo_recover->size() > 1024) {
-            lo_recover->append("...");
-            break;
-        }
+        lo_recover->insert(*it);
     }
 
     for (std::set<int64_t>::iterator it = hi_pri_recover_.begin(); it != hi_pri_recover_.end(); ++it) {
-        hi_recover->append(common::NumToString(*it) + " ");
-        if (hi_recover->size() > 1024) {
-            hi_recover->append("...");
-            break;
-        }
+        hi_recover->insert(*it);
     }
 
     for (std::set<int64_t>::iterator it = lost_blocks_.begin(); it != lost_blocks_.end(); ++it) {
-        lost->append(common::NumToString(*it) + " ");
-        if (lost->size() > 1024) {
-            lost->append("...");
-            break;
-        }
+        lost->insert(*it);
     }
 
     ListCheckList(hi_recover_check_, hi_check);

@@ -6,6 +6,8 @@
 
 #include "proto/status_code.pb.h"
 
+#include <common/string_util.h>
+
 namespace baidu {
 namespace bfs {
 
@@ -126,11 +128,46 @@ void BlockMappingManager::GetStat(int64_t* lo_recover_num, int64_t* hi_recover_n
     }
 }
 
+void BlockMappingManager::TransToString(std::map<int32_t, std::set<int64_t> >& chk_set, std::string* output) {
+    for (std::map<int32_t, std::set<int64_t> >::iterator it = chk_set.begin(); it != chk_set.end(); ++it) {
+        output->append(common::NumToString(it->first) + ": ");
+        const std::set<int64_t>& block_set = it->second;
+        uint32_t last = output->size();
+        for (std::set<int64_t>::iterator block_it = block_set.begin();
+                block_it != block_set.end(); ++block_it) {
+            output->append(common::NumToString(*block_it) + " ");
+            if (output->size() - last > 1024) {
+                output->append("...");
+                break;
+            }
+        }
+        output->append("<br>");
+    }
+}
+
+void BlockMappingManager::TransToString(std::set<int64_t>& block_set, std::string* output) {
+        for (std::set<int64_t>::iterator it = block_set.begin(); it != block_set.end(); ++it) {
+            output->append(common::NumToString(*it) + " ");
+            if (output->size() > 1024) {
+                output->append("...");
+                break;
+            }
+        }
+}
+
 void BlockMappingManager::ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                  std::string* hi_check, std::string* lo_check, std::string* incomplete) {
+    std::map<int32_t, std::set<int64_t> > hi_chk, lo_chk, inc;
+    std::set<int64_t> h_r, l_r, los;
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        block_mapping_[i]->ListRecover(hi_recover, lo_recover, lost, hi_check, lo_check, incomplete);
+        block_mapping_[i]->ListRecover(&h_r, &l_r, &los, &hi_chk, &lo_chk, &inc);
     }
+    TransToString(h_r, hi_recover);
+    TransToString(l_r, lo_recover);
+    TransToString(los, lost);
+    TransToString(hi_chk, hi_check);
+    TransToString(lo_chk, lo_check);
+    TransToString(inc, incomplete);
 }
 
 void BlockMappingManager::SetSafeMode(bool safe_mode) {
