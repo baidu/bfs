@@ -41,8 +41,8 @@ public :
     void SetSafeMode(bool safe_mode);
 private:
     int32_t GetBucketOffset(int64_t block_id);
-    void TransToString(std::map<int32_t, std::set<int64_t> >& chk_set, std::string* output);
-    void TransToString(std::set<int64_t>& block_set, std::string* output);
+    void TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set, std::string* output);
+    void TransToString(const std::set<int64_t>& block_set, std::string* output);
 private:
     int32_t blockmapping_bucket_num_;
     std::vector<BlockMapping*> block_mapping_;

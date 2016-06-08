@@ -128,8 +128,8 @@ void BlockMappingManager::GetStat(int64_t* lo_recover_num, int64_t* hi_recover_n
     }
 }
 
-void BlockMappingManager::TransToString(std::map<int32_t, std::set<int64_t> >& chk_set, std::string* output) {
-    for (std::map<int32_t, std::set<int64_t> >::iterator it = chk_set.begin(); it != chk_set.end(); ++it) {
+void BlockMappingManager::TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set, std::string* output) {
+    for (std::map<int32_t, std::set<int64_t> >::const_iterator it = chk_set.begin(); it != chk_set.end(); ++it) {
         output->append(common::NumToString(it->first) + ": ");
         const std::set<int64_t>& block_set = it->second;
         uint32_t last = output->size();
@@ -145,8 +145,8 @@ void BlockMappingManager::TransToString(std::map<int32_t, std::set<int64_t> >& c
     }
 }
 
-void BlockMappingManager::TransToString(std::set<int64_t>& block_set, std::string* output) {
-        for (std::set<int64_t>::iterator it = block_set.begin(); it != block_set.end(); ++it) {
+void BlockMappingManager::TransToString(const std::set<int64_t>& block_set, std::string* output) {
+        for (std::set<int64_t>::const_iterator it = block_set.begin(); it != block_set.end(); ++it) {
             output->append(common::NumToString(*it) + " ");
             if (output->size() > 1024) {
                 output->append("...");
