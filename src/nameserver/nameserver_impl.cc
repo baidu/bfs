@@ -56,7 +56,6 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     CheckLeader();
     start_time_ = common::timer::get_micros();
     work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
