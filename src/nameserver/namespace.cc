@@ -7,6 +7,8 @@
 #include "namespace.h"
 
 #include <fcntl.h>
+#include <stack>
+
 #include <gflags/gflags.h>
 #include <leveldb/db.h>
 #include <leveldb/cache.h>
@@ -114,27 +116,67 @@ void NameSpace::SetupRoot() {
 /// 3filez -> 6
 /// 4filex -> 7
 /// 5filey -> 8
-bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
-    if (path == "/") {
-        info->CopyFrom(root_path_);
-        return true;
-    }
+bool NameSpace::LookUp(const std::string& path, FileInfo* info, FileInfo* parent_info) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths) || path.empty()) {
         return false;
     }
-    int64_t parent_id = kRootEntryid;
+    if (paths.size() == 0) {
+        info->CopyFrom(root_path_);
+        if (parent_info) {
+            parent_info->CopyFrom(root_path_);
+        }
+        return true;
+    }
     int64_t entry_id = kRootEntryid;
-    for (size_t i = 0; i < paths.size(); i++) {
+    std::stack<FileInfo> file_infos;
+    std::stack<std::string> effect_paths;
+    info->CopyFrom(root_path_);
+    size_t i = 0;
+    while (i < paths.size()) {
+        if (paths[i] == ".") {
+            i++;
+            continue;
+        }
+        if (paths[i] == "..") {
+            if (file_infos.empty()) {
+                file_infos.push(root_path_);
+                effect_paths.push("/");
+                i++;
+                continue;
+            }
+            info->CopyFrom(file_infos.top());
+            entry_id = info->entry_id();
+            file_infos.pop();
+            effect_paths.pop();
+            i++;
+            continue;
+        }
+        file_infos.push(*info);
+        effect_paths.push(paths[i]);
         if (!LookUp(entry_id, paths[i], info)) {
             return false;
         }
-        parent_id = entry_id;
         entry_id = info->entry_id();
         LOG(DEBUG, "LookUp %s entry_id= E%ld ", paths[i].c_str(), entry_id);
+        i++;
     }
-    info->set_name(paths[paths.size()-1]);
-    info->set_parent_entry_id(parent_id);
+
+    if (parent_info) {
+        if (!file_infos.empty()) {
+            parent_info->CopyFrom(file_infos.top());
+        } else {
+            parent_info->CopyFrom(root_path_);
+        }
+    }
+
+    if (!effect_paths.empty()) {
+        info->set_name(effect_paths.top());
+        info->set_parent_entry_id(file_infos.top().entry_id());
+    } else {
+        info->set_name("/");
+        info->set_parent_entry_id(kRootEntryid);
+    }
     LOG(INFO, "LookUp %s return %s", path.c_str(), info->name().c_str());
     return true;
 }
@@ -168,7 +210,7 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
 };
 
 bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
-    return LookUp(path, file_info);
+    return LookUp(path, file_info, NULL);
 }
 
 StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
@@ -236,16 +278,24 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
 StatusCode NameSpace::ListDirectory(const std::string& path,
                              google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
-    FileInfo info;
-    if (!LookUp(path, &info)) {
+    FileInfo self_info;
+    FileInfo parent_info;
+    if (!LookUp(path, &self_info, &parent_info)) {
         return kNotFound;
     }
-    if (!(info.type() & (1 << 9))) {
+    if (!(self_info.type() & (1 << 9))) {
         FileInfo* file_info = outputs->Add();
-        *file_info = info;
+        file_info->CopyFrom(self_info);
         return kOK;
+    } else {
+        FileInfo* self = outputs->Add();
+        self->CopyFrom(self_info);
+        self->set_name(".");
+        FileInfo* parent = outputs->Add();
+        parent->CopyFrom(parent_info);
+        parent->set_name("..");
     }
-    int64_t entry_id = info.entry_id();
+    int64_t entry_id = self_info.entry_id();
     LOG(DEBUG, "ListDirectory entry_id= E%ld ", entry_id);
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
     std::string key_start, key_end;
@@ -278,7 +328,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         return kBadParameter;
     }
     FileInfo old_file;
-    if (!LookUp(old_path, &old_file)) {
+    if (!LookUp(old_path, &old_file, NULL)) {
         LOG(INFO, "Rename not found: %s\n", old_path.c_str());
         return kNotFound;
     }
@@ -350,7 +400,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
 
 StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
     StatusCode ret_status = kOK;
-    if (LookUp(path, file_removed)) {
+    if (LookUp(path, file_removed, NULL)) {
         // Only support file
         if ((file_removed->type() & (1<<9)) == 0) {
             if (path == "/" || path.empty()) {
@@ -381,7 +431,7 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
     files_removed->clear();
     FileInfo info;
     std::string store_key;
-    if (!LookUp(path, &info)) {
+    if (!LookUp(path, &info, NULL)) {
         LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
         return kNotFound;
     } else if (!IsDir(info.type())) {
