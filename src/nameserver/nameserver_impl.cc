@@ -552,7 +552,6 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
         done->Run();
         return;
     }
-    g_block_report.Inc();
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         boost::function<void ()> task =
