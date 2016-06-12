@@ -461,6 +461,13 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
+    if (request->close_with_error()) {
+        LOG(INFO, "Sdk close %s with error", file_name.c_str());
+        block_mapping_->MarkIncomplete(block_id);
+        response->set_status(kOK);
+        done->Run();
+        return;
+    }
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(INFO, "FinishBlock file not found: #%ld %s", block_id, file_name.c_str());
