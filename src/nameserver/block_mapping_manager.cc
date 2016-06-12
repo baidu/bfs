@@ -176,5 +176,10 @@ void BlockMappingManager::SetSafeMode(bool safe_mode) {
     }
 }
 
+void BlockMappingManager::MarkIncomplete(int64_t block_id) {
+    int32_t bucket_offset = GetBucketOffset(block_id);
+    block_mapping_[bucket_offset]->MarkIncomplete(block_id);
+}
+
 } //namespace bfs
 } //namespace baidu

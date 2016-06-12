@@ -646,7 +646,8 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     if (sequential_ratio_ > 2
         && reada
         && read_len < FLAGS_sdk_file_reada_len) {
-        rlen = std::min(FLAGS_sdk_file_reada_len, sequential_ratio_ * read_len);
+        rlen = std::min(static_cast<int64_t>(FLAGS_sdk_file_reada_len),
+                        static_cast<int64_t>(sequential_ratio_) * read_len);
         LOG(DEBUG, "Pread(%s, %ld, %d) sequential_ratio_: %d, readahead to %d",
             name_.c_str(), offset, read_len, sequential_ratio_, rlen);
     }
@@ -1116,7 +1117,8 @@ bool BfsFileImpl::Close() {
     if (bg_error_) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = false;
-    } else if (need_report_finish) {
+    }
+    if (need_report_finish) {
         FinishBlockRequest request;
         FinishBlockResponse response;
         request.set_sequence_id(0);
@@ -1124,6 +1126,7 @@ bool BfsFileImpl::Close() {
         request.set_block_id(block_id);
         request.set_block_version(last_seq_);
         request.set_block_size(write_offset_);
+        request.set_close_with_error(bg_error_);
         ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::FinishBlock,
                                                    &request, &response, 15, 1);
         if (!(ret && response.status() == kOK))  {

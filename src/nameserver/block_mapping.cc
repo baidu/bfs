@@ -880,6 +880,7 @@ void BlockMapping::SetState(NSBlock* block, RecoverStat to) {
         RecoverStat_Name(to).c_str());
     block->recover_stat = to;
 }
+
 bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) {
     mu_.AssertHeld();
     if (block->recover_stat == from || from == kAny) {
@@ -887,6 +888,23 @@ bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) 
         return true;
     }
     return false;
+}
+
+void BlockMapping::MarkIncomplete(int64_t block_id) {
+    MutexLock lock(&mu_);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        return;
+    }
+    // maybe cs is down and block have been marked with incomplete
+    if (block->recover_stat == kBlockWriting) {
+        for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();
+                it != block->incomplete_replica.end(); ++it) {
+            incomplete_[*it].insert(block_id);
+            LOG(INFO, "Mark #%ld in C%d incomplete", block_id, *it);
+        }
+        SetState(block, kIncomplete);
+    }
 }
 
 } // namespace bfs

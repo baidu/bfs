@@ -67,6 +67,7 @@ public:
                      std::map<int32_t, std::set<int64_t> >* incomplete);
     void SetSafeMode(bool safe_mode);
     int32_t GetCheckNum();
+    void MarkIncomplete(int64_t block_id);
 private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;

@@ -39,6 +39,7 @@ public :
     void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                      std::string* hi_check, std::string* lo_check, std::string* incomplete);
     void SetSafeMode(bool safe_mode);
+    void MarkIncomplete(int64_t block_id);
 private:
     int32_t GetBucketOffset(int64_t block_id);
     void TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set, std::string* output);
