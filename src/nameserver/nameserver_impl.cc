@@ -468,6 +468,13 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    if (request->close_with_error()) {
+        LOG(INFO, "Sdk close %s with error", file_name.c_str());
+        block_mapping_->MarkIncomplete(block_id);
+        response->set_status(kOK);
+        done->Run();
+        return;
+    }
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
     NameServerLog log;
@@ -488,6 +495,8 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                                    controller, request, response, done,
                                    (std::vector<FileInfo>*)NULL, _1));
     }
+    response->set_status(kOK);
+    done->Run();
 }
 
 void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controller,
