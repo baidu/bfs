@@ -81,9 +81,10 @@ Block::~Block() {
 
     LOG(INFO, "Release #%ld block_buf_list_ size= %lu",
         meta_.block_id, block_buf_list_.size());
-    for (uint32_t i = 0; i < block_buf_list_.size(); i++) {
-        const char* buf = block_buf_list_[i].first;
-        int len = block_buf_list_[i].second;
+      for (std::list<std::pair<const char*, int> >::iterator it = block_buf_list_.begin();
+                it != block_buf_list_.end(); ++it) {
+        const char* buf = it->first;
+        int len = it->second;
         if (!deleted_) {
             LOG(WARNING, "Data lost, %d bytes in %s, #%ld block_buf_list_",
                 len, disk_file_.c_str(), meta_.block_id);
@@ -216,14 +217,19 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     int64_t mem_offset = offset + readlen - disk_file_size_;
     uint32_t buf_id = mem_offset / FLAGS_write_buf_size;
     mem_offset %= FLAGS_write_buf_size;
-    while (buf_id < block_buf_list_.size()) {
-        const char* block_buf = block_buf_list_[buf_id].first;
-        int buf_len = block_buf_list_[buf_id].second;
+    //seek to first buffer to read
+    std::list<std::pair<const char*, int> >::iterator it = block_buf_list_.begin();
+    while (buf_id--) {
+        ++it;
+    }
+    while (it != block_buf_list_.end()) {
+        const char* block_buf = it->first;
+        int buf_len = it->second;
         int mlen = std::min(len - readlen, buf_len - mem_offset);
         memcpy(buf + readlen, block_buf + mem_offset, mlen);
         readlen += mlen;
         mem_offset = 0;
-        buf_id ++;
+        ++it;
         if (readlen >= len) return readlen;
     }
     // Read from block buf
@@ -332,8 +338,8 @@ void Block::DiskWrite() {
             disk_writing_ = true;
             while (!block_buf_list_.empty() && !deleted_) {
                 if (!OpenForWrite()) assert(0);
-                const char* buf = block_buf_list_[0].first;
-                int len = block_buf_list_[0].second;
+                const char* buf = block_buf_list_.begin()->first;
+                int len = block_buf_list_.begin()->second;
 
                 // Unlock when disk write
                 mu_.Unlock();
