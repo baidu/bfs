@@ -23,7 +23,7 @@
 #include "nameserver/sync.h"
 #include "nameserver/chunkserver_manager.h"
 #include "nameserver/namespace.h"
-
+#include "nameserver/client_manager.h"
 #include "proto/status_code.pb.h"
 
 DECLARE_bool(bfs_web_kick_enable);
@@ -53,6 +53,7 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_);
+    client_manager_ = new ClientManager(block_mapping_);
     CheckLeader();
     start_time_ = common::timer::get_micros();
     work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
@@ -475,6 +476,14 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    client_manager_->RemoveWritingBlock(request->session_id(), block_id);
+    if (request->close_with_error()) {
+        LOG(INFO, "Sdk close %s with error", file_name.c_str());
+        block_mapping_->MarkIncomplete(block_id);
+        response->set_status(kOK);
+        done->Run();
+        return;
+    }
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
     NameServerLog log;
@@ -767,6 +776,24 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     LOG(INFO, "SysStat from %s", ctl->RemoteAddress().c_str());
     chunkserver_manager_->ListChunkServers(response->mutable_chunkservers());
     response->set_status(kOK);
+    done->Run();
+}
+
+void NameServerImpl::ClientHeartbeat(::google::protobuf::RpcController* controller,
+                   const ClientHeartbeatRequest* request,
+                   ClientHeartbeatResponse* response,
+                   ::google::protobuf::Closure* done) {
+    StatusCode status = client_manager_->HandleHeartbeat(request->session_id());
+    response->set_status(status);
+    done->Run();
+}
+
+void NameServerImpl::RegistNewClient(::google::protobuf::RpcController* controller,
+                   const ClientRegistRequest* request,
+                   ClientRegistResponse* response,
+                   ::google::protobuf::Closure* done) {
+    StatusCode status = client_manager_->AddNewClient(request->session_id());
+    response->set_status(status);
     done->Run();
 }
 

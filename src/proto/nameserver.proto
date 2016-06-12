@@ -73,6 +73,7 @@ message AddBlockRequest {
     optional int64 sequence_id = 1;
     optional string file_name = 2;
     optional string client_address = 3;
+    optional string session_id = 4;
 }
 message AddBlockResponse {
     optional int64 sequence_id = 1;
@@ -87,6 +88,7 @@ message FinishBlockRequest {
     optional string file_name = 4;
     optional int64 block_size = 5;
     optional bool close_with_error = 6;
+    optional string session_id = 7;
 }
 message FinishBlockResponse {
     optional int64 sequence_id = 1;
@@ -217,6 +219,22 @@ message SysStatResponse {
     optional int64 data_size = 5;
 }
 
+message ClientRegistRequest {
+    optional string session_id = 1;
+}
+
+message ClientRegistResponse {
+    optional StatusCode status = 1;
+}
+
+message ClientHeartbeatRequest {
+    optional string session_id = 1;
+}
+
+message ClientHeartbeatResponse {
+    optional StatusCode status = 1;
+}
+
 message NsLogEntry {
     optional int32 type = 1;
     optional bytes key = 2;
@@ -246,5 +264,8 @@ service NameServer {
     rpc PushBlockReport(PushBlockReportRequest) returns(PushBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
+
+    rpc RegistNewClient(ClientRegistRequest) returns(ClientRegistResponse);
+    rpc ClientHeartbeat(ClientHeartbeatRequest) returns(ClientHeartbeatResponse);
 }
 

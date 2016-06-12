@@ -194,6 +194,7 @@ public:
     FSImpl() : rpc_client_(NULL), nameserver_client_(NULL), leader_nameserver_idx_(0) {
         local_host_name_ = common::util::GetLocalHostName();
         thread_pool_ = new ThreadPool(FLAGS_sdk_thread_num);
+        heartbeat_thread_ = new ThreadPool(1);
     }
     ~FSImpl() {
         delete nameserver_client_;
@@ -529,6 +530,45 @@ public:
         result->append(tp.ToString());
         return true;
     }
+    void Heartbeat() {
+        ClientHeartbeatRequest request;
+        ClientHeartbeatResponse response;
+        request.set_session_id(GetSessionId());
+        if (!nameserver_client_->SendRequest(&NameServer_Stub::ClientHeartbeat,
+                    &request, &response, 15, 1))  {
+            LOG(WARNING, "Heartbeat fail");
+        } else {
+            if (response.status() == kSessionExpired) {
+                LOG(WARNING, "Session %s expired, re-regist", request.session_id().c_str());
+                RegisterToNameServeer();
+                return;
+            }
+        }
+        heartbeat_thread_->DelayTask(1000, boost::bind(&FSImpl::Heartbeat, this));
+    }
+    std::string GetSessionId() {
+        MutexLock lock(&mu_);
+        return session_id_;
+    }
+private:
+    void GenerateSessionId() {
+        MutexLock lock(&mu_);
+        session_id_ = local_host_name_ + ":" + common::NumToString(getpid())
+                          + ":" + common::NumToString(common::timer::now_time());
+    }
+    void RegisterToNameServeer() {
+        GenerateSessionId();
+        ClientRegistRequest request;
+        ClientRegistResponse response;
+        request.set_session_id(GetSessionId());
+        // retry untill register success
+        while (!nameserver_client_->SendRequest(&NameServer_Stub::RegistNewClient,
+                &request, &response, 15, 1) || response.status() != kOK) {
+            LOG(WARNING, "Regist new session fail");
+        }
+        LOG(INFO, "Regist success, session id: %s", session_id_.c_str());
+        Heartbeat();
+    }
 private:
     RpcClient* rpc_client_;
     NameServerClient* nameserver_client_;
@@ -537,7 +577,10 @@ private:
     int32_t leader_nameserver_idx_;
     //std::string nameserver_address_;
     std::string local_host_name_;
+    std::string session_id_;
+    Mutex mu_;
     ThreadPool* thread_pool_;
+    ThreadPool* heartbeat_thread_;
 };
 
 BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
@@ -739,6 +782,7 @@ int32_t BfsFileImpl::AddBlock() {
     request.set_sequence_id(0);
     request.set_file_name(name_);
     const std::string& local_host_name = fs_->local_host_name_;
+    std::string session_id = fs_->GetSessionId();
     request.set_client_address(local_host_name);
     bool ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::AddBlock,
                                                     &request, &response, 15, 1);
