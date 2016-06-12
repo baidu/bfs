@@ -12,11 +12,13 @@
 #include <leveldb/cache.h>
 #include <leveldb/write_batch.h>
 #include <common/logging.h>
-
 #include <common/timer.h>
 #include <common/util.h>
 #include <common/atomic.h>
 #include <common/string_util.h>
+#include <boost/bind.hpp>
+
+#include "nameserver/sync.h"
 
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
@@ -27,7 +29,7 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
-NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
+NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -37,10 +39,16 @@ NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
         return;
     }
+    if (standalone) {
+        Activate(NULL);
+    }
+}
+
+void NameSpace::Activate(NameServerLog* log) {
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
-    s = db_->Get(leveldb::ReadOptions(), version_key, &version_str);
+    leveldb::Status s = db_->Get(leveldb::ReadOptions(), version_key, &version_str);
     if (s.ok()) {
         if (version_str.size() != sizeof(int64_t)) {
             LOG(FATAL, "Bad namespace version len= %lu.", version_str.size());
@@ -51,15 +59,16 @@ NameSpace::NameSpace(): version_(0), last_entry_id_(1) {
         version_ = common::timer::get_micros();
         version_str.resize(8);
         *(reinterpret_cast<int64_t*>(&version_str[0])) = version_;
-        s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
+
+        leveldb::Status s = db_->Put(leveldb::WriteOptions(), version_key, version_str);
         if (!s.ok()) {
-            LOG(FATAL, "Write namespace version to db fail: %s", s.ToString().c_str());
+            LOG(FATAL, "Write NameSpace version failed %s", s.ToString().c_str());
         }
+        EncodeLog(log, kSyncWrite, version_key, version_str);
         LOG(INFO, "Create new namespace version: %ld ", version_);
     }
     SetupRoot();
 }
-
 NameSpace::~NameSpace() {
     delete db_;
     db_ = NULL;
@@ -150,20 +159,31 @@ bool NameSpace::LookUp(int64_t parent_id, const std::string& name, FileInfo* inf
     return true;
 }
 
-bool NameSpace::DeleteFileInfo(const std::string file_key) {
+bool NameSpace::DeleteFileInfo(const std::string file_key, NameServerLog* log) {
     leveldb::Status s = db_->Delete(leveldb::WriteOptions(), file_key);
-    return s.ok();
+    if (!s.ok()) {
+        return false;
+    }
+    EncodeLog(log,kSyncDelete, file_key, "");
+    return true;
 }
-bool NameSpace::UpdateFileInfo(const FileInfo& file_info) {
+bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
+    FileInfo file_info_for_ldb;
+    file_info_for_ldb.CopyFrom(file_info);
+    file_info_for_ldb.clear_cs_addrs();
+
     std::string file_key;
-    EncodingStoreKey(file_info.parent_entry_id(), file_info.name(), &file_key);
-    std::string infobuf;
-    file_info.SerializeToString(&infobuf);
-    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf);
+    EncodingStoreKey(file_info_for_ldb.parent_entry_id(), file_info_for_ldb.name(), &file_key);
+    std::string infobuf_for_ldb, infobuf_for_sync;
+    file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
+    file_info.SerializeToString(&infobuf_for_sync);
+
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf_for_ldb);
     if (!s.ok()) {
         LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
         return false;
     }
+    EncodeLog(log, kSyncWrite, file_key, infobuf_for_ldb);
     return true;
 };
 
@@ -171,7 +191,8 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return LookUp(path, file_info);
 }
 
-StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num) {
+StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num,
+                                 NameServerLog* log) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "CreateFile split fail %s", path.c_str());
@@ -192,8 +213,8 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
             leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
-            LOG(INFO, "Put %s", common::DebugString(key_str).c_str());
-            assert (s.ok());
+            assert(s.ok());
+            EncodeLog(log, kSyncWrite, key_str, info_value);
             LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
         } else {
             if (!IsDir(file_info.type())) {
@@ -226,6 +247,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
+        EncodeLog(log, kSyncWrite, file_key, info_value);
         return kOK;
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail %s", path.c_str(), s.ToString().c_str());
@@ -260,6 +282,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
             path.c_str(), file_info->name().c_str(),
             common::DebugString(key.ToString()).c_str());
     }
+    LOG(INFO, "List return %ld items", outputs->size());
     delete it;
     return kOK;
 }
@@ -267,7 +290,8 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
 StatusCode NameSpace::Rename(const std::string& old_path,
                       const std::string& new_path,
                       bool* need_unlink,
-                      FileInfo* remove_file) {
+                      FileInfo* remove_file,
+                      NameServerLog* log) {
     *need_unlink = false;
     if (old_path == "/" || new_path == "/" || old_path == new_path) {
         return kBadParameter;
@@ -329,6 +353,10 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     leveldb::WriteBatch batch;
     batch.Put(new_key, value);
     batch.Delete(old_key);
+
+    EncodeLog(log, kSyncWrite, new_key, value);
+    EncodeLog(log, kSyncDelete, old_key, "");
+
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Rename %s to %s[%s], replace: %d",
@@ -343,7 +371,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     return kNotOK;
 }
 
-StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed) {
+StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log) {
     StatusCode ret_status = kOK;
     if (LookUp(path, file_removed)) {
         // Only support file
@@ -353,7 +381,7 @@ StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed
             }
             std::string file_key;
             EncodingStoreKey(file_removed->parent_entry_id(), file_removed->name(), &file_key);
-            if (DeleteFileInfo(file_key)) {
+            if (DeleteFileInfo(file_key, log)) {
                 LOG(INFO, "Unlink done: %s\n", path.c_str());
                 ret_status = kOK;
             } else {
@@ -372,7 +400,7 @@ StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed
 }
 
 StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
-                               std::vector<FileInfo>* files_removed) {
+                               std::vector<FileInfo>* files_removed, NameServerLog* log) {
     files_removed->clear();
     FileInfo info;
     std::string store_key;
@@ -383,12 +411,13 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
         LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
         return kNotOK;
     }
-    return InternalDeleteDirectory(info, recursive, files_removed);
+    return InternalDeleteDirectory(info, recursive, files_removed, log);
 }
 
 StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
                                        bool recursive,
-                                       std::vector<FileInfo>* files_removed) {
+                                       std::vector<FileInfo>* files_removed,
+                                       NameServerLog* log) {
     int64_t entry_id = dir_info.entry_id();
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
@@ -418,11 +447,12 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
             child_info.set_parent_entry_id(entry_id);
             child_info.set_name(entry_name);
             LOG(INFO, "Recursive to path: %s", entry_name.c_str());
-            ret_status = InternalDeleteDirectory(child_info, true, files_removed);
+            ret_status = InternalDeleteDirectory(child_info, true, files_removed, log);
             if (ret_status != kOK) {
                 break;
             }
         } else {
+            EncodeLog(log, kSyncDelete, std::string(key.data(), key.size()), "");
             batch.Delete(key);
             child_info.set_parent_entry_id(entry_id);
             child_info.set_name(entry_name);
@@ -436,6 +466,8 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     std::string store_key;
     EncodingStoreKey(dir_info.parent_entry_id(), dir_info.name(), &store_key);
     batch.Delete(store_key);
+    EncodeLog(log, kSyncDelete, store_key, "");
+
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (s.ok()) {
         LOG(INFO, "Delete directory done: %s[%s]",
@@ -488,6 +520,67 @@ std::string NameSpace::NormalizePath(const std::string& path) {
     }
     return ret;
 }
+
+void NameSpace::TailLog(const std::string& logstr) {
+    NameServerLog log;
+    if(!log.ParseFromString(logstr)) {
+        LOG(FATAL, "Parse log fail: %s", common::DebugString(logstr).c_str());
+    }
+    for (int i = 0; i < log.entries_size(); i++) {
+        const NsLogEntry& entry = log.entries(i);
+        int type = entry.type();
+        leveldb::Status s;
+        if (type == kSyncWrite) {
+            s = db_->Put(leveldb::WriteOptions(), entry.key(), entry.value());
+        } else if (type == kSyncDelete) {
+            s = db_->Delete(leveldb::WriteOptions(), entry.key());
+        }
+        if (!s.ok()) {
+            LOG(FATAL, "TailLog failed");
+        }
+    }
+}
+
+uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
+                              const std::string& key, const std::string& value) {
+    if (log == NULL) {
+        return 0;
+    }
+    NsLogEntry* entry = log->add_entries();
+    entry->set_type(type);
+    entry->set_key(key);
+    entry->set_value(value);
+    return entry->ByteSize();
+}
+/*
+bool NameSpace::RecoverLog() {
+    int ret = sync_->ScanLog();
+    if (ret < 0) {
+        LOG(INFO, "No sync log to recover");
+        return true;
+    }
+    int32_t type;
+    uint32_t key_len, value_len;
+    char buf[512];
+    char key[256];
+    char value[256];
+    LOG(INFO, "Start to Recover log");
+    leveldb::Status s;
+    while (sync_->Next(buf)) {
+        DecodeLog(buf, &type, &key_len, key, &value_len, value);
+        if (type == kSyncWrite) {
+            s = db_->Put(leveldb::WriteOptions(), std::string(key, key_len),
+                         std::string(value, value_len));
+        } else if (type == kSyncDelete) {
+            s = db_->Delete(leveldb::WriteOptions(), std::string(key, key_len));
+        }
+        if (!s.ok()) {
+            LOG(FATAL, "Recover Sync log failed");
+        }
+    }
+    return true;
+}
+*/
 
 } // namespace bfs
 } // namespace baidu

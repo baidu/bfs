@@ -890,6 +890,7 @@ void BlockMapping::SetState(NSBlock* block, RecoverStat to) {
         RecoverStat_Name(to).c_str());
     block->recover_stat = to;
 }
+
 bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) {
     mu_.AssertHeld();
     if (block->recover_stat == from || from == kAny) {

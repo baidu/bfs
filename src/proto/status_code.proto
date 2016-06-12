@@ -18,9 +18,11 @@ enum StatusCode {
     kCsCreateError = 11;
     kCsTooMuchPendingBuffer = 12;
     kReadOnly = 16;
-    kSessionExpired = 17;
+    kLogNotOpen = 17;
     kCsTooMuchUnfinishedWrite = 18;
     kSafeMode = 20;
+    kIsFollower = 21;
+    kSessionExpired = 22;
 }
 
 enum ChunkServerStatus {
@@ -40,4 +42,9 @@ enum RecoverStat {
     kLost = 5;
     kBlockWriting = 6;
     kAny = 20;
+}
+
+enum SyncStatus {
+    kSyncWrite = 0;
+    kSyncDelete = 1;
 }
