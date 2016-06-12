@@ -31,6 +31,7 @@ extern common::Counter g_buffers_new;
 extern common::Counter g_buffers_delete;
 extern common::Counter g_blocks;
 extern common::Counter g_writing_blocks;
+extern common::Counter g_pending_writes;
 extern common::Counter g_writing_bytes;
 extern common::Counter g_find_ops;
 extern common::Counter g_read_ops;
@@ -48,14 +49,19 @@ Block::Block(const BlockMeta& meta, const std::string& store_path, ThreadPool* t
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size), file_desc_(-1), refs_(0),
-  recv_window_(NULL), finished_(false), closed_(false), deleted_(false),
-  file_cache_(file_cache) {
+  close_cv_(&mu_), is_recover_(false), deleted_(false), file_cache_(file_cache) {
     assert(meta_.block_id < (1L<<40));
     g_data_size.Add(meta.block_size);
     disk_file_ = store_path + BuildFilePath(meta_.block_id);
     g_blocks.Inc();
-    recv_window_ = new common::SlidingWindow<Buffer>(100,
-                   boost::bind(&Block::WriteCallback, this, _1, _2));
+    if (meta_.version >= 0) {
+        finished_ = true;
+        recv_window_ = NULL;
+    } else {
+        finished_ = false;
+        recv_window_ = new common::SlidingWindow<Buffer>(100,
+                       boost::bind(&Block::WriteCallback, this, _1, _2));
+    }
 }
 Block::~Block() {
     if (bufdatalen_ > 0) {
@@ -86,6 +92,7 @@ Block::~Block() {
         }
         delete[] buf;
         g_block_buffers.Dec();
+        g_pending_writes.Dec();
         g_buffers_delete.Inc();
     }
     block_buf_list_.clear();
@@ -107,7 +114,7 @@ Block::~Block() {
         }
         delete recv_window_;
     }
-    LOG(INFO, "Block #%ld deleted\n", meta_.block_id);
+    LOG(INFO, "Block #%ld deconstruct", meta_.block_id);
     g_blocks.Dec();
     g_data_size.Sub(meta_.block_size);
 }
@@ -137,6 +144,9 @@ void Block::SetVersion(int64_t version) {
 int Block::GetVersion() {
     return meta_.version;
 }
+int32_t Block::GetLastSaq() {
+    return last_seq_;
+}
 
 std::string Block::BuildFilePath(int64_t block_id) {
     char file_path[16];
@@ -155,12 +165,12 @@ bool Block::OpenForWrite() {
     // Mkdir dir for data block, ignore error, may already exist.
     mkdir(dir.c_str(), 0755);
     int fd  = open(disk_file_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR);
+    mu_.Lock("Block::OpenForWrite");
     if (fd < 0) {
         LOG(WARNING, "Open block #%ld %s fail: %s",
             meta_.block_id, disk_file_.c_str(), strerror(errno));
         return false;
     }
-    mu_.Lock("Block::OpenForWrite");
     g_writing_blocks.Inc();
     file_desc_ = fd;
     return true;
@@ -173,10 +183,16 @@ void Block::SetSliceNum(int32_t num) {
 bool Block::IsComplete() {
     return (slice_num_ == last_seq_ + 1);
 }
+bool Block::IsFinished() {
+    return finished_;
+}
 /// Read operation.
 int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     MutexLock lock(&mu_, "Block::Read", 1000);
     if (offset > meta_.block_size) {
+        LOG(INFO, "Wrong offset %ld > %ld", offset, meta_.block_size);
+        return -1;
+    } else if (deleted_) {
         return -1;
     }
 
@@ -187,11 +203,12 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
         mu_.Unlock();
         int64_t ret = file_cache_->ReadFile(disk_file_,
                         buf + readlen, pread_len, offset + readlen);
+        mu_.Lock("Block::Read relock", 1000);
         if (ret != pread_len) {
+            LOG(INFO, "ReadFile fail: %ld %s", ret, strerror(errno));
             return -2;
         }
         readlen += ret;
-        mu_.Lock("Block::Read relock", 1000);
         if (readlen >= len) return readlen;
         // If disk_file_size change, read again.
     }
@@ -222,9 +239,14 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
 /// Write operation.
 bool Block::Write(int32_t seq, int64_t offset, const char* data,
                   int64_t len, int64_t* add_use) {
+    if (finished_) {
+        LOG(INFO, "Write a finish block #%ld V%ld %ld, seq: %d, offset: %ld",
+            meta_.block_id, meta_.version, meta_.block_size, seq, offset);
+        return false;
+    }
     if (offset < meta_.block_size) {
         assert (offset + len <= meta_.block_size);
-        LOG(WARNING, "Write a finish block #%ld size %ld, seq: %d, offset: %ld",
+        LOG(INFO, "Write #%ld size %ld, seq: %d, wrong offset: %ld",
             meta_.block_id, meta_.block_size, seq, offset);
         return true;
     }
@@ -247,7 +269,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
             return false;
         }
     }
-    if (ret >= 0) {
+    if (ret == 0) {
         g_write_bytes.Add(len);
     }
     return true;
@@ -259,34 +281,24 @@ bool Block::Close() {
         return false;
     }
 
-    LOG(INFO, "Block #%ld flush to %s", meta_.block_id, disk_file_.c_str());
-    if (bufdatalen_) {
-        block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
-        blockbuf_ = NULL;
-        bufdatalen_ = 0;
-    }
+    block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
+    g_pending_writes.Inc();
+    blockbuf_ = NULL;
+    bufdatalen_ = 0;
+
     finished_ = true;
     // DiskWrite will close file_desc_ asynchronously.
-    if (!disk_writing_) {
-        this->AddRef();
-        thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
-    }
-    return true;
-}
+    this->AddRef();
+    thread_pool_->AddPriorityTask(boost::bind(&Block::DiskWrite, this));
 
-bool  Block::CloseIncomplete() {
-    MutexLock lock(&mu_);
-    if (finished_) {
-        return false;
+    while (file_desc_ != -1) {
+        close_cv_.Wait();
     }
-    finished_ = true;
-    if (!disk_writing_) {
-        this->AddRef();
-        thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
+    if (meta_.version == -1) {
+        SetVersion(last_seq_);
     }
-    closed_ = true;
-    SetSliceNum(last_seq_ + 1);
-    SetVersion(last_seq_);
+    LOG(INFO, "Block #%ld closed %s V%ld %ld",
+        meta_.block_id, disk_file_.c_str(), meta_.version, meta_.block_size);
     return true;
 }
 
@@ -300,7 +312,9 @@ void Block::DecRef() {
         delete this;
     }
 }
-
+int Block::GetRef() {
+    return refs_;
+}
 /// Invoke by slidingwindow, when next buffer arrive.
 void Block::WriteCallback(int32_t seq, Buffer buffer) {
     Append(seq, buffer.data_, buffer.len_);
@@ -308,54 +322,70 @@ void Block::WriteCallback(int32_t seq, Buffer buffer) {
     g_writing_bytes.Sub(buffer.len_);
 }
 void Block::DiskWrite() {
-    MutexLock lock(&mu_, "Block::DiskWrite", 1000);
-    if (!disk_writing_ && !deleted_) {
-        disk_writing_ = true;
-        while (!block_buf_list_.empty() && !deleted_) {
-            if (!OpenForWrite())assert(0);
-            const char* buf = block_buf_list_[0].first;
-            int len = block_buf_list_[0].second;
+    {
+        MutexLock lock(&mu_, "Block::DiskWrite", 1000);
+        if (disk_writing_) {
+            this->DecRef();
+            return;
+        }
+        if (!deleted_) {
+            disk_writing_ = true;
+            while (!block_buf_list_.empty() && !deleted_) {
+                if (!OpenForWrite()) assert(0);
+                const char* buf = block_buf_list_[0].first;
+                int len = block_buf_list_[0].second;
 
-            // Unlock when disk write
-            mu_.Unlock();
-            int wlen = 0;
-            while (wlen < len) {
-                int w = write(file_desc_, buf + wlen, len - wlen);
-                if (w < 0) {
-                    LOG(WARNING, "IOError write #%ld %s return %s",
-                        meta_.block_id, disk_file_.c_str(), strerror(errno));
-                    assert(0);
-                    break;
+                // Unlock when disk write
+                mu_.Unlock();
+                int wlen = 0;
+                while (wlen < len) {
+                    int w = write(file_desc_, buf + wlen, len - wlen);
+                    if (w < 0) {
+                        LOG(WARNING, "IOError write #%ld %s return %s",
+                            meta_.block_id, disk_file_.c_str(), strerror(errno));
+                        assert(0);
+                        break;
+                    }
+                    wlen += w;
                 }
-                wlen += w;
+                // Re-Lock for commit
+                mu_.Lock("Block::DiskWrite ReLock", 1000);
+                block_buf_list_.erase(block_buf_list_.begin());
+                delete[] buf;
+                g_pending_writes.Dec();
+                g_block_buffers.Dec();
+                g_buffers_delete.Inc();
+                disk_file_size_ += len;
             }
-            // Re-Lock for commit
-            mu_.Lock("Block::DiskWrite ReLock", 1000);
-            block_buf_list_.erase(block_buf_list_.begin());
-            delete[] buf;
-            g_block_buffers.Dec();
-            g_buffers_delete.Inc();
-            disk_file_size_ += len;
+            disk_writing_ = false;
         }
-        disk_writing_ = false;
-    }
-    if (!disk_writing_ && (finished_ || deleted_)) {
-        if (file_desc_ != -1) {
-            int ret = close(file_desc_);
-            LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
-            assert(ret == 0);
-            g_writing_blocks.Dec();
+        if (finished_ || deleted_) {
+            assert (deleted_ || block_buf_list_.empty());
+            if (file_desc_ != -1) {
+                int ret = close(file_desc_);
+                LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
+                assert(ret == 0);
+                g_writing_blocks.Dec();
+            }
+            file_desc_ = -1;
+            close_cv_.Signal();
         }
-        file_desc_ = -1;
     }
     this->DecRef();
 }
+void Block::SetRecover() {
+    is_recover_ = true;
+}
+bool Block::IsRecover() {
+    return is_recover_;
+}
 /// Append to block buffer
-void Block::Append(int32_t seq, const char* buf, int64_t len) {
+StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
     MutexLock lock(&mu_, "BlockAppend", 1000);
-    if (closed_) {
-        LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_", meta_.block_id);
-        return;
+    if (finished_ || deleted_) {
+        LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_. finished_=%d, deleted_=%d",
+            meta_.block_id, finished_, deleted_);
+        return kBlockClosed;
     }
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;
@@ -372,6 +402,7 @@ void Block::Append(int32_t seq, const char* buf, int64_t len) {
         thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
 
         blockbuf_ = new char[buflen_];
+        g_pending_writes.Inc();
         g_block_buffers.Inc();
         g_buffers_new.Inc();
         bufdatalen_ = 0;
@@ -385,6 +416,7 @@ void Block::Append(int32_t seq, const char* buf, int64_t len) {
     meta_.block_size += len;
     g_data_size.Add(len);
     last_seq_ = seq;
+    return kOK;
 }
 
 } // namespace bfs

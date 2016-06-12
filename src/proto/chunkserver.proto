@@ -1,3 +1,4 @@
+import "status_code.proto";
 
 package baidu.bfs;
 
@@ -13,12 +14,15 @@ message WriteBlockRequest {
     optional bool is_last = 7;
     repeated string desc = 11;
     repeated int64 timestamp = 12;
+    optional int32 recover_version = 13;
 }
 
 message WriteBlockResponse {
-    required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
     optional string bad_chunkserver = 3;
+    optional int64 current_size = 4;
+    optional int32 current_seq = 5;
     repeated string desc = 11;
     repeated int64 timestamp = 12;
 }
@@ -28,14 +32,12 @@ message ReadBlockRequest {
     optional int64 block_id = 2;
     optional int64 offset = 3;
     optional int32 read_len = 4;
-    optional bool require_block_version = 5 [default = false];
 }
 message ReadBlockResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional bytes databuf = 3;
     repeated int64 timestamp = 9;
-    optional int32 block_version = 4;
 }
 
 message GetBlockInfoRequest {
@@ -44,7 +46,7 @@ message GetBlockInfoRequest {
 }
 message GetBlockInfoResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional int64 block_size = 3;
     repeated int64 timestamp = 9;
 }

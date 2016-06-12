@@ -9,46 +9,53 @@
 
 #include <stdint.h>
 #include <string>
+#include <common/mutex.h>
 #include <boost/function.hpp>
 
 #include <leveldb/db.h>
 
 #include "proto/nameserver.pb.h"
+#include "proto/status_code.pb.h"
 
 namespace baidu {
 namespace bfs {
 
 class NameSpace {
 public:
-    NameSpace();
+    NameSpace(bool standalone = true);
+    void Activate(NameServerLog* log);
     ~NameSpace();
     /// List a directory
-    int ListDirectory(const std::string& path,
+    StatusCode ListDirectory(const std::string& path,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
-    int CreateFile(const std::string& file_name, int flags, int mode, int replica_num);
+    StatusCode CreateFile(const std::string& file_name, int flags, int mode,
+                          int replica_num, NameServerLog* log = NULL);
     /// Remove file by name
-    int RemoveFile(const std::string& path, FileInfo* file_removed);
+    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
-    int DeleteDirectory(const std::string& path, bool recursive,
-                        std::vector<FileInfo>* files_removed);
+    StatusCode DeleteDirectory(const std::string& path, bool recursive,
+                        std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
     /// File rename
-    int Rename(const std::string& old_path,
+    StatusCode Rename(const std::string& old_path,
                const std::string& new_path,
                bool* need_unlink,
-               FileInfo* remove_file);
+               FileInfo* remove_file,
+               NameServerLog* log = NULL);
     /// Get file
     bool GetFileInfo(const std::string& path, FileInfo* file_info);
     /// Update file
-    bool UpdateFileInfo(const FileInfo& file_info);
+    bool UpdateFileInfo(const FileInfo& file_info, NameServerLog* log = NULL);
     /// Delete file
-    bool DeleteFileInfo(const std::string file_key);
+    bool DeleteFileInfo(const std::string file_key, NameServerLog* log = NULL);
     /// Namespace version
     int64_t Version() const;
     /// Rebuild blockmap
     bool RebuildBlockMap(boost::function<void (const FileInfo&)> callback);
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
+    /// ha - tail log from leader/master
+    void TailLog(const std::string& log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
@@ -58,14 +65,22 @@ private:
     void SetupRoot();
     bool LookUp(const std::string& path, FileInfo* info);
     bool LookUp(int64_t pid, const std::string& name, FileInfo* info);
-    int InternalDeleteDirectory(const FileInfo& dir_info,
+    StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
-                                std::vector<FileInfo>* files_removed);
+                                std::vector<FileInfo>* files_removed,
+                                NameServerLog* log);
+    uint32_t EncodeLog(NameServerLog* log, int32_t type,
+                       const std::string& key, const std::string& value);
+    //bool RecoverLog();
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;
+
+    /// HA module
+    //Sync* sync_;
+    //Mutex mu_;
 };
 
 } // namespace bfs

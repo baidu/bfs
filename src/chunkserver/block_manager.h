@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <common/thread_pool.h>
+#include "proto/status_code.pb.h"
 
 namespace leveldb {
 class DB;
@@ -27,7 +28,7 @@ class FileCache;
 
 class BlockManager {
 public:
-    BlockManager(ThreadPool* thread_pool, const std::string& store_path);
+    BlockManager(const std::string& store_path);
     ~BlockManager();
     int64_t DiskQuota()  const;
     void CheckStorePath(const std::string& store_path);
@@ -37,14 +38,16 @@ public:
     int64_t NameSpaceVersion() const;
     bool SetNameSpaceVersion(int64_t version);
     bool ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num);
-    Block* CreateBlock(int64_t block_id, int64_t* sync_time);
+    Block* CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status);
     Block* FindBlock(int64_t block_id);
     std::string BlockId2Str(int64_t block_id);
     bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time);
-    bool CloseBlock(Block* block, bool is_complete);
+    bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);
     bool RemoveAllBlocksAsync();
     bool RemoveAllBlocks();
+private:
+    bool RemoveBlockMeta(int64_t block_id);
 private:
     ThreadPool* thread_pool_;
     std::vector<std::string> store_path_list_;

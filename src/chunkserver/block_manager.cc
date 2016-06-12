@@ -8,6 +8,7 @@
 
 #include <errno.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/vfs.h>
 #include <boost/bind.hpp>
 
@@ -23,6 +24,7 @@
 
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_use_root_partition);
+DECLARE_int32(chunkserver_io_thread_num);
 
 namespace baidu {
 namespace bfs {
@@ -31,21 +33,31 @@ extern common::Counter g_blocks;
 extern common::Counter g_data_size;
 extern common::Counter g_find_ops;
 
-BlockManager::BlockManager(ThreadPool* thread_pool, const std::string& store_path)
-    :thread_pool_(thread_pool),
-     metadb_(NULL),
+BlockManager::BlockManager(const std::string& store_path)
+   : metadb_(NULL),
      namespace_version_(0), disk_quota_(0) {
      CheckStorePath(store_path);
+     thread_pool_ = new ThreadPool(FLAGS_chunkserver_io_thread_num);
      file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
 }
 BlockManager::~BlockManager() {
-    for (BlockMap::iterator it = block_map_.begin();
-            it != block_map_.end(); ++it) {
-        it->second->DecRef();
+    MutexLock lock(&mu_);
+    for (BlockMap::iterator it = block_map_.begin(); it != block_map_.end(); ++it) {
+        Block* block = it->second;
+        if (!block->IsRecover()) {
+            CloseBlock(block);
+        } else {
+            LOG(INFO, "[~BlockManager] Do not close recovering block #%ld ", block->Id());
+        }
+        block->DecRef();
     }
+    thread_pool_->Stop(true);
+    delete thread_pool_;
     block_map_.clear();
     delete metadb_;
     metadb_ = NULL;
+    delete file_cache_;
+    file_cache_ = NULL;
 }
 int64_t BlockManager::DiskQuota() const{
     return disk_quota_;
@@ -110,6 +122,7 @@ const std::string& BlockManager::GetStorePath(int64_t block_id) {
 /// Load meta from disk
 bool BlockManager::LoadStorage() {
     MutexLock lock(&mu_);
+    int64_t start_load_time = common::timer::get_micros();
     leveldb::Options options;
     options.create_if_missing = true;
     leveldb::Status s = leveldb::DB::Open(options, store_path_list_[0] + "meta/", &metadb_);
@@ -147,12 +160,16 @@ bool BlockManager::LoadStorage() {
             remove(file_path.c_str());
             continue;
         } else {
-            if (access(file_path.c_str(), R_OK)) {
+            struct stat st;
+            if (stat(file_path.c_str(), &st) ||
+                st.st_size != meta.block_size ||
+                access(file_path.c_str(), R_OK)) {
                 LOG(WARNING, "Corrupted block #%ld V%ld size %ld path %s can't access: %s'",
                     block_id, meta.version, meta.block_size, file_path.c_str(),
                     strerror(errno));
                 metadb_->Delete(leveldb::WriteOptions(), it->key());
                 remove(file_path.c_str());
+                continue;
             } else {
                 LOG(DEBUG, "Load #%ld V%ld size %ld path %s",
                     block_id, meta.version, meta.block_size, file_path.c_str());
@@ -164,7 +181,9 @@ bool BlockManager::LoadStorage() {
         block_num ++;
     }
     delete it;
-    LOG(INFO, "Load %ld blocks, namespace version: %ld", block_num, namespace_version_);
+    int64_t end_load_time = common::timer::get_micros();
+    LOG(INFO, "Load %ld blocks, use %ld ms, namespace version: %ld",
+        block_num, (end_load_time - start_load_time) / 1000, namespace_version_);
     if (namespace_version_ == 0 && block_num > 0) {
         LOG(WARNING, "Namespace version lost!");
     }
@@ -214,7 +233,7 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
     return true;
 }
 
-Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
+Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status) {
     BlockMeta meta;
     meta.block_id = block_id;
     Block* block = new Block(meta, GetStorePath(block_id), thread_pool_, file_cache_);
@@ -223,7 +242,12 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
     BlockMap::iterator it = block_map_.find(block_id);
     if (it != block_map_.end()) {
         delete block;
-        return NULL;
+        if (it->second->IsFinished()) {
+            *status = kReadOnly;
+            return NULL;
+        }
+        *status = kBlockExist;
+        return it->second;
     }
     block->AddRef();
     block_map_[block_id] = block;
@@ -231,6 +255,7 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
     mu_.Unlock();
     if (!SyncBlockMeta(meta, sync_time)) {
         delete block;
+        *status = kSyncMetaFailed;
         block = NULL;
     }
     mu_.Lock();
@@ -240,6 +265,7 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time) {
         // for user
         block->AddRef();
     }
+    *status = kOK;
     return block;
 }
 
@@ -276,36 +302,37 @@ bool BlockManager::SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
     }
     return true;
 }
-bool BlockManager::CloseBlock(Block* block, bool is_complete) {
-    if (is_complete) {
-        if (!block->Close()) {
-            return false;
-        }
-    } else {
-        if (!block->CloseIncomplete()) {
-            return false;
-        }
+bool BlockManager::CloseBlock(Block* block) {
+    if (!block->Close()) {
+        return false;
     }
 
     // Update meta
     BlockMeta meta = block->GetMeta();
     return SyncBlockMeta(meta, NULL);
 }
+
+bool BlockManager::RemoveBlockMeta(int64_t block_id) {
+    char idstr[14];
+    snprintf(idstr, sizeof(idstr), "%13ld", block_id);
+    leveldb::Status s = metadb_->Delete(leveldb::WriteOptions(), idstr);
+    if (!s.ok()) {
+        LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
+        return false;
+    }
+    return true;
+}
 bool BlockManager::RemoveBlock(int64_t block_id) {
-    Block* block = NULL;
-    {
-        MutexLock lock(&mu_, "BlockManager::RemoveBlock", 1000);
-        BlockMap::iterator it = block_map_.find(block_id);
-        if (it == block_map_.end()) {
-            LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
-            return false;
-        }
-        block = it->second;
-        if (!block->SetDeleted()) {
-            LOG(INFO, "Block #%ld deleted by other thread", block_id);
-            return false;
-        }
-        block->AddRef();
+    bool meta_removed = RemoveBlockMeta(block_id);
+    Block* block = FindBlock(block_id);
+    if (block == NULL) {
+        LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
+        return false;
+    }
+    if (!block->SetDeleted()) {
+        LOG(INFO, "Block #%ld deleted by other thread", block_id);
+        block->DecRef();
+        return false;
     }
 
     int64_t du = block->DiskUsed();
@@ -324,20 +351,13 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
     snprintf(dir_name, sizeof(dir_name), "/%03ld", block_id % 1000);
     // Rmdir, ignore error when not empty.
     // rmdir((GetStorePath(block_id) + dir_name).c_str());
-    char idstr[14];
-    snprintf(idstr, sizeof(idstr), "%13ld", block_id);
-
-    leveldb::Status s = metadb_->Delete(leveldb::WriteOptions(), idstr);
-    if (s.ok()) {
-        LOG(INFO, "Remove #%ld meta info done", block_id);
-        {
-            MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
-            block_map_.erase(block_id);
-        }
+    if (meta_removed) {
+        MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
+        block_map_.erase(block_id);
         block->DecRef();
+        LOG(INFO, "Remove #%ld meta info done, ref= %ld", block_id, block->GetRef());
         ret = true;
     } else {
-        LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
         ret = false;
     }
     block->DecRef();

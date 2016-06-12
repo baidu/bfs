@@ -1,7 +1,11 @@
 language: cpp
 compiler: gcc
 env:
-    - PROTOBUF_VERSION=2.6.0
+    global:
+        - secure: "BTWd5JMj+Asg9e9Fg7jJ2i1MDpko0+jMN6WqsbKwa0nq5IcdcnKQp9JNdMr25VIpYS9/E8ys+ha0M00QZE/1O4xkX7tlSq/Ex0knqEpXZjLpwA+c3d+4Nuw+u/WZG+Q8YPSvJocFBrCNTpD3wTue0nR9gpw79c+iclQWHXeuziM="
+    matrix:
+        - PROTOBUF_VERSION=2.6.0
+
 install:
     - echo | sudo apt-add-repository ppa:boost-latest/ppa
     - sudo apt-get update
@@ -42,3 +46,13 @@ before_script:
     - echo 'COMMON_PATH=./common/output' >> depends.mk
 
 script: make -j4 && make test
+
+addons:
+   coverity_scan:
+       project:
+           name: "bluebore/bfs"
+       notification_email: yanshiguang02@baidu.com
+       build_command_prepend: "make clean"
+       build_command: "make -j4"
+       branch_pattern: master
+

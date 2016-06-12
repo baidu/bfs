@@ -148,6 +148,7 @@ if [ ! -f "${FLAG_DIR}/common" ] \
     git clone https://github.com/baidu/common
     cd common
     sed -i 's/^PREFIX=.*/PREFIX=..\/..\/thirdparty/' config.mk
+    sed -i '/^INCLUDE_PATH=*/s/$/ -I..\/..\/thirdparty\/boost_1_57_0/g' Makefile
     make -j4
     make install
     cd -
@@ -170,6 +171,7 @@ echo "BOOST_PATH=./thirdparty/boost_1_57_0" >> depends.mk
 echo "GFLAG_PATH=./thirdparty" >> depends.mk
 echo "GTEST_PATH=./thirdparty" >> depends.mk
 echo "COMMON_PATH=./thirdparty" >> depends.mk
+echo "TCMALLOC_PATH=./thirdparty" >> depends.mk
 
 ########################################
 # build tera

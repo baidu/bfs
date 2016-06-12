@@ -1,7 +1,7 @@
 
 OPT ?= -g2 -Wall
 
-INCLUDE_PATH= -I../output/include -I../src/ -I../thirdparty/include
+INCLUDE_PATH= -I../src/sdk/ -I../src/ -I../thirdparty/include
 
 CXXFLAGS += $(OPT)
 
@@ -9,7 +9,7 @@ TESTLDFLAGS = -rdynamic -lgtest -lcommon -lprotobuf -lpthread -lz -ldl -lrt -L..
 
 all: bfs_wrapper.so bfs_test
 
-bfs_wrapper.so: bfs_wrapper.cc bfs_wrapper.h ../output/lib/libbfs.a
+bfs_wrapper.so: bfs_wrapper.cc bfs_wrapper.h ../libbfs.a
 	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) -o $@ bfs_wrapper.cc \
 		-Xlinker "-(" ../libbfs.a \
 		../thirdparty/lib/libprotobuf.a \

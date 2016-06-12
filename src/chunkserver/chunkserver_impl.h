@@ -24,7 +24,7 @@ namespace bfs {
 
 class BlockManager;
 class RpcClient;
-class NameServer_Stub;
+class NameServerClient;
 class ChunkServer_Stub;
 class Block;
 class CounterManager;
@@ -72,7 +72,9 @@ private:
                          WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
-    void PullNewBlock(const ReplicaInfo& new_replica_info);
+    void PushBlock(const ReplicaInfo& new_replica_info);
+    void PushBlockProcess(const ReplicaInfo& new_replica_info);
+    bool WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver);
     void CloseIncompleteBlock(int64_t block_id);
     void StopBlockReport();
 private:
@@ -84,12 +86,13 @@ private:
     ThreadPool*     write_thread_pool_;
     ThreadPool*     recover_thread_pool_;
     ThreadPool*     heartbeat_thread_;
-    NameServer_Stub* nameserver_;
+    NameServerClient* nameserver_;
     int32_t chunkserver_id_;
     CounterManager* counter_manager_;
     int64_t heartbeat_task_id_;
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
+    volatile bool service_stop_;
 };
 
 } // namespace bfs

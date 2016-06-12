@@ -12,14 +12,15 @@
 #include <string>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <map>
 
 #include <common/util.h>
 #include <common/timer.h>
 #include "sdk/bfs.h"
 
 DECLARE_string(flagfile);
-DECLARE_string(nameserver);
-DECLARE_string(nameserver_port);
+DECLARE_string(nameserver_nodes);
 
 void print_usage() {
     printf("Use:\nbfs_client <commond> path\n");
@@ -182,10 +183,14 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "Can't open local file %s\n", argv[2]);
         return 1;
     }
-
+    struct stat st;
+    if (stat(source.c_str(), &st)) {
+        fprintf(stderr, "Can't get file stat info %s\n", source.c_str());
+        fclose(fp);
+        return 1;
+    }
     baidu::bfs::File* file;
-    ///TODO: Use the same mode as the source file.
-    if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, 0644, -1, &file)) {
+    if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode, -1, &file)) {
         fprintf(stderr, "Can't Open bfs file %s\n", target.c_str());
         fclose(fp);
         return 1;
@@ -197,16 +202,17 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         int32_t write_bytes = file->Write(buf, bytes);
         if (write_bytes < bytes) {
             fprintf(stderr, "Write fail: [%s:%ld]\n", target.c_str(), len);
-            return 1;
+            ret = 2;
+            break;
         }
         len += bytes;
     }
+    fclose(fp);
     if (!file->Close()) {
         fprintf(stderr, "close fail: %s\n", target.c_str());
         ret = 1;
     }
     delete file;
-    fclose(fp);
     printf("Put file to bfs %s %ld bytes\n", target.c_str(), len);
     return ret;
 }
@@ -329,6 +335,23 @@ int BfsStat(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
+int BfsLocation(baidu::bfs::FS* fs, int argc, char* argv[]) {
+    std::map<int64_t, std::vector<std::string> > locations;
+    bool ret = fs->GetFileLocation(argv[0], &locations);
+    if (!ret) {
+        fprintf(stderr, "GetFileLocation fail\n");
+        return 1;
+    }
+    for (std::map<int64_t, std::vector<std::string> >::iterator it = locations.begin();
+            it != locations.end(); ++it) {
+        printf("block_id %ld:\n", it->first);
+        for (uint64_t i = 0; i < (it->second).size(); ++i) {
+            printf("%s\n", (it->second)[i].c_str());
+        }
+    }
+    return 0;
+}
+
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
@@ -341,7 +364,7 @@ int main(int argc, char* argv[]) {
     }
 
     baidu::bfs::FS* fs;
-    std::string ns_address = FLAGS_nameserver + ":" + FLAGS_nameserver_port;
+    std::string ns_address = FLAGS_nameserver_nodes;
     if (!baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &fs)) {
         fprintf(stderr, "Open filesytem %s fail\n", ns_address.c_str());
         return 1;
@@ -392,6 +415,8 @@ int main(int argc, char* argv[]) {
         ret = BfsDu(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "stat") == 0) {
         ret = BfsStat(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "location") == 0) {
+        ret = BfsLocation(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }

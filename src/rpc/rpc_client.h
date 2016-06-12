@@ -98,7 +98,8 @@ public:
         if (failed || error) {
             assert(failed && error);
             if (error != sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL) {
-                LOG(WARNING, "RpcCallback: %s\n", rpc_controller->ErrorText().c_str());
+                LOG(WARNING, "RpcCallback: %s %s\n",
+                    rpc_controller->RemoteAddress().c_str(), rpc_controller->ErrorText().c_str());
             } else {
                 ///TODO: Retry
             }

@@ -16,67 +16,67 @@ message CreateFileRequest {
 
 message CreateFileResponse {
     optional int64 sequence_id = 1;
-    required int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message LocatedBlock {
-    required int64 block_id = 1;
+    optional int64 block_id = 1;
     optional int64 block_size = 2;
     repeated ChunkServerInfo chains = 3;
 }
 
 message FileLocationRequest {
-    required int64 sequence_id = 1;
-    required string file_name = 2;
+    optional int64 sequence_id = 1;
+    optional string file_name = 2;
     optional int64 offset = 3;
     optional int32 block_num = 4 [default = 10];
     optional string user = 5;
 }
 
 message FileLocationResponse {
-    required int64 sequence_id = 1;
-    required int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
     repeated LocatedBlock blocks = 3;
 }
 
 message ListDirectoryRequest {
-    required int64 sequence_id = 1;
-    required string path = 2;
+    optional int64 sequence_id = 1;
+    optional string path = 2;
 }
 message ListDirectoryResponse {
-    required int64 sequence_id = 1;
-    required int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
     repeated FileInfo files = 3;
 }
 
 message StatRequest {
     optional int64 sequence_id = 1;
-    required string path = 2;
+    optional string path = 2;
 }
 message StatResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     optional FileInfo file_info = 3;
 }
 
 message RenameRequest {
     optional int64 sequence_id = 1;
-    required string oldpath = 2;
-    required string newpath = 3;
+    optional string oldpath = 2;
+    optional string newpath = 3;
 }
 message RenameResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message AddBlockRequest {
-    required int64 sequence_id = 1;
-    required string file_name = 2;
+    optional int64 sequence_id = 1;
+    optional string file_name = 2;
     optional string client_address = 3;
 }
 message AddBlockResponse {
-    required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
     optional LocatedBlock block = 3;
 }
 
@@ -89,37 +89,37 @@ message FinishBlockRequest {
     optional bool close_with_error = 6;
 }
 message FinishBlockResponse {
-    required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
 }
 
 message UnlinkRequest {
-    required int64 sequence_id = 1;
-    required string path = 2;
+    optional int64 sequence_id = 1;
+    optional string path = 2;
 }
 message UnlinkResponse {
-    required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
 }
 
 message DeleteDirectoryRequest {
-    required int64 sequence_id = 1;
-    required string path = 2;
-    required bool recursive = 3;
+    optional int64 sequence_id = 1;
+    optional string path = 2;
+    optional bool recursive = 3;
 }
 message DeleteDirectoryResponse {
-    required int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
 }
 
 message ChangeReplicaNumRequest {
     optional int64 sequence_id = 1;
-    required string file_name = 2;
-    required int32 replica_num = 3;
+    optional string file_name = 2;
+    optional int32 replica_num = 3;
 }
 message ChangeReplicaNumResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message HeartBeatRequest {
@@ -130,11 +130,18 @@ message HeartBeatRequest {
     optional int32 block_num = 5;
     optional int64 data_size = 6;
     optional int32 buffers = 7;
+    optional int32 pending_writes = 13;
+    optional int32 w_qps = 8;
+    optional int64 w_speed = 9;
+    optional int32 r_qps = 10;
+    optional int64 r_speed = 11;
+    optional int64 recover_speed = 12;
 }
 message HeartBeatResponse {
     optional int64 sequence_id = 1;
-    optional int64 status = 2;
+    optional StatusCode status = 2;
     optional int64 namespace_version = 3;
+    optional bool kick = 4;
 }
 
 message ReportBlockInfo {
@@ -147,6 +154,7 @@ message ReplicaInfo {
     repeated string chunkserver_address = 2;
     //optional int64 block_size = 3;
     //optional int64 block_version = 4;
+    optional bool priority = 5;
 }
 
 message RegisterRequest {
@@ -170,31 +178,32 @@ message BlockReportRequest {
 }
 message BlockReportResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     repeated int64 obsolete_blocks = 3;
     repeated int64 close_blocks = 4;
     repeated ReplicaInfo new_replicas = 5;
 }
 
 message BlockReceivedRequest {
+    optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     optional string chunkserver_addr = 3;
     repeated ReportBlockInfo blocks = 6;
 }
 
 message BlockReceivedResponse {
-    optional int32 status = 2;
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
 }
 
-message PullBlockReportRequest {
+message PushBlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     repeated int64 blocks = 3;
-    repeated int64 failed = 4;
 }
-message PullBlockReportResponse {
+message PushBlockReportResponse {
     optional int64 sequence_id = 1;
-    optional int32 status = 2;
+    optional StatusCode status = 2;
 }
 
 message SysStatRequest {
@@ -202,10 +211,20 @@ message SysStatRequest {
 }
 
 message SysStatResponse {
-    optional int32 status = 2;
+    optional StatusCode status = 2;
     repeated ChunkServerInfo chunkservers = 3;
     optional int64 block_num = 4;
     optional int64 data_size = 5;
+}
+
+message NsLogEntry {
+    optional int32 type = 1;
+    optional bytes key = 2;
+    optional bytes value = 3;
+}
+
+message NameServerLog {
+    repeated NsLogEntry entries = 1;
 }
 
 service NameServer {
@@ -224,7 +243,7 @@ service NameServer {
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
     rpc BlockReport(BlockReportRequest) returns(BlockReportResponse);
     rpc BlockReceived(BlockReceivedRequest) returns(BlockReceivedResponse);
-    rpc PullBlockReport(PullBlockReportRequest) returns(PullBlockReportResponse);
+    rpc PushBlockReport(PushBlockReportRequest) returns(PushBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
 }
