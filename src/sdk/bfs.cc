@@ -534,7 +534,7 @@ public:
         ClientHeartbeatRequest request;
         ClientHeartbeatResponse response;
         request.set_session_id(GetSessionId());
-        if (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::ClientHeartbeat,
+        if (!nameserver_client_->SendRequest(&NameServer_Stub::ClientHeartbeat,
                     &request, &response, 15, 1))  {
             LOG(WARNING, "Heartbeat fail");
         } else {
@@ -562,7 +562,7 @@ private:
         ClientRegistResponse response;
         request.set_session_id(GetSessionId());
         // retry untill register success
-        while (!rpc_client_->SendRequest(nameserver_, &NameServer_Stub::RegistNewClient,
+        while (!nameserver_client_->SendRequest(&NameServer_Stub::RegistNewClient,
                 &request, &response, 15, 1) || response.status() != kOK) {
             LOG(WARNING, "Regist new session fail");
         }
