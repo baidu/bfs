@@ -88,7 +88,8 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
 void Mark::Read(const std::string& filename, const std::string& base, int thread_id) {
     File* file;
     if (!fs_->OpenFile(filename.c_str(), O_RDONLY, &file)) {
-        assert(0);
+        std::cerr << "Open file failed " << filename << std::endl;
+        exit(EXIT_FAILURE);
     }
     int64_t buf_size = 1 << 20;
     int64_t base_size = buf_size / 2;
