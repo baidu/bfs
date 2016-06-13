@@ -22,9 +22,8 @@ namespace baidu {
 namespace bfs {
 
 MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
-                                     cond_(&mu_),
-                                     log_done_(&mu_), read_log_(NULL), scan_log_(-1),
-                                     current_offset_(0), applied_offset_(0), sync_offset_(0) {
+                                     cond_(&mu_), log_done_(&mu_), current_idx_(0),
+                                     applied_idx_(0), sync_idx_(0) {
     std::vector<std::string> nodes;
     common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);
     std::string this_server = nodes[FLAGS_node_index];
@@ -45,46 +44,29 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
         LOG(INFO, "[Sync] I am Slave");
     }
     thread_pool_ = new common::ThreadPool(10);
+    mkdir("./logdb", 0755);
+    logdb_ = new LogDB("./logdb");
 }
 
 void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
-    log_ = open("sync.log", O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-    if (log_ < 0) {
-        LOG(FATAL, "[Sync] open sync log failed reason: %s", strerror(errno));
-    }
-    current_offset_ = lseek(log_, 0, SEEK_END);
-    LOG(INFO, "[Sync] set current_offset_ to %d", current_offset_);
-
-    read_log_ = fopen("sync.log", "r");
-    if (read_log_ == NULL)  {
-        LOG(FATAL, "[Sync] open sync log for read failed reason: %s", strerror(errno));
-    }
-    // redo log
-    int fp = open("applied.log", O_RDONLY);
-    if (fp < 0 && errno != ENOENT) {
-        LOG(FATAL, "[Sync] open applied.log failed, reason: %s", strerror(errno));
-    }
-    if (fp >= 0) {
-        char buf[4];
-        int ret = read(fp, buf, 4);
-        if (ret == 4) {
-            memcpy(&applied_offset_, buf, 4);
-            assert(applied_offset_ <= current_offset_);
-            int offset = fseek(read_log_, applied_offset_, SEEK_SET);
-            assert(offset == applied_offset_);
-        }
-        close(fp);
-    }
-    while (applied_offset_ < current_offset_) {
+    current_idx_ = logdb_->GetLargestIdx();
+    assert(current_idx_ >= 0);
+    LOG(INFO, "[Sync] set current_idx_ to %d", current_idx_);
+    bool ret = logdb_->ReadMarker("applied_idx", &applied_idx_);
+    ret = logdb_->ReadMarker("sync_idx", &sync_idx_);
+    assert(applied_idx_ <= current_idx_ && sync_idx_ <= current_idx_);
+    while (applied_idx_ < current_idx_) {
         std::string entry;
-        if (!ReadEntry(&entry)) {
-            assert(0);
+        ret = logdb_->Read(applied_idx_ + 1, &entry);
+        if (!ret) {
+            LOG(FATAL, "[Sync] read logdb failed index %ld ", applied_idx_ + 1);
         }
-        log_callback_(entry);
-        applied_offset_ += entry.length() + 4;
+        if (!entry.empty()) {
+            log_callback_(entry);
+        }
+        applied_idx_++;
     }
-    assert(applied_offset_ == current_offset_);
 
     rpc_client_ = new RpcClient();
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
@@ -104,26 +86,27 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
         return true;
     }
     mu_.Lock();
-    int len = LogLocal(entry);
-    int last_offset = current_offset_;
-    current_offset_ += len;
+    bool ret = logdb_->Write(current_idx_ + 1, entry);
+    if (!ret) {
+        LOG(FATAL, "[Sync] write logdb failed index %ld ", current_idx_ + 1);
+    }
+    current_idx_++;
     cond_.Signal();
     mu_.Unlock();
-    int sync_offset = ftell(read_log_);
     // slave is way behind, do no wait
-    if (master_only_ && sync_offset < last_offset) {
+    if (master_only_ && sync_idx_ < current_idx_ - 1) {
         LOG(WARNING, "[Sync] Sync in maset-only mode, do not wait");
-        applied_offset_ = current_offset_;
+        applied_idx_ = current_idx_;
         return true;
     }
 
     int64_t start_point = common::timer::get_micros();
     int64_t stop_point = start_point + timeout_ms * 1000;
-    while (sync_offset != current_offset_ && common::timer::get_micros() < stop_point) {
+    while (sync_idx_ != current_idx_ && common::timer::get_micros() < stop_point) {
         int wait_time = (stop_point - common::timer::get_micros()) / 1000;
         MutexLock lock(&mu_);
         if (log_done_.TimeWait(wait_time)) {
-            if (sync_offset != current_offset_) {
+            if (sync_idx_ != current_idx_) {
                 continue;
             }
             if (master_only_) {
@@ -147,19 +130,20 @@ void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)>
         return;
     }
     MutexLock lock(&mu_);
-    int len = LogLocal(entry);
-    int last_offset = current_offset_;
-    current_offset_ += len;
-    if (master_only_ && ftell(read_log_) < last_offset) { // slave is behind, do not wait
-        callbacks_.insert(std::make_pair(last_offset, callback));
+    bool ret = logdb_->Write(current_idx_ + 1, entry);
+    if (!ret) {
+        LOG(FATAL, "[Sync] write logdb failed index %ld ", current_idx_ + 1);
+    }
+    current_idx_++;
+    if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
+        callbacks_.insert(std::make_pair(current_idx_ - 1, callback));
         thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,this,
-                                            last_offset, entry.length() + 4, true));
+                                            current_idx_ - 1, true));
     } else {
-        callbacks_.insert(std::make_pair(last_offset, callback));
-        LOG(DEBUG, "[Sync] insert callback last_offset = %d", last_offset);
+        callbacks_.insert(std::make_pair(current_idx_ - 1, callback));
+        LOG(DEBUG, "[Sync] insert callback index = %d", current_idx_ - 1);
         thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::PorcessCallbck,
-                                                   this, last_offset, entry.length() + 4,
-                                                   true));
+                                                   this, current_idx_ - 1, true));
         cond_.Signal();
     }
     return;
@@ -169,13 +153,13 @@ void MasterSlaveImpl::SwitchToLeader() {
     if (IsLeader()) {
         return;
     }
-    is_leader_ = true;
-    fseek(read_log_, 0, SEEK_SET);
+    sync_idx_ = 0;
     std::string old_master_addr = master_addr_;
     master_addr_ = slave_addr_;
     slave_addr_ = old_master_addr;
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
     worker_.Start(boost::bind(&MasterSlaveImpl::BackgroundLog, this));
+    is_leader_ = true;
     LOG(INFO, "[Sync] node switch to leader");
 }
 
@@ -189,53 +173,36 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    if (request->offset() > current_offset_) {
-        response->set_offset(current_offset_);
+    if (request->index() > current_idx_) {
+        response->set_index(current_idx_);
         response->set_success(false);
         done->Run();
         return;
-    } else if (request->offset() < current_offset_) {
-        LOG(INFO, "[Sync] out-date log request %d, current_offset_ %d",
-            request->offset(), current_offset_);
-        response->set_offset(-1);
+    } else if (request->index() < current_idx_) {
+        LOG(INFO, "[Sync] out-date log request %d, current_idx_ %d",
+            request->index(), current_idx_);
+        response->set_index(-1);
         response->set_success(false);
         done->Run();
         return;
     }
     mu_.Lock();
-    int len = LogLocal(request->log_data());
+    bool ret = logdb_->Write(current_idx_, request->log_data());
+    if (!ret) {
+        LOG(FATAL, "[Sync] Write logdb_ failed current_idx_ = %ld ", current_idx_);
+    }
+    current_idx_++;
     mu_.Unlock();
     log_callback_(request->log_data());
-    current_offset_ += len;
-    applied_offset_ = current_offset_;
+    applied_idx_ = current_idx_;
     response->set_success(true);
     done->Run();
-}
-
-bool MasterSlaveImpl::ReadEntry(std::string* entry) {
-    char buf[4];
-    int len;
-    //int ret = read(read_log_, buf, 4);
-    int ret = fread(buf, 4, 1, read_log_);
-    assert(ret == 1);
-    memcpy(&len, buf, 4);
-    LOG(DEBUG, "[Sync] record length = %u", len);
-    char* tmp = new char[len];
-    //ret = read(read_log_, tmp, len);
-    ret = fread(tmp, len, 1, read_log_);
-    if (ret == 1) {
-        entry->assign(tmp, len);
-        delete[] tmp;
-        return true;
-    }
-    delete[] tmp;
-    return false;
 }
 
 void MasterSlaveImpl::BackgroundLog() {
     while (true) {
         MutexLock lock(&mu_);
-        while (!exiting_ && ftell(read_log_) == current_offset_) {
+        while (!exiting_ && sync_idx_ == current_idx_) {
             LOG(DEBUG, "[Sync] BackgroundLog waiting...");
             cond_.Wait();
         }
@@ -250,67 +217,52 @@ void MasterSlaveImpl::BackgroundLog() {
 }
 
 void MasterSlaveImpl::ReplicateLog() {
-    int sync_offset = ftell(read_log_);
-    while (sync_offset < current_offset_) {
+    while (sync_idx_ < current_idx_) {
         mu_.Lock();
-        if (sync_offset == current_offset_) {
+        if (sync_idx_ == current_idx_) {
             mu_.Unlock();
             break;
         }
-        LOG(DEBUG, "[Sync] ReplicateLog sync_offset = %d, current_offset_ = %d",
-                sync_offset, current_offset_);
+        LOG(DEBUG, "[Sync] ReplicateLog sync_idx_ = %d, current_idx_ = %d", sync_idx_, current_idx_);
         mu_.Unlock();
         std::string entry;
-        if (!ReadEntry(&entry)) {
+        if (!logdb_->Read(sync_idx_, &entry)) {
             LOG(WARNING, "[Sync] incomplete record");
             return;
         }
         master_slave::AppendLogRequest request;
         master_slave::AppendLogResponse response;
         request.set_log_data(entry);
-        request.set_offset(sync_offset);
-        while (!rpc_client_->SendRequest(slave_stub_,
-                &master_slave::MasterSlave_Stub::AppendLog,
+        request.set_index(sync_idx_);
+        while (!rpc_client_->SendRequest(slave_stub_, &master_slave::MasterSlave_Stub::AppendLog,
                 &request, &response, 15, 1)) {
-            LOG(WARNING, "[Sync] Replicate log failed sync_offset = %d, current_offset_ = %d",
-                sync_offset, current_offset_);
+            LOG(WARNING, "[Sync] Replicate log failed sync_idx_ = %d, current_idx_ = %d",
+                sync_idx_, current_idx_);
             sleep(5);
         }
         if (!response.success()) { // log mismatch
             MutexLock lock(&mu_);
-            if (response.offset() != -1) {
-                sync_offset = response.offset();
-                int offset = fseek(read_log_, sync_offset, SEEK_SET);
-                assert(offset == sync_offset);
-                LOG(DEBUG, "[Sync] set sync_offset to %d", sync_offset);
+            if (response.index() != -1) {
+                sync_idx_ = response.index();
+                LOG(INFO, "[Sync] set sync_idx_ to %d", sync_idx_);
             }
             continue;
         }
-        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,
-                                this, sync_offset, entry.length() + 4, false));
-        sync_offset = ftell(read_log_);
+        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_, false));
         mu_.Lock();
-        LOG(DEBUG, "[Sync] Replicate log done. sync_offset = %d, current_offset_ = %d",
-                sync_offset, current_offset_);
+        sync_idx_++;
+        LOG(DEBUG, "[Sync] Replicate log done. sync_idx_ = %d, current_idx_ = %d",
+                sync_idx_ - 1, current_idx_);
         mu_.Unlock();
     }
-    applied_offset_ = current_offset_;
+    applied_idx_ = current_idx_;
     log_done_.Signal();
 }
 
-int MasterSlaveImpl::LogLocal(const std::string& entry) {
-    mu_.AssertHeld();
-    int len = entry.length();
-    write(log_, &len, 4);
-    int w = write(log_, entry.c_str(), entry.length());
-    assert(w >= 0);
-    return w + 4;
-}
-
-void MasterSlaveImpl::PorcessCallbck(int offset, int len, bool timeout_check) {
+void MasterSlaveImpl::PorcessCallbck(int index, bool timeout_check) {
     boost::function<void (bool)> callback;
     MutexLock lock(&mu_);
-    std::map<int, boost::function<void (bool)> >::iterator it = callbacks_.find(offset);
+    std::map<int64_t, boost::function<void (bool)> >::iterator it = callbacks_.find(index);
     if (it != callbacks_.end()) {
         callback = it->second;
         callbacks_.erase(it);
@@ -318,29 +270,31 @@ void MasterSlaveImpl::PorcessCallbck(int offset, int len, bool timeout_check) {
         mu_.Unlock();
         callback(true);
         mu_.Lock();
-        if (offset + len > applied_offset_) {
-            applied_offset_ = offset + len;
+        if (index + 1 > applied_idx_) {
+            applied_idx_ = index + 1;
         }
         if (timeout_check && !master_only_) {
-            LOG(WARNING, "[Sync] ReplicateLog sync_offset = %d timeout, enter master-only mode",
-                offset);
+            LOG(WARNING, "[Sync] ReplicateLog sync_idx_ = %d timeout, enter master-only mode",
+                index);
             master_only_ = true;
             return;
         }
     }
-    if (master_only_ && offset + len == current_offset_) {
+    if (master_only_ && index + 1 == current_idx_) {
         LOG(INFO, "[Sync] leaves master-only mode");
         master_only_ = false;
     }
 }
 
 void MasterSlaveImpl::LogStatus() {
-    LOG(INFO, "[Sync] sync_offset = %d, current_offset_ = %d, applied_offset_ = %d, callbacks_ size = %d",
-        ftell(read_log_), current_offset_, applied_offset_, callbacks_.size());
-    int fp = open("applied.tmp", O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-    write(fp, &applied_offset_, 4);
-    close(fp);
-    rename("applied.tmp", "applied.log");
+    LOG(INFO, "[Sync] sync_idx_ = %d, current_idx_ = %d, applied_idx_ = %d, callbacks_ size = %d",
+        sync_idx_, current_idx_, applied_idx_, callbacks_.size());
+    bool ret_a = logdb_->WriteMarker("applied_idx", applied_idx_);
+    bool ret_s = logdb_->WriteMarker("sync_idx", sync_idx_);
+    if (!ret_a || ret_s) {
+        LOG(WARNING, "[Sync] WriteMarker failed applied_idx_ = %ld sync_idx_ = %ld ",
+                applied_idx_, sync_idx_);
+    }
     thread_pool_->DelayTask(5000, boost::bind(&MasterSlaveImpl::LogStatus, this));
 }
 
