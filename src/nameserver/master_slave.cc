@@ -12,6 +12,7 @@
 #include <gflags/gflags.h>
 
 #include "nameserver/master_slave.h"
+#include "proto/status_code.pb.h"
 #include "rpc/rpc_client.h"
 
 DECLARE_string(nameserver_nodes);
@@ -22,8 +23,8 @@ namespace baidu {
 namespace bfs {
 
 MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
-                                     cond_(&mu_), log_done_(&mu_), current_idx_(0),
-                                     applied_idx_(0), sync_idx_(0) {
+                                     cond_(&mu_), log_done_(&mu_), current_idx_(-1),
+                                     applied_idx_(-1), sync_idx_(-1) {
     std::vector<std::string> nodes;
     common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);
     std::string this_server = nodes[FLAGS_node_index];
@@ -50,15 +51,21 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
 
 void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
-    current_idx_ = logdb_->GetLargestIdx();
-    assert(current_idx_ >= 0);
-    LOG(INFO, "[Sync] set current_idx_ to %d", current_idx_);
-    bool ret = logdb_->ReadMarker("applied_idx", &applied_idx_);
-    ret = logdb_->ReadMarker("sync_idx", &sync_idx_);
+    if (logdb_->GetLargestIdx(&current_idx_) == kReadError) {
+        LOG(FATAL, "[Sync] Read current_idx_ failed");
+    }
+    if (logdb_->ReadMarker("applied_idx", &applied_idx_) == kReadError) {
+        LOG(FATAL, "[Sync] ReadMarker applied_idx_ failed");
+    }
+    if (logdb_->ReadMarker("sync_idx", &sync_idx_) == kReadError) {
+        LOG(FATAL, "[Sync] ReadMarker sync_idx_ failed");
+    }
+    LOG(INFO, "[Sync] set current_idx_ = %ld, applied_idx_ = %ld, sync_idx_ = %ld ",
+            current_idx_, applied_idx_, sync_idx_);
     assert(applied_idx_ <= current_idx_ && sync_idx_ <= current_idx_);
     while (applied_idx_ < current_idx_) {
         std::string entry;
-        ret = logdb_->Read(applied_idx_ + 1, &entry);
+        bool ret = logdb_->Read(applied_idx_ + 1, &entry);
         if (!ret) {
             LOG(FATAL, "[Sync] read logdb failed index %ld ", applied_idx_ + 1);
         }
@@ -86,9 +93,8 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
         return true;
     }
     mu_.Lock();
-    bool ret = logdb_->Write(current_idx_ + 1, entry);
-    if (!ret) {
-        LOG(FATAL, "[Sync] write logdb failed index %ld ", current_idx_ + 1);
+    if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
+        LOG(FATAL, "[Sync] write logdb failed index %ld", current_idx_ + 1);
     }
     current_idx_++;
     cond_.Signal();
@@ -130,20 +136,19 @@ void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)>
         return;
     }
     MutexLock lock(&mu_);
-    bool ret = logdb_->Write(current_idx_ + 1, entry);
-    if (!ret) {
+    if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
         LOG(FATAL, "[Sync] write logdb failed index %ld ", current_idx_ + 1);
     }
     current_idx_++;
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
-        callbacks_.insert(std::make_pair(current_idx_ - 1, callback));
+        callbacks_.insert(std::make_pair(current_idx_, callback));
         thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,this,
-                                            current_idx_ - 1, true));
+                                            current_idx_, true));
     } else {
-        callbacks_.insert(std::make_pair(current_idx_ - 1, callback));
-        LOG(DEBUG, "[Sync] insert callback index = %d", current_idx_ - 1);
+        callbacks_.insert(std::make_pair(current_idx_, callback));
+        LOG(DEBUG, "[Sync] insert callback index = %d", current_idx_);
         thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::PorcessCallbck,
-                                                   this, current_idx_ - 1, true));
+                                                   this, current_idx_, true));
         cond_.Signal();
     }
     return;
@@ -153,7 +158,7 @@ void MasterSlaveImpl::SwitchToLeader() {
     if (IsLeader()) {
         return;
     }
-    sync_idx_ = 0;
+    sync_idx_ = -1;
     std::string old_master_addr = master_addr_;
     master_addr_ = slave_addr_;
     slave_addr_ = old_master_addr;
@@ -173,13 +178,14 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    if (request->index() > current_idx_) {
-        response->set_index(current_idx_);
+    // expect index to be current_idx_ + 1
+    if (request->index() > current_idx_ + 1) {
+        response->set_index(current_idx_ + 1);
         response->set_success(false);
         done->Run();
         return;
-    } else if (request->index() < current_idx_) {
-        LOG(INFO, "[Sync] out-date log request %d, current_idx_ %d",
+    } else if (request->index() <= current_idx_) {
+        LOG(INFO, "[Sync] out-date log request %ld, current_idx_ %ld",
             request->index(), current_idx_);
         response->set_index(-1);
         response->set_success(false);
@@ -187,9 +193,8 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         return;
     }
     mu_.Lock();
-    bool ret = logdb_->Write(current_idx_, request->log_data());
-    if (!ret) {
-        LOG(FATAL, "[Sync] Write logdb_ failed current_idx_ = %ld ", current_idx_);
+    if (logdb_->Write(current_idx_ + 1, request->log_data()) != kOK) {
+        LOG(FATAL, "[Sync] Write logdb_ failed current_idx_ = %ld ", current_idx_ + 1);
     }
     current_idx_++;
     mu_.Unlock();
@@ -226,40 +231,39 @@ void MasterSlaveImpl::ReplicateLog() {
         LOG(DEBUG, "[Sync] ReplicateLog sync_idx_ = %d, current_idx_ = %d", sync_idx_, current_idx_);
         mu_.Unlock();
         std::string entry;
-        if (!logdb_->Read(sync_idx_, &entry)) {
-            LOG(WARNING, "[Sync] incomplete record");
-            return;
+        if (logdb_->Read(sync_idx_ + 1, &entry) != kOK) {
+            LOG(FATAL, "[Sync] Read logdb_ failed sync_idx_ = %ld ", sync_idx_ + 1);
         }
         master_slave::AppendLogRequest request;
         master_slave::AppendLogResponse response;
         request.set_log_data(entry);
-        request.set_index(sync_idx_);
+        request.set_index(sync_idx_ + 1);
         while (!rpc_client_->SendRequest(slave_stub_, &master_slave::MasterSlave_Stub::AppendLog,
                 &request, &response, 15, 1)) {
-            LOG(WARNING, "[Sync] Replicate log failed sync_idx_ = %d, current_idx_ = %d",
-                sync_idx_, current_idx_);
+            LOG(WARNING, "[Sync] Replicate log failed index = %d, current_idx_ = %d",
+                sync_idx_ + 1, current_idx_);
             sleep(5);
         }
         if (!response.success()) { // log mismatch
             MutexLock lock(&mu_);
             if (response.index() != -1) {
-                sync_idx_ = response.index();
+                sync_idx_ = response.index() - 1;
                 LOG(INFO, "[Sync] set sync_idx_ to %d", sync_idx_);
             }
             continue;
         }
-        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_, false));
+        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_ + 1, false));
         mu_.Lock();
         sync_idx_++;
         LOG(DEBUG, "[Sync] Replicate log done. sync_idx_ = %d, current_idx_ = %d",
-                sync_idx_ - 1, current_idx_);
+                sync_idx_ , current_idx_);
         mu_.Unlock();
     }
     applied_idx_ = current_idx_;
     log_done_.Signal();
 }
 
-void MasterSlaveImpl::PorcessCallbck(int index, bool timeout_check) {
+void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
     boost::function<void (bool)> callback;
     MutexLock lock(&mu_);
     std::map<int64_t, boost::function<void (bool)> >::iterator it = callbacks_.find(index);
@@ -270,8 +274,8 @@ void MasterSlaveImpl::PorcessCallbck(int index, bool timeout_check) {
         mu_.Unlock();
         callback(true);
         mu_.Lock();
-        if (index + 1 > applied_idx_) {
-            applied_idx_ = index + 1;
+        if (index > applied_idx_) {
+            applied_idx_ = index;
         }
         if (timeout_check && !master_only_) {
             LOG(WARNING, "[Sync] ReplicateLog sync_idx_ = %d timeout, enter master-only mode",
@@ -280,7 +284,7 @@ void MasterSlaveImpl::PorcessCallbck(int index, bool timeout_check) {
             return;
         }
     }
-    if (master_only_ && index + 1 == current_idx_) {
+    if (master_only_ && index == current_idx_) {
         LOG(INFO, "[Sync] leaves master-only mode");
         master_only_ = false;
     }

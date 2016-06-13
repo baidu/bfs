@@ -16,7 +16,6 @@
 
 #include "nameserver/sync.h"
 #include "nameserver/logdb.h"
-#include "proto/status_code.pb.h"
 #include "proto/master_slave.pb.h"
 
 namespace baidu {
@@ -44,7 +43,7 @@ private:
     void BackgroundLog();
     void ReplicateLog();
     void LogStatus();
-    void PorcessCallbck(int offset, bool timeout_check);
+    void PorcessCallbck(int64_t index, bool timeout_check);
 
 private:
     RpcClient* rpc_client_;
@@ -64,9 +63,9 @@ private:
     ThreadPool* thread_pool_;
 
     LogDB* logdb_;
-    int64_t current_idx_;
-    int64_t applied_idx_;
-    int64_t sync_idx_;
+    int64_t current_idx_;   // last log's index
+    int64_t applied_idx_;   // last applied entry index
+    int64_t sync_idx_;      // last entry index which slave has received
 
     std::map<int64_t, boost::function<void (bool)> > callbacks_;
 };
