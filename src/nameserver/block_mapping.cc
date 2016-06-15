@@ -30,15 +30,10 @@ NSBlock::NSBlock(int64_t block_id, int32_t replica,
       recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover) {
 }
 
-BlockMapping::BlockMapping() : next_block_id_(1), safe_mode_(true) {}
+BlockMapping::BlockMapping() : safe_mode_(true) {}
 
 void BlockMapping::SetSafeMode(bool safe_mode) {
     safe_mode_ = safe_mode;
-}
-
-int64_t BlockMapping::NewBlockID() {
-    MutexLock lock(&mu_, "BlockMapping::NewBlockID", 1000);
-    return next_block_id_++;
 }
 
 bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
@@ -107,9 +102,6 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
     std::pair<NSBlockMap::iterator, bool> ret =
         block_map_.insert(std::make_pair(block_id,nsblock));
     assert(ret.second == true);
-    if (next_block_id_ <= block_id) {
-        next_block_id_ = block_id + 1;
-    }
 }
 
 bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
