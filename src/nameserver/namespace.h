@@ -79,8 +79,8 @@ private:
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;
-    int64_t next_block_id_;
     int64_t block_id_upbound_;
+    int64_t next_block_id_;
     Mutex mu_;
 
     /// HA module
