@@ -709,17 +709,27 @@ void BlockMapping::ListRecover(std::set<int64_t>* hi_recover,
                                std::set<int64_t>* lost,
                                std::map<int32_t, std::set<int64_t> >* hi_check,
                                std::map<int32_t, std::set<int64_t> >* lo_check,
-                               std::map<int32_t, std::set<int64_t> >* incomplete) {
+                               std::map<int32_t, std::set<int64_t> >* incomplete,
+                               int32_t upbound_size) {
     MutexLock lock(&mu_);
     for (std::set<int64_t>::iterator it = lo_pri_recover_.begin(); it != lo_pri_recover_.end(); ++it) {
+        if (lo_recover->size() == (size_t)upbound_size) {
+            break;
+        }
         lo_recover->insert(*it);
     }
 
     for (std::set<int64_t>::iterator it = hi_pri_recover_.begin(); it != hi_pri_recover_.end(); ++it) {
+        if (hi_recover->size() == (size_t)upbound_size) {
+            break;
+        }
         hi_recover->insert(*it);
     }
 
     for (std::set<int64_t>::iterator it = lost_blocks_.begin(); it != lost_blocks_.end(); ++it) {
+        if (lost->size() == (size_t)upbound_size) {
+            break;
+        }
         lost->insert(*it);
     }
 

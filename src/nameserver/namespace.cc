@@ -73,13 +73,15 @@ void NameSpace::Activate(NameServerLog* log) {
     block_id_upbound_key.append("block_id_upbound");
     std::string block_id_upbound_str;
     s = db_->Get(leveldb::ReadOptions(), block_id_upbound_key, &block_id_upbound_str);
-    if (!s.ok()) {
-        LOG(INFO, "Can't read block id upbound: %s", s.ToString().c_str());
+    if (s.IsNotFound()) {
+        LOG(INFO, "Init block id upbound");
         UpdateBlockIdUpbound(log);
-    } else {
+    } else if (s.ok()) {
         block_id_upbound_ = *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0]));
         LOG(INFO, "Load block id upbound: %ld", block_id_upbound_);
         UpdateBlockIdUpbound(log);
+    } else {
+        LOG(FATAL, "Load block id upbound failed: %s", s.ToString().c_str());
     }
     SetupRoot();
 }

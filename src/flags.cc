@@ -9,6 +9,7 @@
 // global
 DEFINE_bool(bfs_bug_tolerant, true, "Tolerate minor bug");
 DEFINE_bool(bfs_web_kick_enable, false, "Enable kick button on website");
+DEFINE_int32(web_recover_list_size, 512, "Max recover list size displayed in website");
 DEFINE_string(bfs_log, "", "BFS log");
 DEFINE_int32(bfs_log_size, 1024, "BFS log size");
 // nameserver

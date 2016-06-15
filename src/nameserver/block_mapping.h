@@ -64,7 +64,8 @@ public:
                      std::set<int64_t>* lost,
                      std::map<int32_t, std::set<int64_t> >* hi_check,
                      std::map<int32_t, std::set<int64_t> >* lo_check,
-                     std::map<int32_t, std::set<int64_t> >* incomplete);
+                     std::map<int32_t, std::set<int64_t> >* incomplete,
+                     int32_t upbound_size);
     void SetSafeMode(bool safe_mode);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);

@@ -8,6 +8,8 @@
 
 #include <common/string_util.h>
 
+DECLARE_int32(web_recover_list_size);
+
 namespace baidu {
 namespace bfs {
 
@@ -132,27 +134,28 @@ void BlockMappingManager::TransToString(const std::map<int32_t, std::set<int64_t
     for (std::map<int32_t, std::set<int64_t> >::const_iterator it = chk_set.begin(); it != chk_set.end(); ++it) {
         output->append(common::NumToString(it->first) + ": ");
         const std::set<int64_t>& block_set = it->second;
-        uint32_t last = output->size();
+        int32_t counter = 0;
         for (std::set<int64_t>::iterator block_it = block_set.begin();
                 block_it != block_set.end(); ++block_it) {
-            output->append(common::NumToString(*block_it) + " ");
-            if (output->size() - last > 1024) {
+            if (counter++ == FLAGS_web_recover_list_size) {
                 output->append("...");
                 break;
             }
+            output->append(common::NumToString(*block_it) + " ");
         }
         output->append("<br>");
     }
 }
 
 void BlockMappingManager::TransToString(const std::set<int64_t>& block_set, std::string* output) {
-        for (std::set<int64_t>::const_iterator it = block_set.begin(); it != block_set.end(); ++it) {
-            output->append(common::NumToString(*it) + " ");
-            if (output->size() > 1024) {
-                output->append("...");
-                break;
-            }
+    int32_t counter = 0;
+    for (std::set<int64_t>::const_iterator it = block_set.begin(); it != block_set.end(); ++it) {
+        if (counter++ == FLAGS_web_recover_list_size) {
+            output->append("...");
+            break;
         }
+        output->append(common::NumToString(*it) + " ");
+    }
 }
 
 void BlockMappingManager::ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
@@ -160,7 +163,7 @@ void BlockMappingManager::ListRecover(std::string* hi_recover, std::string* lo_r
     std::map<int32_t, std::set<int64_t> > hi_chk, lo_chk, inc;
     std::set<int64_t> h_r, l_r, los;
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        block_mapping_[i]->ListRecover(&h_r, &l_r, &los, &hi_chk, &lo_chk, &inc);
+        block_mapping_[i]->ListRecover(&h_r, &l_r, &los, &hi_chk, &lo_chk, &inc, FLAGS_web_recover_list_size);
     }
     TransToString(h_r, hi_recover);
     TransToString(l_r, lo_recover);
