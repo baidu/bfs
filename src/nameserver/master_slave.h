@@ -7,7 +7,6 @@
 #define  BFS_NAMESERVER_MASTER_SLAVE_H_
 
 #include <string>
-#include <stdio.h>
 #include <map>
 #include <boost/function.hpp>
 #include <common/mutex.h>

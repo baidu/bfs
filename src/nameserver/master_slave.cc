@@ -4,8 +4,6 @@
 //
 
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <common/string_util.h>
 #include <common/logging.h>
 #include <common/timer.h>
