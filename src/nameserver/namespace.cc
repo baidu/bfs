@@ -574,8 +574,8 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     block_id_upbound_key.append("block_id_upbound");
     std::string block_id_upbound_str;
     block_id_upbound_str.resize(8);
-    next_block_id_ = block_id_upbound_ + 1;
     block_id_upbound_ += FLAGS_block_id_allocation_size;
+    next_block_id_ = block_id_upbound_ + 1;
     *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
     if (!s.ok()) {
