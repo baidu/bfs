@@ -581,22 +581,29 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                      std::map<int64_t, std::set<int32_t> >* recover_blocks,
-                                     int32_t* hi_num) {
+                                     RecoverPri pri) {
     MutexLock lock(&mu_);
-    if (hi_pri_recover_.empty() && lo_pri_recover_.empty()) {
+    if ((pri == kHigh && hi_pri_recover_.empty()) ||
+            (pri == kLow && lo_pri_recover_.empty())) {
         return;
     }
-    std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
     std::set<int64_t>& hi_check_set = hi_recover_check_[cs_id];
-    int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
+    std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
     LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
         cs_id, hi_check_set.size(), lo_check_set.size());
+    /*
+    int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
     quota = quota < block_num ? quota : block_num;
-    LOG(DEBUG, "Before Pick: recover num(hi/lo): %ld/%ld ",
-        hi_pri_recover_.size(), lo_pri_recover_.size());
-    PickRecoverFromSet(cs_id, quota, &hi_pri_recover_, recover_blocks, &hi_check_set);
-    if (hi_num) *hi_num = recover_blocks->size();
-    PickRecoverFromSet(cs_id, quota, &lo_pri_recover_, recover_blocks, &lo_check_set);
+    */
+    std::set<int64_t>* target_set = NULL, *check_set = NULL;
+    if (pri == kHigh) {
+        target_set = &hi_pri_recover_;
+        check_set = &hi_check_set;
+    } else {
+        target_set = &lo_pri_recover_;;
+        check_set = &lo_check_set;
+    }
+    PickRecoverFromSet(cs_id, block_num, target_set, recover_blocks, check_set);
     LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
@@ -688,49 +695,42 @@ void BlockMapping::GetStat(int64_t* lo_recover_num, int64_t* hi_recover_num,
     }
 }
 
-void BlockMapping::ListCheckList(const CheckList& check_list, std::string* output) {
+void BlockMapping::ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result) {
     for (CheckList::const_iterator it = check_list.begin(); it != check_list.end(); ++it) {
-        output->append(common::NumToString(it->first) + ": ");
         const std::set<int64_t>& block_set = it->second;
-        uint32_t last = output->size();
         for (std::set<int64_t>::iterator block_it = block_set.begin();
                 block_it != block_set.end(); ++block_it) {
-            output->append(common::NumToString(*block_it) + " ");
-            if (output->size() - last > 1024) {
-                output->append("...");
-                break;
-            }
-            last = output->size();
+            (*result)[it->first].insert(*block_it);
         }
-        output->append("<br>");
     }
 }
-void BlockMapping::ListRecover(std::string* hi_recover, std::string* lo_recover,
-                               std::string* lost, std::string* hi_check,
-                               std::string* lo_check, std::string* incomplete) {
+void BlockMapping::ListRecover(std::set<int64_t>* hi_recover,
+                               std::set<int64_t>* lo_recover,
+                               std::set<int64_t>* lost,
+                               std::map<int32_t, std::set<int64_t> >* hi_check,
+                               std::map<int32_t, std::set<int64_t> >* lo_check,
+                               std::map<int32_t, std::set<int64_t> >* incomplete,
+                               int32_t upbound_size) {
     MutexLock lock(&mu_);
     for (std::set<int64_t>::iterator it = lo_pri_recover_.begin(); it != lo_pri_recover_.end(); ++it) {
-        lo_recover->append(common::NumToString(*it) + " ");
-        if (lo_recover->size() > 1024) {
-            lo_recover->append("...");
+        if (lo_recover->size() == (size_t)upbound_size) {
             break;
         }
+        lo_recover->insert(*it);
     }
 
     for (std::set<int64_t>::iterator it = hi_pri_recover_.begin(); it != hi_pri_recover_.end(); ++it) {
-        hi_recover->append(common::NumToString(*it) + " ");
-        if (hi_recover->size() > 1024) {
-            hi_recover->append("...");
+        if (hi_recover->size() == (size_t)upbound_size) {
             break;
         }
+        hi_recover->insert(*it);
     }
 
     for (std::set<int64_t>::iterator it = lost_blocks_.begin(); it != lost_blocks_.end(); ++it) {
-        lost->append(common::NumToString(*it) + " ");
-        if (lost->size() > 1024) {
-            lost->append("...");
+        if (lost->size() == (size_t)upbound_size) {
             break;
         }
+        lost->insert(*it);
     }
 
     ListCheckList(hi_recover_check_, hi_check);
@@ -890,6 +890,7 @@ void BlockMapping::SetState(NSBlock* block, RecoverStat to) {
         RecoverStat_Name(to).c_str());
     block->recover_stat = to;
 }
+
 bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) {
     mu_.AssertHeld();
     if (block->recover_stat == from || from == kAny) {
@@ -897,6 +898,23 @@ bool BlockMapping::SetStateIf(NSBlock* block, RecoverStat from, RecoverStat to) 
         return true;
     }
     return false;
+}
+
+void BlockMapping::MarkIncomplete(int64_t block_id) {
+    MutexLock lock(&mu_);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        return;
+    }
+    // maybe cs is down and block have been marked with incomplete
+    if (block->recover_stat == kBlockWriting) {
+        for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();
+                it != block->incomplete_replica.end(); ++it) {
+            incomplete_[*it].insert(block_id);
+            LOG(INFO, "Mark #%ld in C%d incomplete", block_id, *it);
+        }
+        SetState(block, kIncomplete);
+    }
 }
 
 } // namespace bfs

@@ -56,6 +56,7 @@ public:
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
+    int64_t GetNewBlockId(NameServerLog* log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
@@ -71,12 +72,16 @@ private:
                                 NameServerLog* log);
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
+    void UpdateBlockIdUpbound(NameServerLog* log);
     //bool RecoverLog();
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;
+    int64_t block_id_upbound_;
+    int64_t next_block_id_;
+    Mutex mu_;
 
     /// HA module
     //Sync* sync_;

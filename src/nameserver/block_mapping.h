@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifndef BFS_BLOCK_MAPPING_H_
+#define BFS_BLOCK_MAPPING_H_
+
 #include <set>
 #include <map>
 #include <queue>
@@ -50,19 +53,26 @@ public:
     StatusCode CheckBlockVersion(int64_t block_id, int64_t version);
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::map<int64_t, std::set<int32_t> >* recover_blocks,
-                           int32_t* hi_num);
+                           RecoverPri pri);
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int64_t* lo_recover_num, int64_t* hi_recover_num,
                  int64_t* lo_pending, int64_t* hi_pending,
                  int64_t* lost_num, int64_t* incomplete_num);
-    void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
-                     std::string* hi_check, std::string* lo_check, std::string* incomplete);
+    void ListRecover(std::set<int64_t>* hi_recover,
+                     std::set<int64_t>* lo_recover,
+                     std::set<int64_t>* lost,
+                     std::map<int32_t, std::set<int64_t> >* hi_check,
+                     std::map<int32_t, std::set<int64_t> >* lo_check,
+                     std::map<int32_t, std::set<int64_t> >* incomplete,
+                     int32_t upbound_size);
     void SetSafeMode(bool safe_mode);
+    int32_t GetCheckNum();
+    void MarkIncomplete(int64_t block_id);
 private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
-    void ListCheckList(const CheckList& check_list, std::string* output);
+    void ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result);
     void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
                             std::map<int64_t, std::set<int32_t> >* recover_blocks,
                             std::set<int64_t>* check_set);
@@ -99,3 +109,5 @@ private:
 
 } // namespace bfs
 } // namespace baidu
+
+#endif
