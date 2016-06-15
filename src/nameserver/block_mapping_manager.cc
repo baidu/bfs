@@ -140,6 +140,7 @@ void BlockMappingManager::TransToString(const std::map<int32_t, std::set<int64_t
             output->append(common::NumToString(*block_it) + " ");
             if (output->size() - last > 1024) {
                 output->append("...");
+                break;
             }
         }
         output->append("<br>");
