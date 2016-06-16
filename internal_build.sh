@@ -45,6 +45,19 @@ if [ ! -f "${FLAG_DIR}/protobuf_2_6_1" ] \
     touch "${FLAG_DIR}/protobuf_2_6_1"
 fi
 
+#leveldb
+if [ ! -f "${FLAG_DIR}/leveldb" ] \
+    || [ ! -d "${DEPS_PREFIX}/leveldb" ]; then
+    rm -rf leveldb
+    git clone --depth=1 https://github.com/lylei/leveldb.git leveldb
+    cd leveldb
+    echo "PREFIX=${DEPS_PREFIX}" > config.mk
+    make -j4
+    make install
+    cd -
+    touch "${FLAG_DIR}/leveldb"
+fi
+
 # snappy
 if [ ! -f "${FLAG_DIR}/snappy_1_1_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libsnappy.a" ] \
