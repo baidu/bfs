@@ -11,14 +11,17 @@
 namespace baidu {
 namespace bfs {
 
-LogDB::LogDB(const std::string& db_path) : dbpath_(db_path), write_log_(NULL), read_log_(NULL),
-                                           write_index_(NULL), read_index_(NULL),
-                                           marker_log_(NULL) {
-    if(!Init()) {
+LogDB::LogDB(const DBOption& option) : dbpath_(option.path),
+                                       snapshot_interval_(option.snapshot_interval),
+                                       write_log_(NULL), read_log_(NULL),
+                                       write_index_(NULL), read_index_(NULL),
+                                       marker_log_(NULL) {
+    if(!RecoverMarker()) {
+        LOG(WARNING, "[LogDB] RecoverMarker failed reason: %s", strerror(errno));
         assert(0);
     }
     thread_pool_ = new ThreadPool(10);
-    thread_pool_->AddTask(boost::bind(&LogDB::WriteMarkerSnapshot, this));
+    WriteMarkerSnapshot();
 }
 
 LogDB::~LogDB() {
@@ -31,6 +34,7 @@ LogDB::~LogDB() {
 }
 
 StatusCode LogDB::Write(int64_t index, const std::string& entry) {
+
     return kOK;
 }
 
@@ -86,14 +90,6 @@ void LogDB::DeleteUpTo(int64_t index) {
 
 void LogDB::DeleteFrom(int64_t index) {
 
-}
-
-bool LogDB::Init() {
-    if (!RecoverMarker()) {
-        LOG(WARNING, "[LogDB] RecoverMarker failed reason: %s", strerror(errno));
-        return false;
-    }
-    return true;
 }
 
 bool LogDB::RecoverMarker() {
@@ -152,7 +148,8 @@ void LogDB::WriteMarkerSnapshot() {
         LOG(WARNING, "[LogDB] open marker.mak failed %s", strerror(errno));
         return;
     }
-    thread_pool_->DelayTask(5000, boost::bind(&LogDB::WriteMarkerSnapshot, this));
+    LOG(INFO, "[LogDB] WriteMarkerSnapshot done");
+    thread_pool_->DelayTask(snapshot_interval_, boost::bind(&LogDB::WriteMarkerSnapshot, this));
 }
 
 int LogDB::ReadOne(FILE* fp, std::string* data) {

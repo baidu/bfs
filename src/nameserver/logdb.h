@@ -18,6 +18,13 @@
 namespace baidu {
 namespace bfs {
 
+struct DBOption
+{
+    std::string path;
+    int64_t snapshot_interval; // write marker snapshot interval, in ms
+    DBOption() : path("./"), snapshot_interval(5000) {}
+};
+
 struct LogDataEntry // entry_length + index + log
 {
     int64_t index;
@@ -36,7 +43,7 @@ struct MarkerEntry // entry_length + key_len + key + value_len + value
 
 class LogDB {
 public:
-    LogDB(const std::string& db_path);
+    LogDB(const DBOption& option);
     ~LogDB();
     // Write log entry
     StatusCode Write(int64_t index, const std::string& entry);
@@ -63,7 +70,6 @@ public:
     static void DecodeLogEntry(const std::string& data, LogDataEntry* log);
     static void DecodeMarker(const std::string& data, MarkerEntry* marker);
 private:
-    bool Init();
     bool RecoverMarker();
     void WriteMarkerSnapshot();
     void EncodeLogEntry(const LogDataEntry& log, std::string* data);
@@ -71,13 +77,16 @@ private:
 private:
     Mutex mu_;
     ThreadPool* thread_pool_;
+
     std::string dbpath_;
+    int64_t snapshot_interval_;
+    std::map<std::string, std::string> markers_;
+
     FILE* write_log_;   // log file ends with '.log'
     FILE* read_log_;
     FILE* write_index_; // index file ends with '.idx'
     FILE* read_index_;
     FILE* marker_log_;  // marker file names 'marker.mak'
-    std::map<std::string, std::string> markers_;
 };
 
 } // namespace bfs
