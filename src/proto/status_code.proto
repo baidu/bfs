@@ -47,3 +47,8 @@ enum SyncStatus {
     kSyncWrite = 0;
     kSyncDelete = 1;
 }
+
+enum RecoverPri {
+    kHigh = 0;
+    kLow = 1;
+}

@@ -23,13 +23,16 @@
 DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
+DECLARE_int32(block_id_allocation_size);
 
 const int64_t kRootEntryid = 1;
+
 
 namespace baidu {
 namespace bfs {
 
-NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1) {
+NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
+    block_id_upbound_(0), next_block_id_(block_id_upbound_ + 1) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -66,6 +69,20 @@ void NameSpace::Activate(NameServerLog* log) {
         }
         EncodeLog(log, kSyncWrite, version_key, version_str);
         LOG(INFO, "Create new namespace version: %ld ", version_);
+    }
+    std::string block_id_upbound_key(8, 0);
+    block_id_upbound_key.append("block_id_upbound");
+    std::string block_id_upbound_str;
+    s = db_->Get(leveldb::ReadOptions(), block_id_upbound_key, &block_id_upbound_str);
+    if (s.IsNotFound()) {
+        LOG(INFO, "Init block id upbound");
+        UpdateBlockIdUpbound(log);
+    } else if (s.ok()) {
+        block_id_upbound_ = *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0]));
+        LOG(INFO, "Load block id upbound: %ld", block_id_upbound_);
+        UpdateBlockIdUpbound(log);
+    } else {
+        LOG(FATAL, "Load block id upbound failed: %s", s.ToString().c_str());
     }
     SetupRoot();
 }
@@ -552,6 +569,33 @@ uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
     entry->set_value(value);
     return entry->ByteSize();
 }
+void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
+    std::string block_id_upbound_key(8, 0);
+    block_id_upbound_key.append("block_id_upbound");
+    std::string block_id_upbound_str;
+    block_id_upbound_str.resize(8);
+    next_block_id_ = block_id_upbound_ + 1;
+    block_id_upbound_ += FLAGS_block_id_allocation_size;
+    *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
+    if (!s.ok()) {
+        LOG(FATAL, "Update block id upbound fail: %s", s.ToString().c_str());
+    } else {
+        LOG(INFO, "Update block id upbound to %ld", block_id_upbound_);
+    }
+    EncodeLog(log, kSyncWrite, block_id_upbound_key, block_id_upbound_str);
+}
+
+int64_t NameSpace::GetNewBlockId(NameServerLog* log) {
+    MutexLock lock(&mu_);
+    if (next_block_id_ == block_id_upbound_) {
+        UpdateBlockIdUpbound(log);
+        return next_block_id_;
+    } else {
+        return next_block_id_++;
+    }
+}
+
 /*
 bool NameSpace::RecoverLog() {
     int ret = sync_->ScanLog();

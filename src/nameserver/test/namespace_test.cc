@@ -72,7 +72,7 @@ TEST_F(NameSpaceTest, NameSpace) {
         system("rm -rf ./db");
         NameSpace init_ns;
         leveldb::Iterator* it = init_ns.db_->NewIterator(leveldb::ReadOptions());
-        it->SeekToFirst();
+        it->Seek(std::string(8, 0) + "version");
         ASSERT_TRUE(it->Valid());
         ASSERT_EQ(it->key().ToString(), std::string(8, 0) + "version");
         version = it->value().ToString();
@@ -83,7 +83,7 @@ TEST_F(NameSpaceTest, NameSpace) {
     NameSpace ns;
     CreateTree(&ns);
     leveldb::Iterator* it = ns.db_->NewIterator(leveldb::ReadOptions());
-    it->SeekToFirst();
+    it->Seek(std::string(8, 0) + "version");
     ASSERT_EQ(version, it->value().ToString());
 
     // Iterate namespace
