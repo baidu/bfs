@@ -131,8 +131,31 @@ TEST_F(NameSpaceTest, List) {
     google::protobuf::RepeatedPtrField<FileInfo> outputs;
     ASSERT_EQ(0, ns.ListDirectory("/dir1", &outputs));
     ASSERT_EQ(4, outputs.size());
+    ASSERT_EQ(std::string("."), outputs.Get(0).name());
+    ASSERT_EQ(std::string(".."), outputs.Get(1).name());
     ASSERT_EQ(std::string("subdir1"), outputs.Get(2).name());
     ASSERT_EQ(std::string("subdir2"), outputs.Get(3).name());
+    ASSERT_EQ(0, ns.ListDirectory("/", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(std::string("file1"), outputs.Get(3).name());
+    ASSERT_EQ(0, ns.ListDirectory("/..", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(0, ns.ListDirectory("/.././../", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(std::string("file2"), outputs.Get(4).name());
+    ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1/../.", &outputs));
+    ASSERT_EQ(4, outputs.size());
+    ASSERT_EQ(std::string("subdir1"), outputs.Get(2).name());
+    ASSERT_EQ(std::string("subdir2"), outputs.Get(3).name());
+    ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1/file3", &outputs));
+    ASSERT_EQ(1, outputs.size());
+    ASSERT_EQ(std::string("file3"), outputs.Get(0).name());
+    ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1/../../", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(std::string("xdir"), outputs.Get(5).name());
+    ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1/../../..", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(std::string("xdir"), outputs.Get(5).name());
 }
 
 TEST_F(NameSpaceTest, Rename) {
