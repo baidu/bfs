@@ -81,6 +81,7 @@ private:
     std::string dbpath_;
     int64_t snapshot_interval_;
     std::map<std::string, std::string> markers_;
+    int64_t largest_index_;
 
     FILE* write_log_;   // log file ends with '.log'
     FILE* read_log_;

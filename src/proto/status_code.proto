@@ -22,6 +22,7 @@ enum StatusCode {
     kCsTooMuchUnfinishedWrite = 18;
     kSafeMode = 20;
     kIsFollower = 21;
+    kBadParameter = 22;
 }
 
 enum ChunkServerStatus {

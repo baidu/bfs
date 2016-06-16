@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <common/logging.h>
+#include <common/string_util.h>
 #include <boost/bind.hpp>
 #include "nameserver/logdb.h"
 
@@ -13,6 +14,7 @@ namespace bfs {
 
 LogDB::LogDB(const DBOption& option) : dbpath_(option.path),
                                        snapshot_interval_(option.snapshot_interval),
+                                       largest_index_(-1),
                                        write_log_(NULL), read_log_(NULL),
                                        write_index_(NULL), read_index_(NULL),
                                        marker_log_(NULL) {
@@ -34,7 +36,22 @@ LogDB::~LogDB() {
 }
 
 StatusCode LogDB::Write(int64_t index, const std::string& entry) {
-
+    if (index <= largest_index_) {
+        LOG(INFO, "[LogDB] Write with smaller index = %ld largest_index_ = %ld ",
+                index, largest_index_);
+        return kBadParameter;
+    }
+    std::string data;
+    EncodeLogEntry(LogDataEntry(index, entry), &data);
+    MutexLock lock(&mu_);
+    if (!write_log_) {
+        write_log_ = fopen(common::NumToString(index) + ".log", "w");
+        write_index_ = fopen(common::NumToString(index) + ".idx", "w");
+    }
+    int64_t offset = ftell(write_log_);
+    if (fwrite(data.c_str(), 1, data.length(), write_log_) != data.length()) {
+        return kWriteError;
+    }
     return kOK;
 }
 
@@ -81,7 +98,7 @@ StatusCode LogDB::ReadMarker(const std::string& key, int64_t* value) {
 }
 
 StatusCode LogDB::GetLargestIdx(int64_t* value) {
-    return kOK;
+    return largest_index_;
 }
 
 void LogDB::DeleteUpTo(int64_t index) {
