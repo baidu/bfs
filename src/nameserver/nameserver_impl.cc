@@ -57,7 +57,6 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     CheckLeader();
     start_time_ = common::timer::get_micros();
     work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
@@ -72,6 +71,8 @@ void NameServerImpl::CheckLeader() {
             LOG(FATAL, "LogRemote namespace update fail");
         }
         namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
+        safe_mode_ = FLAGS_nameserver_safemode_time;
+        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
     } else {
         is_leader_ = false;
