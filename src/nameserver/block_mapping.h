@@ -38,7 +38,6 @@ struct NSBlock {
 class BlockMapping {
 public:
     BlockMapping();
-    int64_t NewBlockID();
     bool GetBlock(int64_t block_id, NSBlock* block);
     bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);

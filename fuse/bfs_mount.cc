@@ -406,6 +406,10 @@ void* bfs_init(struct fuse_conn_info *conn) {
         fprintf(stderr, BFS"Open file sytem: %s fail\n", g_bfs_cluster.c_str());
         abort();
     }
+    if (!g_fs->Access(g_bfs_path.c_str(), R_OK | W_OK)) {
+        fprintf(stderr, BFS"Mount a wrong path or have no permission: %s\n", g_bfs_path.c_str());
+        abort();
+    }
     return g_fs;
 }
 
