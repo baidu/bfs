@@ -320,7 +320,9 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         localtime_r(&ctime, &stm);
         snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
-        if (strcmp(files[i].name, ".") == 0|| strcmp(files[i].name, "..") == 0) {
+        if (num == 1) {
+            printf("%s\t%s  %s\n", statbuf, timestr, path_prefix.c_str());
+        } else if (strcmp(files[i].name, ".") == 0 || strcmp(files[i].name, "..") == 0) {
             printf("%s\t%s  %s\n", statbuf, timestr, files[i].name);
         } else {
             printf("%s\t%s  %s/%s\n", statbuf, timestr, path_prefix.c_str(), files[i].name);

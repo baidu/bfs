@@ -130,7 +130,6 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info, FileInfo* parent
     }
     int64_t entry_id = kRootEntryid;
     std::stack<FileInfo> file_infos;
-    std::stack<std::string> effect_paths;
     info->CopyFrom(root_path_);
     size_t i = 0;
     while (i < paths.size()) {
@@ -141,19 +140,16 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info, FileInfo* parent
         if (paths[i] == "..") {
             if (file_infos.empty()) {
                 file_infos.push(root_path_);
-                effect_paths.push("/");
                 i++;
                 continue;
             }
             info->CopyFrom(file_infos.top());
             entry_id = info->entry_id();
             file_infos.pop();
-            effect_paths.pop();
             i++;
             continue;
         }
         file_infos.push(*info);
-        effect_paths.push(paths[i]);
         if (!LookUp(entry_id, paths[i], info)) {
             return false;
         }
@@ -170,11 +166,9 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info, FileInfo* parent
         }
     }
 
-    if (!effect_paths.empty()) {
-        info->set_name(effect_paths.top());
+    if (!file_infos.empty()) {
         info->set_parent_entry_id(file_infos.top().entry_id());
     } else {
-        info->set_name("/");
         info->set_parent_entry_id(kRootEntryid);
     }
     LOG(INFO, "LookUp %s return %s", path.c_str(), info->name().c_str());
@@ -230,6 +224,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             file_info.set_type((1<<9)|0755);
             file_info.set_ctime(time(NULL));
             file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
+            file_info.set_name(paths[i]);
             file_info.SerializeToString(&info_value);
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
@@ -261,6 +256,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
+    file_info.set_name(paths[paths.size() - 1]);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     std::string file_key;
