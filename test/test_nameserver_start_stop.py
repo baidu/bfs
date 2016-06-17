@@ -9,117 +9,94 @@ import time
 import os
 import nose.tools
 import common
+
+from conf import const
     
 def setUp():
     common.bfs_clear()
-    common.print_debug_msg(1, "clear data and status is ok")
+    print "clear data and status is ok"
     common.bfs_deploy()
-    common.print_debug_msg(1, "deploy nameserver, chunkserver and status is ok")
-    #common.bfs_start()
-    #common.print_debug_msg(1, "start nameserver, chunkserver and status is ok")
+    print "deploy nameserver, chunkserver and status is ok"
 
 def tearDown():
+    ret = common.check_core()
+    nose.tools.assert_equal(ret, 0) 
     common.bfs_stop_all()
-    common.print_debug_msg(1, "stop nameserver, chunkserver and status is ok")
+    print "stop nameserver, chunkserver and status is ok"
     
     '''
     test nameserver start method
     '''
 def test_nameserver_start_normal():
 
-    common.print_debug_msg(2, "test nameserver start")
-
-    cmd = "cd nameserver0 && ./bin/nameserver 1>nlog 2>&1 &"
+    cmd = "cd %s/nameserver0 && ./bin/nameserver 1>nlog 2>&1 &" % const.work_dir
     print time.strftime("%Y%m%d-%H%M%S") + " command: "+cmd
-    #p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-    #(out,err) = p.communicate()
-    #print "stdout: "
-    #print out
-    #print "stderr: "
-    #print err
-    #print "returncode: %d" % p.returncode
-    #ret = p.returncode
     ret = os.system(cmd)
     nose.tools.assert_equal(ret, 0)
     time.sleep(3)
-    return ret
 
     '''
     test nameserver stop method
     '''
 def test_nameserver_stop_normal():
 
-    common.print_debug_msg(3, "test nameserver stop")
-
     cmd = "killall -9 nameserver"
     print time.strftime("%Y%m%d-%H%M%S") + " command: "+cmd
-    ret = common.runcmd(cmd, ignore_status=True)
-    #ret = os.system(cmd)
+    (ret, out, err) = common.runcmd(cmd)
     nose.tools.assert_equal(ret, 0)
     time.sleep(3)
-    ret1 = common.check_core()
-    nose.tools.assert_equal(ret1, 0)
-    return ret+ret1
+    ret1 = common.check_process(type = "nameserver")
+    nose.tools.assert_equal(ret1, 1)
 
     '''
     test nameserver restart method
     '''
 def test_nameserver_restart_normal():
 
-    common.print_debug_msg(3, "test nameserver restart")
-    
     common.bfs_stop_all()
-    common.print_debug_msg(3, "stop nameserver, chunkserver and status is ok")
 
-    cmd = "cd nameserver0 && ./bin/nameserver 1>nlog 2>&1 &"
+    cmd = "cd %s/nameserver0 && ./bin/nameserver 1>nlog 2>&1 &" % const.work_dir
     print time.strftime("%Y%m%d-%H%M%S") + " command: "+cmd
     ret = os.system(cmd)
     nose.tools.assert_equal(ret, 0)
     time.sleep(3)
-    common.check_core()
-    return ret
-
+    ret1 = common.check_process(type = "nameserver")
+    
 
     '''
     test nameserver start twice method
     '''
 def test_nameserver_start_twice():
 
-    common.print_debug_msg(4, "test nameserver start twice")
-
-    cmd = "cd nameserver0 && ./bin/nameserver 1>nlog 2>&1 &"
+    cmd = "cd %s/nameserver0 && ./bin/nameserver 1>nlog 2>&1 &" % const.work_dir
     print time.strftime("%Y%m%d-%H%M%S") + " command: "+cmd
     ret = os.system(cmd)
     nose.tools.assert_not_equal(ret, 0)
     time.sleep(3)
-    cmd = "./bfs_client ls /"
-    ret1 = common.runcmd(cmd, ignore_status=True)
+    cmd = "%s/bfs_client touchz /test_nameserver_start_twice" % const.bfs_client_dir
+    (ret, out, err) = common.runcmd(cmd)
+    nose.tools.assert_equal(ret, 0)
+    ret1 = common.check_process(type = "nameserver")
     nose.tools.assert_equal(ret1, 0)
-    ret2 = common.check_core()
-    nose.tools.assert_equal(ret2, 0)
-    return ret+ret1+ret2
 
     '''
     test nameserver start conf not exist method
     '''
 def test_nameserver_start_conf_not_exist():
 
-    common.print_debug_msg(3, "test nameserver restart")
-
     common.bfs_stop_all()
-    common.print_debug_msg(3, "stop nameserver, chunkserver and status is ok")
     
-    common.runcmd("cd nameserver0 && mv bfs.flag bfs.flag.bak", ignore_status=False)
+    (ret, out, err) = common.runcmd("cd nameserver0 && mv bfs.flag bfs.flag.bak")
+    assert(ret == 0)
 
-    cmd = "cd nameserver0 && ./bin/nameserver 1>nlog 2>&1 &"
+    cmd = "cd %s/nameserver0 && ./bin/nameserver 1>nlog 2>&1 &" % const.work_dir
     print time.strftime("%Y%m%d-%H%M%S") + " command: "+cmd
     ret = os.system(cmd)
-    nose.tools.assert_equal(ret, 0)
+    nose.tools.assert_not_equal(ret, 0)
     time.sleep(3)
-    ret1 = common.check_core()
-    nose.tools.assert_equal(ret1, 0)
+    ret1 = common.check_process(type = "nameserver")
+    nose.tools.assert_equal(ret1, 1)
 
-    common.runcmd("cd nameserver0 && mv bfs.flag.bak bfs.flag", ignore_status=False)
-
-    return ret+ret1
+    (ret, out, err) = common.runcmd("cd nameserver0 && mv bfs.flag.bak bfs.flag")
+    assert(ret == 0)
 
