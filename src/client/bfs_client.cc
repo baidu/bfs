@@ -257,6 +257,38 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
+std::string RebuildPathPrefix(const std::string& path) {
+    if (path == "/") {
+        return "";
+    }
+    std::string prefix;
+    size_t last_pos = 0;
+    std::vector<std::string> element;
+    for (size_t i = 1; i <= path.size(); i++) {
+        if (i == path.size() || path[i] == '/') {
+            if (last_pos + 1 < i) {
+                std::string cur_name = path.substr(last_pos + 1, i - last_pos - 1);
+                if (cur_name == "." || cur_name == "./") {
+                    continue;
+                } else if (cur_name == ".." || cur_name == "../") {
+                    if (!element.empty()) {
+                        element.pop_back();
+                    } else {
+                        continue;
+                    }
+                } else {
+                    element.push_back("/" + cur_name);
+                }
+            }
+            last_pos = i;
+        }
+    }
+    for (size_t i = 0; i < element.size(); i++) {
+        prefix += element[i];
+    }
+    return prefix;
+}
+
 int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::string path("/");
     if (argc == 3) {
@@ -272,6 +304,7 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "List dir %s fail\n", path.c_str());
         return 1;
     }
+    std::string path_prefix = RebuildPathPrefix(path);
     printf("Found %d items\n", num);
     for (int i = 0; i < num; i++) {
         int32_t type = files[i].mode;
@@ -287,7 +320,11 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         localtime_r(&ctime, &stm);
         snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
-        printf("%s\t%s  %s\n", statbuf, timestr, files[i].name);
+        if (strcmp(files[i].name, ".") == 0|| strcmp(files[i].name, "..") == 0) {
+            printf("%s\t%s  %s\n", statbuf, timestr, files[i].name);
+        } else {
+            printf("%s\t%s  %s/%s\n", statbuf, timestr, path_prefix.c_str(), files[i].name);
+        }
     }
     delete files;
     return 0;
