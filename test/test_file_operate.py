@@ -155,7 +155,7 @@ def test_cat_file_exist():
 
     cmd = "cat %s/data/urllist" % const.work_dir
     (ret1, out1, err1) = common.runcmd(cmd)
-    assert(ret == 0)
+    assert(ret1 == 0)
 
     cmd = "%s/bfs_client cat /put_file_1" % const.bfs_client_dir
     (ret2, out2, err2) = common.runcmd(cmd)
