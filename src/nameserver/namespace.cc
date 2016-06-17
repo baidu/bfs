@@ -32,7 +32,7 @@ namespace baidu {
 namespace bfs {
 
 NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
-    block_id_upbound_(0), next_block_id_(-1) {
+    block_id_upbound_(1), next_block_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -591,7 +591,7 @@ int64_t NameSpace::GetNewBlockId(NameServerLog* log) {
     if (next_block_id_ == block_id_upbound_) {
         UpdateBlockIdUpbound(log);
     }
-    return ++next_block_id_;
+    return next_block_id_++;
 }
 
 /*
