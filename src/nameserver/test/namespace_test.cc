@@ -271,7 +271,7 @@ TEST_F(NameSpaceTest, GetNewBlockId) {
     system("rm -rf ./db");
     FLAGS_block_id_allocation_size = 10000;
     NameSpace ns;
-    for (int i = 1; i <= 10010; i++) {
+    for (int i = 1; i <= 20010; i++) {
         ASSERT_EQ(ns.GetNewBlockId(NULL), i);
     }
 }
