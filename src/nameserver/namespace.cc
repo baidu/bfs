@@ -256,7 +256,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
-    file_info.set_name(paths[paths.size() - 1]);
+    file_info.set_name(fname);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     std::string file_key;
@@ -372,8 +372,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     std::string new_key;
     EncodingStoreKey(parent_id, dst_name, &new_key);
     std::string value;
-    old_file.clear_parent_entry_id();
-    old_file.clear_name();
+    old_file.set_name(dst_name);
+    old_file.set_parent_entry_id(parent_id);
     old_file.SerializeToString(&value);
 
     // Write to persistent storage
