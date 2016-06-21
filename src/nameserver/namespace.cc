@@ -70,20 +70,6 @@ void NameSpace::Activate(NameServerLog* log) {
         EncodeLog(log, kSyncWrite, version_key, version_str);
         LOG(INFO, "Create new namespace version: %ld ", version_);
     }
-    std::string block_id_upbound_key(8, 0);
-    block_id_upbound_key.append("block_id_upbound");
-    std::string block_id_upbound_str;
-    s = db_->Get(leveldb::ReadOptions(), block_id_upbound_key, &block_id_upbound_str);
-    if (s.IsNotFound()) {
-        LOG(INFO, "Init block id upbound");
-        UpdateBlockIdUpbound(log);
-    } else if (s.ok()) {
-        block_id_upbound_ = *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0]));
-        LOG(INFO, "Load block id upbound: %ld", block_id_upbound_);
-        UpdateBlockIdUpbound(log);
-    } else {
-        LOG(FATAL, "Load block id upbound failed: %s", s.ToString().c_str());
-    }
     SetupRoot();
 }
 NameSpace::~NameSpace() {
@@ -514,6 +500,12 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
         assert(ret);
         if (!IsDir(file_info.type())) {
             //a file
+            for (int i = 0; i < file_info.blocks_size(); i++) {
+                if (file_info.blocks(i) >= next_block_id_) {
+                    next_block_id_ = file_info.blocks(i) + 1;
+                    block_id_upbound_ = next_block_id_;
+                }
+            }
             callback(file_info);
         }
     }
@@ -580,7 +572,7 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     block_id_upbound_key.append("block_id_upbound");
     std::string block_id_upbound_str;
     block_id_upbound_str.resize(8);
-    next_block_id_ = block_id_upbound_;
+    assert(next_block_id_ = block_id_upbound_);
     block_id_upbound_ += FLAGS_block_id_allocation_size;
     *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
@@ -590,6 +582,23 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
         LOG(INFO, "Update block id upbound to %ld", block_id_upbound_);
     }
     EncodeLog(log, kSyncWrite, block_id_upbound_key, block_id_upbound_str);
+}
+void NameSpace::InitBlockIdUpbound(NameServerLog* log) {
+    std::string block_id_upbound_key(8, 0);
+    block_id_upbound_key.append("block_id_upbound");
+    std::string block_id_upbound_str;
+    leveldb::Status s = db_->Get(leveldb::ReadOptions(), block_id_upbound_key, &block_id_upbound_str);
+    if (s.IsNotFound()) {
+        LOG(INFO, "Init block id upbound");
+        UpdateBlockIdUpbound(log);
+    } else if (s.ok()) {
+        block_id_upbound_ = *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0]));
+        next_block_id_ = block_id_upbound_;
+        LOG(INFO, "Load block id upbound: %ld", block_id_upbound_);
+        UpdateBlockIdUpbound(log);
+    } else {
+        LOG(FATAL, "Load block id upbound failed: %s", s.ToString().c_str());
+    }
 }
 
 int64_t NameSpace::GetNewBlockId(NameServerLog* log) {

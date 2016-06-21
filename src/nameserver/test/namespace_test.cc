@@ -8,6 +8,7 @@
 #include "nameserver/namespace.h"
 
 #include <common/util.h>
+#include <common/string_util.h>
 #include <fcntl.h>
 
 #include <gflags/gflags.h>
@@ -274,10 +275,20 @@ TEST_F(NameSpaceTest, NormalizePath) {
 TEST_F(NameSpaceTest, GetNewBlockId) {
     system("rm -rf ./db");
     FLAGS_block_id_allocation_size = 10000;
-    NameSpace ns;
-    for (int i = 1; i <= 20010; i++) {
-        ASSERT_EQ(ns.GetNewBlockId(NULL), i);
+    {
+        NameSpace ns;
+        for (int i = 1; i <= 20010; i++) {
+            ASSERT_EQ(ns.GetNewBlockId(NULL), i);
+        }
     }
+    {
+        NameSpace ns;
+        ns.InitBlockIdUpbound(NULL);
+        for (int i = 1; i <= 20010; i++) {
+            ASSERT_EQ(ns.GetNewBlockId(NULL), i + 30000);
+        }
+    }
+
 }
 
 }

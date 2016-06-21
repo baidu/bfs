@@ -58,6 +58,7 @@ public:
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
     int64_t GetNewBlockId(NameServerLog* log);
+    void InitBlockIdUpbound(NameServerLog* log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,

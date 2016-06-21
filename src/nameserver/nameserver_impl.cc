@@ -67,10 +67,11 @@ void NameServerImpl::CheckLeader() {
         LOG(INFO, "Leader nameserver, rebuild block map.");
         NameServerLog log;
         namespace_->Activate(&log);
+        namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
+        namespace_->InitBlockIdUpbound(&log);
         if (!LogRemote(log, boost::function<void (bool)>())) {
             LOG(FATAL, "LogRemote namespace update fail");
         }
-        namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
         safe_mode_ = FLAGS_nameserver_safemode_time;
         work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
