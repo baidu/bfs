@@ -57,7 +57,6 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     CheckLeader();
     start_time_ = common::timer::get_micros();
     work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
@@ -72,6 +71,8 @@ void NameServerImpl::CheckLeader() {
             LOG(FATAL, "LogRemote namespace update fail");
         }
         namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
+        safe_mode_ = FLAGS_nameserver_safemode_time;
+        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
     } else {
         is_leader_ = false;
@@ -325,7 +326,11 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     }
     int replica_num = request->replica_num();
     NameServerLog log;
-    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &log);
+    std::vector<int64_t> blocks_to_remove;
+    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove, &log);
+    for (size_t i = 0; i < blocks_to_remove.size(); i++) {
+        block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
+    }
     response->set_status(status);
     if (status != kOK) {
         done->Run();

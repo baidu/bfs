@@ -8,7 +8,7 @@ include depends.mk
 
 INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
-               -I./thirdparty/leveldb/include \
+               -I$(LEVELDB_PATH)/include \
                -I$(SNAPPY_PATH)/include \
                -I$(BOOST_PATH) \
                -I$(GFLAG_PATH)/include \
@@ -16,7 +16,7 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
 
 LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(PROTOBUF_PATH)/lib -lprotobuf \
-          -L./thirdparty/leveldb -lleveldb \
+          -L$(LEVELDB_PATH)/lib -lleveldb \
           -L$(SNAPPY_PATH)/lib -lsnappy \
           -L$(GFLAG_PATH)/lib -lgflags \
           -L$(GTEST_PATH)/lib -lgtest \
@@ -52,8 +52,6 @@ FUSE_HEADER = $(wildcard fuse/*.h)
 
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
-
-LEVELDB = ./thirdparty/leveldb/libleveldb.a
 
 FLAGS_OBJ = src/flags.o
 VERSION_OBJ = src/version.o
@@ -120,25 +118,23 @@ chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
-nameserver: $(NAMESERVER_OBJ) $(OBJS) $(LEVELDB)
+nameserver: $(NAMESERVER_OBJ) $(OBJS)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
-chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) $(LEVELDB)
+chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
 	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)
 
-bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
+bfs_client: $(CLIENT_OBJ) $(LIBS)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
-mark: $(MARK_OBJ) $(LIBS) $(LEVELDB)
+mark: $(MARK_OBJ) $(LIBS)
 	$(CXX) $(MARK_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
-$(LEVELDB):
-	cd thirdparty/leveldb; make -j4
 
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@

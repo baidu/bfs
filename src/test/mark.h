@@ -29,6 +29,7 @@ private:
     common::Counter put_counter_;
     common::Counter del_counter_;
     common::Counter read_counter_;
+    common::Counter all_counter_;
     common::ThreadPool* thread_pool_;
     Random** rand_;
     int64_t file_size_;
