@@ -30,7 +30,8 @@ public:
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
     StatusCode CreateFile(const std::string& file_name, int flags, int mode,
-                          int replica_num, NameServerLog* log = NULL);
+                          int replica_num, std::vector<int64_t>* blocks_to_remove,
+                          NameServerLog* log = NULL);
     /// Remove file by name
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
