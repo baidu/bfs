@@ -1,5 +1,4 @@
 #define private public
-#include "nameserver/logdb.h"
 
 #include <iostream>
 #include <vector>
@@ -11,20 +10,39 @@
 #include <common/string_util.h>
 #include <common/thread.h>
 
+#include "nameserver/logdb.h"
+#include "proto/status_code.pb.h"
+
 namespace baidu {
 namespace bfs {
 
 class LogDBTest : public ::testing::Test {
 public:
-    LogDBTest() {}
+    LogDBTest() {
+        option.path = "./dbtest";
+        system("rm -rf ./dbtest");
+    }
 protected:
+    DBOption option;
 };
-
-DBOption option;
 
 void WriteMarker_Helper(const std::string& key, int n, LogDB* logdb) {
     for (int i = 0; i < n; ++i) {
         logdb->WriteMarker(key, i);
+    }
+}
+
+void WriteLog_Helper(int start, int n, LogDB* logdb) {
+    for (int i = start; i < start + n; ++i) {
+        logdb->Write(i, common::NumToString(i) + "test");
+    }
+}
+
+void ReadLog_Helper(int start, int n , LogDB* logdb) {
+    std::string log;
+    for (int i = start; i < start + n; ++i) {
+        logdb->Read(i, &log);
+        ASSERT_EQ(log, common::NumToString(i) + "test");
     }
 }
 
@@ -33,9 +51,9 @@ TEST_F(LogDBTest, EncodeLogEntry) {
     LogDataEntry entry(3, "helloworld");
     std::string str;
     logdb.EncodeLogEntry(entry, &str);
-    ASSERT_EQ(str.length(), 22U);
+    ASSERT_EQ(str.length(), 18U);
     LogDataEntry decode_entry;
-    logdb.DecodeLogEntry(str.substr(4), &decode_entry);
+    logdb.DecodeLogEntry(str, &decode_entry);
     ASSERT_EQ(decode_entry.index, 3);
     ASSERT_EQ(decode_entry.entry, "helloworld");
 }
@@ -45,36 +63,40 @@ TEST_F(LogDBTest, EncodeMarker) {
     MarkerEntry marker("key", "value");
     std::string str;
     logdb.EncodeMarker(marker, &str);
-    ASSERT_EQ(str.length(), 20U);
+    ASSERT_EQ(str.length(), 16U);
     MarkerEntry decode_marker;
-    logdb.DecodeMarker(str.substr(4), &decode_marker);
+    logdb.DecodeMarker(str, &decode_marker);
     ASSERT_EQ(decode_marker.key, "key");
     ASSERT_EQ(decode_marker.value, "value");
 }
 
+
 TEST_F(LogDBTest, ReadOne) {
     LogDB logdb(option);
-    LogDataEntry entry(3, "helloworld");
+    LogDataEntry entry(0, "helloworld");
     std::string str;
+    int32_t len = 18;
+    str.append(reinterpret_cast<char*>(&len), 4);
     logdb.EncodeLogEntry(entry, &str);
 
-    FILE* fp = fopen("marker.mak", "w");
+    FILE* fp = fopen((option.path + "/0.log").c_str(), "w");
     fwrite(str.c_str(), 1, str.length(), fp);
     fclose(fp);
-    fp = fopen("marker.mak", "r");
+    fp = fopen((option.path + "/0.log").c_str(), "r");
     std::string res;
     logdb.ReadOne(fp, &res);
     fclose(fp);
     ASSERT_EQ(res, str.substr(4));
 
-    fp = fopen("marker.mak", "a");
+    fp = fopen((option.path + "/0.log").c_str(), "a");
     fwrite("foo", 1, 3, fp);
     fclose(fp);
-    fp = fopen("marker.mak", "r");
+    fp = fopen((option.path + "/0.log").c_str(), "r");
     ASSERT_EQ(logdb.ReadOne(fp, &res), 18);
     ASSERT_EQ(logdb.ReadOne(fp, &res), -1);
+    fclose(fp);
 
-    remove("marker.mak");
+    //system("rm -rf ./dbtest");
 }
 
 TEST_F(LogDBTest, WriteMarker) {
@@ -116,23 +138,95 @@ TEST_F(LogDBTest, WriteMarker) {
         ASSERT_EQ(99, v);
     }
     delete logdb;
-    remove("marker.mak");
+    system("rm -rf ./dbtest");
 }
 
 TEST_F(LogDBTest, WriteMarkerSnapshot) {
     DBOption option;
     option.snapshot_interval = 300;
     LogDB logdb(option);
-    WriteMarker_Helper("mark", 1000000, &logdb);
+    WriteMarker_Helper("mark", 500000, &logdb);
     usleep(300000);
     int64_t v;
     logdb.ReadMarker("mark", &v);
-    ASSERT_EQ(999999, v);
+    ASSERT_EQ(499999, v);
     struct stat sta;
     ASSERT_EQ(0, lstat("marker.mak", &sta));
     ASSERT_EQ(24, sta.st_size);
-    remove("marker.mak");
+    system("rm -rf ./dbtest");
 }
+
+TEST_F(LogDBTest, Write) {
+    LogDB* logdb = new LogDB(option);
+    WriteLog_Helper(0, 3, logdb);
+    ReadLog_Helper(0, 3, logdb);
+
+    // test build file cache
+    delete logdb;
+    logdb = new LogDB(option);
+    WriteLog_Helper(3, 2, logdb);
+    ReadLog_Helper(0, 5, logdb);
+    std::string entry;
+    ASSERT_EQ(logdb->Read(6, &entry), kNotFound);
+    ASSERT_EQ(logdb->Write(1, "bad"), kBadParameter);
+    ASSERT_EQ(logdb->Write(7, "bad"), kBadParameter);
+    delete logdb;
+    system("rm -rf ./dbtest");
+
+    logdb = new LogDB(option);
+    WriteLog_Helper(10, 5, logdb);
+    ReadLog_Helper(10, 5, logdb);
+    delete logdb;
+    logdb = new LogDB(option);
+    WriteLog_Helper(15, 5, logdb);
+    ReadLog_Helper(15, 5, logdb);
+    system("rm -rf ./dbtest");
+}
+
+TEST_F(LogDBTest, Read) {
+    LogDB* logdb = new LogDB(option);
+    WriteLog_Helper(0, 500, logdb);
+    std::vector<common::Thread*> threads;
+    for (int i = 0; i < 5; ++i) {
+        common::Thread* t = new common::Thread();
+        t->Start(boost::bind(&ReadLog_Helper, i * 100, 100, logdb));
+        threads.push_back(t);
+    }
+    for (int i = 0; i < 5; ++i) {
+        threads[i]->Join();
+        delete threads[i];
+    }
+    delete logdb;
+    system("rm -rf ./dbtest");
+}
+
+// TODO
+TEST_F(LogDBTest, NewWriteLog) {
+    DBOption option;
+    option.log_size = 1;
+    option.path = "./dbtest";
+    LogDB* logdb = new LogDB(option);
+    WriteLog_Helper(0, 200000, logdb);
+    delete logdb;
+    system("rm -rf ./dbtest");
+}
+
+// TODO
+TEST_F(LogDBTest, DeleteUpTo) {
+    DBOption option;
+    option.log_size = 1;
+    option.path = "./dbtest";
+    LogDB* logdb = new LogDB(option);
+    WriteLog_Helper(0, 200000, logdb);
+    // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
+    int ret = access("./dbtest/0.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    logdb->DeleteUpTo(99999);
+
+    delete logdb;
+    system("rm -rf ./dbtest");
+}
+
 
 } // namespace bfs
 } // namespace baidu

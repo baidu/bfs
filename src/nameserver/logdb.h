@@ -22,7 +22,8 @@ struct DBOption
 {
     std::string path;
     int64_t snapshot_interval; // write marker snapshot interval, in ms
-    DBOption() : path("./"), snapshot_interval(5000) {}
+    int64_t log_size;
+    DBOption() : path("./"), snapshot_interval(5000), log_size(128) /* in MB */ {}
 };
 
 struct LogDataEntry // entry_length + index + log
@@ -61,9 +62,9 @@ public:
     // Return the largest index in logdb. Return -1 if db is empty.
     StatusCode GetLargestIdx(int64_t* value);
     // delete all entries smaller than or equal to 'index'
-    void DeleteUpTo(int64_t index);
+    StatusCode DeleteUpTo(int64_t index);
     // delete all entries larter than or equal to 'index'
-    void DeleteFrom(int64_t index);
+    StatusCode DeleteFrom(int64_t index);
 
     /// for dumper ///
     static int ReadOne(FILE* fp, std::string* data);
@@ -71,22 +72,29 @@ public:
     static void DecodeMarker(const std::string& data, MarkerEntry* marker);
 private:
     bool RecoverMarker();
+    bool BuildFileCache();
     void WriteMarkerSnapshot();
     void EncodeLogEntry(const LogDataEntry& log, std::string* data);
     void EncodeMarker(const MarkerEntry& marker, std::string* data);
+    bool NewWriteLog(int64_t index);
+    // ......... TODO ..........//
+    StatusCode WriteMarkerNoLock(const std::string& key, const std::string& value);
 private:
     Mutex mu_;
     ThreadPool* thread_pool_;
 
     std::string dbpath_;
     int64_t snapshot_interval_;
+    int64_t log_size_;
     std::map<std::string, std::string> markers_;
     int64_t largest_index_;
+    int64_t smallest_index_;
+    int64_t current_log_index_;
 
+    typedef std::map<int64_t, std::pair<FILE*, FILE*> > FileCache;
     FILE* write_log_;   // log file ends with '.log'
-    FILE* read_log_;
     FILE* write_index_; // index file ends with '.idx'
-    FILE* read_index_;
+    FileCache read_log_; // file cache, indext -> (idx_fp, log_fp)
     FILE* marker_log_;  // marker file names 'marker.mak'
 };
 

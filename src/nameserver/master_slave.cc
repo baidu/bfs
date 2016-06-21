@@ -43,8 +43,9 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
         LOG(INFO, "[Sync] I am Slave");
     }
     thread_pool_ = new common::ThreadPool(10);
-    mkdir("./logdb", 0755);
-    logdb_ = new LogDB("./logdb");
+    DBOption option;
+    option.path = "./logdb";
+    logdb_ = new LogDB(option);
 }
 
 void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callback) {
