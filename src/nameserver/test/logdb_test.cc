@@ -200,19 +200,7 @@ TEST_F(LogDBTest, Read) {
     system("rm -rf ./dbtest");
 }
 
-// TODO
 TEST_F(LogDBTest, NewWriteLog) {
-    DBOption option;
-    option.log_size = 1;
-    option.path = "./dbtest";
-    LogDB* logdb = new LogDB(option);
-    WriteLog_Helper(0, 200000, logdb);
-    delete logdb;
-    system("rm -rf ./dbtest");
-}
-
-// TODO
-TEST_F(LogDBTest, DeleteUpTo) {
     DBOption option;
     option.log_size = 1;
     option.path = "./dbtest";
@@ -221,12 +209,83 @@ TEST_F(LogDBTest, DeleteUpTo) {
     // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
     int ret = access("./dbtest/0.log", R_OK);
     ASSERT_EQ(ret, 0);
-    logdb->DeleteUpTo(99999);
+    ret = access("./dbtest/50462.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/100377.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/148040.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/195703.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ReadLog_Helper(0, 200000, logdb);
 
     delete logdb;
     system("rm -rf ./dbtest");
 }
 
+TEST_F(LogDBTest, DeleteUpTo) {
+    DBOption option;
+    option.log_size = 1;
+    option.path = "./dbtest";
+    LogDB* logdb = new LogDB(option);
+    WriteLog_Helper(0, 200000, logdb);
+    // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
+    logdb->DeleteUpTo(99999);
+    int ret = access("./dbtest/0.log", R_OK);
+    ASSERT_EQ(ret, -1);
+    ret = access("./dbtest/50462.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/100377.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/148040.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/195703.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ASSERT_EQ(logdb->DeleteUpTo(99999), kBadParameter);
+    ASSERT_EQ(logdb->DeleteUpTo(200001), kBadParameter);
+    ReadLog_Helper(100000, 100000, logdb);
+
+    delete logdb;
+    system("rm -rf ./dbtest");
+}
+
+TEST_F(LogDBTest, DeleteFrom) {
+    DBOption option;
+    option.log_size = 1;
+    option.path = "./dbtest";
+    LogDB* logdb = new LogDB(option);
+    WriteLog_Helper(0, 200000, logdb);
+    // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
+    logdb->DeleteFrom(100500);
+    int ret = access("./dbtest/0.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/50462.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/100377.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    ret = access("./dbtest/148040.log", R_OK);
+    ASSERT_EQ(ret, -1);
+    ret = access("./dbtest/195703.log", R_OK);
+    ASSERT_EQ(ret, -1);
+    logdb->DeleteFrom(100378);
+    ret = access("./dbtest/100377.log", R_OK);
+    ASSERT_EQ(ret, 0);
+    struct stat sta;
+    lstat("./dbtest/100377.log", &sta);
+    ASSERT_EQ(sta.st_size, 22);
+    lstat("./dbtest/100377.idx", &sta);
+    ASSERT_EQ(sta.st_size, 16);
+    logdb->DeleteFrom(100377);
+    ret = access("./dbtest/100377.log", R_OK);
+    ASSERT_EQ(ret, -1);
+    ASSERT_EQ(logdb->DeleteFrom(100377), kBadParameter);
+    ASSERT_EQ(logdb->DeleteFrom(-1), kBadParameter);
+    WriteLog_Helper(100377, 1, logdb);
+    ReadLog_Helper(0, 100378, logdb);
+
+    delete logdb;
+    system("rm -rf ./dbtest");
+}
 
 } // namespace bfs
 } // namespace baidu

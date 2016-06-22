@@ -57,15 +57,13 @@ LogDB::~LogDB() {
 
 StatusCode LogDB::Write(int64_t index, const std::string& entry) {
     MutexLock lock(&mu_);
-    if (index != largest_index_ + 1) {
-        if (largest_index_ == -1) { // TODO: clear dirty data
-            WriteMarkerNoLock(".smallest_index_", common::NumToString(index));
-            smallest_index_ = index;
-        } else {
-            LOG(INFO, "[LogDB] Write with invalid index = %ld largest_index_ = %ld ",
+    if (largest_index_ == -1) {
+        WriteMarkerNoLock(".smallest_index_", common::NumToString(index));
+        smallest_index_ = index;
+    } else if (index != largest_index_ + 1) {
+        LOG(INFO, "[LogDB] Write with invalid index = %ld largest_index_ = %ld ",
                     index, largest_index_);
-            return kBadParameter;
-        }
+        return kBadParameter;
     }
     std::string data;
     uint32_t len = 8 + entry.length();
@@ -83,6 +81,7 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
         if (!NewWriteLog(index)) {
             return kWriteError;
         }
+        offset = 0;
     }
     if (fwrite(data.c_str(), 1, data.length(), write_log_) != data.length()) {
         return kWriteError;
@@ -209,6 +208,7 @@ StatusCode LogDB::ReadMarker(const std::string& key, int64_t* value) {
 }
 
 StatusCode LogDB::GetLargestIdx(int64_t* value) {
+    MutexLock lock(&mu_);
     *value = largest_index_;
     return kOK;
 }
@@ -220,15 +220,19 @@ StatusCode LogDB::DeleteUpTo(int64_t index) {
         return kBadParameter;
     }
     MutexLock lock(&mu_);
-    smallest_index_ = index;
-    WriteMarkerNoLock(".smallest_index_", common::NumToString(index + 1));
+    smallest_index_ = index + 1;
+    WriteMarkerNoLock(".smallest_index_", common::NumToString(smallest_index_));
     FileCache::iterator upto = read_log_.begin();
-    ++upto;
     while (upto != read_log_.end()) {
         if (upto->first >= index) break;
         ++upto;
     }
-    for (FileCache::iterator it = read_log_.begin(); it != upto; ++it) {
+    if (upto != read_log_.begin()) {
+        --upto;
+    }
+    int64_t upto_index = upto->first;
+    FileCache::iterator it = read_log_.begin();
+    while (it->first != upto_index) {
         fclose((it->second).first);
         fclose((it->second).second);
         std::string prefix = dbpath_ + common::NumToString(it->first);
@@ -260,15 +264,19 @@ StatusCode LogDB::DeleteFrom(int64_t index) {
         }
         remove((prefix + ".log").c_str());
         remove((prefix + ".idx").c_str());
-        read_log_.erase(it++);
     }
+    read_log_.erase(from, read_log_.end());
     if (!read_log_.empty()) {
         FileCache::reverse_iterator it = read_log_.rbegin();
         int offset = 16 * (index - it->first);
         fseek((it->second).first, offset, SEEK_SET);
         char buf[16];
-        fread(buf, 1, 16, (it->second).first);
-        int64_t tmp_offset = reinterpret_cast<int64_t>(buf + 8);
+        int len = fread(buf, 1, 16, (it->second).first);
+        if (len == 0) {
+            return kOK;
+        }
+        int64_t tmp_offset;
+        memcpy(&tmp_offset, buf + 8, 8);
         fclose((it->second).first);
         fclose((it->second).second);
         std::string prefix = dbpath_ + common::NumToString(it->first);
