@@ -66,9 +66,9 @@ void NameServerImpl::CheckLeader() {
     if (!sync_ || sync_->IsLeader()) {
         LOG(INFO, "Leader nameserver, rebuild block map.");
         NameServerLog log;
-        namespace_->Activate(&log);
-        namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
-        namespace_->InitBlockIdUpbound(&log);
+        boost::function<void (const FileInfo&)> task =
+            boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1);
+        namespace_->Activate(task, &log);
         if (!LogRemote(log, boost::function<void (bool)>())) {
             LOG(FATAL, "LogRemote namespace update fail");
         }

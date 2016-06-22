@@ -43,11 +43,11 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
         return;
     }
     if (standalone) {
-        Activate(NULL);
+        Activate(NULL, NULL);
     }
 }
 
-void NameSpace::Activate(NameServerLog* log) {
+void NameSpace::Activate(boost::function<void (const FileInfo&)> callback, NameServerLog* log) {
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
@@ -71,6 +71,8 @@ void NameSpace::Activate(NameServerLog* log) {
         LOG(INFO, "Create new namespace version: %ld ", version_);
     }
     SetupRoot();
+    RebuildBlockMap(callback);
+    InitBlockIdUpbound(log);
 }
 NameSpace::~NameSpace() {
     delete db_;
@@ -506,7 +508,9 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
                     block_id_upbound_ = next_block_id_;
                 }
             }
-            callback(file_info);
+            if (!callback.empty()) {
+                callback(file_info);
+            }
         }
     }
     delete it;

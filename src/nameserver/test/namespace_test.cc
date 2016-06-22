@@ -283,7 +283,6 @@ TEST_F(NameSpaceTest, GetNewBlockId) {
     }
     {
         NameSpace ns;
-        ns.InitBlockIdUpbound(NULL);
         for (int i = 1; i <= 20010; i++) {
             ASSERT_EQ(ns.GetNewBlockId(NULL), i + 30000);
         }
