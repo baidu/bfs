@@ -685,7 +685,8 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         g_read_bytes.Add(len);
         g_read_ops.Inc();
         if (len < 0) {
-            LOG(INFO, "[WriteRecoverBlock] #%ld read len < 0", block->Id());
+            LOG(WARNING, "[WriteRecoverBlock] #%ld read offset %ld len %d return %d",
+                    block->Id(), offset, read_len, len);
             delete[] buf;
             return false;
         }
