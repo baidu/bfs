@@ -205,7 +205,8 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
                         buf + readlen, pread_len, offset + readlen);
         mu_.Lock("Block::Read relock", 1000);
         if (ret != pread_len) {
-            LOG(INFO, "ReadFile fail: %ld %s", ret, strerror(errno));
+            LOG(WARNING, "ReadFile fail: pread_len: %ld offset: %ld ret: %ld %s",
+                    pread_len, offset + readlen, ret, strerror(errno));
             return -2;
         }
         readlen += ret;
