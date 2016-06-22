@@ -319,6 +319,7 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<double, ChunkServerInfo*> > loads;
 
+    ChunkServerInfo* remote_cs = NULL;
     for (; it != heartbeat_list_.end(); ++it) {
         std::set<ChunkServerInfo*>& set = it->second;
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin(); sit != set.end(); ++sit) {
@@ -327,6 +328,9 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
                 LOG(INFO, "GetRecoverChains has C%d ", cs->id());
                 continue;
             } else if (cs->zone() != localzone_) {
+                if (!remote_cs) {
+                    remote_cs = cs;
+                }
                 LOG(DEBUG, "Remote zone server C%d ignore PickRecoverBlocks", cs->id());
                 continue;
             }
@@ -341,8 +345,17 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
         }
     }
     if (loads.empty()) {
-        LOG(INFO, "Recover chain failed");
-        return false;
+        if (remote_cs) {
+            double load = GetChunkserverLoad(remote_cs);
+            if (load != kChunkserverLoadMax) {
+                LOG(INFO, "Recover to remote zone C%d ", remote_cs->id());
+                loads.push_back(std::make_pair(load, remote_cs));
+            }
+        }
+        if (loads.empty()) {
+            LOG(INFO, "Recover chain failed");
+            return false;
+        }
     }
     RandomSelect(&loads, FLAGS_recover_dest_limit);
     for (int i = 0; i < static_cast<int>(loads.size()) && i < FLAGS_recover_dest_limit; ++i) {
