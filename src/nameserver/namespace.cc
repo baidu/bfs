@@ -43,8 +43,9 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
         return;
     }
     if (standalone) {
-        //only unit test can get here, so nameserver_impl doesn't exists, dont' use any callback
-        //which could touch namserver_impl or blockmapping or anything else
+        //only unit test can get here, so nameserver_impl doesn't exists,
+        //don't use any callback which could touch namserver_impl or
+        //blockmapping or anything else
         Activate(NULL, NULL);
     }
 }
