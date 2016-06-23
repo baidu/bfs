@@ -77,6 +77,7 @@ private:
     void EncodeLogEntry(const LogDataEntry& log, std::string* data);
     void EncodeMarker(const MarkerEntry& marker, std::string* data);
     bool NewWriteLog(int64_t index);
+    void FormLogName(int64_t index, std::string* log_name, std::string* idx_name);
     // ......... TODO ..........//
     StatusCode WriteMarkerNoLock(const std::string& key, const std::string& value);
 private:

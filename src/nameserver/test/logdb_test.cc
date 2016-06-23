@@ -27,7 +27,7 @@ protected:
 };
 
 void WriteMarker_Helper(const std::string& key, int n, LogDB* logdb) {
-    for (int i = 0; i < n; ++i) {
+    for (int i = 1; i <= n; ++i) {
         logdb->WriteMarker(key, i);
     }
 }
@@ -105,13 +105,13 @@ TEST_F(LogDBTest, WriteMarker) {
     WriteMarker_Helper("mark1", 10, logdb);
     int64_t v;
     logdb->ReadMarker("mark1", &v);
-    ASSERT_EQ(v, 9);
+    ASSERT_EQ(v, 10);
     delete logdb;
 
     // test recover
     logdb = new LogDB(option);
     logdb->ReadMarker("mark1", &v);
-    ASSERT_EQ(v, 9);
+    ASSERT_EQ(v, 10);
 
     // concurrency test
     std::vector<common::Thread*> threads;
@@ -127,7 +127,7 @@ TEST_F(LogDBTest, WriteMarker) {
     for (int i = 0; i < 10; ++i) {
         int64_t v;
         logdb->ReadMarker(common::NumToString(i), &v);
-        ASSERT_EQ(99, v);
+        ASSERT_EQ(100, v);
     }
     delete logdb;
 
@@ -135,7 +135,7 @@ TEST_F(LogDBTest, WriteMarker) {
     for (int i = 0; i < 10; ++i) {
         int64_t v;
         logdb->ReadMarker(common::NumToString(i), &v);
-        ASSERT_EQ(99, v);
+        ASSERT_EQ(100, v);
     }
     delete logdb;
     system("rm -rf ./dbtest");
@@ -149,7 +149,7 @@ TEST_F(LogDBTest, WriteMarkerSnapshot) {
     usleep(300000);
     int64_t v;
     logdb.ReadMarker("mark", &v);
-    ASSERT_EQ(499999, v);
+    ASSERT_EQ(500000, v);
     struct stat sta;
     ASSERT_EQ(0, lstat("marker.mak", &sta));
     ASSERT_EQ(24, sta.st_size);

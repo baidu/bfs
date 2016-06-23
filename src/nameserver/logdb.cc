@@ -235,9 +235,10 @@ StatusCode LogDB::DeleteUpTo(int64_t index) {
     while (it->first != upto_index) {
         fclose((it->second).first);
         fclose((it->second).second);
-        std::string prefix = dbpath_ + common::NumToString(it->first);
-        remove((prefix + ".log").c_str());
-        remove((prefix + ".idx").c_str());
+        std::string log_name, idx_name;
+        FormLogName(it->first, &log_name, &idx_name);
+        remove(log_name.c_str());
+        remove(idx_name.c_str());
         read_log_.erase(it++);
     }
     return kOK;
@@ -262,8 +263,10 @@ StatusCode LogDB::DeleteFrom(int64_t index) {
             write_log_ = NULL;
             write_index_ = NULL;
         }
-        remove((prefix + ".log").c_str());
-        remove((prefix + ".idx").c_str());
+        std::string log_name, idx_name;
+        FormLogName(it->first, &log_name, &idx_name);
+        remove(log_name.c_str());
+        remove(idx_name.c_str());
     }
     read_log_.erase(from, read_log_.end());
     if (!read_log_.empty()) {
@@ -279,11 +282,12 @@ StatusCode LogDB::DeleteFrom(int64_t index) {
         memcpy(&tmp_offset, buf + 8, 8);
         fclose((it->second).first);
         fclose((it->second).second);
-        std::string prefix = dbpath_ + common::NumToString(it->first);
-        truncate((prefix + ".log").c_str(), tmp_offset);
-        truncate((prefix + ".idx").c_str(), offset);
-        (it->second).first = fopen((prefix + ".idx").c_str(), "r");
-        (it->second).second = fopen((prefix + ".log").c_str(), "r");
+        std::string log_name, idx_name;
+        FormLogName(it->first, &log_name, &idx_name);
+        truncate(log_name.c_str(), tmp_offset);
+        truncate(idx_name.c_str(), offset);
+        (it->second).first = fopen(idx_name.c_str(), "r");
+        (it->second).second = fopen(log_name.c_str(), "r");
     }
     return kOK;
 }
@@ -301,12 +305,14 @@ bool LogDB::BuildFileCache() {
         if (idx != std::string::npos) {
             std::string file_name = std::string(entry->d_name);
             int64_t index = boost::lexical_cast<int64_t>(file_name.substr(0, idx));
-            FILE* idx_fp = fopen((dbpath_ + file_name).c_str(), "r");
+            std::string log_name, idx_name;
+            FormLogName(index, &log_name, &idx_name);
+            FILE* idx_fp = fopen(idx_name.c_str(), "r");
             if (idx_fp == NULL) {
                 LOG(WARNING, "[LogDB] open index file failed %s", file_name.c_str());
                 return false;
             }
-            FILE* log_fp = fopen((dbpath_ + file_name.substr(0, idx) + ".log").c_str(), "r");
+            FILE* log_fp = fopen(log_name.c_str(), "r");
             if (log_fp == NULL) {
                 LOG(WARNING, "[LogDB] open log file failed %s", file_name.c_str());
                 return false;
@@ -439,11 +445,12 @@ void LogDB::DecodeMarker(const std::string& data, MarkerEntry* marker) { // data
 }
 
 bool LogDB::NewWriteLog(int64_t index) {
-    std::string prefix = common::NumToString(index);
-    write_log_ = fopen((dbpath_ + prefix + ".log").c_str(), "w");
-    write_index_ = fopen((dbpath_ + prefix +  ".idx").c_str(), "w");
-    FILE* idx_fp = fopen((dbpath_ + prefix +  ".idx").c_str(), "r");
-    FILE* log_fp = fopen((dbpath_ + prefix +  ".log").c_str(), "r");
+    std::string log_name, idx_name;
+    FormLogName(index, &log_name, &idx_name);
+    write_log_ = fopen(log_name.c_str(), "w");
+    write_index_ = fopen(idx_name.c_str(), "w");
+    FILE* idx_fp = fopen(idx_name.c_str(), "r");
+    FILE* log_fp = fopen(log_name.c_str(), "r");
     if (!(write_log_ && write_index_ && idx_fp && log_fp)) {
         LOG(WARNING, "[logdb] open log/idx file failed %ld %s", index, strerror(errno));
         return false;
@@ -451,6 +458,18 @@ bool LogDB::NewWriteLog(int64_t index) {
     read_log_[index] = std::make_pair(idx_fp, log_fp);
     current_log_index_ = index;
     return true;
+}
+
+void LogDB::FormLogName(int64_t index, std::string* log_name, std::string* idx_name) {
+    log_name->clear();
+    log_name->append(dbpath_);
+    log_name->append(common::NumToString(index));
+    log_name->append(".log");
+
+    idx_name->clear();
+    idx_name->append(dbpath_);
+    idx_name->append(common::NumToString(index));
+    idx_name->append(".idx");
 }
 
 } // namespace bfs
