@@ -592,7 +592,7 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         target_set = &hi_pri_recover_;
         check_set = &hi_check_set;
     } else {
-        target_set = &lo_pri_recover_;;
+        target_set = &lo_pri_recover_;
         check_set = &lo_check_set;
     }
     PickRecoverFromSet(cs_id, block_num, target_set, recover_blocks, check_set);
