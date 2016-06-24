@@ -242,7 +242,7 @@ int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
             printf("%s\t %ld\n", file_path.c_str(), fileinfo.size);
         }
     }
-    delete files;
+    delete[] files;
     return ret;
 }
 
@@ -288,7 +288,7 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
         printf("%s\t%s  %s%s\n", statbuf, timestr, path.c_str(), files[i].name);
     }
-    delete files;
+    delete[] files;
     return 0;
 }
 
