@@ -668,6 +668,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
             return;
         } else if (service_stop_) {
             LOG(INFO, "[PushBlock] failed #%ld service_stop_", block_id);
+            block->DecRef();
             return;
         }
     }
