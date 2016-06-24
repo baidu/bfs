@@ -74,7 +74,6 @@ private:
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
     void UpdateBlockIdUpbound(NameServerLog* log);
-    //bool RecoverLog();
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
