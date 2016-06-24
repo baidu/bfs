@@ -104,6 +104,9 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
 	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
 
+logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
+	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
+
 raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o $(OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
@@ -132,6 +135,9 @@ bfs_client: $(CLIENT_OBJ) $(LIBS)
 
 mark: $(MARK_OBJ) $(LIBS)
 	$(CXX) $(MARK_OBJ) $(LIBS) -o $@ $(LDFLAGS)
+
+logdb_dump: src/nameserver/logdb.o src/utils/logdb_dump.o
+	$(CXX) src/nameserver/logdb.o src/utils/logdb_dump.o $(OBJS) -o $@ $(LDFLAGS)
 
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
