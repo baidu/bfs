@@ -44,7 +44,11 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     }
     thread_pool_ = new common::ThreadPool(10);
     DBOption option;
-    logdb_ = new LogDB("./logdb", option);
+    logdb_ = new LogDB();
+    StatusCode s = logdb_->OpenLogDB("./logdb", option);
+    if (s != kOK) {
+        LOG(FATAL, "init logdb failed");
+    }
 }
 
 void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callback) {
