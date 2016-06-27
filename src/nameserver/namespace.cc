@@ -602,36 +602,6 @@ int64_t NameSpace::GetNewBlockId(NameServerLog* log) {
     }
 }
 
-/*
-bool NameSpace::RecoverLog() {
-    int ret = sync_->ScanLog();
-    if (ret < 0) {
-        LOG(INFO, "No sync log to recover");
-        return true;
-    }
-    int32_t type;
-    uint32_t key_len, value_len;
-    char buf[512];
-    char key[256];
-    char value[256];
-    LOG(INFO, "Start to Recover log");
-    leveldb::Status s;
-    while (sync_->Next(buf)) {
-        DecodeLog(buf, &type, &key_len, key, &value_len, value);
-        if (type == kSyncWrite) {
-            s = db_->Put(leveldb::WriteOptions(), std::string(key, key_len),
-                         std::string(value, value_len));
-        } else if (type == kSyncDelete) {
-            s = db_->Delete(leveldb::WriteOptions(), std::string(key, key_len));
-        }
-        if (!s.ok()) {
-            LOG(FATAL, "Recover Sync log failed");
-        }
-    }
-    return true;
-}
-*/
-
 } // namespace bfs
 } // namespace baidu
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
