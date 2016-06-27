@@ -19,8 +19,6 @@
 namespace baidu {
 namespace bfs {
 
-const std::string kLogEndMark = "Raft:";
-
 RaftNodeImpl::RaftNodeImpl(const std::string& raft_nodes,
                            int node_index,
                            const std::string& db_path)
@@ -63,9 +61,6 @@ void RaftNodeImpl::LoadStorage(const std::string& db_path) {
     DBOption option;
     option.path = db_path;
     log_db_ = new LogDB(option);
-    if (log_db_ == NULL) {
-        LOG(FATAL, "Open raft db fail");
-    }
     StatusCode s = log_db_->ReadMarker("last_applied", &last_applied_);
     if (s != kOK) {
         last_applied_ = 0;
@@ -289,6 +284,7 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
     request->set_term(current_term_);
     request->set_leader(self_);
     request->set_leader_commit(commit_index_);
+    LOG(INFO, "M %ld N %ld I %ld", match_index, next_index, log_index_);
     if (match_index < log_index_) {
         assert(match_index <= next_index);
         int64_t prev_index = 0;
@@ -304,13 +300,14 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
         }
         request->set_prev_log_index(prev_index);
         request->set_prev_log_term(prev_term);
-        for (int64_t i = next_index; i < log_index_; i++) {
+        for (int64_t i = next_index; i <= log_index_; i++) {
             std::string log;
             s = log_db_->Read(i, &log);
             if (s != kOK) {
                 LOG(FATAL, "Data lost: %ld", i);
                 break;
             }
+            LOG(INFO, "Add %ld to request", i);
             LogEntry* entry = request->add_entries();
             bool ret = entry->ParseFromString(log);
             assert(ret);
@@ -325,8 +322,8 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
     rpc_client_->GetStub(nodes_[id], &node);
     bool ret = rpc_client_->SendRequest(node, &RaftNode_Stub::AppendEntries,
                                         request, response, 1, 1);
-    //LOG(INFO, "Replicate %d entrys to %s return %d",
-    //    request->entries_size(), nodes_[id].c_str(), ret);
+    LOG(INFO, "Replicate %d entrys to %s return %d",
+        request->entries_size(), nodes_[id].c_str(), ret);
     delete node;
 
     mu_.Lock();
@@ -425,7 +422,8 @@ bool RaftNodeImpl::StoreLog(int64_t term, int64_t index, const std::string& log,
     std::string log_value;
     entry.SerializeToString(&log_value);
     StatusCode s = log_db_->Write(index, log_value);
-    LOG(INFO, "Store %ld %ld %s to logdb", term, index, common::DebugString(log).c_str());
+    LOG(INFO, "Store %ld %ld %s to logdb return %s",
+        term, index, common::DebugString(log).c_str(), StatusCode_Name(s).c_str());
     return s == kOK;
 }
 
@@ -434,9 +432,8 @@ bool RaftNodeImpl::StoreContext(const std::string& context, int64_t value) {
 }
 
 bool RaftNodeImpl::StoreContext(const std::string& context, const std::string& value) {
-    std::string key = kLogEndMark + context;
-    LOG(INFO, "Store %s %s", key.c_str(), common::DebugString(value).c_str());
-    StatusCode s = log_db_->WriteMarker(key, value);
+    LOG(INFO, "Store %s %s", context.c_str(), common::DebugString(value).c_str());
+    StatusCode s = log_db_->WriteMarker(context, value);
     return s == kOK;
 }
 
@@ -468,6 +465,12 @@ bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {
             return false;
         }
     }
+
+    for (uint32_t i = 0; i < nodes_.size(); i++) {
+        if (follower_context_[i]) {
+            follower_context_[i]->condition.Signal();
+        }
+    }
     for (int i = 0; i < timeout_ms; i++) {
         usleep(1);
         if (commit_index_ >= index) {
@@ -484,23 +487,23 @@ void RaftNodeImpl::ApplyLog() {
         return;
     }
     applying_ = true;
-    if (last_applied_ < commit_index_) {
-        for (int64_t i = last_applied_; i < commit_index_; i++) {
-            std::string log;
-            StatusCode s = log_db_->Read(i, &log);
-            assert(s == kOK);
-            LogEntry entry;
-            bool ret = entry.ParseFromString(log);
-            assert(ret);
-            if (entry.type() == kUserLog) {
-                mu_.Unlock();
-                LOG(INFO, "Callback %ld %s",
-                    entry.index(), common::DebugString(entry.log_data()).c_str());
-                    log_callback_(entry.log_data());
-                mu_.Lock();
-            }
-            last_applied_ = entry.index();
+    for (int64_t i = last_applied_ + 1; i <= commit_index_; i++) {
+        std::string log;
+        StatusCode s = log_db_->Read(i, &log);
+        if (s != kOK) {
+            LOG(FATAL, "Read logdb %ld fail", i);
         }
+        LogEntry entry;
+        bool ret = entry.ParseFromString(log);
+        assert(ret);
+        if (entry.type() == kUserLog) {
+            mu_.Unlock();
+            LOG(INFO, "Callback %ld %s",
+                entry.index(), common::DebugString(entry.log_data()).c_str());
+                log_callback_(entry.log_data());
+            mu_.Lock();
+        }
+        last_applied_ = entry.index();
     }
     LOG(INFO, "Apply to %ld", last_applied_);
     StoreContext("last_applied", last_applied_);
