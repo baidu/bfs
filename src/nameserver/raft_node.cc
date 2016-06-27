@@ -58,9 +58,11 @@ RaftNodeImpl::~RaftNodeImpl() {
 }
 
 void RaftNodeImpl::LoadStorage(const std::string& db_path) {
-    DBOption option;
-    option.path = db_path;
-    log_db_ = new LogDB(option);
+    LogDB::Open(db_path, DBOption(), &log_db_);
+    if (log_db_ == NULL) {
+        LOG(FATAL, "Open logdb fail");
+        return;
+    }
     StatusCode s = log_db_->ReadMarker("last_applied", &last_applied_);
     if (s != kOK) {
         last_applied_ = 0;
