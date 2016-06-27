@@ -43,9 +43,6 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
         return;
     }
     if (standalone) {
-        //only unit test can get here, so nameserver_impl doesn't exists,
-        //don't use any callback which could touch namserver_impl or
-        //blockmapping or anything else
         Activate(NULL, NULL);
     }
 }
@@ -579,7 +576,7 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     block_id_upbound_key.append("block_id_upbound");
     std::string block_id_upbound_str;
     block_id_upbound_str.resize(8);
-    assert(next_block_id_ = block_id_upbound_);
+    assert(next_block_id_ == block_id_upbound_);
     block_id_upbound_ += FLAGS_block_id_allocation_size;
     *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
