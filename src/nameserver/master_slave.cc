@@ -44,8 +44,7 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     }
     thread_pool_ = new common::ThreadPool(10);
     DBOption option;
-    option.path = "./logdb";
-    logdb_ = new LogDB(option);
+    logdb_ = new LogDB("./logdb", option);
 }
 
 void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callback) {

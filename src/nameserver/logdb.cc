@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 //
 
-#include <iostream>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -18,8 +17,8 @@
 namespace baidu {
 namespace bfs {
 
-LogDB::LogDB(const DBOption& option) : dbpath_(option.path + "/"),
-                                       snapshot_interval_(option.snapshot_interval),
+LogDB::LogDB(const std::string& path, const DBOption& option) : dbpath_(path + "/"),
+                                       snapshot_interval_(option.snapshot_interval * 1000),
                                        log_size_(option.log_size << 20),
                                        largest_index_(-1),
                                        smallest_index_(-1),
@@ -240,7 +239,6 @@ StatusCode LogDB::DeleteUpTo(int64_t index) {
         return kOK;
     }
     int64_t upto_index = upto->first;
-    std::cerr << upto_index << std::endl;
     FileCache::iterator it = read_log_.begin();
     while (it->first != upto_index) {
         fclose((it->second).first);
