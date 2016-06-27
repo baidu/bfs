@@ -47,9 +47,10 @@ fi
 
 #leveldb
 if [ ! -f "${FLAG_DIR}/leveldb" ] \
-    || [ ! -d "${DEPS_PREFIX}/leveldb" ]; then
+    || [ ! -f "${DEPS_PREFIX}/lib/libleveldb.a" ] \
+    || [ ! -d "${DEPS_PREFIX}/include/leveldb" ]; then
     rm -rf leveldb
-    git clone --depth=1 https://github.com/lylei/leveldb.git leveldb
+    git clone https://github.com/lylei/leveldb.git leveldb
     cd leveldb
     echo "PREFIX=${DEPS_PREFIX}" > config.mk
     make -j4

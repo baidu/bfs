@@ -20,10 +20,9 @@ namespace bfs {
 
 struct DBOption
 {
-    std::string path;
-    int64_t snapshot_interval; // write marker snapshot interval, in ms
+    int64_t snapshot_interval; // write marker snapshot interval, in seconds
     int64_t log_size;
-    DBOption() : path("./"), snapshot_interval(5000), log_size(128) /* in MB */ {}
+    DBOption() : snapshot_interval(60), log_size(128) /* in MB */ {}
 };
 
 struct LogDataEntry // entry_length + index + log
@@ -44,9 +43,9 @@ struct MarkerEntry // entry_length + key_len + key + value_len + value
 
 class LogDB {
 public:
-    LogDB(const DBOption& option);
+    LogDB();
     ~LogDB();
-    // Write log entry
+    static void Open(const std::string& path, const DBOption& option, LogDB** dbptr);
     StatusCode Write(int64_t index, const std::string& entry);
     // Read log entry
     StatusCode Read(int64_t index, std::string* entry);
