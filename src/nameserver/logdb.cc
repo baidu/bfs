@@ -175,7 +175,8 @@ StatusCode LogDB::WriteMarkerNoLock(const std::string& key, const std::string& v
     uint32_t len = 4 + key.length() + 4 + value.length();
     data.append(reinterpret_cast<char*>(&len), 4);
     EncodeMarker(MarkerEntry(key, value), &data);
-    if (fwrite(data.c_str(), 1, data.length(), marker_log_) != data.length()) {
+    if (fwrite(data.c_str(), 1, data.length(), marker_log_) != data.length()
+        || fflush(marker_log_) != 0) {
         LOG(WARNING, "[LogDB] WriteMarker failed key = %s value = %s", key.c_str(), value.c_str());
         return kWriteError;
     }
@@ -392,7 +393,7 @@ void LogDB::WriteMarkerSnapshot() {
         data.clear();
         data.append(reinterpret_cast<char*>(&len), 4);
         EncodeMarker(marker, &data);
-        if (fwrite(data.c_str(), 1, data.length(), fp) != data.length()) {
+        if (fwrite(data.c_str(), 1, data.length(), fp) != data.length() || fflush(fp) != 0) {
             LOG(WARNING, "[LogDB] write marker.tmp failed %s", strerror(errno));
             fclose(fp);
             return;
@@ -419,6 +420,7 @@ int LogDB::ReadOne(FILE* fp, std::string* data) {
     char* buf = new char[len];
     ret = fread(buf, 1, len, fp);
     if (ret != len) {
+        LOG(WARNING, "Read(%d) return %d", len, ret);
         delete[] buf;
         return -1;
     }
