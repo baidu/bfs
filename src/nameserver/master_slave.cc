@@ -44,9 +44,8 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     }
     thread_pool_ = new common::ThreadPool(10);
     DBOption option;
-    logdb_ = new LogDB();
-    StatusCode s = logdb_->OpenLogDB("./logdb", option);
-    if (s != kOK) {
+    LogDB::OpenLogDB("./logdb", option, &logdb_);
+    if (logdb_ == NULL) {
         LOG(FATAL, "init logdb failed");
     }
 }

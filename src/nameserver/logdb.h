@@ -45,8 +45,7 @@ class LogDB {
 public:
     LogDB();
     ~LogDB();
-    StatusCode OpenLogDB(const std::string& path, const DBOption& option);
-    // Write log entry
+    static void OpenLogDB(const std::string& path, const DBOption& option, LogDB** dbptr);
     StatusCode Write(int64_t index, const std::string& entry);
     // Read log entry
     StatusCode Read(int64_t index, std::string* entry);

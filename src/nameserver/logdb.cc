@@ -18,9 +18,7 @@ namespace baidu {
 namespace bfs {
 
 LogDB::LogDB() : largest_index_(-1), smallest_index_(-1), current_log_index_(-1),
-                 write_log_(NULL), write_index_(NULL), marker_log_(NULL) {
-
-}
+                 write_log_(NULL), write_index_(NULL), marker_log_(NULL) {}
 
 LogDB::~LogDB() {
     thread_pool_->Stop(true);
@@ -33,26 +31,30 @@ LogDB::~LogDB() {
     if (marker_log_) fclose(marker_log_);
 }
 
-StatusCode LogDB::OpenLogDB(const std::string& path, const DBOption& option) {
-    dbpath_ = path + "/";
-    snapshot_interval_ = option.snapshot_interval * 1000;
-    log_size_ = option.log_size << 20;
-    mkdir(dbpath_.c_str(), 0755);
-    if(!RecoverMarker()) {
+void LogDB::OpenLogDB(const std::string& path, const DBOption& option, LogDB** dbptr) {
+    *dbptr = NULL;
+
+    LogDB* logdb = new LogDB();
+    logdb->dbpath_ = path + "/";
+    logdb->snapshot_interval_ = option.snapshot_interval * 1000;
+    logdb->log_size_ = option.log_size << 20;
+    mkdir(logdb->dbpath_.c_str(), 0755);
+    if(!logdb->RecoverMarker()) {
         LOG(WARNING, "[LogDB] RecoverMarker failed reason: %s", strerror(errno));
-        return kNotOK;
+        return;
     }
-    std::map<std::string, std::string>::iterator it = markers_.find(".smallest_index_");
-    if (it != markers_.end()) {
-        smallest_index_ = boost::lexical_cast<int64_t>(it->second);
+    std::map<std::string, std::string>::iterator it = logdb->markers_.find(".smallest_index_");
+    if (it != logdb->markers_.end()) {
+        logdb->smallest_index_ = boost::lexical_cast<int64_t>(it->second);
     }
-    if (!BuildFileCache()) {
+    if (!logdb->BuildFileCache()) {
         LOG(WARNING, "[LogDB] BuildFileCache failed reason: %s", strerror(errno));
-        return kNotOK;
+        return;
     }
-    thread_pool_ = new ThreadPool(10);
-    WriteMarkerSnapshot();
-    return kOK;
+    logdb->thread_pool_ = new ThreadPool(10);
+    logdb->WriteMarkerSnapshot();
+    *dbptr = logdb;
+    return;
 }
 
 StatusCode LogDB::Write(int64_t index, const std::string& entry) {

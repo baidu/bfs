@@ -46,47 +46,47 @@ void ReadLog_Helper(int start, int n , LogDB* logdb) {
 }
 
 TEST_F(LogDBTest, EncodeLogEntry) {
-    LogDB logdb;
-    logdb.OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     LogDataEntry entry(3, "helloworld");
     std::string str;
-    logdb.EncodeLogEntry(entry, &str);
+    logdb->EncodeLogEntry(entry, &str);
     ASSERT_EQ(str.length(), 18U);
     LogDataEntry decode_entry;
-    logdb.DecodeLogEntry(str, &decode_entry);
+    logdb->DecodeLogEntry(str, &decode_entry);
     ASSERT_EQ(decode_entry.index, 3);
     ASSERT_EQ(decode_entry.entry, "helloworld");
 }
 
 TEST_F(LogDBTest, EncodeMarker) {
-    LogDB logdb;
-    logdb.OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     MarkerEntry marker("key", "value");
     std::string str;
-    logdb.EncodeMarker(marker, &str);
+    logdb->EncodeMarker(marker, &str);
     ASSERT_EQ(str.length(), 16U);
     MarkerEntry decode_marker;
-    logdb.DecodeMarker(str, &decode_marker);
+    logdb->DecodeMarker(str, &decode_marker);
     ASSERT_EQ(decode_marker.key, "key");
     ASSERT_EQ(decode_marker.value, "value");
 }
 
 
 TEST_F(LogDBTest, ReadOne) {
-    LogDB logdb;
-    logdb.OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     LogDataEntry entry(0, "helloworld");
     std::string str;
     int32_t len = 18;
     str.append(reinterpret_cast<char*>(&len), 4);
-    logdb.EncodeLogEntry(entry, &str);
+    logdb->EncodeLogEntry(entry, &str);
 
     FILE* fp = fopen("./dbtest/0.log", "w");
     fwrite(str.c_str(), 1, str.length(), fp);
     fclose(fp);
     fp = fopen("./dbtest/0.log", "r");
     std::string res;
-    logdb.ReadOne(fp, &res);
+    logdb->ReadOne(fp, &res);
     fclose(fp);
     ASSERT_EQ(res, str.substr(4));
 
@@ -94,8 +94,8 @@ TEST_F(LogDBTest, ReadOne) {
     fwrite("foo", 1, 3, fp);
     fclose(fp);
     fp = fopen("./dbtest/0.log", "r");
-    ASSERT_EQ(logdb.ReadOne(fp, &res), 18);
-    ASSERT_EQ(logdb.ReadOne(fp, &res), -1);
+    ASSERT_EQ(logdb->ReadOne(fp, &res), 18);
+    ASSERT_EQ(logdb->ReadOne(fp, &res), -1);
     fclose(fp);
 
     system("rm -rf ./dbtest");
@@ -103,8 +103,8 @@ TEST_F(LogDBTest, ReadOne) {
 
 TEST_F(LogDBTest, WriteMarker) {
     // write then read
-    LogDB* logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteMarker_Helper("mark1", 10, logdb);
     int64_t v;
     logdb->ReadMarker("mark1", &v);
@@ -112,8 +112,7 @@ TEST_F(LogDBTest, WriteMarker) {
     delete logdb;
 
     // test recover
-    logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     logdb->ReadMarker("mark1", &v);
     ASSERT_EQ(v, 10);
 
@@ -135,8 +134,7 @@ TEST_F(LogDBTest, WriteMarker) {
     }
     delete logdb;
 
-    logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     for (int i = 0; i < 10; ++i) {
         int64_t v;
         logdb->ReadMarker(common::NumToString(i), &v);
@@ -149,12 +147,12 @@ TEST_F(LogDBTest, WriteMarker) {
 TEST_F(LogDBTest, WriteMarkerSnapshot) {
     DBOption option;
     option.snapshot_interval = 1;
-    LogDB logdb;
-    logdb.OpenLogDB("./dbtest", option);
-    WriteMarker_Helper("mark", 500000, &logdb);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
+    WriteMarker_Helper("mark", 500000, logdb);
     sleep(1);
     int64_t v;
-    logdb.ReadMarker("mark", &v);
+    logdb->ReadMarker("mark", &v);
     ASSERT_EQ(500000, v);
     struct stat sta;
     ASSERT_EQ(0, lstat("./dbtest/marker.mak", &sta));
@@ -163,15 +161,14 @@ TEST_F(LogDBTest, WriteMarkerSnapshot) {
 }
 
 TEST_F(LogDBTest, Write) {
-    LogDB* logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteLog_Helper(0, 3, logdb);
     ReadLog_Helper(0, 3, logdb);
 
     // test build file cache
     delete logdb;
-    logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteLog_Helper(3, 2, logdb);
     ReadLog_Helper(0, 5, logdb);
     std::string entry;
@@ -181,21 +178,19 @@ TEST_F(LogDBTest, Write) {
     delete logdb;
     system("rm -rf ./dbtest");
 
-    logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteLog_Helper(10, 5, logdb);
     ReadLog_Helper(10, 5, logdb);
     delete logdb;
-    logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteLog_Helper(15, 5, logdb);
     ReadLog_Helper(15, 5, logdb);
     system("rm -rf ./dbtest");
 }
 
 TEST_F(LogDBTest, Read) {
-    LogDB* logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteLog_Helper(0, 500, logdb);
     std::vector<common::Thread*> threads;
     for (int i = 0; i < 5; ++i) {
@@ -214,8 +209,8 @@ TEST_F(LogDBTest, Read) {
 TEST_F(LogDBTest, NewWriteLog) {
     DBOption option;
     option.log_size = 1;
-    LogDB* logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteLog_Helper(0, 200000, logdb);
     // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
     int ret = access("./dbtest/0.log", R_OK);
@@ -237,8 +232,8 @@ TEST_F(LogDBTest, NewWriteLog) {
 TEST_F(LogDBTest, DeleteUpTo) {
     DBOption option;
     option.log_size = 1;
-    LogDB* logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteLog_Helper(0, 200000, logdb);
     // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
     logdb->DeleteUpTo(99999);
@@ -263,8 +258,8 @@ TEST_F(LogDBTest, DeleteUpTo) {
 TEST_F(LogDBTest, DeleteFrom) {
     DBOption option;
     option.log_size = 1;
-    LogDB* logdb = new LogDB();
-    logdb->OpenLogDB("./dbtest", option);
+    LogDB* logdb;
+    logdb->OpenLogDB("./dbtest", option, &logdb);
     WriteLog_Helper(0, 200000, logdb);
     // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
     logdb->DeleteFrom(100500);
