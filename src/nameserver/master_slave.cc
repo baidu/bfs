@@ -59,14 +59,14 @@ void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callba
     if (logdb_->ReadMarker("sync_idx", &sync_idx_) == kReadError) {
         LOG(FATAL, "\033[32m[Sync]\033[0m  ReadMarker sync_idx_ failed");
     }
-    LOG(INFO, "[Sync] set current_idx_ = %ld, applied_idx_ = %ld, sync_idx_ = %ld ",
+    LOG(INFO, "\033[32m[Sync]\033[0m set current_idx_ = %ld, applied_idx_ = %ld, sync_idx_ = %ld ",
             current_idx_, applied_idx_, sync_idx_);
     assert(applied_idx_ <= current_idx_ && sync_idx_ <= current_idx_);
     while (applied_idx_ < current_idx_) {
         std::string entry;
         bool ret = logdb_->Read(applied_idx_ + 1, &entry);
         if (!ret) {
-            LOG(FATAL, "[Sync] read logdb failed index %ld ", applied_idx_ + 1);
+            LOG(FATAL, "\033[32m[Sync]\033[0m read logdb failed index %ld ", applied_idx_ + 1);
         }
         if (!entry.empty()) {
             log_callback_(entry);
@@ -93,7 +93,7 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
     }
     mu_.Lock();
     if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
-        LOG(FATAL, "[Sync] write logdb failed index %ld", current_idx_ + 1);
+        LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld", current_idx_ + 1);
     }
     current_idx_++;
     cond_.Signal();
@@ -118,7 +118,8 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
                 LOG(INFO, "\033[32m[Sync]\033[0m leaves master-only mode");
                 master_only_ = false;
             }
-            LOG(INFO, "\033[32m[Sync]\033[0m sync log takes %ld ms", (common::timer::get_micros() - start_point) / 1000);
+            LOG(INFO, "\033[32m[Sync]\033[0m sync log takes %ld ms",
+                    (common::timer::get_micros() - start_point) / 1000);
             return true;
         } else {
             break;
@@ -136,7 +137,7 @@ void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)>
     }
     MutexLock lock(&mu_);
     if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
-        LOG(FATAL, "[Sync] write logdb failed index %ld ", current_idx_ + 1);
+        LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld ", current_idx_ + 1);
     }
     current_idx_++;
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
@@ -193,7 +194,7 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     }
     mu_.Lock();
     if (logdb_->Write(current_idx_ + 1, request->log_data()) != kOK) {
-        LOG(FATAL, "[Sync] Write logdb_ failed current_idx_ = %ld ", current_idx_ + 1);
+        LOG(FATAL, "\033[32m[Sync]\033[0m Write logdb_ failed current_idx_ = %ld ", current_idx_ + 1);
     }
     current_idx_++;
     mu_.Unlock();
@@ -227,7 +228,8 @@ void MasterSlaveImpl::ReplicateLog() {
             mu_.Unlock();
             break;
         }
-        LOG(DEBUG, "\033[32m[Sync]\033[0m ReplicateLog sync_idx_ = %d, current_idx_ = %d", sync_idx_, current_idx_);
+        LOG(DEBUG, "\033[32m[Sync]\033[0m ReplicateLog sync_idx_ = %d, current_idx_ = %d",
+                sync_idx_, current_idx_);
         mu_.Unlock();
         std::string entry;
         if (logdb_->Read(sync_idx_ + 1, &entry) != kOK) {
@@ -268,17 +270,19 @@ void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
     std::map<int64_t, boost::function<void (bool)> >::iterator it = callbacks_.find(index);
     if (it != callbacks_.end()) {
         callback = it->second;
-        callbacks_.erase(it);
         LOG(DEBUG, "\033[32m[Sync]\033[0m calling callback %d", it->first);
+        callbacks_.erase(it);
         mu_.Unlock();
         callback(true);
         mu_.Lock();
         if (index > applied_idx_) {
             applied_idx_ = index;
         }
-        if (timeout_check && !master_only_) {
-            LOG(WARNING, "\033[32m[Sync]\033[0m ReplicateLog sync_idx_ = %d timeout, enter master-only mode",
-                index);
+        if (timeout_check) {
+            if (!master_only_) {
+                LOG(WARNING, "\033[32m[Sync]\033[0m ReplicateLog sync_idx_ = %d timeout, enter master-only mode",
+                    index);
+            }
             master_only_ = true;
             return;
         }

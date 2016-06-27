@@ -23,7 +23,7 @@ struct DBOption
     std::string path;
     int64_t snapshot_interval; // write marker snapshot interval, in ms
     int64_t log_size;
-    DBOption() : path("./"), snapshot_interval(5000), log_size(128) /* in MB */ {}
+    DBOption() : path("./logdb"), snapshot_interval(5000), log_size(128) /* in MB */ {}
 };
 
 struct LogDataEntry // entry_length + index + log
