@@ -10,6 +10,7 @@
 #include <sofa/pbrpc/pbrpc.h>
 #include <gflags/gflags.h>
 #include <common/logging.h>
+#include <common/string_util.h>
 
 #include "nameserver/raft_node.h"
 
@@ -17,12 +18,13 @@
 DEFINE_string(raft_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 
 DECLARE_string(flagfile);
+DECLARE_string(nameserver_nodes);
+DECLARE_int32(node_index);
 DECLARE_int32(nameserver_log_level);
 DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
 DECLARE_string(bfs_log);
 DECLARE_int32(bfs_log_size);
-DECLARE_int32(raft_node_index);
 DECLARE_string(raftdb_path);
 
 namespace baidu {
@@ -43,9 +45,14 @@ public:
     }
     void Run() {
         std::string leader;
-        std::string self("127.0.0.1:");
-        self += FLAGS_nameserver_port;
-        raft_node_->RegisterCallback(boost::bind(&RaftTest::LogCallback, this, _1));
+        std::vector<std::string> nodes;
+        common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);
+        if (static_cast<int64_t>(nodes.size()) < FLAGS_node_index) {
+            LOG(WARNING, "Load nameserver nodes fail");
+            return;
+        }
+        std::string self = nodes[FLAGS_node_index];
+        raft_node_->Init(boost::bind(&RaftTest::LogCallback, this, _1));
         while (applied_index_ < 10000) {
             if (raft_node_->GetLeader(&leader) && leader == self) {
                 applied_index_ ++;
@@ -82,7 +89,7 @@ int main(int argc, char* argv[])
 
     // Service
     baidu::bfs::RaftNodeImpl* raft_service =
-        new baidu::bfs::RaftNodeImpl(FLAGS_raft_nodes, FLAGS_raft_node_index, FLAGS_raftdb_path);
+        new baidu::bfs::RaftNodeImpl(FLAGS_raft_nodes, FLAGS_node_index, FLAGS_raftdb_path);
 
     // rpc_server
     sofa::pbrpc::RpcServerOptions options;
@@ -95,8 +102,16 @@ int main(int argc, char* argv[])
     }
 
     // Start
-    std::string server_host = std::string("0.0.0.0:") + FLAGS_nameserver_port;
-    if (!rpc_server.Start(server_host)) {
+    std::vector<std::string> nameserver_nodes;
+    baidu::common::SplitString(FLAGS_nameserver_nodes, ",", &nameserver_nodes);
+    if (static_cast<int>(nameserver_nodes.size()) <= FLAGS_node_index) {
+        LOG(baidu::common::FATAL, "Bad nodes or index: %s, %d",
+            FLAGS_nameserver_nodes.c_str(), FLAGS_node_index);
+        return EXIT_FAILURE;
+    }
+    std::string server_addr = nameserver_nodes[FLAGS_node_index];
+    std::string listen_addr = std::string("0.0.0.0") + server_addr.substr(server_addr.rfind(':'));
+    if (!rpc_server.Start(server_addr)) {
         return EXIT_FAILURE;
     }
 
