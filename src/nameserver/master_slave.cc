@@ -44,7 +44,7 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     }
     thread_pool_ = new common::ThreadPool(10);
     DBOption option;
-    LogDB::OpenLogDB("./logdb", option, &logdb_);
+    LogDB::Open("./logdb", option, &logdb_);
     if (logdb_ == NULL) {
         LOG(FATAL, "init logdb failed");
     }
@@ -66,8 +66,8 @@ void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callba
     assert(applied_idx_ <= current_idx_ && sync_idx_ <= current_idx_);
     while (applied_idx_ < current_idx_) {
         std::string entry;
-        bool ret = logdb_->Read(applied_idx_ + 1, &entry);
-        if (!ret) {
+        StatusCode ret = logdb_->Read(applied_idx_ + 1, &entry);
+        if (ret != kOK) {
             LOG(FATAL, "\033[32m[Sync]\033[0m read logdb failed index %ld ", applied_idx_ + 1);
         }
         if (!entry.empty()) {
@@ -298,9 +298,9 @@ void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
 void MasterSlaveImpl::LogStatus() {
     LOG(INFO, "\033[32m[Sync]\033[0m sync_idx_ = %d, current_idx_ = %d, applied_idx_ = %d, callbacks_ size = %d",
         sync_idx_, current_idx_, applied_idx_, callbacks_.size());
-    bool ret_a = logdb_->WriteMarker("applied_idx", applied_idx_);
-    bool ret_s = logdb_->WriteMarker("sync_idx", sync_idx_);
-    if (!ret_a || ret_s) {
+    StatusCode ret_a = logdb_->WriteMarker("applied_idx", applied_idx_);
+    StatusCode ret_s = logdb_->WriteMarker("sync_idx", sync_idx_);
+    if ((ret_a != kOK) || (ret_s != kOK)) {
         LOG(WARNING, "\033[32m[Sync]\033[0m WriteMarker failed applied_idx_ = %ld sync_idx_ = %ld ",
                 applied_idx_, sync_idx_);
     }

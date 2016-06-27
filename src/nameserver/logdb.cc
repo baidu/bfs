@@ -31,7 +31,7 @@ LogDB::~LogDB() {
     if (marker_log_) fclose(marker_log_);
 }
 
-void LogDB::OpenLogDB(const std::string& path, const DBOption& option, LogDB** dbptr) {
+void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr) {
     *dbptr = NULL;
 
     LogDB* logdb = new LogDB();
