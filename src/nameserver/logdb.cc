@@ -41,6 +41,7 @@ void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr)
     mkdir(logdb->dbpath_.c_str(), 0755);
     if(!logdb->RecoverMarker()) {
         LOG(WARNING, "[LogDB] RecoverMarker failed reason: %s", strerror(errno));
+        delete logdb;
         return;
     }
     std::map<std::string, std::string>::iterator it = logdb->markers_.find(".smallest_index_");
@@ -49,6 +50,7 @@ void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr)
     }
     if (!logdb->BuildFileCache()) {
         LOG(WARNING, "[LogDB] BuildFileCache failed reason: %s", strerror(errno));
+        delete logdb;
         return;
     }
     logdb->thread_pool_ = new ThreadPool(10);
@@ -86,13 +88,16 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
         offset = 0;
     }
     StatusCode status = kOK;
-    if (fwrite(data.c_str(), 1, data.length(), write_log_) != data.length()) {
+    if (fwrite(data.c_str(), 1, data.length(), write_log_) != data.length() || fflush(write_log_) != 0) {
+        LOG(WARNING, "[LogDB] Write log %ld failed", index);
         status =  kWriteError;
     }
     if (fwrite(reinterpret_cast<char*>(&index), 1, 8, write_index_) != 8) {
+        LOG(WARNING, "[LogDB] Write index %ld failed", index);
         status = kWriteError;
     }
-    if (fwrite(reinterpret_cast<char*>(&offset), 1, 8, write_index_) != 8) {
+    if (fwrite(reinterpret_cast<char*>(&offset), 1, 8, write_index_) != 8 || fflush(write_index_) != 0) {
+        LOG(WARNING, "[LogDB] Write index %ld failed", index);
         status = kWriteError;
     }
     if (status == kWriteError) {
@@ -103,8 +108,6 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
         return kWriteError;
     }
     largest_index_ = index;
-    fflush(write_log_);
-    fflush(write_index_);
     return kOK;
 }
 
@@ -176,22 +179,14 @@ StatusCode LogDB::WriteMarkerNoLock(const std::string& key, const std::string& v
         LOG(WARNING, "[LogDB] WriteMarker failed key = %s value = %s", key.c_str(), value.c_str());
         return kWriteError;
     }
+    fflush(marker_log_);
     markers_[key] = value;
     return kOK;
 }
 
 StatusCode LogDB::WriteMarker(const std::string& key, const std::string& value) {
-    std::string data;
-    uint32_t len = 4 + key.length() + 4 + value.length();
-    data.append(reinterpret_cast<char*>(&len), 4);
-    EncodeMarker(MarkerEntry(key, value), &data);
     MutexLock lock(&mu_);
-    if (fwrite(data.c_str(), 1, data.length(), marker_log_) != data.length()) {
-        LOG(WARNING, "[LogDB] WriteMarker failed key = %s value = %s", key.c_str(), value.c_str());
-        return kWriteError;
-    }
-    markers_[key] = value;
-    return kOK;
+    return WriteMarkerNoLock(key, value);
 }
 
 StatusCode LogDB::WriteMarker(const std::string& key, int64_t value) {

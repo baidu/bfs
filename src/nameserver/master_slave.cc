@@ -68,7 +68,8 @@ void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callba
         std::string entry;
         StatusCode ret = logdb_->Read(applied_idx_ + 1, &entry);
         if (ret != kOK) {
-            LOG(FATAL, "\033[32m[Sync]\033[0m read logdb failed index %ld ", applied_idx_ + 1);
+            LOG(FATAL, "\033[32m[Sync]\033[0m read logdb failed index %ld %s",
+                    applied_idx_ + 1, StatusCode_Name(ret).c_str());
         }
         if (!entry.empty()) {
             log_callback_(entry);
