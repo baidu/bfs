@@ -136,6 +136,8 @@ void Mark::Delete(const std::string& filename) {
 
 void Mark::PutWrapper(int thread_id) {
     std::string prefix = common::NumToString(thread_id);
+    fs_->CreateDirectory(("/" + FLAGS_folder).c_str());
+    fs_->CreateDirectory(("/" + FLAGS_folder + "/" + prefix).c_str());
     int name_id = 0;
     int64_t count = 0;
     std::string base;

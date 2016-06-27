@@ -668,6 +668,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
             return;
         } else if (service_stop_) {
             LOG(INFO, "[PushBlock] failed #%ld service_stop_", block_id);
+            block->DecRef();
             return;
         }
     }
@@ -702,7 +703,8 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         bool ret = rpc_client_->SendRequest(chunkserver, &ChunkServer_Stub::WriteBlock,
                                  &request, &response, 60, 1);
         if (!ret || (response.status() != kOK && response.status() != kBlockExist)) {
-            LOG(INFO, "[WriteRecoverBlock] #%ld write failed", block->Id());
+            LOG(INFO, "[WriteRecoverBlock] #%ld write failed, ret: %d, status: %s",
+                    block->Id(), ret, StatusCode_Name(response.status()).c_str());
             delete[] buf;
             return false;
         }

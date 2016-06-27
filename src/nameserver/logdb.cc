@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 //
 
-#include <iostream>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -18,31 +17,8 @@
 namespace baidu {
 namespace bfs {
 
-LogDB::LogDB(const DBOption& option) : dbpath_(option.path + "/"),
-                                       snapshot_interval_(option.snapshot_interval),
-                                       log_size_(option.log_size << 20),
-                                       largest_index_(-1),
-                                       smallest_index_(-1),
-                                       current_log_index_(-1),
-                                       write_log_(NULL),
-                                       write_index_(NULL),
-                                       marker_log_(NULL) {
-    mkdir(dbpath_.c_str(), 0755);
-    if(!RecoverMarker()) {
-        LOG(WARNING, "[LogDB] RecoverMarker failed reason: %s", strerror(errno));
-        assert(0);
-    }
-    std::map<std::string, std::string>::iterator it = markers_.find(".smallest_index_");
-    if (it != markers_.end()) {
-        smallest_index_ = boost::lexical_cast<int64_t>(it->second);
-    }
-    if (!BuildFileCache()) {
-        LOG(WARNING, "[LogDB] BuildFileCache failed reason: %s", strerror(errno));
-        assert(0);
-    }
-    thread_pool_ = new ThreadPool(10);
-    WriteMarkerSnapshot();
-}
+LogDB::LogDB() : largest_index_(-1), smallest_index_(-1), current_log_index_(-1),
+                 write_log_(NULL), write_index_(NULL), marker_log_(NULL) {}
 
 LogDB::~LogDB() {
     thread_pool_->Stop(true);
@@ -53,6 +29,32 @@ LogDB::~LogDB() {
     }
     if (write_index_) fclose(write_index_);
     if (marker_log_) fclose(marker_log_);
+}
+
+void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr) {
+    *dbptr = NULL;
+
+    LogDB* logdb = new LogDB();
+    logdb->dbpath_ = path + "/";
+    logdb->snapshot_interval_ = option.snapshot_interval * 1000;
+    logdb->log_size_ = option.log_size << 20;
+    mkdir(logdb->dbpath_.c_str(), 0755);
+    if(!logdb->RecoverMarker()) {
+        LOG(WARNING, "[LogDB] RecoverMarker failed reason: %s", strerror(errno));
+        return;
+    }
+    std::map<std::string, std::string>::iterator it = logdb->markers_.find(".smallest_index_");
+    if (it != logdb->markers_.end()) {
+        logdb->smallest_index_ = boost::lexical_cast<int64_t>(it->second);
+    }
+    if (!logdb->BuildFileCache()) {
+        LOG(WARNING, "[LogDB] BuildFileCache failed reason: %s", strerror(errno));
+        return;
+    }
+    logdb->thread_pool_ = new ThreadPool(10);
+    logdb->WriteMarkerSnapshot();
+    *dbptr = logdb;
+    return;
 }
 
 StatusCode LogDB::Write(int64_t index, const std::string& entry) {
@@ -83,13 +85,21 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
         }
         offset = 0;
     }
+    StatusCode status = kOK;
     if (fwrite(data.c_str(), 1, data.length(), write_log_) != data.length()) {
-        return kWriteError;
+        status =  kWriteError;
     }
     if (fwrite(reinterpret_cast<char*>(&index), 1, 8, write_index_) != 8) {
-        return kWriteError;
+        status = kWriteError;
     }
     if (fwrite(reinterpret_cast<char*>(&offset), 1, 8, write_index_) != 8) {
+        status = kWriteError;
+    }
+    if (status == kWriteError) {
+        fclose(write_log_);
+        fclose(write_index_);
+        write_log_ = NULL;
+        write_index_ = NULL;
         return kWriteError;
     }
     largest_index_ = index;
@@ -134,18 +144,19 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
         return kReadError;
     }
     // read log entry
-    mu_.Lock();
-    if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
-        LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
-        return kReadError;
-    }
     std::string data;
-    ret = ReadOne(log_fp, &data);
-    if (ret == -1) {
-        LOG(WARNING, "[LogDB] Read log error %ld ", index);
-        return kReadError;
+    {
+        MutexLock lock(&mu_);
+        if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
+            LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
+            return kReadError;
+        }
+        ret = ReadOne(log_fp, &data);
+        if (ret == -1) {
+            LOG(WARNING, "[LogDB] Read log error %ld ", index);
+            return kReadError;
+        }
     }
-    mu_.Unlock();
     LogDataEntry log_entry;
     DecodeLogEntry(data, &log_entry);
     if (log_entry.index != index) {
@@ -222,13 +233,13 @@ StatusCode LogDB::DeleteUpTo(int64_t index) {
     MutexLock lock(&mu_);
     smallest_index_ = index + 1;
     WriteMarkerNoLock(".smallest_index_", common::NumToString(smallest_index_));
-    FileCache::iterator upto = read_log_.begin();
-    while (upto != read_log_.end()) {
-        if (upto->first >= index) break;
+    FileCache::reverse_iterator upto = read_log_.rbegin();
+    while (upto != read_log_.rend()) {
+        if (upto->first <= index) break;
         ++upto;
     }
-    if (upto != read_log_.begin()) {
-        --upto;
+    if (upto == read_log_.rend()) {
+        return kOK;
     }
     int64_t upto_index = upto->first;
     FileCache::iterator it = read_log_.begin();
@@ -310,11 +321,13 @@ bool LogDB::BuildFileCache() {
             FILE* idx_fp = fopen(idx_name.c_str(), "r");
             if (idx_fp == NULL) {
                 LOG(WARNING, "[LogDB] open index file failed %s", file_name.c_str());
+                closedir(dir_ptr);
                 return false;
             }
             FILE* log_fp = fopen(log_name.c_str(), "r");
             if (log_fp == NULL) {
                 LOG(WARNING, "[LogDB] open log file failed %s", file_name.c_str());
+                closedir(dir_ptr);
                 return false;
             }
             read_log_[index] = std::make_pair(idx_fp, log_fp);
@@ -354,6 +367,7 @@ bool LogDB::RecoverMarker() {
         if (ret == 0)  break;
         if (ret < 0) {
             LOG(WARNING, "[LogDB] RecoverMarker failed while reading");
+            fclose(fp);
             return false;
         }
         MarkerEntry mark;
@@ -385,6 +399,7 @@ void LogDB::WriteMarkerSnapshot() {
         EncodeMarker(marker, &data);
         if (fwrite(data.c_str(), 1, data.length(), fp) != data.length()) {
             LOG(WARNING, "[LogDB] write marker.tmp failed %s", strerror(errno));
+            fclose(fp);
             return;
         }
     }
@@ -408,7 +423,10 @@ int LogDB::ReadOne(FILE* fp, std::string* data) {
     if (ret != 4) return -1;
     char* buf = new char[len];
     ret = fread(buf, 1, len, fp);
-    if (ret != len) return -1;
+    if (ret != len) {
+        delete[] buf;
+        return -1;
+    }
     data->clear();
     data->assign(buf, len);
     delete[] buf;
