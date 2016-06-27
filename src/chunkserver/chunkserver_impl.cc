@@ -704,7 +704,7 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
                                  &request, &response, 60, 1);
         if (!ret || (response.status() != kOK && response.status() != kBlockExist)) {
             LOG(INFO, "[WriteRecoverBlock] #%ld write failed, ret: %d, status: %s",
-                    block->Id(), ret, StatusCode_Name(response.status());
+                    block->Id(), ret, StatusCode_Name(response.status()).c_str());
             delete[] buf;
             return false;
         }
