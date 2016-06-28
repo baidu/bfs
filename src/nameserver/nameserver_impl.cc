@@ -46,14 +46,14 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time), sync_(sync) {
-    namespace_ = new NameSpace(false);
-    if (sync_) {
-        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1));
-    }
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
+    namespace_ = new NameSpace(false);
+    if (sync_) {
+        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1));
+    }
     CheckLeader();
     start_time_ = common::timer::get_micros();
     work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
@@ -66,11 +66,12 @@ void NameServerImpl::CheckLeader() {
     if (!sync_ || sync_->IsLeader()) {
         LOG(INFO, "Leader nameserver, rebuild block map.");
         NameServerLog log;
-        namespace_->Activate(&log);
+        boost::function<void (const FileInfo&)> task =
+            boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1);
+        namespace_->Activate(task, &log);
         if (!LogRemote(log, boost::function<void (bool)>())) {
             LOG(FATAL, "LogRemote namespace update fail");
         }
-        namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
         safe_mode_ = FLAGS_nameserver_safemode_time;
         work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;

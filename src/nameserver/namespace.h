@@ -23,7 +23,7 @@ namespace bfs {
 class NameSpace {
 public:
     NameSpace(bool standalone = true);
-    void Activate(NameServerLog* log);
+    void Activate(boost::function<void (const FileInfo&)> rebuild_callback, NameServerLog* log);
     ~NameSpace();
     /// List a directory
     StatusCode ListDirectory(const std::string& path,
@@ -58,6 +58,7 @@ public:
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
     int64_t GetNewBlockId(NameServerLog* log);
+    void InitBlockIdUpbound(NameServerLog* log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
