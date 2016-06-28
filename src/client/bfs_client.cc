@@ -305,7 +305,7 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         return 1;
     }
     std::string path_prefix = RebuildPathPrefix(path);
-    printf("Found %d items\n", num);
+    printf("Found %d items\n", num > 1 ? num - 2 : num);
     for (int i = 0; i < num; i++) {
         int32_t type = files[i].mode;
         char statbuf[16] = "drwxrwxrwx";
@@ -323,7 +323,7 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         if (num == 1) {
             printf("%s\t%s  %s\n", statbuf, timestr, path_prefix.c_str());
         } else if (strcmp(files[i].name, ".") == 0 || strcmp(files[i].name, "..") == 0) {
-            printf("%s\t%s  %s\n", statbuf, timestr, files[i].name);
+            // skip
         } else {
             printf("%s\t%s  %s/%s\n", statbuf, timestr, path_prefix.c_str(), files[i].name);
         }
