@@ -71,7 +71,6 @@ TEST_F(LogDBTest, EncodeMarker) {
     ASSERT_EQ(decode_marker.value, "value");
 }
 
-
 TEST_F(LogDBTest, ReadOne) {
     LogDB* logdb;
     LogDB::Open("./dbtest", option, &logdb);
@@ -157,7 +156,8 @@ TEST_F(LogDBTest, WriteMarkerSnapshot) {
     struct stat sta;
     ASSERT_EQ(0, lstat("./dbtest/marker.mak", &sta));
     ASSERT_EQ(24, sta.st_size);
-    //system("rm -rf ./dbtest");
+    LogDB::Close(logdb);
+    system("rm -rf ./dbtest");
 }
 
 TEST_F(LogDBTest, Write) {
@@ -261,6 +261,7 @@ TEST_F(LogDBTest, CheckLogIdx) {
     truncate("./dbtest/0.log", 1048591); // truncate by 1 byte
     LogDB::Open("./dbtest", option, &logdb);
     ASSERT_TRUE(logdb == NULL);
+    LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 }
 
@@ -282,10 +283,17 @@ TEST_F(LogDBTest, DeleteUpTo) {
     ASSERT_EQ(ret, 0);
     ret = access("./dbtest/195703.log", R_OK);
     ASSERT_EQ(ret, 0);
-    ASSERT_EQ(logdb->DeleteUpTo(99999), kBadParameter);
-    ASSERT_EQ(logdb->DeleteUpTo(200001), kBadParameter);
-    ReadLog_Helper(100000, 100000, logdb);
 
+    ASSERT_EQ(logdb->DeleteUpTo(99999), kBadParameter);
+    ASSERT_EQ(logdb->DeleteUpTo(200000), kBadParameter);
+    ReadLog_Helper(100000, 100000, logdb);
+    LogDB::Close(logdb);
+
+    logdb->DeleteUpTo(200000);
+    LogDB::Open("./dbtest", option, &logdb);
+    ASSERT_EQ(logdb->Write(10000, "bad"), kBadParameter);
+    WriteLog_Helper(200000, 1, logdb);
+    ReadLog_Helper(200000, 1, logdb);
     LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 }
@@ -308,6 +316,7 @@ TEST_F(LogDBTest, DeleteFrom) {
     ASSERT_EQ(ret, -1);
     ret = access("./dbtest/195703.log", R_OK);
     ASSERT_EQ(ret, -1);
+
     logdb->DeleteFrom(100378);
     ret = access("./dbtest/100377.log", R_OK);
     ASSERT_EQ(ret, 0);
@@ -316,6 +325,7 @@ TEST_F(LogDBTest, DeleteFrom) {
     ASSERT_EQ(sta.st_size, 22);
     lstat("./dbtest/100377.idx", &sta);
     ASSERT_EQ(sta.st_size, 16);
+
     logdb->DeleteFrom(100377);
     ret = access("./dbtest/100377.log", R_OK);
     ASSERT_EQ(ret, -1);
@@ -323,7 +333,14 @@ TEST_F(LogDBTest, DeleteFrom) {
     ASSERT_EQ(logdb->DeleteFrom(-1), kBadParameter);
     WriteLog_Helper(100377, 1, logdb);
     ReadLog_Helper(0, 100378, logdb);
+    logdb->DeleteFrom(0);
+    WriteLog_Helper(5, 10, logdb);
+    ReadLog_Helper(5, 10, logdb);
+    LogDB::Close(logdb);
 
+    LogDB::Open("./dbtest", option, &logdb);
+    WriteLog_Helper(11, 10, logdb);
+    ReadLog_Helper(11, 10, logdb);
     LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 }
