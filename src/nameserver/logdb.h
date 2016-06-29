@@ -46,6 +46,7 @@ public:
     LogDB();
     ~LogDB();
     static void Open(const std::string& path, const DBOption& option, LogDB** dbptr);
+    static void Close();
     StatusCode Write(int64_t index, const std::string& entry);
     // Read log entry
     StatusCode Read(int64_t index, std::string* entry);

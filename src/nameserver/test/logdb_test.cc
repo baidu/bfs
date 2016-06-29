@@ -44,7 +44,7 @@ void ReadLog_Helper(int start, int n , LogDB* logdb) {
         ASSERT_EQ(log, common::NumToString(i) + "test");
     }
 }
-
+/*
 TEST_F(LogDBTest, EncodeLogEntry) {
     LogDB* logdb;
     logdb->Open("./dbtest", option, &logdb);
@@ -228,7 +228,42 @@ TEST_F(LogDBTest, NewWriteLog) {
     delete logdb;
     system("rm -rf ./dbtest");
 }
+*/
+TEST_F(LogDBTest, CheckLogIdx) {
+    DBOption option;
+    option.log_size = 1;
+    LogDB* logdb;
+    logdb->Open("./dbtest", option, &logdb);
+    WriteLog_Helper(0, 100000, logdb);
+    // 0.log, 50462.log
+    delete logdb;
 
+    FILE* fp = fopen("./dbtest/0.idx", "a");
+    fwrite("foo", 1, 3, fp);
+    fclose(fp);
+    logdb->Open("./dbtest", option, &logdb);
+    ASSERT_TRUE(logdb != NULL);
+    delete logdb;
+
+    fp = fopen("./dbtest/0.log", "a");
+    fwrite("foobar", 1, 3, fp);
+    fclose(fp);
+    logdb->Open("./dbtest", option, &logdb);
+    ASSERT_TRUE(logdb != NULL);
+    delete logdb;
+
+    system("cp ./dbtest/0.idx ./dbtest/0.idx.bak");
+    truncate("./dbtest/0.idx", 807391); // truncate by 1 byte
+    logdb->Open("./dbtest", option, &logdb);
+    ASSERT_TRUE(logdb == NULL);
+    system("cp ./dbtest/0.idx.bak ./dbtest/0.idx");
+    system("cp ./dbtest/0.log ./dbtest/0.log.bak");
+    truncate("./dbtest/0.log", 1048591); // truncate by 1 byte
+    logdb->Open("./dbtest", option, &logdb);
+    ASSERT_TRUE(logdb == NULL);
+    system("rm -rf ./dbtest");
+}
+/*
 TEST_F(LogDBTest, DeleteUpTo) {
     DBOption option;
     option.log_size = 1;
@@ -292,7 +327,7 @@ TEST_F(LogDBTest, DeleteFrom) {
     delete logdb;
     system("rm -rf ./dbtest");
 }
-
+*/
 } // namespace bfs
 } // namespace baidu
 

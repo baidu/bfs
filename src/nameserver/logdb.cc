@@ -49,7 +49,7 @@ void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr)
         logdb->smallest_index_ = boost::lexical_cast<int64_t>(it->second);
     }
     if (!logdb->BuildFileCache()) {
-        LOG(WARNING, "[LogDB] BuildFileCache failed reason: %s", strerror(errno));
+        LOG(WARNING, "[LogDB] BuildFileCache failed");
         delete logdb;
         return;
     }
@@ -376,10 +376,9 @@ bool LogDB::CheckLogIdx() {
         }
         int reminder = idx_size % 16;
         if (reminder != 0) {
-            LOG(INFO, "[LogDB] incomplete index file %ld ", it->first);
+            LOG(INFO, "[LogDB] incomplete index file %ld.idx ", it->first);
         }
         fseek(idx, idx_size - 16 - reminder, SEEK_SET);
-        int c = ftell(idx);
         int64_t expect_index = it->first + (idx_size / 16) - 1;
         int64_t read_index = -1;
         int64_t offset = -1;
