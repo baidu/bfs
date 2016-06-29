@@ -190,7 +190,7 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     } else if (request->index() <= current_idx_) {
         LOG(INFO, "\033[32m[Sync]\033[0m out-date log request %ld, current_idx_ %ld",
             request->index(), current_idx_);
-        response->set_index(-1);
+        response->set_index(current_idx_ + 1);
         response->set_success(false);
         done->Run();
         return;
@@ -250,10 +250,8 @@ void MasterSlaveImpl::ReplicateLog() {
         }
         if (!response.success()) { // log mismatch
             MutexLock lock(&mu_);
-            if (response.index() != -1) {
-                sync_idx_ = response.index() - 1;
-                LOG(INFO, "[Sync] set sync_idx_ to %d", sync_idx_);
-            }
+            sync_idx_ = response.index() - 1;
+            LOG(INFO, "[Sync] set sync_idx_ to %d", sync_idx_);
             continue;
         }
         thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_ + 1, false));

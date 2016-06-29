@@ -67,11 +67,13 @@ public:
 
     /// for dumper ///
     static int ReadOne(FILE* fp, std::string* data);
+    static StatusCode ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int64_t* offset);
     static void DecodeLogEntry(const std::string& data, LogDataEntry* log);
     static void DecodeMarker(const std::string& data, MarkerEntry* marker);
 private:
     bool RecoverMarker();
     bool BuildFileCache();
+    bool CheckLogIdx();
     void WriteMarkerSnapshot();
     void EncodeLogEntry(const LogDataEntry& log, std::string* data);
     void EncodeMarker(const MarkerEntry& marker, std::string* data);

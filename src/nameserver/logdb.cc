@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-
+#include <iostream>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -30,7 +30,7 @@ LogDB::~LogDB() {
     if (write_index_) fclose(write_index_);
     if (marker_log_) fclose(marker_log_);
 }
-
+// TODO check index file and log file match
 void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr) {
     *dbptr = NULL;
 
@@ -121,30 +121,24 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
     }
     if (index < it->first) {
         LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
+        assert(0);
     }
     FILE* idx_fp = (it->second).first;
     FILE* log_fp = (it->second).second;
     // find entry offset
     int offset = 16 * (index - it->first);
-    mu_.Lock();
-    if (fseek(idx_fp, offset, SEEK_SET) != 0) {
-        LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
-    }
-    char buf[16];
-    int ret = fread(buf, 1, 16, idx_fp);
-    mu_.Unlock();
-    if (ret == 0) {
-        return kNotFound;
-    } else if (ret != 16) {
-        LOG(WARNING, "[logdb] Read index file error %ld", index);
-        return kReadError;
-    }
-    int64_t read_index, entry_offset;
-    memcpy(&read_index, buf, 8);
-    memcpy(&entry_offset, buf + 8, 8);
-    if (read_index != index) {
-        LOG(WARNING, "[LogDB] Index file mismatch %ld ", index);
-        return kReadError;
+    int64_t read_index = -1;
+    int64_t entry_offset = -1;
+    {
+        MutexLock lock(&mu_);
+        if (fseek(idx_fp, offset, SEEK_SET) != 0) {
+            LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
+            assert(0);
+        }
+        StatusCode s = ReadIndex(idx_fp, index, &read_index, &entry_offset);
+        if (s != kOK) {
+            return s;
+        }
     }
     // read log entry
     std::string data;
@@ -154,8 +148,8 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
             LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
             return kReadError;
         }
-        ret = ReadOne(log_fp, &data);
-        if (ret == -1) {
+        int ret = ReadOne(log_fp, &data);
+        if (ret <= 0) {
             LOG(WARNING, "[LogDB] Read log error %ld ", index);
             return kReadError;
         }
@@ -307,6 +301,7 @@ bool LogDB::BuildFileCache() {
         LOG(WARNING, "[LogDB] open dir failed %s", dbpath_.c_str());
         return false;
     }
+    bool error = false;
     while (entry = readdir(dir_ptr)) {
         size_t idx = std::string(entry->d_name).find(".idx");
         if (idx != std::string::npos) {
@@ -317,30 +312,103 @@ bool LogDB::BuildFileCache() {
             FILE* idx_fp = fopen(idx_name.c_str(), "r");
             if (idx_fp == NULL) {
                 LOG(WARNING, "[LogDB] open index file failed %s", file_name.c_str());
-                closedir(dir_ptr);
-                return false;
+                error = true;
+                break;
             }
             FILE* log_fp = fopen(log_name.c_str(), "r");
             if (log_fp == NULL) {
                 LOG(WARNING, "[LogDB] open log file failed %s", file_name.c_str());
-                closedir(dir_ptr);
-                return false;
+                fclose(idx_fp);
+                error = true;
+                break;
             }
             read_log_[index] = std::make_pair(idx_fp, log_fp);
             LOG(INFO, "[LogDB] Add file cache %ld to %s ", index, file_name.c_str());
         }
     }
     closedir(dir_ptr);
-    // build largest index
+    if (error) {
+        for (FileCache::iterator it = read_log_.begin(); it != read_log_.end(); ++it) {
+            fclose((it->second).first);
+            fclose((it->second).second);
+        }
+        read_log_.clear();
+        return false;
+    }
+    // check log & idx match, build largest index
+    if (!CheckLogIdx()) {
+        LOG(WARNING, "[LogDB] CheckLogIdx failed");
+        for (FileCache::iterator it = read_log_.begin(); it != read_log_.end(); ++it) {
+            fclose((it->second).first);
+            fclose((it->second).second);
+        }
+        read_log_.clear();
+        return false;
+    }
+    return true;
+}
+
+bool LogDB::CheckLogIdx() {
     if (read_log_.empty()) {
         LOG(INFO, "[LogDB] No previous log, largest_index_ = -1");
         return true;
     }
-    FileCache::reverse_iterator it = read_log_.rbegin();
-    FILE* fp = (it->second).first;
-    fseek(fp, 0, SEEK_END);
-    int size = ftell(fp);
-    largest_index_ = it->first + (size / 16) - 1;
+    FileCache::iterator it = read_log_.begin();
+    if (smallest_index_ < it->first) {
+        LOG(WARNING, "[LogDB] log does not contain smallest_index_ %ld ", smallest_index_);
+        return false;
+    }
+    largest_index_ = it->first - 1;
+    bool error = false;
+    for (; it != read_log_.end(); ++it) {
+        if (it->first != largest_index_ + 1) {
+            LOG(WARNING, "[LogDB] log is not continous, current index %ld ", it->first);
+            return false;
+        }
+        FILE* idx = (it->second).first;
+        FILE* log = (it->second).second;
+        fseek(idx, 0, SEEK_END);
+        int idx_size = ftell(idx);
+        if (idx_size < 16) {
+            LOG(WARNING, "[LogDB] index file too small %ld ", it->first);
+            error = true;
+            break;
+        }
+        int reminder = idx_size % 16;
+        if (reminder != 0) {
+            LOG(INFO, "[LogDB] incomplete index file %ld ", it->first);
+        }
+        fseek(idx, idx_size - 16 - reminder, SEEK_SET);
+        int c = ftell(idx);
+        int64_t expect_index = it->first + (idx_size / 16) - 1;
+        int64_t read_index = -1;
+        int64_t offset = -1;
+        StatusCode s = ReadIndex(idx, expect_index, &read_index, &offset);
+        if (s != kOK) {
+            LOG(WARNING, "[LogDB] check index file failed %ld.idx %s",
+                    it->first, StatusCode_Name(s).c_str());
+            return false;
+        }
+        fseek(log, 0, SEEK_END);
+        int log_size = ftell(log);
+        fseek(log, offset, SEEK_SET);
+        int len;
+        int ret = fread(&len, 1, 4, log);
+        if (ret < 4 || (offset + 4 + len > log_size)) {
+            LOG(WARNING, "[LogDB] incomplete log %ld ", it->first);
+            return false;
+        }
+        largest_index_ = expect_index;
+    }
+    if (error) {
+        if (++it != read_log_.end()) {
+            return false;
+        }
+        FileCache::reverse_iterator rit = read_log_.rbegin();
+        fclose((rit->second).first);
+        fclose((rit->second).second);
+        read_log_.erase(rit->first);
+    }
     LOG(INFO, "[LogDB] Set largest_index_ to %ld", largest_index_);
     return true;
 }
@@ -428,6 +496,24 @@ int LogDB::ReadOne(FILE* fp, std::string* data) {
     data->assign(buf, len);
     delete[] buf;
     return len;
+}
+
+StatusCode LogDB::ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int64_t* offset) {
+    char buf[16];
+    int ret = fread(buf, 1, 16, fp);
+    if (ret == 0) {
+        return kNotFound;
+    } else if (ret != 16) {
+        LOG(WARNING, "[logdb] Read index file error %ld", expect_index);
+        return kReadError;
+    }
+    memcpy(index, buf, 8);
+    memcpy(offset, buf + 8, 8);
+    if (expect_index != *index) {
+        LOG(WARNING, "[LogDB] Index file mismatch %ld ", index);
+        return kReadError;
+    }
+    return kOK;
 }
 
 void LogDB::EncodeLogEntry(const LogDataEntry& log, std::string* data) {
