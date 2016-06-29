@@ -44,10 +44,10 @@ void ReadLog_Helper(int start, int n , LogDB* logdb) {
         ASSERT_EQ(log, common::NumToString(i) + "test");
     }
 }
-/*
+
 TEST_F(LogDBTest, EncodeLogEntry) {
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     LogDataEntry entry(3, "helloworld");
     std::string str;
     logdb->EncodeLogEntry(entry, &str);
@@ -60,7 +60,7 @@ TEST_F(LogDBTest, EncodeLogEntry) {
 
 TEST_F(LogDBTest, EncodeMarker) {
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     MarkerEntry marker("key", "value");
     std::string str;
     logdb->EncodeMarker(marker, &str);
@@ -74,7 +74,7 @@ TEST_F(LogDBTest, EncodeMarker) {
 
 TEST_F(LogDBTest, ReadOne) {
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     LogDataEntry entry(0, "helloworld");
     std::string str;
     int32_t len = 18;
@@ -104,15 +104,15 @@ TEST_F(LogDBTest, ReadOne) {
 TEST_F(LogDBTest, WriteMarker) {
     // write then read
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteMarker_Helper("mark1", 10, logdb);
     int64_t v;
     logdb->ReadMarker("mark1", &v);
     ASSERT_EQ(v, 10);
-    delete logdb;
+    LogDB::Close(logdb);
 
     // test recover
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     logdb->ReadMarker("mark1", &v);
     ASSERT_EQ(v, 10);
 
@@ -132,15 +132,15 @@ TEST_F(LogDBTest, WriteMarker) {
         logdb->ReadMarker(common::NumToString(i), &v);
         ASSERT_EQ(100, v);
     }
-    delete logdb;
+    LogDB::Close(logdb);
 
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     for (int i = 0; i < 10; ++i) {
         int64_t v;
         logdb->ReadMarker(common::NumToString(i), &v);
         ASSERT_EQ(100, v);
     }
-    delete logdb;
+    LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 }
 
@@ -148,7 +148,7 @@ TEST_F(LogDBTest, WriteMarkerSnapshot) {
     DBOption option;
     option.snapshot_interval = 1;
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteMarker_Helper("mark", 500000, logdb);
     sleep(1);
     int64_t v;
@@ -162,27 +162,27 @@ TEST_F(LogDBTest, WriteMarkerSnapshot) {
 
 TEST_F(LogDBTest, Write) {
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(0, 3, logdb);
     ReadLog_Helper(0, 3, logdb);
 
     // test build file cache
-    delete logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Close(logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(3, 2, logdb);
     ReadLog_Helper(0, 5, logdb);
     std::string entry;
     ASSERT_EQ(logdb->Read(6, &entry), kNotFound);
     ASSERT_EQ(logdb->Write(1, "bad"), kBadParameter);
     ASSERT_EQ(logdb->Write(7, "bad"), kBadParameter);
-    delete logdb;
+    LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(10, 5, logdb);
     ReadLog_Helper(10, 5, logdb);
-    delete logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Close(logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(15, 5, logdb);
     ReadLog_Helper(15, 5, logdb);
     system("rm -rf ./dbtest");
@@ -190,7 +190,7 @@ TEST_F(LogDBTest, Write) {
 
 TEST_F(LogDBTest, Read) {
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(0, 500, logdb);
     std::vector<common::Thread*> threads;
     for (int i = 0; i < 5; ++i) {
@@ -202,7 +202,7 @@ TEST_F(LogDBTest, Read) {
         threads[i]->Join();
         delete threads[i];
     }
-    delete logdb;
+    LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 }
 
@@ -210,7 +210,7 @@ TEST_F(LogDBTest, NewWriteLog) {
     DBOption option;
     option.log_size = 1;
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(0, 200000, logdb);
     // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
     int ret = access("./dbtest/0.log", R_OK);
@@ -225,50 +225,50 @@ TEST_F(LogDBTest, NewWriteLog) {
     ASSERT_EQ(ret, 0);
     ReadLog_Helper(0, 200000, logdb);
 
-    delete logdb;
+    LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 }
-*/
+
 TEST_F(LogDBTest, CheckLogIdx) {
     DBOption option;
     option.log_size = 1;
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(0, 100000, logdb);
     // 0.log, 50462.log
-    delete logdb;
+    LogDB::Close(logdb);
 
     FILE* fp = fopen("./dbtest/0.idx", "a");
     fwrite("foo", 1, 3, fp);
     fclose(fp);
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     ASSERT_TRUE(logdb != NULL);
-    delete logdb;
+    LogDB::Close(logdb);
 
     fp = fopen("./dbtest/0.log", "a");
     fwrite("foobar", 1, 3, fp);
     fclose(fp);
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     ASSERT_TRUE(logdb != NULL);
-    delete logdb;
+    LogDB::Close(logdb);
 
     system("cp ./dbtest/0.idx ./dbtest/0.idx.bak");
     truncate("./dbtest/0.idx", 807391); // truncate by 1 byte
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     ASSERT_TRUE(logdb == NULL);
     system("cp ./dbtest/0.idx.bak ./dbtest/0.idx");
     system("cp ./dbtest/0.log ./dbtest/0.log.bak");
     truncate("./dbtest/0.log", 1048591); // truncate by 1 byte
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     ASSERT_TRUE(logdb == NULL);
     system("rm -rf ./dbtest");
 }
-/*
+
 TEST_F(LogDBTest, DeleteUpTo) {
     DBOption option;
     option.log_size = 1;
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(0, 200000, logdb);
     // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
     logdb->DeleteUpTo(99999);
@@ -286,7 +286,7 @@ TEST_F(LogDBTest, DeleteUpTo) {
     ASSERT_EQ(logdb->DeleteUpTo(200001), kBadParameter);
     ReadLog_Helper(100000, 100000, logdb);
 
-    delete logdb;
+    LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 }
 
@@ -294,7 +294,7 @@ TEST_F(LogDBTest, DeleteFrom) {
     DBOption option;
     option.log_size = 1;
     LogDB* logdb;
-    logdb->Open("./dbtest", option, &logdb);
+    LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(0, 200000, logdb);
     // 0.log, 50462.log, 100377.log, 148040.log, 195703.log
     logdb->DeleteFrom(100500);
@@ -324,10 +324,10 @@ TEST_F(LogDBTest, DeleteFrom) {
     WriteLog_Helper(100377, 1, logdb);
     ReadLog_Helper(0, 100378, logdb);
 
-    delete logdb;
+    LogDB::Close(logdb);
     system("rm -rf ./dbtest");
 }
-*/
+
 } // namespace bfs
 } // namespace baidu
 

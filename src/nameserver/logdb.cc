@@ -20,17 +20,6 @@ namespace bfs {
 LogDB::LogDB() : largest_index_(-1), smallest_index_(-1), current_log_index_(-1),
                  write_log_(NULL), write_index_(NULL), marker_log_(NULL) {}
 
-LogDB::~LogDB() {
-    thread_pool_->Stop(true);
-    if (write_log_) fclose(write_log_);
-    for (FileCache::iterator it = read_log_.begin(); it != read_log_.end(); ++it) {
-        fclose((it->second).first);
-        fclose((it->second).second);
-    }
-    if (write_index_) fclose(write_index_);
-    if (marker_log_) fclose(marker_log_);
-}
-// TODO check index file and log file match
 void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr) {
     *dbptr = NULL;
 
@@ -57,6 +46,18 @@ void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr)
     logdb->WriteMarkerSnapshot();
     *dbptr = logdb;
     return;
+}
+
+void LogDB::Close(LogDB* db) {
+    db->thread_pool_->Stop(true);
+    if (db->write_log_) fclose(db->write_log_);
+    for (FileCache::iterator it = db->read_log_.begin(); it != db->read_log_.end(); ++it) {
+        fclose((it->second).first);
+        fclose((it->second).second);
+    }
+    if (db->write_index_) fclose(db->write_index_);
+    if (db->marker_log_) fclose(db->marker_log_);
+    delete db;
 }
 
 StatusCode LogDB::Write(int64_t index, const std::string& entry) {

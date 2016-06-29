@@ -44,9 +44,9 @@ struct MarkerEntry // entry_length + key_len + key + value_len + value
 class LogDB {
 public:
     LogDB();
-    ~LogDB();
+    ~LogDB() {}
     static void Open(const std::string& path, const DBOption& option, LogDB** dbptr);
-    static void Close();
+    static void Close(LogDB* db);
     StatusCode Write(int64_t index, const std::string& entry);
     // Read log entry
     StatusCode Read(int64_t index, std::string* entry);
