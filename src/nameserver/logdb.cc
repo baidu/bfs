@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-
+#include <iostream>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -17,7 +17,7 @@
 namespace baidu {
 namespace bfs {
 
-LogDB::LogDB() : largest_index_(-1), smallest_index_(-1), current_log_index_(-1),
+LogDB::LogDB() : thread_pool_(NULL), largest_index_(-1), smallest_index_(-1), current_log_index_(-1),
                  write_log_(NULL), write_index_(NULL), marker_log_(NULL) {}
 
 void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr) {
@@ -48,21 +48,17 @@ void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr)
     return;
 }
 
-void LogDB::Close(LogDB* db) {
-    if (!db) {
-        return;
+LogDB::~LogDB() {
+    if (thread_pool_) {
+        thread_pool_->Stop(true);
     }
-    if (db->thread_pool_) {
-        db->thread_pool_->Stop(true);
-    }
-    if (db->write_log_) fclose(db->write_log_);
-    for (FileCache::iterator it = db->read_log_.begin(); it != db->read_log_.end(); ++it) {
+    if (write_log_) fclose(write_log_);
+    for (FileCache::iterator it = read_log_.begin(); it != read_log_.end(); ++it) {
         fclose((it->second).first);
         fclose((it->second).second);
     }
-    if (db->write_index_) fclose(db->write_index_);
-    if (db->marker_log_) fclose(db->marker_log_);
-    delete db;
+    if (write_index_) fclose(write_index_);
+    if (marker_log_) fclose(marker_log_);
 }
 
 StatusCode LogDB::Write(int64_t index, const std::string& entry) {
@@ -72,10 +68,10 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
                     index, largest_index_);
         return kBadParameter;
     }
+    uint32_t len = entry.length();
     std::string data;
-    uint32_t len = 8 + entry.length();
     data.append(reinterpret_cast<char*>(&len), 4);
-    EncodeLogEntry(LogDataEntry(index, entry), &data);
+    data.append(entry);
     if (!write_log_) {
         if (!NewWriteLog(index)) {
             return kWriteError;
@@ -146,26 +142,18 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
         }
     }
     // read log entry
-    std::string data;
     {
         MutexLock lock(&mu_);
         if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
             LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
             return kReadError;
         }
-        int ret = ReadOne(log_fp, &data);
+        int ret = ReadOne(log_fp, entry);
         if (ret <= 0) {
             LOG(WARNING, "[LogDB] Read log error %ld ", index);
             return kReadError;
         }
     }
-    LogDataEntry log_entry;
-    DecodeLogEntry(data, &log_entry);
-    if (log_entry.index != index) {
-        LOG(WARNING, "[LogDB] Read failed, index mismatch. %ld %ld ", index, log_entry.index);
-        return kReadError;
-    }
-    *entry = log_entry.entry;
     return kOK;
 }
 
@@ -547,17 +535,6 @@ StatusCode LogDB::ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int6
         return kReadError;
     }
     return kOK;
-}
-
-void LogDB::EncodeLogEntry(const LogDataEntry& log, std::string* data) {
-    int64_t index = log.index;
-    data->append(reinterpret_cast<char*>(&index), 8);
-    data->append(log.entry);
-}
-
-void LogDB::DecodeLogEntry(const std::string& data, LogDataEntry* log) { // data = index + log_entry
-    memcpy(&(log->index), &(data[0]), 8);
-    (log->entry).assign(data.substr(8));
 }
 
 void LogDB::EncodeMarker(const MarkerEntry& marker, std::string* data) {

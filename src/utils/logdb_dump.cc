@@ -31,8 +31,8 @@ void DumpMarker(char* path) {
 
 void DumpLog(char* path) {
     FILE* fp = fopen(path, "r");
-    LogDataEntry entry;
     std::string data;
+    int64_t i = 0;
     while (true) {
         int ret = LogDB::ReadOne(fp, &data);
         if(ret == 0) break;
@@ -40,8 +40,8 @@ void DumpLog(char* path) {
             std::cerr << "DumpLog failed while reading" << std::endl;
             return;
         }
-        LogDB::DecodeLogEntry(data, &entry);
-        std::cout << entry.index << "\t->\t" << entry.entry << std::endl;
+        std::cout << i << "\t->\t" << data << std::endl;
+        ++i;
     }
     fclose(fp);
 }

@@ -25,14 +25,6 @@ struct DBOption
     DBOption() : snapshot_interval(60), log_size(128) /* in MB */ {}
 };
 
-struct LogDataEntry // entry_length + index + log
-{
-    int64_t index;
-    std::string entry;
-    LogDataEntry() : index(0) {}
-    LogDataEntry(int64_t index, const std::string& entry) : index(index), entry(entry) {}
-};
-
 struct MarkerEntry // entry_length + key_len + key + value_len + value
 {
     std::string key;
@@ -44,9 +36,8 @@ struct MarkerEntry // entry_length + key_len + key + value_len + value
 class LogDB {
 public:
     LogDB();
-    ~LogDB() {}
+    ~LogDB();
     static void Open(const std::string& path, const DBOption& option, LogDB** dbptr);
-    static void Close(LogDB* db);
     StatusCode Write(int64_t index, const std::string& entry);
     // Read log entry
     StatusCode Read(int64_t index, std::string* entry);
@@ -69,7 +60,6 @@ public:
     /// for dumper ///
     static int ReadOne(FILE* fp, std::string* data);
     static StatusCode ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int64_t* offset);
-    static void DecodeLogEntry(const std::string& data, LogDataEntry* log);
     static void DecodeMarker(const std::string& data, MarkerEntry* marker);
 private:
     bool RecoverMarker();
@@ -77,7 +67,6 @@ private:
     bool CheckLogIdx();
     void WriteMarkerSnapshot();
     void CloseCurrent();
-    void EncodeLogEntry(const LogDataEntry& log, std::string* data);
     void EncodeMarker(const MarkerEntry& marker, std::string* data);
     bool NewWriteLog(int64_t index);
     void FormLogName(int64_t index, std::string* log_name, std::string* idx_name);
