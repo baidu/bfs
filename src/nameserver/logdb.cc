@@ -121,8 +121,7 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
         --it;
     }
     if (index < it->first) {
-        LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
-        assert(0);
+        LOG(FATAL, "[LogDB] Read cannot find index file %ld ", index);
     }
     FILE* idx_fp = (it->second).first;
     FILE* log_fp = (it->second).second;
@@ -133,8 +132,7 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
     {
         MutexLock lock(&mu_);
         if (fseek(idx_fp, offset, SEEK_SET) != 0) {
-            LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
-            assert(0);
+            LOG(FATAL, "[LogDB] Read cannot find index file %ld ", index);
         }
         StatusCode s = ReadIndex(idx_fp, index, &read_index, &entry_offset);
         if (s != kOK) {

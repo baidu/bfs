@@ -64,8 +64,8 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test
-TEST_OBJS = src/nameserver/test/namespace_test.o \
+TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test logdb_test
+TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
 UNITTEST_OUTPUT = test/
