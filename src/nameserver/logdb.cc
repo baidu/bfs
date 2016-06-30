@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-#include <iostream>
+
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -17,7 +17,7 @@
 namespace baidu {
 namespace bfs {
 
-LogDB::LogDB() : thread_pool_(NULL), largest_index_(-1), smallest_index_(-1), current_log_index_(-1),
+LogDB::LogDB() : thread_pool_(NULL), next_index_(0), smallest_index_(-1),
                  write_log_(NULL), write_index_(NULL), marker_log_(NULL) {}
 
 void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr) {
@@ -63,9 +63,9 @@ LogDB::~LogDB() {
 
 StatusCode LogDB::Write(int64_t index, const std::string& entry) {
     MutexLock lock(&mu_);
-    if (largest_index_ != -1 && index != largest_index_ + 1) {
-        LOG(INFO, "[LogDB] Write with invalid index = %ld largest_index_ = %ld ",
-                    index, largest_index_);
+    if (index != next_index_ && smallest_index_ != -1) {
+        LOG(INFO, "[LogDB] Write with invalid index = %ld smallest_index_ = %ld next_index_ = %ld ",
+                index, smallest_index_, next_index_);
         return kBadParameter;
     }
     uint32_t len = entry.length();
@@ -99,21 +99,21 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
         CloseCurrent();
         return kWriteError;
     }
-    if (largest_index_ == -1) { // empty db
+    if (smallest_index_ == -1) { // empty db
         StatusCode s = WriteMarkerNoLock(".smallest_index_", common::NumToString(index));
         if (s != kOK) {
             CloseCurrent();
             return s;
         }
         smallest_index_ = index;
-        //LOG(INFO, "[LogDB] set smallest_index_ to %ld ", smallest_index_);
+        LOG(INFO, "[LogDB] Set smallest_index_ to %ld ", smallest_index_);
     }
-    largest_index_ = index;
+    next_index_ = index + 1;
     return kOK;
 }
 
 StatusCode LogDB::Read(int64_t index, std::string* entry) {
-    if (read_log_.empty() || index > largest_index_ || index < smallest_index_) {
+    if (read_log_.empty() || index >= next_index_ || index < smallest_index_) {
         return kNotFound;
     }
     FileCache::iterator it = read_log_.lower_bound(index);
@@ -210,17 +210,16 @@ StatusCode LogDB::ReadMarker(const std::string& key, int64_t* value) {
 
 StatusCode LogDB::GetLargestIdx(int64_t* value) {
     MutexLock lock(&mu_);
-    if (smallest_index_ > largest_index_) {
+    if (smallest_index_ == next_index_) {
         *value = -1;
     }
-    *value = largest_index_;
+    *value = next_index_ - 1;
     return kOK;
 }
 
 StatusCode LogDB::DeleteUpTo(int64_t index) {
-    if (index > largest_index_ || index < smallest_index_) {
-        LOG(INFO, "[LogDB] DeleteUpTo over limit index = %ld largest_index_ = %ld",
-                index, largest_index_);
+    if (index >= next_index_ || index < smallest_index_) {
+        LOG(INFO, "[LogDB] DeleteUpTo over limit index = %ld next_index_ = %ld", index, next_index_);
         return kBadParameter;
     }
     MutexLock lock(&mu_);
@@ -245,33 +244,29 @@ StatusCode LogDB::DeleteUpTo(int64_t index) {
         remove(idx_name.c_str());
         read_log_.erase(it++);
     }
+    LOG(INFO, "[LogDB] DeleteUpTo done smallest_index_ = %ld next_index_ = %ld",
+            smallest_index_, next_index_);
     return kOK;
 }
 
 StatusCode LogDB::DeleteFrom(int64_t index) {
-    if (index > largest_index_ || index < smallest_index_) {
-        LOG(INFO, "[LogDB] DeleteUpTo over limit index = %ld largest_index_ = %ld",
-                index, largest_index_);
+    if (index >= next_index_ || index < smallest_index_) {
+        LOG(INFO, "[LogDB] DeleteUpTo over limit index = %ld smallest_index_ = %ld next_index_ = %ld",
+                index, smallest_index_, next_index_);
         return kBadParameter;
     }
     MutexLock lock(&mu_);
-    largest_index_ = index - 1;
     FileCache::iterator from = read_log_.lower_bound(index);
     for (FileCache::iterator it = from; it != read_log_.end(); ++it) {
         fclose((it->second).first);
         fclose((it->second).second);
-        std::string prefix = dbpath_ + common::NumToString(it->first);
-        if (it->first == current_log_index_) {
-            fclose(write_log_);
-            fclose(write_index_);
-            write_log_ = NULL;
-            write_index_ = NULL;
-        }
         std::string log_name, idx_name;
         FormLogName(it->first, &log_name, &idx_name);
         remove(log_name.c_str());
         remove(idx_name.c_str());
     }
+    CloseCurrent();
+    // truancate the last log and open it for read
     read_log_.erase(from, read_log_.end());
     if (!read_log_.empty()) {
         FileCache::reverse_iterator it = read_log_.rbegin();
@@ -279,24 +274,22 @@ StatusCode LogDB::DeleteFrom(int64_t index) {
         fseek((it->second).first, offset, SEEK_SET);
         char buf[16];
         int len = fread(buf, 1, 16, (it->second).first);
-        if (len == 0) {
-            return kOK;
+        if (len == 16) {
+            int64_t tmp_offset;
+            memcpy(&tmp_offset, buf + 8, 8);
+            fclose((it->second).first);
+            fclose((it->second).second);
+            std::string log_name, idx_name;
+            FormLogName(it->first, &log_name, &idx_name);
+            truncate(log_name.c_str(), tmp_offset);
+            truncate(idx_name.c_str(), offset);
+            (it->second).first = fopen(idx_name.c_str(), "r");
+            (it->second).second = fopen(log_name.c_str(), "r");
         }
-        int64_t tmp_offset;
-        memcpy(&tmp_offset, buf + 8, 8);
-        fclose((it->second).first);
-        fclose((it->second).second);
-        std::string log_name, idx_name;
-        FormLogName(it->first, &log_name, &idx_name);
-        truncate(log_name.c_str(), tmp_offset);
-        truncate(idx_name.c_str(), offset);
-        (it->second).first = fopen(idx_name.c_str(), "r");
-        (it->second).second = fopen(log_name.c_str(), "r");
     }
-    if (index == smallest_index_) {
-        smallest_index_ = -1;
-        return WriteMarkerNoLock(".smallest_index_", common::NumToString(smallest_index_));
-    }
+    next_index_ = index;
+    LOG(INFO, "[LogDB] DeleteFrom done smallest_index_ = %ld next_index_ = %ld",
+            smallest_index_, next_index_);
     return kOK;
 }
 
@@ -357,11 +350,12 @@ bool LogDB::BuildFileCache() {
 
 bool LogDB::CheckLogIdx() {
     if (read_log_.empty()) {
-        if (smallest_index_ != -1) {
-            // DeleteUpTo has made the db empty
-            largest_index_ = smallest_index_ - 1;
+        if (smallest_index_ == -1) {
+            next_index_ = 0;
+        } else {
+            next_index_ = smallest_index_;
         }
-        LOG(INFO, "[LogDB] No previous log, largest_index_ = -1");
+        LOG(INFO, "[LogDB] No previous log, next_index_ = %ld ", next_index_);
         return true;
     }
     FileCache::iterator it = read_log_.begin();
@@ -370,10 +364,10 @@ bool LogDB::CheckLogIdx() {
                 smallest_index_, it->first);
         return false;
     }
-    largest_index_ = it->first - 1;
+    next_index_ = it->first;
     bool error = false;
     for (; it != read_log_.end(); ++it) {
-        if (it->first != largest_index_ + 1) {
+        if (it->first != next_index_) {
             LOG(WARNING, "[LogDB] log is not continous, current index %ld ", it->first);
             return false;
         }
@@ -409,7 +403,7 @@ bool LogDB::CheckLogIdx() {
             LOG(WARNING, "[LogDB] incomplete log %ld ", it->first);
             return false;
         }
-        largest_index_ = expect_index;
+        next_index_ = expect_index + 1;
     }
     if (error) {
         if (++it != read_log_.end()) {
@@ -420,7 +414,7 @@ bool LogDB::CheckLogIdx() {
         fclose((rit->second).second);
         read_log_.erase(rit->first);
     }
-    LOG(INFO, "[LogDB] Set largest_index_ to %ld", largest_index_);
+    LOG(INFO, "[LogDB] Set next_index_ to %ld", next_index_);
     return true;
 }
 
@@ -493,10 +487,14 @@ void LogDB::WriteMarkerSnapshot() {
 }
 
 void LogDB::CloseCurrent() {
-    fclose(write_log_);
-    fclose(write_index_);
-    write_log_ = NULL;
-    write_index_ = NULL;
+    if (write_log_) {
+        fclose(write_log_);
+        write_log_ = NULL;
+    }
+    if (write_index_) {
+        fclose(write_index_);
+        write_index_ = NULL;
+    }
 }
 
 int LogDB::ReadOne(FILE* fp, std::string* data) {
@@ -573,7 +571,6 @@ bool LogDB::NewWriteLog(int64_t index) {
         return false;
     }
     read_log_[index] = std::make_pair(idx_fp, log_fp);
-    current_log_index_ = index;
     return true;
 }
 

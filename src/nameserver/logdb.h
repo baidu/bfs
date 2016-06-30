@@ -79,15 +79,14 @@ private:
     int64_t snapshot_interval_;
     int64_t log_size_;
     std::map<std::string, std::string> markers_;
-    int64_t largest_index_;
-    int64_t smallest_index_;
-    int64_t current_log_index_;
+    int64_t next_index_; // smallest_index_ <= db < largest_index_
+    int64_t smallest_index_;    // smallest index in db, -1 indicates empty db
 
     typedef std::map<int64_t, std::pair<FILE*, FILE*> > FileCache;
-    FILE* write_log_;   // log file ends with '.log'
-    FILE* write_index_; // index file ends with '.idx'
-    FileCache read_log_; // file cache, indext -> (idx_fp, log_fp)
-    FILE* marker_log_;  // marker file names 'marker.mak'
+    FILE* write_log_;       // log file ends with '.log'
+    FILE* write_index_;     // index file ends with '.idx'
+    FileCache read_log_;    // file cache, indext -> (idx_fp, log_fp)
+    FILE* marker_log_;      // marker file names 'marker.mak'
 };
 
 } // namespace bfs

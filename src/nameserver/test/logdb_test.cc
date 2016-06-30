@@ -1,6 +1,5 @@
 #define private public
 
-#include <iostream>
 #include <errno.h>
 #include <vector>
 #include <sys/stat.h>
@@ -288,6 +287,7 @@ TEST_F(LogDBTest, DeleteFrom) {
     LogDB* logdb;
     LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(0, 200000, logdb);
+
     // 0.log, 81515.log 157734.log
     logdb->DeleteFrom(100000);
     int ret = access("./dbtest/0.log", R_OK);
@@ -313,16 +313,17 @@ TEST_F(LogDBTest, DeleteFrom) {
     ASSERT_EQ(logdb->DeleteFrom(-1), kBadParameter);
     WriteLog_Helper(81515, 1, logdb);
     ReadLog_Helper(0, 81515, logdb);
+
     logdb->DeleteFrom(0);
-    WriteLog_Helper(5, 10, logdb);
-    ReadLog_Helper(5, 10, logdb);
+    ASSERT_EQ(logdb->Write(10, "bad"), kBadParameter);
     delete logdb;
 
     LogDB::Open("./dbtest", option, &logdb);
-    WriteLog_Helper(15, 10, logdb);
-    ReadLog_Helper(15, 10, logdb);
+    ASSERT_EQ(logdb->Write(10, "bad"), kBadParameter);
+    WriteLog_Helper(0, 10, logdb);
+    ReadLog_Helper(0, 10, logdb);
     delete logdb;
-    //system("rm -rf ./dbtest");
+    system("rm -rf ./dbtest");
 }
 
 } // namespace bfs
