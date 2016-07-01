@@ -59,10 +59,16 @@ void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string
     cs->set_r_qps(0);
     cs->set_r_speed(0);
     cs->set_recover_speed(0);
-    if (cs->is_dead()) {
-        cs->set_status(kCsOffLine);
+    if (std::find(chunkservers_to_offline_.begin(),
+                  chunkservers_to_offline_.end(),
+                  cs->address()) == chunkservers_to_offline_.end()) {
+        if (cs->is_dead()) {
+            cs->set_status(kCsOffLine);
+        } else {
+            cs->set_status(kCsStandby);
+        }
     } else {
-        cs->set_status(kCsStandby);
+        cs->set_status(kCsReadonly);
     }
 }
 
@@ -109,7 +115,7 @@ void ChunkServerManager::DeadCheck() {
             LOG(INFO, "[DeadCheck] ChunkServer dead C%d %s, cs_num=%d",
                 cs->id(), cs->address().c_str(), chunkserver_num_);
             cs->set_is_dead(true);
-            if (cs->status() == kCsActive) {
+            if (cs->status() == kCsActive || cs->status() == kCsReadonly) {
                 cs->set_status(kCsWaitClean);
                 boost::function<void ()> task =
                     boost::bind(&ChunkServerManager::CleanChunkServer,
