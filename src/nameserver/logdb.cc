@@ -210,13 +210,17 @@ StatusCode LogDB::GetLargestIdx(int64_t* value) {
     MutexLock lock(&mu_);
     if (smallest_index_ == next_index_) {
         *value = -1;
+        return kNotFound;
     }
     *value = next_index_ - 1;
     return kOK;
 }
 
 StatusCode LogDB::DeleteUpTo(int64_t index) {
-    if (index >= next_index_ || index < smallest_index_) {
+    if (index < smallest_index_) {
+        return kOK;
+    }
+    if (index >= next_index_) {
         LOG(INFO, "[LogDB] DeleteUpTo over limit index = %ld next_index_ = %ld", index, next_index_);
         return kBadParameter;
     }
