@@ -413,7 +413,9 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
         return false;
     }
     info->set_disk_quota(quota);
-    info->set_status(kCsActive);
+    if (info->status() != kCsReadonly) {
+        info->set_status(kCsActive);
+    }
     info->set_kick(false);
     if (info->is_dead()) {
         int32_t now_time = common::timer::now_time();
@@ -434,7 +436,12 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     info->set_id(id);
     info->set_address(address);
     info->set_disk_quota(quota);
-    info->set_status(kCsActive);
+    if (std::find(chunkservers_to_offline_.begin(), chunkservers_to_offline_.end(),
+                address) != chunkservers_to_offline_.end()) {
+        info->set_status(kCsReadonly);
+    } else {
+        info->set_status(kCsActive);
+    }
     info->set_kick(false);
     std::string host = address.substr(0, address.find(':'));
     LocationProvider loc(host, ip);
