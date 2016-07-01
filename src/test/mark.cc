@@ -22,6 +22,7 @@ DEFINE_int32(thread, 5, "thread num");
 DEFINE_int32(seed, 301, "random seed");
 DEFINE_int32(file_size, 1024, "file size in KB");
 DEFINE_string(folder, "test", "write data to which folder");
+DEFINE_bool(break_on_failure, true, "exit when error occurs");
 
 namespace baidu {
 namespace bfs {
@@ -54,15 +55,34 @@ Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10), exit_(false) {
     thread_pool_ = new common::ThreadPool(FLAGS_thread + 1);
     rand_ = new Random*[FLAGS_thread];
     for (int i = 0; i < FLAGS_thread; i++) {
-      rand_[i] = new Random(FLAGS_seed + i);
+        rand_[i] = new Random(FLAGS_seed + i);
     }
+}
+
+bool Mark::FinishPut(File* file, int thread_id) {
+    if (file) {
+        if (!file->Close()) {
+            delete file;
+            rand_[thread_id]->Next();
+            return false;
+        }
+        delete file;
+    }
+    rand_[thread_id]->Next();
+    return true;
 }
 
 void Mark::Put(const std::string& filename, const std::string& base, int thread_id) {
     File* file;
     if (!fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, -1, &file)) {
-        std::cerr << "OpenFile failed " << filename << std::endl;
-        exit(EXIT_FAILURE);
+        if (FLAGS_break_on_failure) {
+            std::cerr << "OpenFile failed " << filename << std::endl;
+            exit(EXIT_FAILURE);
+        } else {
+            FinishPut(file, thread_id);
+            std::cerr << "[Failed] " << filename << std::endl;
+            return;
+        }
     }
     int64_t len = 0;
     int64_t base_size = (1 << 20) / 2;
@@ -71,27 +91,53 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
 
         uint32_t write_len = file->Write(base.c_str(), w);
         if (write_len != w) {
-            std::cerr << "Write length does not match write_len = "
-                    << write_len << " should be " << w << std::endl;
-            exit(EXIT_FAILURE);
+            if (FLAGS_break_on_failure) {
+                std::cerr << "Write length does not match write_len = "
+                        << write_len << " should be " << w << std::endl;
+                exit(EXIT_FAILURE);
+            } else {
+                FinishPut(file, thread_id);
+                std::cerr << "[Failed] " << filename << std::endl;
+                return;
+            }
         }
         len += write_len;
     }
-    if (!file->Close()) {
-        std::cerr << "Close file failed " << filename << std::endl;
-        exit(EXIT_FAILURE);
+    if (!FinishPut(file, thread_id)) {
+        if (FLAGS_break_on_failure) {
+            std::cerr << "Close file failed " << filename << std::endl;
+            exit(EXIT_FAILURE);
+        } else {
+            std::cerr << "[Failed] " << filename << std::endl;
+            return;
+        }
     }
-    delete file;
-    rand_[thread_id]->Next();
     put_counter_.Inc();
     all_counter_.Inc();
+}
+
+bool Mark::FinishRead(File* file) {
+    if (file) {
+        if (!file->Close()) {
+            delete file;
+            return false;
+        }
+        delete file;
+    }
+    return true;
 }
 
 void Mark::Read(const std::string& filename, const std::string& base, int thread_id) {
     File* file;
     if (!fs_->OpenFile(filename.c_str(), O_RDONLY, &file)) {
-        std::cerr << "Open file failed " << filename << std::endl;
-        exit(EXIT_FAILURE);
+        if (FLAGS_break_on_failure) {
+            std::cerr << "Open file failed " << filename << std::endl;
+            exit(EXIT_FAILURE);
+        } else {
+            FinishRead(file);
+            std::cerr << "[Failed] " << filename << std::endl;
+            return;
+        }
     }
     int64_t buf_size = 1 << 20;
     int64_t base_size = buf_size / 2;
@@ -102,27 +148,53 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
         uint32_t r = base_size + rand_[thread_id]->Uniform(base_size);
         len = file->Read(buf, r);
         if (len < 0) {
-            std::cerr << "Read length error" << std::endl;
-            exit(EXIT_FAILURE);
+            if (FLAGS_break_on_failure) {
+                std::cerr << "Read length error" << std::endl;
+                exit(EXIT_FAILURE);
+            } else {
+                FinishRead(file);
+                std::cerr << "[Failed] " << filename << std::endl;
+                return;
+            }
         }
         if (len == 0) {
             break;
         }
         if (base.substr(0, len) != std::string(buf, len)) {
-            std::cerr << "Read varify failed " << filename << " : bytes = " << bytes
-                    << " len = " << len << " r = " << r << std::endl;
-            exit(EXIT_FAILURE);
+            if (FLAGS_break_on_failure) {
+                std::cerr << "Read varify failed " << filename << " : bytes = " << bytes
+                        << " len = " << len << " r = " << r << std::endl;
+                exit(EXIT_FAILURE);
+            } else {
+                FinishRead(file);
+                std::cerr << "[Failed] " << filename << std::endl;
+                return;
+            }
         }
         bytes += len;
     }
     BfsFileInfo info;
     fs_->Stat(filename.c_str(), &info);
     if (bytes != info.size) {
-        std::cerr << "File size mismatch " << filename << " size = " << bytes
-                << " should be " << info.size << std::endl;
-        exit(EXIT_FAILURE);
+        if (FLAGS_break_on_failure) {
+            std::cerr << "File size mismatch " << filename << " size = " << bytes
+                    << " should be " << info.size << std::endl;
+            exit(EXIT_FAILURE);
+        } else {
+            FinishRead(file);
+            std::cerr << "[Failed] " << filename << std::endl;
+            return;
+        }
     }
-    delete file;
+    if (!FinishRead(file)) {
+        if (FLAGS_break_on_failure) {
+            std::cerr << "Close file failed " << filename << std::endl;
+            exit(EXIT_FAILURE);
+        } else {
+            std::cerr << "[Failed] " << filename << std::endl;
+            return;
+        }
+    }
     read_counter_.Inc();
     all_counter_.Inc();
 }

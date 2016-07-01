@@ -32,7 +32,7 @@ namespace baidu {
 namespace bfs {
 
 NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
-    block_id_upbound_(1), next_block_id_(1) {
+    block_id_upbound_(0), next_block_id_(block_id_upbound_ + 1) {
     leveldb::Options options;
     options.create_if_missing = true;
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
@@ -43,11 +43,11 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
         return;
     }
     if (standalone) {
-        Activate(NULL, NULL);
+        Activate(NULL);
     }
 }
 
-void NameSpace::Activate(boost::function<void (const FileInfo&)> callback, NameServerLog* log) {
+void NameSpace::Activate(NameServerLog* log) {
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
@@ -70,9 +70,21 @@ void NameSpace::Activate(boost::function<void (const FileInfo&)> callback, NameS
         EncodeLog(log, kSyncWrite, version_key, version_str);
         LOG(INFO, "Create new namespace version: %ld ", version_);
     }
+    std::string block_id_upbound_key(8, 0);
+    block_id_upbound_key.append("block_id_upbound");
+    std::string block_id_upbound_str;
+    s = db_->Get(leveldb::ReadOptions(), block_id_upbound_key, &block_id_upbound_str);
+    if (s.IsNotFound()) {
+        LOG(INFO, "Init block id upbound");
+        UpdateBlockIdUpbound(log);
+    } else if (s.ok()) {
+        block_id_upbound_ = *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0]));
+        LOG(INFO, "Load block id upbound: %ld", block_id_upbound_);
+        UpdateBlockIdUpbound(log);
+    } else {
+        LOG(FATAL, "Load block id upbound failed: %s", s.ToString().c_str());
+    }
     SetupRoot();
-    RebuildBlockMap(callback);
-    InitBlockIdUpbound(log);
 }
 NameSpace::~NameSpace() {
     delete db_;
@@ -255,15 +267,8 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     file_info.SerializeToString(&info_value);
     std::string file_key;
     EncodingStoreKey(parent_id, fname, &file_key);
-    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
-    if (s.ok()) {
-        LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
-        EncodeLog(log, kSyncWrite, file_key, info_value);
-        return kOK;
-    } else {
-        LOG(WARNING, "CreateFile %s fail: db put fail %s", path.c_str(), s.ToString().c_str());
-        return kNotOK;
-    }
+    EncodeLog(log, kSyncWrite, file_key, info_value);
+    return kOK;
 }
 
 StatusCode NameSpace::ListDirectory(const std::string& path,
@@ -502,15 +507,7 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
         assert(ret);
         if (!IsDir(file_info.type())) {
             //a file
-            for (int i = 0; i < file_info.blocks_size(); i++) {
-                if (file_info.blocks(i) >= next_block_id_) {
-                    next_block_id_ = file_info.blocks(i) + 1;
-                    block_id_upbound_ = next_block_id_;
-                }
-            }
-            if (!callback.empty()) {
-                callback(file_info);
-            }
+            callback(file_info);
         }
     }
     delete it;
@@ -540,10 +537,15 @@ std::string NameSpace::NormalizePath(const std::string& path) {
     return ret;
 }
 
-void NameSpace::TailLog(const std::string& logstr) {
+void NameSpace::TailLog(const std::string& logstr, int64_t seq) {
     NameServerLog log;
     if(!log.ParseFromString(logstr)) {
         LOG(FATAL, "Parse log fail: %s", common::DebugString(logstr).c_str());
+    }
+    LOG(INFO, "LL: TailLog seq = %ld", seq);
+    if (seq != -1) {
+        const leveldb::Snapshot* s = db_->GetSnapshot();
+        sync_snapshots_[seq] = s;
     }
     for (int i = 0; i < log.entries_size(); i++) {
         const NsLogEntry& entry = log.entries(i);
@@ -558,6 +560,11 @@ void NameSpace::TailLog(const std::string& logstr) {
             LOG(FATAL, "TailLog failed");
         }
     }
+}
+
+void NameSpace::CleanSnapshot(int64_t seq) {
+    LOG(INFO, "LL: CleanSnapshot %ld ", seq);
+    sync_snapshots_.erase(seq);
 }
 
 uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
@@ -576,7 +583,7 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     block_id_upbound_key.append("block_id_upbound");
     std::string block_id_upbound_str;
     block_id_upbound_str.resize(8);
-    assert(next_block_id_ == block_id_upbound_);
+    next_block_id_ = block_id_upbound_ + 1;
     block_id_upbound_ += FLAGS_block_id_allocation_size;
     *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
@@ -587,30 +594,15 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     }
     EncodeLog(log, kSyncWrite, block_id_upbound_key, block_id_upbound_str);
 }
-void NameSpace::InitBlockIdUpbound(NameServerLog* log) {
-    std::string block_id_upbound_key(8, 0);
-    block_id_upbound_key.append("block_id_upbound");
-    std::string block_id_upbound_str;
-    leveldb::Status s = db_->Get(leveldb::ReadOptions(), block_id_upbound_key, &block_id_upbound_str);
-    if (s.IsNotFound()) {
-        LOG(INFO, "Init block id upbound");
-        UpdateBlockIdUpbound(log);
-    } else if (s.ok()) {
-        block_id_upbound_ = *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0]));
-        next_block_id_ = block_id_upbound_;
-        LOG(INFO, "Load block id upbound: %ld", block_id_upbound_);
-        UpdateBlockIdUpbound(log);
-    } else {
-        LOG(FATAL, "Load block id upbound failed: %s", s.ToString().c_str());
-    }
-}
 
 int64_t NameSpace::GetNewBlockId(NameServerLog* log) {
     MutexLock lock(&mu_);
     if (next_block_id_ == block_id_upbound_) {
         UpdateBlockIdUpbound(log);
+        return next_block_id_;
+    } else {
+        return next_block_id_++;
     }
-    return next_block_id_++;
 }
 
 } // namespace bfs

@@ -8,14 +8,12 @@
 #include "nameserver/namespace.h"
 
 #include <common/util.h>
-#include <common/string_util.h>
 #include <fcntl.h>
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 DECLARE_string(namedb_path);
-DECLARE_int32(block_id_allocation_size);
 
 namespace baidu {
 namespace bfs {
@@ -271,25 +269,6 @@ TEST_F(NameSpaceTest, NormalizePath) {
     ASSERT_EQ(NameSpace::NormalizePath("//home/") , std::string("/home"));
     ASSERT_EQ(NameSpace::NormalizePath("//home/work/") , std::string("/home/work"));
 }
-
-TEST_F(NameSpaceTest, GetNewBlockId) {
-    system("rm -rf ./db");
-    FLAGS_block_id_allocation_size = 10000;
-    {
-        NameSpace ns;
-        for (int i = 1; i <= 20010; i++) {
-            ASSERT_EQ(ns.GetNewBlockId(NULL), i);
-        }
-    }
-    {
-        NameSpace ns;
-        for (int i = 1; i <= 20010; i++) {
-            ASSERT_EQ(ns.GetNewBlockId(NULL), i + 30000);
-        }
-    }
-
-}
-
 }
 }
 

@@ -105,13 +105,19 @@ private:
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
-    bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
+    bool LogRemote(const NameServerLog& log, boost::function<void (int64_t)> callback);
+    /*void SyncLogCallback(::google::protobuf::RpcController* controller,
+                         const ::google::protobuf::Message* request,
+                         ::google::protobuf::Message* response,
+                         ::google::protobuf::Closure* done,
+                         std::vector<FileInfo>* removed,
+                         bool ret);*/
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,
                          ::google::protobuf::Message* response,
                          ::google::protobuf::Closure* done,
                          std::vector<FileInfo>* removed,
-                         bool ret);
+                         int64_t seq);
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;

@@ -46,14 +46,14 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time), sync_(sync) {
+    namespace_ = new NameSpace(false);
+    if (sync_) {
+        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1, _2));
+    }
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
-    namespace_ = new NameSpace(false);
-    if (sync_) {
-        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1));
-    }
     CheckLeader();
     start_time_ = common::timer::get_micros();
     work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
@@ -66,12 +66,11 @@ void NameServerImpl::CheckLeader() {
     if (!sync_ || sync_->IsLeader()) {
         LOG(INFO, "Leader nameserver, rebuild block map.");
         NameServerLog log;
-        boost::function<void (const FileInfo&)> task =
-            boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1);
-        namespace_->Activate(task, &log);
+        namespace_->Activate(&log);
         if (!LogRemote(log, boost::function<void (bool)>())) {
             LOG(FATAL, "LogRemote namespace update fail");
         }
+        namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
         safe_mode_ = FLAGS_nameserver_safemode_time;
         work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
@@ -329,20 +328,20 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     NameServerLog log;
     std::vector<int64_t> blocks_to_remove;
     StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove, &log);
-    for (size_t i = 0; i < blocks_to_remove.size(); i++) {
-        block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
-    }
     response->set_status(status);
     if (status != kOK) {
         done->Run();
         return;
+    }
+    for (size_t i = 0; i < blocks_to_remove.size(); i++) {
+        block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
     }
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
                                (std::vector<FileInfo>*)NULL, _1));
 }
 
-bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (bool)> callback) {
+bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (int64_t)> callback) {
     if (sync_ == NULL) {
         if (!callback.empty()) {
             work_thread_pool_->AddTask(boost::bind(callback, true));
@@ -350,6 +349,7 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (b
         return true;
     }
     std::string logstr;
+    LOG(INFO, "LL: LogRemote seq = %ld", log.seq());
     if (!log.SerializeToString(&logstr)) {
         LOG(FATAL, "Serialize log fail");
     }
@@ -360,7 +360,7 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (b
         return true;
     }
 }
-
+/*
 void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controller,
                                      const ::google::protobuf::Message* request,
                                      ::google::protobuf::Message* response,
@@ -379,6 +379,22 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
     if (!ret) {
         LOG(FATAL, "SyncLog fail");
     }
+}
+*/
+void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controller,
+                                     const ::google::protobuf::Message* request,
+                                     ::google::protobuf::Message* response,
+                                     ::google::protobuf::Closure* done,
+                                     std::vector<FileInfo>* removed,
+                                     int64_t seq) {
+    if (removed) {
+        for (uint32_t i = 0; i < removed->size(); i++) {
+            block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
+        }
+        delete removed;
+    }
+    namespace_->CleanSnapshot(seq);
+    done->Run();
 }
 
 void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,

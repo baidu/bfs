@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <map>
 #include <common/mutex.h>
 #include <boost/function.hpp>
 
@@ -23,7 +24,7 @@ namespace bfs {
 class NameSpace {
 public:
     NameSpace(bool standalone = true);
-    void Activate(boost::function<void (const FileInfo&)> rebuild_callback, NameServerLog* log);
+    void Activate(NameServerLog* log);
     ~NameSpace();
     /// List a directory
     StatusCode ListDirectory(const std::string& path,
@@ -56,9 +57,9 @@ public:
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master
-    void TailLog(const std::string& log);
+    void TailLog(const std::string& log, int64_t seq);
+    void CleanSnapshot(int64_t seq);
     int64_t GetNewBlockId(NameServerLog* log);
-    void InitBlockIdUpbound(NameServerLog* log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
@@ -84,9 +85,7 @@ private:
     int64_t next_block_id_;
     Mutex mu_;
 
-    /// HA module
-    //Sync* sync_;
-    //Mutex mu_;
+    std::map<int64_t, const leveldb::Snapshot*> sync_snapshots_;
 };
 
 } // namespace bfs

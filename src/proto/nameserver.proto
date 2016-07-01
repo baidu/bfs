@@ -224,7 +224,8 @@ message NsLogEntry {
 }
 
 message NameServerLog {
-    repeated NsLogEntry entries = 1;
+    optional int64 seq = 1 [default = -1];
+    repeated NsLogEntry entries = 2;
 }
 
 service NameServer {
