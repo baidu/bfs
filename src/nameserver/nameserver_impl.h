@@ -94,13 +94,13 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
-    void OfflineChunkServer(::google::protobuf::RpcController* controller,
-            const OfflineChunkServerRequest* request,
-            OfflineChunkServerResponse* response,
+    void ShutdownChunkServer(::google::protobuf::RpcController* controller,
+            const ShutdownChunkServerRequest* request,
+            ShutdownChunkServerResponse* response,
             ::google::protobuf::Closure* done);
-    void OfflineChunkServerStat(::google::protobuf::RpcController* controller,
-            const OfflineChunkServerStatRequest* request,
-            OfflineChunkServerStatResponse* response,
+    void ShutdownChunkServerStat(::google::protobuf::RpcController* controller,
+            const ShutdownChunkServerStatRequest* request,
+            ShutdownChunkServerStatResponse* response,
             ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);

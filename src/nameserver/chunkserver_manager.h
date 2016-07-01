@@ -45,8 +45,8 @@ public:
                            int* hi_num);
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
-    StatusCode OfflineChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
-    bool GetOfflineChunkServerStat();
+    StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
+    bool GetShutdownChunkServerStat();
 private:
     double GetChunkServerLoad(ChunkServerInfo* cs);
     void DeadCheck();

@@ -354,7 +354,7 @@ int BfsLocation(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsOfflineChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
+int BfsShutdownChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc != 1) {
         print_usage();
         return 1;
@@ -373,9 +373,9 @@ int BfsOfflineChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
         }
         address.push_back(addr);
     }
-    bool ret = fs->OfflineChunkServer(address);
+    bool ret = fs->ShutdownChunkServer(address);
     if (!ret) {
-        printf("Offline chunkserver fail\n");
+        printf("Shutdown chunkserver fail\n");
         fclose(fp);
         return 1;
     }
@@ -383,14 +383,14 @@ int BfsOfflineChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
-int BfsOfflineStat(baidu::bfs::FS* fs) {
-    int ret = fs->OfflineChunkServerStat();
+int BfsShutdownStat(baidu::bfs::FS* fs) {
+    int ret = fs->ShutdownChunkServerStat();
     if (ret < 0) {
         printf("Get offline chunkserver stat fail\n");
         return 1;
     }
     if (ret == 1) {
-        printf("Offline chunkserver is in progress\n");
+        printf("Shutdown chunkserver is in progress\n");
     } else {
         printf("offline chunkserver is finished\n");
     }
@@ -463,9 +463,9 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[1], "location") == 0) {
         ret = BfsLocation(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "offlinechunkserver") == 0) {
-        ret = BfsOfflineChunkServer(fs, argc - 2, argv + 2);
+        ret = BfsShutdownChunkServer(fs, argc - 2, argv + 2);
     } else if(strcmp(argv[1], "offlinestat") == 0) {
-        ret = BfsOfflineStat(fs);
+        ret = BfsShutdownStat(fs);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }

@@ -777,30 +777,30 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
-void NameServerImpl::OfflineChunkServer(::google::protobuf::RpcController* controller,
-        const OfflineChunkServerRequest* request,
-        OfflineChunkServerResponse* response,
+void NameServerImpl::ShutdownChunkServer(::google::protobuf::RpcController* controller,
+        const ShutdownChunkServerRequest* request,
+        ShutdownChunkServerResponse* response,
         ::google::protobuf::Closure* done) {
     if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
     }
-    StatusCode status = chunkserver_manager_->OfflineChunkServer(request->chunkserver_address());
+    StatusCode status = chunkserver_manager_->ShutdownChunkServer(request->chunkserver_address());
     response->set_status(status);
     done->Run();
 }
 
-void NameServerImpl::OfflineChunkServerStat(::google::protobuf::RpcController* controller,
-        const OfflineChunkServerStatRequest* request,
-        OfflineChunkServerStatResponse* response,
+void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* controller,
+        const ShutdownChunkServerStatRequest* request,
+        ShutdownChunkServerStatResponse* response,
         ::google::protobuf::Closure* done) {
     if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
     }
-    bool in_progress = chunkserver_manager_->GetOfflineChunkServerStat();
+    bool in_progress = chunkserver_manager_->GetShutdownChunkServerStat();
     response->set_status(kOK);
     response->set_in_offline_progress(in_progress);
     done->Run();

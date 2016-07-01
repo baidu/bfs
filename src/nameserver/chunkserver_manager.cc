@@ -563,11 +563,11 @@ void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_
     LOG(INFO, "Mark C%d readonly", cs_id);
 }
 
-StatusCode ChunkServerManager::OfflineChunkServer(const::google::protobuf::RepeatedPtrField<std::string>&
+StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>&
                                                   chunkserver_address) {
     MutexLock lock(&mu_);
     if (!chunkservers_to_offline_.empty()) {
-        return kInOfflineProgress;
+        return kInShutdownProgress;
     }
     for (int i = 0; i < chunkserver_address.size(); i++) {
         chunkservers_to_offline_.push_back(chunkserver_address.Get(i));
@@ -577,7 +577,7 @@ StatusCode ChunkServerManager::OfflineChunkServer(const::google::protobuf::Repea
     return kOK;
 }
 
-bool ChunkServerManager::GetOfflineChunkServerStat() {
+bool ChunkServerManager::GetShutdownChunkServerStat() {
     MutexLock lock(&mu_);
     return chunkservers_to_offline_.empty();
 }
