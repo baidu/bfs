@@ -38,6 +38,8 @@ void print_usage() {
     printf("\t    change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
     printf("\t    du <path> : count disk usage for path\n");
     printf("\t    stat : list current stat of the file system\n");
+    printf("\t    offlinechunkserver <chunkserver_list_file>: offline chunkservers in the list file\n");
+    printf("\t    offlinestat : display stat of offline chunkserver progress\n");
 }
 
 int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -352,6 +354,33 @@ int BfsLocation(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
+int BfsOfflineChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
+    if (argc != 1) {
+        print_usage();
+        return 1;
+    }
+    bool ret = fs->OfflineChunkServer(argv[0]);
+    if (!ret) {
+        printf("Offline chunkserver fail\n");
+        return 1;
+    }
+    return 0;
+}
+
+int BfsOfflineStat(baidu::bfs::FS* fs) {
+    int ret = fs->OfflineChunkServerStat();
+    if (ret < 0) {
+        printf("Get offline chunkserver stat fail\n");
+        return 1;
+    }
+    if (ret == 1) {
+        printf("Offline chunkserver is in progress\n");
+    } else {
+        printf("offline chunkserver is finished\n");
+    }
+    return 0;
+}
+
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
@@ -417,6 +446,10 @@ int main(int argc, char* argv[]) {
         ret = BfsStat(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "location") == 0) {
         ret = BfsLocation(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "offlinechunkserver") == 0) {
+        ret = BfsOfflineChunkServer(fs, argc - 2, argv + 2);
+    } else if(strcmp(argv[1], "offlinestat") == 0) {
+        ret = BfsOfflineStat(fs);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }

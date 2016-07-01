@@ -94,6 +94,14 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void OfflineChunkServer(::google::protobuf::RpcController* controller,
+            const OfflineChunkServerRequest* request,
+            OfflineChunkServerResponse* response,
+            ::google::protobuf::Closure* done);
+    void OfflineChunkServerStat(::google::protobuf::RpcController* controller,
+            const OfflineChunkServerStatRequest* request,
+            OfflineChunkServerStatResponse* response,
+            ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
@@ -116,7 +124,7 @@ private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
-    /// Chunkserver map
+    /// ChunkServer map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
     BlockMappingManager* block_mapping_manager_;

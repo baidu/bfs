@@ -227,6 +227,26 @@ message NameServerLog {
     repeated NsLogEntry entries = 1;
 }
 
+message OfflineChunkServerRequest {
+    optional int64 sequence_id = 1;
+    repeated string chunkserver_address = 2;
+}
+
+message OfflineChunkServerResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
+message OfflineChunkServerStatRequest {
+    optional int64 sequence_id = 1;
+}
+
+message OfflineChunkServerStatResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+    optional bool in_offline_progress = 3;
+}
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
@@ -238,6 +258,8 @@ service NameServer {
     rpc Unlink(UnlinkRequest) returns(UnlinkResponse);
     rpc DeleteDirectory(DeleteDirectoryRequest) returns(DeleteDirectoryResponse);
     rpc ChangeReplicaNum(ChangeReplicaNumRequest) returns(ChangeReplicaNumResponse);
+    rpc OfflineChunkServer(OfflineChunkServerRequest) returns(OfflineChunkServerResponse);
+    rpc OfflineChunkServerStat(OfflineChunkServerStatRequest) returns(OfflineChunkServerStatResponse);
 
     rpc Register(RegisterRequest) returns(RegisterResponse);
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);

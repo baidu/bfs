@@ -529,6 +529,41 @@ public:
         result->append(tp.ToString());
         return true;
     }
+    bool OfflineChunkServer(const char* list_file_path) {
+        FILE* fp = fopen(list_file_path, "r");
+        if (!fp) {
+            fprintf(stderr, "Open chunkserver list file fail\n");
+            return 1;
+        }
+        OfflineChunkServerRequest request;
+        OfflineChunkServerResponse response;
+        char cs_addr[256];
+        while (fgets(cs_addr, 256, fp)) {
+            std::string addr(cs_addr, strlen(cs_addr) - 1);
+            if (addr[addr.size() - 1] == '\n') {
+                addr.resize(addr.size() - 1);
+            }
+            request.add_chunkserver_address(addr);
+        }
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::OfflineChunkServer,
+                                                   &request, &response, 15, 1);
+        if (!ret || response.status() != kOK) {
+            LOG(WARNING, "Offline ChunkServer fail. ret: %d, status: %s",
+                    ret, StatusCode_Name(response.status()).c_str());
+        }
+        return ret;
+    }
+    int OfflineChunkServerStat() {
+        OfflineChunkServerStatRequest request;
+        OfflineChunkServerStatResponse response;
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::OfflineChunkServerStat,
+                                                   &request, &response, 15, 1);
+        if (!ret) {
+            LOG(WARNING, "Get offline chunnkserver stat fail");
+            return -1;
+        }
+        return response.in_offline_progress();
+    }
 private:
     RpcClient* rpc_client_;
     NameServerClient* nameserver_client_;
