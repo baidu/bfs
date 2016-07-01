@@ -359,11 +359,27 @@ int BfsOfflineChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    bool ret = fs->OfflineChunkServer(argv[0]);
-    if (!ret) {
-        printf("Offline chunkserver fail\n");
+    FILE* fp = fopen(argv[0], "r");
+    if (!fp) {
+        fprintf(stderr, "Open chunkserver list file fail\n");
         return 1;
     }
+    std::vector<std::string> address;
+    char cs_addr[256];
+    while (fgets(cs_addr, 256, fp)) {
+        std::string addr(cs_addr, strlen(cs_addr) - 1);
+        if (addr[addr.size() - 1] == '\n') {
+            addr.resize(addr.size() - 1);
+        }
+        address.push_back(addr);
+    }
+    bool ret = fs->OfflineChunkServer(address);
+    if (!ret) {
+        printf("Offline chunkserver fail\n");
+        fclose(fp);
+        return 1;
+    }
+    fclose(fp);
     return 0;
 }
 
