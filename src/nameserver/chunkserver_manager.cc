@@ -572,8 +572,10 @@ void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_
     }
     int32_t cs_id = it->second;
     ChunkServerInfo* cs_info = chunkservers_[cs_id];
-    cs_info->set_status(kCsReadonly);
-    LOG(INFO, "Mark C%d readonly", cs_id);
+    if (cs_info->status() == kCsActive) {
+        cs_info->set_status(kCsReadonly);
+        LOG(INFO, "Mark C%d readonly", cs_id);
+    }
 }
 
 StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>&
