@@ -592,7 +592,7 @@ StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::Repe
 
 bool ChunkServerManager::GetShutdownChunkServerStat() {
     MutexLock lock(&mu_);
-    return chunkservers_to_offline_.empty();
+    return !chunkservers_to_offline_.empty();
 }
 
 } // namespace bfs
