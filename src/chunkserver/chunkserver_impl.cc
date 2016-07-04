@@ -681,6 +681,7 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
     int32_t offset = 0;
     int32_t seq = 0;
     char* buf = new char[read_len];
+    int64_t start_recover = common::timer::get_micros();
     while (!service_stop_) {
         int64_t len = block->Read(buf, read_len, offset);
         g_read_bytes.Add(len);
@@ -703,8 +704,8 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         bool ret = rpc_client_->SendRequest(chunkserver, &ChunkServer_Stub::WriteBlock,
                                  &request, &response, 60, 1);
         if (!ret || (response.status() != kOK && response.status() != kBlockExist)) {
-            LOG(INFO, "[WriteRecoverBlock] #%ld write failed, ret: %d, status: %s",
-                    block->Id(), ret, StatusCode_Name(response.status()).c_str());
+            LOG(WARNING, "[WriteRecoverBlock] #%ld write failed, offset: %ld len: %ld ret: %d, status: %s",
+                    block->Id(), offset, len, ret, StatusCode_Name(response.status()).c_str());
             delete[] buf;
             return false;
         }
@@ -718,6 +719,9 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         }
         if (len == 0) {
             delete[] buf;
+            int64_t end_recover = common::timer::get_micros();
+            LOG(DEBUG, "[WriteRecoverBlock] #%ld finish recover, use %ld ms",
+                    block->Id(), (end_recover - start_recover) / 1000);
             return true;
         }
     }
