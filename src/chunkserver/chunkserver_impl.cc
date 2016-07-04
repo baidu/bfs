@@ -680,9 +680,9 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
     int32_t read_len = 1 << 20;
     int32_t offset = 0;
     int32_t seq = 0;
+    char* buf = new char[read_len];
     int64_t start_recover = common::timer::get_micros();
     while (!service_stop_) {
-        char* buf = new char[read_len];
         int64_t len = block->Read(buf, read_len, offset);
         g_read_bytes.Add(len);
         g_read_ops.Inc();
@@ -717,8 +717,8 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
             offset = response.current_size();
             seq = response.current_seq() + 1;
         }
-        delete[] buf;
         if (len == 0) {
+            delete[] buf;
             int64_t end_recover = common::timer::get_micros();
             LOG(DEBUG, "[WriteRecoverBlock] #%ld finish recover, use %ld ms",
                     block->Id(), (end_recover - start_recover) / 1000);
@@ -726,6 +726,7 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         }
     }
     LOG(INFO, "[WriteRecoverBlock] #%ld service_stop_", block->Id());
+    delete[] buf;
     return false;
 }
 
