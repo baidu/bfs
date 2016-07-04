@@ -592,11 +592,11 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
         } else {
             sequential_ratio_++;
         }
-        last_read_offset_ = offset + read_len;
         if (reada_buffer_ && reada_base_ <= offset &&
                 reada_base_ + reada_buf_len_ >= offset + read_len) {
             memcpy(buf, reada_buffer_ + (offset - reada_base_), read_len);
             //LOG(INFO, "Read %s %ld from cache %ld", _name.c_str(), offset, read_len);
+            last_read_offset_ = offset + read_len;
             return read_len;
         }
     }
@@ -699,6 +699,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     }
     assert(read_len >= ret_len);
     memcpy(buf, response.databuf().data(), ret_len);
+    last_read_offset_ = offset + ret_len;
     return ret_len;
 }
 
