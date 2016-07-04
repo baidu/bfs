@@ -25,14 +25,6 @@ struct DBOption
     DBOption() : snapshot_interval(60), log_size(128) /* in MB */ {}
 };
 
-struct LogDataEntry // entry_length + index + log
-{
-    int64_t index;
-    std::string entry;
-    LogDataEntry() : index(0) {}
-    LogDataEntry(int64_t index, const std::string& entry) : index(index), entry(entry) {}
-};
-
 struct MarkerEntry // entry_length + key_len + key + value_len + value
 {
     std::string key;
@@ -67,17 +59,17 @@ public:
 
     /// for dumper ///
     static int ReadOne(FILE* fp, std::string* data);
-    static void DecodeLogEntry(const std::string& data, LogDataEntry* log);
+    static StatusCode ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int64_t* offset);
     static void DecodeMarker(const std::string& data, MarkerEntry* marker);
 private:
     bool RecoverMarker();
     bool BuildFileCache();
+    bool CheckLogIdx();
     void WriteMarkerSnapshot();
-    void EncodeLogEntry(const LogDataEntry& log, std::string* data);
+    void CloseCurrent();
     void EncodeMarker(const MarkerEntry& marker, std::string* data);
     bool NewWriteLog(int64_t index);
     void FormLogName(int64_t index, std::string* log_name, std::string* idx_name);
-    // ......... TODO ..........//
     StatusCode WriteMarkerNoLock(const std::string& key, const std::string& value);
 private:
     Mutex mu_;
@@ -87,15 +79,14 @@ private:
     int64_t snapshot_interval_;
     int64_t log_size_;
     std::map<std::string, std::string> markers_;
-    int64_t largest_index_;
-    int64_t smallest_index_;
-    int64_t current_log_index_;
+    int64_t next_index_; // smallest_index_ <= db < largest_index_
+    int64_t smallest_index_;    // smallest index in db, -1 indicates empty db
 
     typedef std::map<int64_t, std::pair<FILE*, FILE*> > FileCache;
-    FILE* write_log_;   // log file ends with '.log'
-    FILE* write_index_; // index file ends with '.idx'
-    FileCache read_log_; // file cache, indext -> (idx_fp, log_fp)
-    FILE* marker_log_;  // marker file names 'marker.mak'
+    FILE* write_log_;       // log file ends with '.log'
+    FILE* write_index_;     // index file ends with '.idx'
+    FileCache read_log_;    // file cache, indext -> (idx_fp, log_fp)
+    FILE* marker_log_;      // marker file names 'marker.mak'
 };
 
 } // namespace bfs

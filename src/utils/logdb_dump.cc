@@ -5,6 +5,11 @@
 
 #include <iostream>
 #include <stdio.h>
+
+#include <common/timer.h>
+#include <common/thread.h>
+#include <boost/lexical_cast.hpp>
+#include <boost/bind.hpp>
 #include "nameserver/logdb.h"
 
 namespace baidu {
@@ -31,8 +36,8 @@ void DumpMarker(char* path) {
 
 void DumpLog(char* path) {
     FILE* fp = fopen(path, "r");
-    LogDataEntry entry;
     std::string data;
+    int64_t i = 0;
     while (true) {
         int ret = LogDB::ReadOne(fp, &data);
         if(ret == 0) break;
@@ -40,8 +45,8 @@ void DumpLog(char* path) {
             std::cerr << "DumpLog failed while reading" << std::endl;
             return;
         }
-        LogDB::DecodeLogEntry(data, &entry);
-        std::cout << entry.index << "\t->\t" << entry.entry << std::endl;
+        std::cout << i << "\t->\t" << data << std::endl;
+        ++i;
     }
     fclose(fp);
 }
@@ -64,6 +69,47 @@ void DumpIdx(char* path) {
     fclose(fp);
 }
 
+void WriteHelper(int start, int end, const std::string& str, LogDB* logdb) {
+    for (int i = start; i < end; ++i) {
+        logdb->Write(i, str);
+    }
+    std::cerr << common::timer::get_micros() << std::endl;
+}
+
+void ReadHelper(int start, int end, const std::string& str, LogDB* logdb) {
+    std::string res;
+    for (int i = start; i < end; ++i) {
+        logdb->Read(i, &res);
+        assert(res == str);
+    }
+    std::cerr << common::timer::get_micros() << std::endl;
+}
+
+void Test(int n, int l) {
+    LogDB* logdb;
+    LogDB::Open("./dbtest", DBOption(), &logdb);
+
+    int64_t start = common::timer::get_micros();
+    std::string str(l, 'a');
+    WriteHelper(0, n, str, logdb);
+    int64_t now = common::timer::get_micros();
+    double rate = double(n) / double(now - start);
+    std::cerr << rate * 1000000.0 << std::endl;
+
+    start = common::timer::get_micros();
+    common::Thread w;
+    w.Start(boost::bind(&WriteHelper, n, n + n, str, logdb));
+    common::Thread r;
+    r.Start(boost::bind(&ReadHelper, 0, n, str, logdb));
+    w.Join();
+    r.Join();
+    now = common::timer::get_micros();
+    rate = double(n) / double(now - start);
+    std::cerr << rate * 1000000.0 << std::endl;
+
+    //system("rm -rf ./dbtest");
+}
+
 } // namespace bfs
 } // namespace baidu
 
@@ -75,5 +121,9 @@ int main(int argc, char* argv[]) {
         baidu::bfs::DumpLog(argv[1]);
     } else if (path.find(".idx") != std::string::npos) {
         baidu::bfs::DumpIdx(argv[1]);
+    } else if (path == "test") {
+        std::string n(argv[2]);
+        std::string l(argv[3]);
+        baidu::bfs::Test(boost::lexical_cast<int>(n), boost::lexical_cast<int>(l));
     }
 }

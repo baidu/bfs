@@ -16,7 +16,9 @@ class Mark {
 public:
     Mark();
     void Put(const std::string& filename, const std::string& base, int thread_id);
+    bool FinishPut(File* file, int thread_id);
     void Read(const std::string& filename, const std::string& base, int thread_id);
+    bool FinishRead(File* file);
     void Delete(const std::string& filename);
     void PutWrapper(int thread_id);
     void ReadWrapper(int thread_id);
