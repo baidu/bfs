@@ -22,7 +22,7 @@ namespace bfs {
 
 MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
                                      cond_(&mu_), log_done_(&mu_), current_idx_(-1),
-                                     applied_idx_(-1), sync_idx_(-1), seq_(0) {
+                                     applied_idx_(-1), sync_idx_(-1) {
     std::vector<std::string> nodes;
     common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);
     std::string this_server = nodes[FLAGS_node_index];
@@ -142,20 +142,19 @@ void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (int64_
     if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
         LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld ", current_idx_ + 1);
     }
-    log_callback_(entry, seq_);
+    log_callback_(entry, current_idx_);
     current_idx_++;
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
-        callbacks_.insert(std::make_pair(current_idx_, std::make_pair(callback, seq_)));
+        callbacks_.insert(std::make_pair(current_idx_, callback));
         thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,this,
                                             current_idx_, true));
     } else {
-        callbacks_.insert(std::make_pair(current_idx_, std::make_pair(callback, seq_)));
+        callbacks_.insert(std::make_pair(current_idx_, callback));
         LOG(DEBUG, "\033[32m[Sync]\033[0m insert callback index = %d", current_idx_);
         thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::PorcessCallbck,
                                                    this, current_idx_, true));
         cond_.Signal();
     }
-    ++seq_;
     return;
 }
 
@@ -270,13 +269,13 @@ void MasterSlaveImpl::ReplicateLog() {
 void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
     boost::function<void (int64_t)> callback;
     MutexLock lock(&mu_);
-    std::map<int64_t, std::pair<boost::function<void (int64_t)>, int64_t> >::iterator it = callbacks_.find(index);
+    std::map<int64_t, boost::function<void (int64_t)> >::iterator it = callbacks_.find(index);
     if (it != callbacks_.end()) {
-        callback = (it->second).first;
+        callback = it->second;
         LOG(DEBUG, "\033[32m[Sync]\033[0m calling callback %d", it->first);
         callbacks_.erase(it);
         mu_.Unlock();
-        callback((it->second).second);
+        callback(index);
         mu_.Lock();
         if (index > applied_idx_) {
             applied_idx_ = index;

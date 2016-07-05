@@ -564,7 +564,14 @@ void NameSpace::TailLog(const std::string& logstr, int64_t seq) {
 
 void NameSpace::CleanSnapshot(int64_t seq) {
     LOG(INFO, "LL: CleanSnapshot %ld ", seq);
-    sync_snapshots_.erase(seq);
+    MutexLock lock(&snapshot_mutex_);
+    std::map<int64_t, const leveldb::Snapshot*>::iterator it = sync_snapshots_.find(seq);
+    if (it == sync_snapshots_.end()) {
+        LOG(INFO, "CleanSnapshot cannot find seq %ld", seq);
+        return;
+    }
+    db_->ReleaseSnapshot(it->second);
+    sync_snapshots_.erase(it);
 }
 
 uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,

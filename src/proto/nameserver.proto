@@ -5,6 +5,32 @@ package baidu.bfs;
 
 option cc_generic_services = true;
 
+message ChunkServerInfo {
+    optional int32 id = 1;
+    optional string address = 2;
+    optional int32 last_heartbeat = 3;
+    optional int64 data_size = 4;
+    optional int64 disk_quota = 5;
+    optional int32 block_num = 7;
+    optional bool is_dead = 8;
+    optional ChunkServerStatus status = 9;
+    optional int32 ip = 10;
+    optional int32 buffers = 11;
+    optional int32 pending_writes = 28;
+    optional bool kick = 12;
+    optional string zone = 13;
+    optional string datacenter = 14;
+    optional string rack = 15;
+    // running status
+    optional int32 w_qps = 21;
+    optional int64 w_speed = 22;
+    optional int32 r_qps = 23;
+    optional int64 r_speed = 24;
+    optional int64 writing_buffers = 25;
+    optional int64 active_blocks = 26;
+    optional int64 recover_speed = 27;
+}
+
 message CreateFileRequest {
     optional int64 sequence_id = 1;
     optional string file_name = 2;
@@ -224,8 +250,27 @@ message NsLogEntry {
 }
 
 message NameServerLog {
-    optional int64 seq = 1 [default = -1];
     repeated NsLogEntry entries = 2;
+}
+
+message ShutdownChunkServerRequest {
+    optional int64 sequence_id = 1;
+    repeated string chunkserver_address = 2;
+}
+
+message ShutdownChunkServerResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
+message ShutdownChunkServerStatRequest {
+    optional int64 sequence_id = 1;
+}
+
+message ShutdownChunkServerStatResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+    optional bool in_offline_progress = 3;
 }
 
 service NameServer {
@@ -239,6 +284,8 @@ service NameServer {
     rpc Unlink(UnlinkRequest) returns(UnlinkResponse);
     rpc DeleteDirectory(DeleteDirectoryRequest) returns(DeleteDirectoryResponse);
     rpc ChangeReplicaNum(ChangeReplicaNumRequest) returns(ChangeReplicaNumResponse);
+    rpc ShutdownChunkServer(ShutdownChunkServerRequest) returns(ShutdownChunkServerResponse);
+    rpc ShutdownChunkServerStat(ShutdownChunkServerStatRequest) returns(ShutdownChunkServerStatResponse);
 
     rpc Register(RegisterRequest) returns(RegisterResponse);
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);

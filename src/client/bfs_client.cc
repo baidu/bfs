@@ -38,6 +38,8 @@ void print_usage() {
     printf("\t    change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
     printf("\t    du <path> : count disk usage for path\n");
     printf("\t    stat : list current stat of the file system\n");
+    printf("\t    shutdownchunkserver <chunkserver_list_file>: shutdownt chunkservers in the list file\n");
+    printf("\t    shutdownstat : display stat of shutdown chunkserver progress\n");
 }
 
 int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -352,6 +354,49 @@ int BfsLocation(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
+int BfsShutdownChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
+    if (argc != 1) {
+        print_usage();
+        return 1;
+    }
+    FILE* fp = fopen(argv[0], "r");
+    if (!fp) {
+        fprintf(stderr, "Open chunkserver list file fail\n");
+        return 1;
+    }
+    std::vector<std::string> address;
+    char cs_addr[256];
+    while (fgets(cs_addr, 256, fp)) {
+        std::string addr(cs_addr, strlen(cs_addr) - 1);
+        if (addr[addr.size() - 1] == '\n') {
+            addr.resize(addr.size() - 1);
+        }
+        address.push_back(addr);
+    }
+    bool ret = fs->ShutdownChunkServer(address);
+    if (!ret) {
+        printf("Shutdown chunkserver fail\n");
+        fclose(fp);
+        return 1;
+    }
+    fclose(fp);
+    return 0;
+}
+
+int BfsShutdownStat(baidu::bfs::FS* fs) {
+    int ret = fs->ShutdownChunkServerStat();
+    if (ret < 0) {
+        printf("Get offline chunkserver stat fail\n");
+        return 1;
+    }
+    if (ret == 1) {
+        printf("Shutdown chunkserver is in progress\n");
+    } else {
+        printf("offline chunkserver is finished\n");
+    }
+    return 0;
+}
+
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
@@ -417,6 +462,10 @@ int main(int argc, char* argv[]) {
         ret = BfsStat(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "location") == 0) {
         ret = BfsLocation(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "shutdownchunkserver") == 0) {
+        ret = BfsShutdownChunkServer(fs, argc - 2, argv + 2);
+    } else if(strcmp(argv[1], "shutdownstat") == 0) {
+        ret = BfsShutdownStat(fs);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }

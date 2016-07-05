@@ -1,37 +1,21 @@
-// Copyright (c) 2014, Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2016, Baidu.com, Inc. All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// Author: yanshiguang02@baidu.com
+#include "file_impl.h"
 
 #include <gflags/gflags.h>
 
-#include <fcntl.h>
-#include <list>
-#include <queue>
-#include <set>
-#include <sstream>
+#include <boost/bind.hpp>
+#include <common/sliding_window.h>
+#include <common/logging.h>
 
-#include "proto/nameserver.pb.h"
-#include "proto/chunkserver.pb.h"
+#include "proto/status_code.pb.h"
 #include "rpc/rpc_client.h"
 #include "rpc/nameserver_client.h"
 
-#include <common/atomic.h>
-#include <common/mutex.h>
-#include <common/timer.h>
-#include <common/sliding_window.h>
-#include <common/logging.h>
-#include <common/string_util.h>
-#include <common/tprinter.h>
-#include <common/util.h>
+#include "fs_impl.h"
 
-#include "proto/status_code.pb.h"
-
-#include "bfs.h"
-
-DECLARE_string(nameserver_nodes);
-DECLARE_int32(sdk_thread_num);
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
 DECLARE_int32(sdk_createblock_retry);
@@ -39,508 +23,64 @@ DECLARE_int32(sdk_createblock_retry);
 namespace baidu {
 namespace bfs {
 
-struct LocatedBlocks {
-    int64_t file_length_;
-    std::vector<LocatedBlock> blocks_;
-    void CopyFrom(const ::google::protobuf::RepeatedPtrField< baidu::bfs::LocatedBlock >& blocks) {
-        for (int i = 0; i < blocks.size(); i++) {
-            blocks_.push_back(blocks.Get(i));
-        }
+WriteBuffer::WriteBuffer(int32_t seq, int32_t buf_size, int64_t block_id, int64_t offset)
+    : buf_size_(buf_size), data_size_(0),
+      block_id_(block_id), offset_(offset),
+      seq_id_(seq), is_last_(false), refs_(0) {
+    buf_= new char[buf_size];
+}
+WriteBuffer::~WriteBuffer() {
+    delete[] buf_;
+    buf_ = NULL;
+}
+int WriteBuffer::Available() {
+    return buf_size_ - data_size_;
+}
+int WriteBuffer::Append(const char* buf, int len) {
+    assert(len + data_size_ <= buf_size_);
+    memcpy(buf_ + data_size_, buf, len);
+    data_size_ += len;
+    return data_size_;
+}
+const char* WriteBuffer::Data() {
+    return buf_;
+}
+int WriteBuffer::Size() const {
+    return data_size_;
+}
+int WriteBuffer::Sequence() const {
+    return seq_id_;
+}
+void WriteBuffer::Clear() {
+    data_size_ = 0;
+}
+void WriteBuffer::SetLast() {
+    is_last_ = true;
+}
+bool WriteBuffer::IsLast() const {
+    return is_last_;
+}
+int64_t WriteBuffer::offset() const {
+    return offset_;
+}
+int64_t WriteBuffer::block_id() const {
+    return block_id_;
+}
+void WriteBuffer::AddRefBy(int counter) {
+    common::atomic_add(&refs_, counter);
+}
+void WriteBuffer::AddRef() {
+    common::atomic_inc(&refs_);
+    assert (refs_ > 0);
+}
+void WriteBuffer::DecRef() {
+    if (common::atomic_add(&refs_, -1) == 1) {
+        assert(refs_ == 0);
+        delete this;
     }
-};
+}
 
-class FSImpl;
-
-class WriteBuffer {
-public:
-    WriteBuffer(int32_t seq, int32_t buf_size, int64_t block_id, int64_t offset)
-        : buf_size_(buf_size), data_size_(0),
-          block_id_(block_id), offset_(offset),
-          seq_id_(seq), is_last_(false), refs_(0) {
-        buf_= new char[buf_size];
-    }
-    ~WriteBuffer() {
-        delete[] buf_;
-        buf_ = NULL;
-    }
-    int Available() {
-        return buf_size_ - data_size_;
-    }
-    int Append(const char* buf, int len) {
-        assert(len + data_size_ <= buf_size_);
-        memcpy(buf_ + data_size_, buf, len);
-        data_size_ += len;
-        return data_size_;
-    }
-    const char* Data() {
-        return buf_;
-    }
-    int Size() const {
-        return data_size_;
-    }
-    int Sequence() const {
-        return seq_id_;
-    }
-    void Clear() {
-        data_size_ = 0;
-    }
-    void SetLast() {
-        is_last_ = true;
-    }
-    bool IsLast() const { return is_last_; }
-    int64_t offset() const { return offset_; }
-    int64_t block_id() const { return block_id_; }
-    void AddRefBy(int counter) {
-        common::atomic_add(&refs_, counter);
-    }
-    void AddRef() {
-        common::atomic_inc(&refs_);
-        assert (refs_ > 0);
-    }
-    void DecRef() {
-        if (common::atomic_add(&refs_, -1) == 1) {
-            assert(refs_ == 0);
-            delete this;
-        }
-    }
-private:
-    int32_t buf_size_;
-    int32_t data_size_;
-    char*   buf_;
-    int64_t block_id_;
-    int64_t offset_;
-    int32_t seq_id_;
-    bool    is_last_;
-    volatile int refs_;
-};
-
-class BfsFileImpl : public File {
-public:
-    BfsFileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name, int32_t flags);
-    ~BfsFileImpl ();
-    int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false);
-    int64_t Seek(int64_t offset, int32_t whence);
-    int32_t Read(char* buf, int32_t read_size);
-    int32_t Write(const char* buf, int32_t write_size);
-    /// Add buffer to  async write list
-    void StartWrite();
-    /// Send local buffer to chunkserver
-    void BackgroundWrite();
-    /// Callback for sliding window
-    void OnWriteCommit(int32_t, int32_t);
-    void WriteChunkCallback(const WriteBlockRequest* request,
-                            WriteBlockResponse* response,
-                            bool failed, int error,
-                            int retry_times,
-                            WriteBuffer* buffer,
-                            std::string cs_addr);
-    /// When rpc buffer full deley send write reqeust
-    void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
-                         int retry_times, std::string cs_addr);
-    bool Flush();
-    bool Sync(int32_t timeout = 0);
-    bool Close();
-
-    struct WriteBufferCmp {
-        bool operator()(const WriteBuffer* a, const WriteBuffer* b) {
-            return a->Sequence() > b->Sequence();
-        }
-    };
-    friend class FSImpl;
-private:
-    int32_t AddBlock();
-    bool CheckWriteWindows();
-private:
-    FSImpl* fs_;                        ///< 文件系统
-    RpcClient* rpc_client_;             ///< RpcClient
-    ThreadPool* thread_pool_;           ///< ThreadPool
-    std::string name_;                  ///< 文件路径
-    int32_t open_flags_;                ///< 打开使用的flag
-
-    /// for write
-    volatile int64_t write_offset_;     ///< user write offset
-    LocatedBlock* block_for_write_;     ///< 正在写的block
-    WriteBuffer* write_buf_;            ///< 本地写缓冲
-    int32_t last_seq_;                  ///< last sequence number
-    std::map<std::string, common::SlidingWindow<int>* > write_windows_;
-    std::priority_queue<WriteBuffer*, std::vector<WriteBuffer*>, WriteBufferCmp>
-        write_queue_;                   ///< Write buffer list
-    volatile int back_writing_;         ///< Async write running backgroud
-
-    /// for read
-    LocatedBlocks located_blocks_;      ///< block meta for read
-    ChunkServer_Stub* chunkserver_;     ///< located chunkserver
-    std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
-    std::set<ChunkServer_Stub*> bad_chunkservers_;
-    int32_t last_chunkserver_index_;
-    int64_t read_offset_;               ///< 读取的偏移
-    Mutex read_offset_mu_;
-    char* reada_buffer_;                ///< Read ahead buffer
-    int32_t reada_buf_len_;             ///< Read ahead buffer length
-    int64_t reada_base_;                ///< Read ahead base offset
-    int32_t sequential_ratio_;          ///< Sequential read ratio
-    int64_t last_read_offset_;
-
-    bool closed_;                       ///< 是否关闭
-    Mutex   mu_;
-    CondVar sync_signal_;               ///< _sync_var
-    bool bg_error_;                     ///< background write error
-    std::map<std::string, bool> cs_errors_;        ///< background write error for each chunkserver
-};
-
-class FSImpl : public FS {
-public:
-    friend class BfsFileImpl;
-    FSImpl() : rpc_client_(NULL), nameserver_client_(NULL), leader_nameserver_idx_(0) {
-        local_host_name_ = common::util::GetLocalHostName();
-        thread_pool_ = new ThreadPool(FLAGS_sdk_thread_num);
-    }
-    ~FSImpl() {
-        delete nameserver_client_;
-        delete rpc_client_;
-        thread_pool_->Stop(true);
-        delete thread_pool_;
-    }
-    bool ConnectNameServer(const char* nameserver) {
-        std::string nameserver_nodes = FLAGS_nameserver_nodes;
-        if (nameserver != NULL) {
-            nameserver_nodes = std::string(nameserver);
-        }
-        rpc_client_ = new RpcClient();
-        nameserver_client_ = new NameServerClient(rpc_client_, nameserver_nodes);
-        return true;
-    }
-    bool CreateDirectory(const char* path) {
-        CreateFileRequest request;
-        CreateFileResponse response;
-        request.set_file_name(path);
-        request.set_mode(0755|(1<<9));
-        request.set_sequence_id(0);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
-            &request, &response, 15, 3);
-        if (!ret || response.status() != kOK) {
-            return false;
-        } else {
-            return true;
-        }
-    }
-    bool ListDirectory(const char* path, BfsFileInfo** filelist, int *num) {
-        common::timer::AutoTimer at(1000, "ListDirectory", path);
-        *filelist = NULL;
-        *num = 0;
-        ListDirectoryRequest request;
-        ListDirectoryResponse response;
-        request.set_path(path);
-        request.set_sequence_id(0);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ListDirectory,
-                &request, &response, 15, 1);
-        if (!ret || response.status() != kOK) {
-            LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
-                path, ret, StatusCode_Name(response.status()).c_str());
-            return false;
-        }
-        if (response.files_size() != 0) {
-            *num = response.files_size();
-            *filelist = new BfsFileInfo[*num];
-            for (int i = 0; i < *num; i++) {
-                BfsFileInfo& binfo =(*filelist)[i];
-                const FileInfo& info = response.files(i);
-                binfo.ctime = info.ctime();
-                binfo.mode = info.type();
-                binfo.size = info.size();
-                snprintf(binfo.name, sizeof(binfo.name), "%s", info.name().c_str());
-            }
-        }
-        return true;
-    }
-    bool DeleteDirectory(const char* path, bool recursive) {
-        DeleteDirectoryRequest request;
-        DeleteDirectoryResponse response;
-        request.set_sequence_id(0);
-        request.set_path(path);
-        request.set_recursive(recursive);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DeleteDirectory,
-                &request, &response, 15, 1);
-        if (!ret) {
-            LOG(WARNING, "DeleteDirectory fail: %s\n", path);
-            return false;
-        }
-        if (response.status() == kNotFound) {
-            LOG(WARNING, "%s is not found.", path);
-        }
-        return response.status() == kOK;
-    }
-    bool Access(const char* path, int32_t mode) {
-        StatRequest request;
-        StatResponse response;
-        request.set_path(path);
-        request.set_sequence_id(0);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Stat,
-            &request, &response, 15, 1);
-        if (!ret) {
-            LOG(WARNING, "Stat fail: %s\n", path);
-            return false;
-        }
-        return (response.status() == kOK);
-    }
-    bool Stat(const char* path, BfsFileInfo* fileinfo) {
-        StatRequest request;
-        StatResponse response;
-        request.set_path(path);
-        request.set_sequence_id(0);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Stat,
-            &request, &response, 15, 1);
-        if (!ret) {
-            LOG(WARNING, "Stat rpc fail: %s", path);
-            return false;
-        }
-        if (response.status() == kOK) {
-            const FileInfo& info = response.file_info();
-            fileinfo->ctime = info.ctime();
-            fileinfo->mode = info.type();
-            fileinfo->size = info.size();
-            snprintf(fileinfo->name, sizeof(fileinfo->name), "%s", info.name().c_str());
-            return true;
-        }
-        return false;
-    }
-    bool GetFileSize(const char* path, int64_t* file_size) {
-        if (file_size == NULL) {
-            return false;
-        }
-        FileLocationRequest request;
-        FileLocationResponse response;
-        request.set_file_name(path);
-        request.set_sequence_id(0);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
-            &request, &response, 15, 1);
-        if (!ret || response.status() != kOK) {
-            LOG(WARNING, "GetFileSize(%s) return %s", path, StatusCode_Name(response.status()).c_str());
-            return false;
-        }
-        *file_size = 0;
-        for (int i = 0; i < response.blocks_size(); i++) {
-            const LocatedBlock& block = response.blocks(i);
-            if (block.block_size()) {
-                *file_size += block.block_size();
-                continue;
-            }
-            ChunkServer_Stub* chunkserver = NULL;
-            bool available = false;
-            for (int j = 0; j < block.chains_size(); j++) {
-                std::string addr = block.chains(j).address();
-                ret = rpc_client_->GetStub(addr, &chunkserver);
-                if (!ret) {
-                    LOG(INFO, "GetFileSize(%s) connect chunkserver fail %s",
-                        path, addr.c_str());
-                } else {
-                    GetBlockInfoRequest gbi_request;
-                    gbi_request.set_block_id(block.block_id());
-                    gbi_request.set_sequence_id(common::timer::get_micros());
-                    GetBlockInfoResponse gbi_response;
-                    ret = rpc_client_->SendRequest(chunkserver,
-                        &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
-                    delete chunkserver;
-                    if (!ret || gbi_response.status() != kOK) {
-                        LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail, ret= %d, status= %s",
-                            path, addr.c_str(), ret, StatusCode_Name(gbi_response.status()).c_str());
-                        continue;
-                    }
-                    *file_size += gbi_response.block_size();
-                    available = true;
-                    break;
-                }
-            }
-            if (!available) {
-                LOG(WARNING, "GetFileSize(%s) fail no available chunkserver", path);
-                return false;
-            }
-        }
-        return true;
-    }
-    bool GetFileLocation(const std::string& path,
-                         std::map<int64_t, std::vector<std::string> >* locations) {
-        if (locations == NULL) {
-            return false;
-        }
-        FileLocationRequest request;
-        FileLocationResponse response;
-        request.set_file_name(path);
-        request.set_sequence_id(0);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
-                                                   &request, &response, 15, 1);
-        if (!ret || response.status() != kOK) {
-            LOG(WARNING, "GetFileLocation(%s) return %s", path.c_str(),
-                    StatusCode_Name(response.status()).c_str());
-            return false;
-        }
-        for (int i = 0; i < response.blocks_size(); i++) {
-            const LocatedBlock& block = response.blocks(i);
-            std::map<int64_t, std::vector<std::string> >::iterator it =
-                locations->insert(std::make_pair(block.block_id(), std::vector<std::string>())).first;
-            for (int j = 0; j < block.chains_size(); ++j) {
-                (it->second).push_back(block.chains(j).address());
-            }
-        }
-        return true;
-    }
-    bool OpenFile(const char* path, int32_t flags, File** file) {
-        return OpenFile(path, flags, 0, -1, file);
-    }
-    bool OpenFile(const char* path, int32_t flags, int32_t mode,
-                  int32_t replica, File** file) {
-        common::timer::AutoTimer at(100, "OpenFile", path);
-        bool ret = false;
-        *file = NULL;
-        if (flags & O_WRONLY) {
-            CreateFileRequest request;
-            CreateFileResponse response;
-            request.set_file_name(path);
-            request.set_sequence_id(0);
-            request.set_flags(flags);
-            request.set_mode(mode&0777);
-            request.set_replica_num(replica);
-            ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
-                &request, &response, 15, 1);
-            if (!ret || response.status() != kOK) {
-                LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
-                    path, ret, StatusCode_Name(response.status()).c_str());
-                ret = false;
-            } else {
-                *file = new BfsFileImpl(this, rpc_client_, path, flags);
-            }
-        } else if (flags == O_RDONLY) {
-            FileLocationRequest request;
-            FileLocationResponse response;
-            request.set_file_name(path);
-            request.set_sequence_id(0);
-            ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
-                &request, &response, 15, 1);
-            if (ret && response.status() == kOK) {
-                BfsFileImpl* f = new BfsFileImpl(this, rpc_client_, path, flags);
-                f->located_blocks_.CopyFrom(response.blocks());
-                *file = f;
-                //printf("OpenFile success: %s\n", path);
-            } else {
-                //printf("GetFileLocation return %d\n", response.blocks_size());
-                LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
-                ret = false;
-            }
-        } else {
-            LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY, but %d", flags);
-            ret = false;
-        }
-        return ret;
-    }
-    bool CloseFile(File* file) {
-        return file->Close();
-    }
-    bool DeleteFile(const char* path) {
-        UnlinkRequest request;
-        UnlinkResponse response;
-        request.set_path(path);
-        int64_t seq = common::timer::get_micros();
-        request.set_sequence_id(seq);
-        // printf("Delete file: %s\n", path);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Unlink,
-            &request, &response, 15, 1);
-        if (!ret) {
-            LOG(WARNING, "Unlink rpc fail: %s", path);
-            return false;
-        }
-        if (response.status() != kOK) {
-            LOG(WARNING, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
-            return false;
-        }
-        return true;
-    }
-    bool Rename(const char* oldpath, const char* newpath) {
-        RenameRequest request;
-        RenameResponse response;
-        request.set_oldpath(oldpath);
-        request.set_newpath(newpath);
-        request.set_sequence_id(0);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Rename,
-            &request, &response, 15, 1);
-        if (!ret) {
-            LOG(WARNING, "Rename rpc fail: %s to %s\n", oldpath, newpath);
-            return false;
-        }
-        if (response.status() != kOK) {
-            LOG(WARNING, "Rename %s to %s return: %s\n",
-                oldpath, newpath, StatusCode_Name(response.status()).c_str());
-            return false;
-        }
-        return true;
-    }
-    bool ChangeReplicaNum(const char* file_name, int32_t replica_num) {
-        ChangeReplicaNumRequest request;
-        ChangeReplicaNumResponse response;
-        request.set_file_name(file_name);
-        request.set_replica_num(replica_num);
-        request.set_sequence_id(0);
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ChangeReplicaNum,
-                                                   &request, &response, 15, 1);
-        if (!ret) {
-            LOG(WARNING, "Change %s replica num to %d rpc fail\n",
-                    file_name, replica_num);
-            return false;
-        }
-        if (response.status() != kOK) {
-            LOG(WARNING, "Change %s replida num to %d return: %s\n",
-                    file_name, replica_num, StatusCode_Name(response.status()).c_str());
-            return false;
-        }
-        return true;
-    }
-    bool SysStat(const std::string& stat_name, std::string* result) {
-        SysStatRequest request;
-        SysStatResponse response;
-        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::SysStat,
-                                                   &request, &response, 15, 1);
-        if (!ret) {
-            LOG(WARNING, "SysStat fail %s", StatusCode_Name(response.status()).c_str());
-            return false;
-        }
-        bool stat_all = (stat_name == "StatAll");
-        common::TPrinter tp(7);
-        tp.AddRow(7, "", "id", "address", "data_size", "blocks", "alive", "last_check");
-        for (int i = 0; i < response.chunkservers_size(); i++) {
-            const ChunkServerInfo& chunkserver = response.chunkservers(i);
-            if (!stat_all && chunkserver.is_dead()) {
-                continue;
-            }
-            std::vector<std::string> vs;
-            vs.push_back(common::NumToString(i + 1));
-            vs.push_back(common::NumToString(chunkserver.id()));
-            vs.push_back(chunkserver.address());
-            vs.push_back(common::HumanReadableString(chunkserver.data_size()) + "B");
-            vs.push_back(common::NumToString(chunkserver.block_num()));
-            vs.push_back(chunkserver.is_dead() ? "dead" : "alive");
-            vs.push_back(common::NumToString(
-                            common::timer::now_time() - chunkserver.last_heartbeat()));
-            tp.AddRow(vs);
-        }
-        /*
-        std::ostringstream oss;
-        oss << "ChunkServer num: " << response.chunkservers_size() << std::endl
-            << "Block num: " << response.block_num() << std::endl;
-        result->assign(oss.str());*/
-        result->append(tp.ToString());
-        return true;
-    }
-private:
-    RpcClient* rpc_client_;
-    NameServerClient* nameserver_client_;
-    //NameServer_Stub* nameserver_;
-    std::vector<std::string> nameserver_addresses_;
-    int32_t leader_nameserver_idx_;
-    //std::string nameserver_address_;
-    std::string local_host_name_;
-    ThreadPool* thread_pool_;
-};
-
-BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
+FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
                          const std::string name, int32_t flags)
   : fs_(fs), rpc_client_(rpc_client), name_(name),
     open_flags_(flags), write_offset_(0), block_for_write_(NULL),
@@ -553,7 +93,7 @@ BfsFileImpl::BfsFileImpl(FSImpl* fs, RpcClient* rpc_client,
         thread_pool_ = fs->thread_pool_;
 }
 
-BfsFileImpl::~BfsFileImpl () {
+FileImpl::~FileImpl () {
     if (!closed_) {
         Close();
     }
@@ -576,7 +116,7 @@ BfsFileImpl::~BfsFileImpl () {
     }
 }
 
-int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada) {
+int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada) {
     if (read_len <= 0 || buf == NULL || offset < 0) {
         LOG(WARNING, "Pread(%s, %ld, %d), bad parameters!",
             name_.c_str(), offset, read_len);
@@ -702,7 +242,7 @@ int32_t BfsFileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool rea
     return ret_len;
 }
 
-int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
+int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
     //printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
     if (open_flags_ != O_RDONLY) {
         return -2;
@@ -718,7 +258,7 @@ int64_t BfsFileImpl::Seek(int64_t offset, int32_t whence) {
     return read_offset_;
 }
 
-int32_t BfsFileImpl::Read(char* buf, int32_t read_len) {
+int32_t FileImpl::Read(char* buf, int32_t read_len) {
     //LOG(DEBUG, "[%p] Read[%s:%ld] offset= %ld\n",
     //    this, _name.c_str(), read_len, read_offset_);
     if (open_flags_ != O_RDONLY) {
@@ -733,7 +273,7 @@ int32_t BfsFileImpl::Read(char* buf, int32_t read_len) {
     return ret;
 }
 
-int32_t BfsFileImpl::AddBlock() {
+int32_t FileImpl::AddBlock() {
     AddBlockRequest request;
     AddBlockResponse response;
     request.set_sequence_id(0);
@@ -754,7 +294,7 @@ int32_t BfsFileImpl::AddBlock() {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);
         write_windows_[addr] = new common::SlidingWindow<int>(100,
-                               boost::bind(&BfsFileImpl::OnWriteCommit, this, _1, _2));
+                               boost::bind(&FileImpl::OnWriteCommit, this, _1, _2));
         cs_errors_[addr] = false;
         WriteBlockRequest create_request;
         int64_t seq = common::timer::get_micros();
@@ -794,7 +334,7 @@ int32_t BfsFileImpl::AddBlock() {
     last_seq_ = 0;
     return kOK;
 }
-int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
+int32_t FileImpl::Write(const char* buf, int32_t len) {
     common::timer::AutoTimer at(100, "Write", name_.c_str());
 
     {
@@ -853,21 +393,21 @@ int32_t BfsFileImpl::Write(const char* buf, int32_t len) {
     return w;
 }
 
-void BfsFileImpl::StartWrite() {
+void FileImpl::StartWrite() {
     common::timer::AutoTimer at(5, "StartWrite", name_.c_str());
     mu_.AssertHeld();
     write_queue_.push(write_buf_);
     block_for_write_->set_block_size(block_for_write_->block_size() + write_buf_->Size());
     write_buf_ = NULL;
     boost::function<void ()> task =
-        boost::bind(&BfsFileImpl::BackgroundWrite, this);
+        boost::bind(&FileImpl::BackgroundWrite, this);
     common::atomic_inc(&back_writing_);
     mu_.Unlock();
     thread_pool_->AddTask(task);
     mu_.Lock("StartWrite relock", 1000);
 }
 
-bool BfsFileImpl::CheckWriteWindows() {
+bool FileImpl::CheckWriteWindows() {
     mu_.AssertHeld();
     if (FLAGS_sdk_write_mode == "chains") {
         return write_windows_.begin()->second->UpBound() > write_queue_.top()->Sequence();
@@ -883,7 +423,7 @@ bool BfsFileImpl::CheckWriteWindows() {
 }
 
 /// Send local buffer to chunkserver
-void BfsFileImpl::BackgroundWrite() {
+void FileImpl::BackgroundWrite() {
     MutexLock lock(&mu_, "BackgroundWrite", 1000);
     while(!write_queue_.empty() && CheckWriteWindows()) {
         WriteBuffer* buffer = write_queue_.top();
@@ -926,7 +466,7 @@ void BfsFileImpl::BackgroundWrite() {
             const int max_retry_times = 5;
             ChunkServer_Stub* stub = chunkservers_[cs_addr];
             boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-                = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+                = boost::bind(&FileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
                         max_retry_times, buffer, cs_addr);
 
             LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
@@ -934,7 +474,7 @@ void BfsFileImpl::BackgroundWrite() {
             common::atomic_inc(&back_writing_);
             if (delay) {
                 thread_pool_->DelayTask(5,
-                        boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
+                        boost::bind(&FileImpl::DelayWriteChunk, this, buffer,
                             request, max_retry_times, cs_addr));
             } else {
                 WriteBlockResponse* response = new WriteBlockResponse;
@@ -950,12 +490,12 @@ void BfsFileImpl::BackgroundWrite() {
     }
 }
 
-void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer,
+void FileImpl::DelayWriteChunk(WriteBuffer* buffer,
                                   const WriteBlockRequest* request,
                                   int retry_times, std::string cs_addr) {
     WriteBlockResponse* response = new WriteBlockResponse;
     boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-        = boost::bind(&BfsFileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+        = boost::bind(&FileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
                       retry_times, buffer, cs_addr);
     common::atomic_inc(&back_writing_);
     ChunkServer_Stub* stub = chunkservers_[cs_addr];
@@ -968,7 +508,7 @@ void BfsFileImpl::DelayWriteChunk(WriteBuffer* buffer,
     }
 }
 
-void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
+void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      WriteBlockResponse* response,
                                      bool failed, int error,
                                      int retry_times,
@@ -1016,7 +556,7 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         if (!bg_error_ && retry_times > 0) {
             common::atomic_inc(&back_writing_);
             thread_pool_->DelayTask(5,
-                boost::bind(&BfsFileImpl::DelayWriteChunk, this, buffer,
+                boost::bind(&FileImpl::DelayWriteChunk, this, buffer,
                             request, retry_times, cs_addr));
         } else {
             buffer->DecRef();
@@ -1050,18 +590,18 @@ void BfsFileImpl::WriteChunkCallback(const WriteBlockRequest* request,
     }
 
     boost::function<void ()> task =
-        boost::bind(&BfsFileImpl::BackgroundWrite, this);
+        boost::bind(&FileImpl::BackgroundWrite, this);
     thread_pool_->AddTask(task);
 }
 
-void BfsFileImpl::OnWriteCommit(int32_t, int) {
+void FileImpl::OnWriteCommit(int32_t, int) {
 }
 
-bool BfsFileImpl::Flush() {
+bool FileImpl::Flush() {
     // Not implement
     return true;
 }
-bool BfsFileImpl::Sync(int32_t timeout) {
+bool FileImpl::Sync(int32_t timeout) {
     common::timer::AutoTimer at(50, "Sync", name_.c_str());
     if (open_flags_ != O_WRONLY) {
         return false;
@@ -1082,7 +622,7 @@ bool BfsFileImpl::Sync(int32_t timeout) {
     return !bg_error_ && !back_writing_;
 }
 
-bool BfsFileImpl::Close() {
+bool FileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", name_.c_str());
     MutexLock lock(&mu_, "Close", 1000);
     bool need_report_finish = false;
@@ -1138,17 +678,5 @@ bool BfsFileImpl::Close() {
     return ret;
 }
 
-bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
-    FSImpl* impl = new FSImpl;
-    if (!impl->ConnectNameServer(nameserver)) {
-        *fs = NULL;
-        return false;
-    }
-    *fs = impl;
-    return true;
-}
-
 } // namespace bfs
 } // namespace baidu
-
-/* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

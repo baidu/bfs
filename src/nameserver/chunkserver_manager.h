@@ -33,27 +33,30 @@ public:
     bool GetRecoverChains(const std::set<int32_t>& replica, std::vector<std::string>* chains);
     int32_t AddChunkServer(const std::string& address, int64_t quota);
     int32_t AddChunkServer(const std::string& address, const std::string& ip, int64_t quota);
-    bool KickChunkserver(int cs_id);
+    bool KickChunkServer(int cs_id);
     bool UpdateChunkServer(int cs_id, int64_t quota);
     bool RemoveChunkServer(const std::string& address);
     std::string GetChunkServerAddr(int32_t id);
-    int32_t GetChunkserverId(const std::string& address);
+    int32_t GetChunkServerId(const std::string& address);
     void AddBlock(int32_t id, int64_t block_id);
     void RemoveBlock(int32_t id, int64_t block_id);
-    void CleanChunkserver(ChunkServerInfo* cs, const std::string& reason);
+    void CleanChunkServer(ChunkServerInfo* cs, const std::string& reason);
     void PickRecoverBlocks(int cs_id, std::map<int64_t, std::vector<std::string> >* recover_blocks,
                            int* hi_num);
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
+    StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
+    bool GetShutdownChunkServerStat();
 private:
-    double GetChunkserverLoad(ChunkServerInfo* cs);
+    double GetChunkServerLoad(ChunkServerInfo* cs);
     void DeadCheck();
     void RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads, int num);
     bool GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs);
     void LogStats();
-    int SelectChunkserverByZone(int num,
+    int SelectChunkServerByZone(int num,
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains);
+    void MarkChunkServerReadonly(const std::string& chunkserver_address);
 private:
     ThreadPool* thread_pool_;
     BlockMappingManager* block_mapping_manager_;
@@ -69,6 +72,8 @@ private:
 
     std::string localhostname_;
     std::string localzone_;
+
+    std::vector<std::string> chunkservers_to_offline_;
 };
 
 } // namespace bfs

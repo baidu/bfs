@@ -66,9 +66,7 @@ private:
     int64_t applied_idx_;   // last applied entry index
     int64_t sync_idx_;      // last entry index which slave has received
 
-    int64_t seq_;           // non-descending number, for nameserver
-
-    std::map<int64_t, std::pair<boost::function<void (int64_t)>, int64_t> > callbacks_;
+    std::map<int64_t, boost::function<void (int64_t)> > callbacks_;
 };
 
 } // namespace bfs

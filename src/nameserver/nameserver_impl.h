@@ -94,6 +94,14 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void ShutdownChunkServer(::google::protobuf::RpcController* controller,
+            const ShutdownChunkServerRequest* request,
+            ShutdownChunkServerResponse* response,
+            ::google::protobuf::Closure* done);
+    void ShutdownChunkServerStat(::google::protobuf::RpcController* controller,
+            const ShutdownChunkServerStatRequest* request,
+            ShutdownChunkServerStatResponse* response,
+            ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
@@ -106,12 +114,6 @@ private:
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
     bool LogRemote(const NameServerLog& log, boost::function<void (int64_t)> callback);
-    /*void SyncLogCallback(::google::protobuf::RpcController* controller,
-                         const ::google::protobuf::Message* request,
-                         ::google::protobuf::Message* response,
-                         ::google::protobuf::Closure* done,
-                         std::vector<FileInfo>* removed,
-                         bool ret);*/
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,
                          ::google::protobuf::Message* response,
@@ -122,7 +124,7 @@ private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
-    /// Chunkserver map
+    /// ChunkServer map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
     BlockMappingManager* block_mapping_manager_;

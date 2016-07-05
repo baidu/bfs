@@ -265,7 +265,7 @@ TEST_F(LogDBTest, DeleteUpTo) {
     ret = access("./dbtest/81515.log", R_OK);
     ASSERT_EQ(ret, 0);
 
-    ASSERT_EQ(logdb->DeleteUpTo(81515), kBadParameter);
+    ASSERT_EQ(logdb->DeleteUpTo(81515), kOK);
     ASSERT_EQ(logdb->DeleteUpTo(200000), kBadParameter);
     std::string str;
     ASSERT_EQ(logdb->Read(81515, &str), kNotFound);
@@ -309,7 +309,7 @@ TEST_F(LogDBTest, DeleteFrom) {
     logdb->DeleteFrom(81515);
     ret = access("./dbtest/81515.log", R_OK);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(logdb->DeleteFrom(81515), kBadParameter);
+    ASSERT_EQ(logdb->DeleteFrom(81515), kOK);
     ASSERT_EQ(logdb->DeleteFrom(-1), kBadParameter);
     WriteLog_Helper(81515, 1, logdb);
     ReadLog_Helper(0, 81515, logdb);

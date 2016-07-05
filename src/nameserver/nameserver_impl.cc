@@ -77,7 +77,6 @@ void NameServerImpl::CheckLeader() {
     } else {
         is_leader_ = false;
         work_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
-        //LOG(INFO, "Delay CheckLeader");
     }
 }
 
@@ -183,9 +182,9 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
-    int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
+    int old_id = chunkserver_manager_->GetChunkServerId(request->chunkserver_addr());
     if (cs_id != old_id) {
-        LOG(INFO, "Chunkserver %s id mismatch, old: C%d new: C%d",
+        LOG(INFO, "ChunkServer %s id mismatch, old: C%d new: C%d",
             request->chunkserver_addr().c_str(), old_id, cs_id);
         response->set_status(kUnknownCs);
         done->Run();
@@ -236,9 +235,9 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
-    int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
+    int old_id = chunkserver_manager_->GetChunkServerId(request->chunkserver_addr());
     if (cs_id != old_id) {
-        LOG(INFO, "Chunkserver %s id mismatch, old: C%d new: C%d , need to re-register",
+        LOG(INFO, "ChunkServer %s id mismatch, old: C%d new: C%d , need to re-register",
             request->chunkserver_addr().c_str(), old_id, cs_id);
         response->set_status(kUnknownCs);
         done->Run();
@@ -349,7 +348,6 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (i
         return true;
     }
     std::string logstr;
-    LOG(INFO, "LL: LogRemote seq = %ld", log.seq());
     if (!log.SerializeToString(&logstr)) {
         LOG(FATAL, "Serialize log fail");
     }
@@ -360,27 +358,7 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (i
         return true;
     }
 }
-/*
-void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controller,
-                                     const ::google::protobuf::Message* request,
-                                     ::google::protobuf::Message* response,
-                                     ::google::protobuf::Closure* done,
-                                     std::vector<FileInfo>* removed,
-                                     bool ret) {
-    if (!ret) {
-        controller->SetFailed("SyncLogFail");
-    } else if (removed) {
-        for (uint32_t i = 0; i < removed->size(); i++) {
-            block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
-        }
-        delete removed;
-    }
-    done->Run();
-    if (!ret) {
-        LOG(FATAL, "SyncLog fail");
-    }
-}
-*/
+
 void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controller,
                                      const ::google::protobuf::Message* request,
                                      ::google::protobuf::Message* response,
@@ -466,7 +444,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                                    (std::vector<FileInfo>*)NULL, _1));
     } else {
         LOG(WARNING, "AddBlock for %s failed.", path.c_str());
-        response->set_status(kGetChunkserverError);
+        response->set_status(kGetChunkServerError);
         done->Run();
     }
 }
@@ -793,6 +771,35 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+void NameServerImpl::ShutdownChunkServer(::google::protobuf::RpcController* controller,
+        const ShutdownChunkServerRequest* request,
+        ShutdownChunkServerResponse* response,
+        ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    StatusCode status = chunkserver_manager_->ShutdownChunkServer(request->chunkserver_address());
+    response->set_status(status);
+    done->Run();
+}
+
+void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* controller,
+        const ShutdownChunkServerStatRequest* request,
+        ShutdownChunkServerStatResponse* response,
+        ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    bool in_progress = chunkserver_manager_->GetShutdownChunkServerStat();
+    response->set_status(kOK);
+    response->set_in_offline_progress(in_progress);
+    done->Run();
+}
+
 void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
     block_mapping_manager_->ListRecover(&hi_recover, &lo_recover, &lost, &hi_check, &lo_check, &incomplete);
@@ -847,7 +854,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         }
         std::stringstream ss(it->second);
         int cs_id;
-        if (ss >> cs_id && chunkserver_manager_->KickChunkserver(cs_id)) {
+        if (ss >> cs_id && chunkserver_manager_->KickChunkServer(cs_id)) {
             response.content->Append("<body onload=\"history.back()\"></body>");
             return true;
         }
@@ -876,7 +883,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         "<table class=\"table\">"
         "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
         "<td>Disk quota</td><td>Disk used</td><td>Writing buffers</td>"
-        "<td>alive</td><td>last_check</td><tr>";
+        "<td>status</td><td>last_check</td><tr>";
     int dead_num = 0;
     int64_t total_quota = 0;
     int64_t total_data = 0;
@@ -921,6 +928,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             table_str += "dead";
         } else if (chunkserver.kick()) {
             table_str += "kicked";
+        } else if (chunkserver.status() == kCsReadonly) {
+            table_str += "Readonly";
         } else if (FLAGS_bfs_web_kick_enable) {
             table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
                       + "\">kick</a>)";
@@ -970,7 +979,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "<h4 align=left>Chunkserver status</h4>";
+    str += "<h4 align=left>ChunkServer status</h4>";
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";

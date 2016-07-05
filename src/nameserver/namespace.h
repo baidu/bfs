@@ -84,6 +84,7 @@ private:
     int64_t block_id_upbound_;
     int64_t next_block_id_;
     Mutex mu_;
+    Mutex snapshot_mutex_;
 
     std::map<int64_t, const leveldb::Snapshot*> sync_snapshots_;
 };
