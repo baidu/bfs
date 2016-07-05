@@ -168,6 +168,7 @@ void MasterSlaveImpl::SwitchToLeader() {
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
     worker_.Start(boost::bind(&MasterSlaveImpl::BackgroundLog, this));
     is_leader_ = true;
+    master_only_ = true;
     LOG(INFO, "\033[32m[Sync]\033[0m node switch to leader");
 }
 
