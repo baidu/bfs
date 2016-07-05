@@ -391,7 +391,7 @@ int BfsShutdownStat(baidu::bfs::FS* fs) {
         return 1;
     }
     if (cs.empty()) {
-        printf("shutdown chunkserver is finished\n");
+        printf("no unfinished chunkservers, shutdown chunkserver is not in progress\n");
     } else {
         printf("unfinished chunkservers:\n");
         for (size_t i = 0; i < cs.size(); i++) {
