@@ -2,21 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
+#include "file_impl.h"
+
 #include <gflags/gflags.h>
 
-#include <common/atomic.h>
-#include <common/mutex.h>
-#include <common/timer.h>
+#include <boost/bind.hpp>
 #include <common/sliding_window.h>
 #include <common/logging.h>
 
 #include "proto/status_code.pb.h"
-#include "proto/chunkserver.pb.h"
 #include "rpc/rpc_client.h"
 #include "rpc/nameserver_client.h"
 
 #include "fs_impl.h"
-#include "file_impl.h"
 
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);

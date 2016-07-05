@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
+
+#include "fs_impl.h"
+
 #include <gflags/gflags.h>
 
 #include <common/sliding_window.h>
@@ -15,7 +18,6 @@
 #include "rpc/rpc_client.h"
 #include "rpc/nameserver_client.h"
 
-#include "fs_impl.h"
 #include "file_impl.h"
 
 DECLARE_int32(sdk_thread_num);

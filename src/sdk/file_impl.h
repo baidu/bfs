@@ -3,8 +3,23 @@
 // found in the LICENSE file.
 //
 
-#ifndef  SDK_FILE_IMPL_H_
-#define  SDK_FILE_IMPL_H_
+#ifndef  BFS_SDK_FILE_IMPL_H_
+#define  BFS_SDK_FILE_IMPL_H_
+
+#include <map>
+#include <set>
+#include <string>
+
+#include <common/atomic.h>
+#include <common/mutex.h>
+#include <common/timer.h>
+#include <common/sliding_window.h>
+#include <common/thread_pool.h>
+
+#include "proto/nameserver.pb.h"
+#include "proto/chunkserver.pb.h"
+
+#include "bfs.h"
 
 namespace baidu {
 namespace bfs {
@@ -43,7 +58,7 @@ class RpcClient;
 struct LocatedBlocks {
     int64_t file_length_;
     std::vector<LocatedBlock> blocks_;
-    void CopyFrom(const ::google::protobuf::RepeatedPtrField< baidu::bfs::LocatedBlock >& blocks) {
+    void CopyFrom(const ::google::protobuf::RepeatedPtrField<LocatedBlock>& blocks) {
         for (int i = 0; i < blocks.size(); i++) {
             blocks_.push_back(blocks.Get(i));
         }
@@ -127,4 +142,4 @@ private:
 } // namespace bfs
 } // namespace baidu
 
-#endif  //SDK_FILE_IMPL_H_
+#endif  //BFS_SDK_FILE_IMPL_H_

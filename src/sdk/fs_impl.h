@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 //
 
-#ifndef  SDK_FS_IMPL_H_
-#define  SDK_FS_IMPL_H_
+#ifndef  BFS_SDK_FS_IMPL_H_
+#define  BFS_SDK_FS_IMPL_H_
 
 #include <vector>
 #include <string>
@@ -57,4 +57,4 @@ private:
 } // namespace bfs
 } // namespace baidu
 
-#endif  // SDK_FS_IMPL_H_
+#endif  // BFS_SDK_FS_IMPL_H_
