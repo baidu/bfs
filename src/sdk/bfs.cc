@@ -529,6 +529,31 @@ public:
         result->append(tp.ToString());
         return true;
     }
+    bool ShutdownChunkServer(const std::vector<std::string>& cs_addr) {
+       ShutdownChunkServerRequest request;
+       ShutdownChunkServerResponse response;
+       for (size_t i = 0; i < cs_addr.size(); i++) {
+           request.add_chunkserver_address(cs_addr[i]);
+       }
+       bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServer,
+               &request, &response, 15, 1);
+       if (!ret || response.status() != kOK) {
+           LOG(WARNING, "Shutdown ChunkServer fail. ret: %d, status: %s",
+                   ret, StatusCode_Name(response.status()).c_str());
+       }
+        return ret;
+    }
+    int ShutdownChunkServerStat() {
+        ShutdownChunkServerStatRequest request;
+        ShutdownChunkServerStatResponse response;
+        bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServerStat,
+                                                   &request, &response, 15, 1);
+        if (!ret) {
+            LOG(WARNING, "Get shutdown chunnkserver stat fail");
+            return -1;
+        }
+        return response.in_offline_progress();
+    }
 private:
     RpcClient* rpc_client_;
     NameServerClient* nameserver_client_;

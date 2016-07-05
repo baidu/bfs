@@ -1,3 +1,4 @@
+import "status_code.proto";
 
 package baidu.bfs;
 
