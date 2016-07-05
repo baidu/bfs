@@ -575,7 +575,7 @@ void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_
     }
     int32_t cs_id = it->second;
     ChunkServerInfo* cs_info = chunkservers_[cs_id];
-    if (cs_info->status() != kCsReadonly) {
+    if (cs_info->status() == kCsActive) {
         cs_info->set_status(kCsReadonly);
         LOG(INFO, "Mark C%d readonly", cs_id);
     }
@@ -611,7 +611,7 @@ void ChunkServerManager::ShutdownOneChunkServer() {
                     chunkserver_to_shutdown_[next_shutdown_offset_].c_str());
             boost::function<void ()> task =
                 boost::bind(&ChunkServerManager::ShutdownOneChunkServer, this);
-            thread_pool_->DelayTask((FLAGS_keepalive_timeout + 5) * 1000, task);
+            thread_pool_->AddTask(task);
             return;
         }
         cs_id = it->second;
