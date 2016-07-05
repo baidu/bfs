@@ -543,7 +543,7 @@ public:
        }
         return ret;
     }
-    int ShutdownChunkServerStat() {
+    int ShutdownChunkServerStat(std::vector<std::string> *cs) {
         ShutdownChunkServerStatRequest request;
         ShutdownChunkServerStatResponse response;
         bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServerStat,
@@ -552,7 +552,10 @@ public:
             LOG(WARNING, "Get shutdown chunnkserver stat fail");
             return -1;
         }
-        return response.in_offline_progress();
+        for (int i = 0; i < response.unfinished_chunkservers_size(); i++) {
+            cs->push_back(response.unfinished_chunkservers(i));
+        }
+        return 0;
     }
 private:
     RpcClient* rpc_client_;

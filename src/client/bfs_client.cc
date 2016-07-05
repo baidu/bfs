@@ -384,15 +384,19 @@ int BfsShutdownChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
 }
 
 int BfsShutdownStat(baidu::bfs::FS* fs) {
-    int ret = fs->ShutdownChunkServerStat();
+    std::vector<std::string> cs;
+    int ret = fs->ShutdownChunkServerStat(&cs);
     if (ret < 0) {
         printf("Get offline chunkserver stat fail\n");
         return 1;
     }
-    if (ret == 1) {
-        printf("Shutdown chunkserver is in progress\n");
+    if (cs.empty()) {
+        printf("shutdown chunkserver is finished\n");
     } else {
-        printf("offline chunkserver is finished\n");
+        printf("unfinished chunkservers:\n");
+        for (size_t i = 0; i < cs.size(); i++) {
+            printf("%s\n", cs[i].c_str());
+        }
     }
     return 0;
 }

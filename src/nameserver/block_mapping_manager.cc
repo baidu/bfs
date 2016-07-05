@@ -121,12 +121,24 @@ void BlockMappingManager::GetStat(int32_t cs_id, int64_t* lo_recover_num, int64_
     for (size_t i = 0; i < block_mapping_.size(); i++) {
         int64_t lr = 0, hr = 0, lp = 0, hp = 0, ln = 0, in = 0;
         block_mapping_[i]->GetStat(cs_id, &lr, &hr, &lp, &hp, &ln, &in);
-        *(lo_recover_num) += lr;
-        *(hi_recover_num) += hr;
-        *(lo_pending) += lp;
-        *(hi_pending) += hp;
-        *(lost_num) += ln;
-        *(incomplete_num) += in;
+        if (lo_recover_num) {
+            *(lo_recover_num) += lr;
+        }
+        if (hi_recover_num) {
+            *(hi_recover_num) += hr;
+        }
+        if (lo_pending) {
+            *(lo_pending) += lp;
+        }
+        if (hi_pending) {
+            *(hi_pending) += hp;
+        }
+        if (lost_num) {
+            *(lost_num) += ln;
+        }
+        if (incomplete_num) {
+            *(incomplete_num) += in;
+        }
     }
 }
 

@@ -800,9 +800,12 @@ void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* 
         done->Run();
         return;
     }
-    bool in_progress = chunkserver_manager_->GetShutdownChunkServerStat();
+    std::vector<std::string> cs;
+    chunkserver_manager_->GetShutdownChunkServerStat(&cs);
+    for (size_t i = 0; i < cs.size(); i++) {
+        response->add_unfinished_chunkservers(cs[i]);
+    }
     response->set_status(kOK);
-    response->set_in_offline_progress(in_progress);
     done->Run();
 }
 
