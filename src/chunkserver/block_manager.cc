@@ -149,7 +149,23 @@ bool BlockManager::LoadStorage() {
             return false;
         }
         BlockMeta meta;
-        meta.ParseFromArray(it->value().data(), it->value().size());
+        if (!meta.ParseFromArray(it->value().data(), it->value().size())) {
+            assert(it->value().size() == 32);
+            char raw_buf[32];
+            memcpy(raw_buf, it->value().data(), it->value().size());
+            int64_t block_id = *(reinterpret_cast<int64_t*>(raw_buf));
+            int64_t block_size = *(reinterpret_cast<int64_t*>(raw_buf + 8));
+            int64_t checksum = *(reinterpret_cast<int64_t*>(raw_buf + 16));
+            int64_t version = *(reinterpret_cast<int64_t*>(raw_buf+ 24));
+            meta.set_block_id(block_id);
+            meta.set_block_size(block_size);
+            meta.set_checksum(checksum);
+            meta.set_version(version);
+            std::string meta_buf;
+            meta.SerializeToString(&meta_buf);
+            metadb_->Put(leveldb::WriteOptions(), it->key(), meta_buf);
+            LOG(INFO, "Old meta info of #%ld has been trans to new meta info", block_id);
+        }
         assert(meta.block_id() == block_id);
         std::string file_path = meta.store_path() + Block::BuildFilePath(block_id);
         if (meta.version() < 0) {
