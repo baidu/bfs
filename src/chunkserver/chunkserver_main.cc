@@ -21,6 +21,7 @@ DECLARE_string(chunkserver_warninglog);
 DECLARE_int32(chunkserver_log_level);
 DECLARE_string(bfs_log);
 DECLARE_int32(bfs_log_size);
+DECLARE_int32(bfs_log_limit);
 
 static volatile bool s_quit = false;
 static void SignalIntHandler(int /*sig*/)
@@ -42,6 +43,7 @@ int main(int argc, char* argv[])
     if (FLAGS_bfs_log != "") {
         baidu::common::SetLogFile(FLAGS_bfs_log.c_str());
         baidu::common::SetLogSize(FLAGS_bfs_log_size);
+        baidu::common::SetLogSizeLimit(FLAGS_bfs_log_limit);
     }
     baidu::common::SetLogLevel(FLAGS_chunkserver_log_level);
     baidu::common::SetWarningFile(FLAGS_chunkserver_warninglog.c_str());
