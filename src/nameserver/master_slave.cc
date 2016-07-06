@@ -139,8 +139,14 @@ void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (int64_
         return;
     }
     MutexLock lock(&mu_);
-    if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
-        LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld ", current_idx_ + 1);
+    StatusCode s = logdb_->Write(current_idx_ + 1, entry);
+    if (s != kOK) {
+        if (s != kWriteError) {
+            LOG(INFO, "\033[32m[Sync]\033[0m write logdb failed index %ld reason %s",
+                current_idx_, StatusCode_Name(s).c_str());
+        } else {
+            LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld ", current_idx_ + 1);
+        }
     }
     log_callback_(entry, current_idx_);
     current_idx_++;

@@ -11,6 +11,7 @@
 #include <string>
 #include <map>
 #include <common/mutex.h>
+#include <common/counter.h>
 #include <boost/function.hpp>
 
 #include <leveldb/db.h>
@@ -20,6 +21,24 @@
 
 namespace baidu {
 namespace bfs {
+
+class SyncSnapshot {
+public:
+    SyncSnapshot(leveldb::DB* db);
+    struct SS
+    {
+        const leveldb::Snapshot* snapshot;
+        common::Counter ref;
+        SS(const leveldb::Snapshot* s) : snapshot(s) {}
+    };
+    void Add(uint64_t index);
+    bool Get(const leveldb::Snapshot** s, uint64_t* index);
+    void Release(uint64_t index);
+private:
+    leveldb::DB* db_;
+    Mutex mu_;
+    std::map<uint64_t, SS*> snapshots_;
+};
 
 class NameSpace {
 public:
@@ -76,6 +95,7 @@ private:
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
     void UpdateBlockIdUpbound(NameServerLog* log);
+
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
@@ -84,9 +104,7 @@ private:
     int64_t block_id_upbound_;
     int64_t next_block_id_;
     Mutex mu_;
-    Mutex snapshot_mutex_;
-
-    std::map<int64_t, const leveldb::Snapshot*> sync_snapshots_;
+    SyncSnapshot* sync_snapshots_;
 };
 
 } // namespace bfs

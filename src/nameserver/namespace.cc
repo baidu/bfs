@@ -31,6 +31,50 @@ const int64_t kRootEntryid = 1;
 namespace baidu {
 namespace bfs {
 
+SyncSnapshot::SyncSnapshot(leveldb::DB* db) : db_(db) {}
+
+void SyncSnapshot::Add(uint64_t index) {
+    MutexLock lock(&mu_);
+    std::map<uint64_t, SS*>::iterator it = snapshots_.find(index);
+    if (it != snapshots_.end()) {
+        // logdb does not allow duplicate index
+        LOG(FATAL, "SyncSnapshot Add failed %ld ", index);
+    }
+    SS* ss = new SS(db_->GetSnapshot());
+    snapshots_.insert(std::make_pair(index, ss)).second;
+    ss->ref.Inc();
+}
+
+bool SyncSnapshot::Get(const leveldb::Snapshot** s, uint64_t* index) {
+    MutexLock lock(&mu_);
+    if (snapshots_.empty()) {
+        return false;
+    }
+    std::map<uint64_t, SS*>::iterator it = snapshots_.begin();
+    *index = it->first;
+    SS* ss = it->second;
+    *s = ss->snapshot;
+    ss->ref.Inc();
+    return true;
+}
+
+void SyncSnapshot::Release(uint64_t index) {
+    if (index == -1) return;
+    MutexLock lock(&mu_);
+    LOG(INFO, "SyncSnapshot Release %ld ", index);
+    std::map<uint64_t, SS*>::iterator it = snapshots_.find(index);
+    if (it == snapshots_.end()) {
+        return;
+    }
+    SS* ss = it->second;
+    ss->ref.Dec();
+    if (ss->ref.Get() == 0) {
+        db_->ReleaseSnapshot(ss->snapshot);
+        delete ss;
+        snapshots_.erase(it);
+    }
+}
+
 NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     block_id_upbound_(0), next_block_id_(block_id_upbound_ + 1) {
     leveldb::Options options;
@@ -42,6 +86,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
         LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
         return;
     }
+    sync_snapshots_ = new SyncSnapshot(db_);
     if (standalone) {
         Activate(NULL);
     }
@@ -88,6 +133,7 @@ void NameSpace::Activate(NameServerLog* log) {
 }
 NameSpace::~NameSpace() {
     delete db_;
+    delete sync_snapshots_;
     db_ = NULL;
 }
 
@@ -109,14 +155,22 @@ void NameSpace::EncodingStoreKey(int64_t entry_id,
 
 bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
     std::string value;
-    leveldb::Status s = db_->Get(leveldb::ReadOptions(), key, &value);
-    if (!s.ok()) {
+    uint64_t seq = -1;
+    const leveldb::Snapshot* s;
+    leveldb::ReadOptions read_option = leveldb::ReadOptions();
+    if (sync_snapshots_->Get(&s, &seq)) {
+        read_option.snapshot = s;
+    }
+    leveldb::Status status = db_->Get(read_option, key, &value);
+    if (!status.ok()) {
         LOG(DEBUG, "GetFromStore get fail %s %s",
-            key.substr(8).c_str(), s.ToString().c_str());
+            key.substr(8).c_str(), status.ToString().c_str());
+        sync_snapshots_->Release(seq);
         return false;
     }
     if (!info->ParseFromString(value)) {
         LOG(WARNING, "GetFromStore parse fail %s", key.substr(8).c_str());
+        sync_snapshots_->Release(seq);
         return false;
     }
     return true;
@@ -195,11 +249,6 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
     file_info.SerializeToString(&infobuf_for_sync);
 
-    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf_for_ldb);
-    if (!s.ok()) {
-        LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
-        return false;
-    }
     EncodeLog(log, kSyncWrite, file_key, infobuf_for_ldb);
     return true;
 };
@@ -230,8 +279,6 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             file_info.SerializeToString(&info_value);
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
-            leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
-            assert(s.ok());
             EncodeLog(log, kSyncWrite, key_str, info_value);
             LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
         } else {
@@ -365,26 +412,9 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     old_file.clear_name();
     old_file.SerializeToString(&value);
 
-    // Write to persistent storage
-    leveldb::WriteBatch batch;
-    batch.Put(new_key, value);
-    batch.Delete(old_key);
-
     EncodeLog(log, kSyncWrite, new_key, value);
     EncodeLog(log, kSyncDelete, old_key, "");
-
-    leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
-    if (s.ok()) {
-        LOG(INFO, "Rename %s to %s[%s], replace: %d",
-            old_path.c_str(), new_path.c_str(),
-            common::DebugString(new_key).c_str(), *need_unlink);
-        return kOK;
-    } else {
-        LOG(WARNING, "Rename write leveldb fail: %s %s", old_path.c_str(), s.ToString().c_str());
-        return kUpdateError;
-    }
-
-    return kNotOK;
+    return kOK;
 }
 
 StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log) {
@@ -542,36 +572,27 @@ void NameSpace::TailLog(const std::string& logstr, int64_t seq) {
     if(!log.ParseFromString(logstr)) {
         LOG(FATAL, "Parse log fail: %s", common::DebugString(logstr).c_str());
     }
-    LOG(INFO, "LL: TailLog seq = %ld", seq);
     if (seq != -1) {
-        const leveldb::Snapshot* s = db_->GetSnapshot();
-        sync_snapshots_[seq] = s;
+        sync_snapshots_->Add(seq);
     }
+    leveldb::WriteBatch batch;
     for (int i = 0; i < log.entries_size(); i++) {
         const NsLogEntry& entry = log.entries(i);
         int type = entry.type();
-        leveldb::Status s;
         if (type == kSyncWrite) {
-            s = db_->Put(leveldb::WriteOptions(), entry.key(), entry.value());
+            batch.Put(entry.key(), entry.value());
         } else if (type == kSyncDelete) {
-            s = db_->Delete(leveldb::WriteOptions(), entry.key());
+            batch.Delete(entry.key());
         }
-        if (!s.ok()) {
-            LOG(FATAL, "TailLog failed");
-        }
+    }
+    leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
+    if (!s.ok()) {
+        LOG(FATAL, "TailLog failed");
     }
 }
 
 void NameSpace::CleanSnapshot(int64_t seq) {
-    LOG(INFO, "LL: CleanSnapshot %ld ", seq);
-    MutexLock lock(&snapshot_mutex_);
-    std::map<int64_t, const leveldb::Snapshot*>::iterator it = sync_snapshots_.find(seq);
-    if (it == sync_snapshots_.end()) {
-        LOG(INFO, "CleanSnapshot cannot find seq %ld", seq);
-        return;
-    }
-    db_->ReleaseSnapshot(it->second);
-    sync_snapshots_.erase(it);
+    sync_snapshots_->Release(seq);
 }
 
 uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
