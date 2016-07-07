@@ -90,9 +90,9 @@ void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                        int32_t* hi_num) {
     int cur_check_num = 0;
     for (int i = 0; i < blockmapping_bucket_num_; i++) {
-        int64_t lo_check_num = 0, hi_check_num = 0;
-        block_mapping_[i]->GetStat(cs_id, NULL, NULL, &lo_check_num, &hi_check_num, NULL, NULL);
-        cur_check_num += (lo_check_num + hi_check_num);
+        RecoverBlockNum num;
+        block_mapping_[i]->GetStat(cs_id, &num);
+        cur_check_num += (num.lo_pending + num.hi_pending);
     }
     block_num -= cur_check_num;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
@@ -115,18 +115,16 @@ void BlockMappingManager::GetCloseBlocks(int32_t cs_id, google::protobuf::Repeat
     }
 }
 
-void BlockMappingManager::GetStat(int32_t cs_id, int64_t* lo_recover_num, int64_t* hi_recover_num,
-             int64_t* lo_pending, int64_t* hi_pending,
-             int64_t* lost_num, int64_t* incomplete_num) {
+void BlockMappingManager::GetStat(int32_t cs_id, RecoverBlockNum* recover_num) {
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        int64_t lr = 0, hr = 0, lp = 0, hp = 0, ln = 0, in = 0;
-        block_mapping_[i]->GetStat(cs_id, &lr, &hr, &lp, &hp, &ln, &in);
-        *(lo_recover_num) += lr;
-        *(hi_recover_num) += hr;
-        *(lo_pending) += lp;
-        *(hi_pending) += hp;
-        *(lost_num) += ln;
-        *(incomplete_num) += in;
+        RecoverBlockNum cur_num;
+        block_mapping_[i]->GetStat(cs_id, &cur_num);
+        recover_num->lo_recover_num += cur_num.lo_recover_num;
+        recover_num->hi_recover_num += cur_num.hi_recover_num;
+        recover_num->lo_pending += cur_num.lo_pending;
+        recover_num->hi_pending += cur_num.hi_pending;
+        recover_num->lost_num += cur_num.lost_num;
+        recover_num->incomplete_num += cur_num.incomplete_num;
     }
 }
 

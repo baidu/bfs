@@ -653,48 +653,30 @@ void BlockMapping::GetCloseBlocks(int32_t cs_id,
     }
 }
 
-void BlockMapping::GetStat(int32_t cs_id, int64_t* lo_recover_num,
-                           int64_t* hi_recover_num, int64_t* lo_pending,
-                           int64_t* hi_pending, int64_t* lost_num,
-                           int64_t* incomplete_num) {
+void BlockMapping::GetStat(int32_t cs_id, RecoverBlockNum* recover_num) {
     MutexLock lock(&mu_);
-    if (lo_recover_num) {
-        *lo_recover_num = lo_pri_recover_.size();
-    }
-    if (lo_pending) {
-        *lo_pending = 0;
-        if (cs_id != -1) {
-            *lo_pending += lo_recover_check_[cs_id].size();
-        } else {
-            for (CheckList::iterator it = lo_recover_check_.begin(); it != lo_recover_check_.end(); ++it) {
-                *lo_pending += (it->second).size();
-            }
+    recover_num->lo_recover_num = lo_pri_recover_.size();
+    if (cs_id != -1) {
+        recover_num->lo_pending += lo_recover_check_[cs_id].size();
+    } else {
+        for (CheckList::iterator it = lo_recover_check_.begin(); it != lo_recover_check_.end(); ++it) {
+            recover_num->lo_pending += (it->second).size();
         }
     }
-    if (hi_pending) {
-        *hi_pending = 0;
-        if (cs_id != -1) {
-            *hi_pending += hi_recover_check_[cs_id].size();
-        } else {
-            for (CheckList::iterator it = hi_recover_check_.begin(); it != hi_recover_check_.end(); ++it) {
-                *hi_pending += (it->second).size();
-            }
+    if (cs_id != -1) {
+        recover_num->hi_pending += hi_recover_check_[cs_id].size();
+    } else {
+        for (CheckList::iterator it = hi_recover_check_.begin(); it != hi_recover_check_.end(); ++it) {
+            recover_num->hi_pending += (it->second).size();
         }
     }
-    if (hi_recover_num) {
-        *hi_recover_num = hi_pri_recover_.size();
-    }
-    if (lost_num) {
-        *lost_num = lost_blocks_.size();
-    }
-    if (incomplete_num) {
-        *incomplete_num = 0;
-        if (cs_id != -1) {
-            *incomplete_num += incomplete_[cs_id].size();
-        } else {
-            for (CheckList::iterator it = incomplete_.begin(); it != incomplete_.end(); ++it) {
-                *incomplete_num += (it->second).size();
-            }
+    recover_num->hi_recover_num = hi_pri_recover_.size();
+    recover_num->lost_num = lost_blocks_.size();
+    if (cs_id != -1) {
+        recover_num->incomplete_num += incomplete_[cs_id].size();
+    } else {
+        for (CheckList::iterator it = incomplete_.begin(); it != incomplete_.end(); ++it) {
+            recover_num->incomplete_num += (it->second).size();
         }
     }
 }

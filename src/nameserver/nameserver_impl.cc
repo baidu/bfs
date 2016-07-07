@@ -949,9 +949,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t lo_recover_num = 0, hi_recover_num = 0, lo_pending = 0, hi_pending = 0, lost_num = 0, incomplete_num = 0;
-    block_mapping_manager_->GetStat(-1, &lo_recover_num, &hi_recover_num, &lo_pending, &hi_pending,
-                            &lost_num, &incomplete_num);
+    RecoverBlockNum recover_num;
+    block_mapping_manager_->GetStat(-1, &recover_num);
     int32_t w_qps, r_qps;
     int64_t w_speed, r_speed, recover_speed;
     chunkserver_manager_->GetStat(&w_qps, &w_speed, &r_qps, &r_speed, &recover_speed);
@@ -976,10 +975,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "Recover(hi/lo): " + common::NumToString(hi_recover_num) + "/" + common::NumToString(lo_recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(hi_pending) + "/" + common::NumToString(lo_pending) + "</br>";
-    str += "Lost: " + common::NumToString(lost_num) + "</br>";
-    str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
+    str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "</br>";
+    str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
+    str += "Incomplete: " + common::NumToString(recover_num.incomplete_num) + "</br>";
     str += "<a href=\"/dfs/details\">Details</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="col-sm-6 col-md-6">

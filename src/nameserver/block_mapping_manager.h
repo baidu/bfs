@@ -33,9 +33,7 @@ public :
                            int32_t* hi_num);
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
-    void GetStat(int32_t cs_id, int64_t* lo_recover_num, int64_t* hi_recover_num,
-                 int64_t* lo_pending, int64_t* hi_pending,
-                 int64_t* lost_num, int64_t* incomplete_num);
+    void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
     void ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
                      std::string* hi_check, std::string* lo_check, std::string* incomplete);
     void SetSafeMode(bool safe_mode);
