@@ -51,7 +51,7 @@ public:
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
     StatusCode CheckBlockVersion(int64_t block_id, int64_t version);
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
-                           std::map<int64_t, std::set<int32_t> >* recover_blocks,
+                           std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                            RecoverPri pri);
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
@@ -73,7 +73,7 @@ private:
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     void ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result);
     void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
-                            std::map<int64_t, std::set<int32_t> >* recover_blocks,
+                            std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                             std::set<int64_t>* check_set);
     void TryRecover(NSBlock* block);
     bool RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id);
