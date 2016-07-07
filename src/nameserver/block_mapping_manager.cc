@@ -86,7 +86,7 @@ StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t vers
 }
 
 void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
-                       std::map<int64_t, std::set<int32_t> >* recover_blocks,
+                       std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                        int32_t* hi_num) {
     int cur_check_num = 0;
     for (int i = 0; i < blockmapping_bucket_num_; i++) {

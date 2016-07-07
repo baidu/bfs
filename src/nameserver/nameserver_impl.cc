@@ -245,7 +245,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    int priority = 0;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -269,16 +268,17 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
     // recover replica
     if (!safe_mode_) {
-        std::map<int64_t, std::vector<std::string> > recover_blocks;
+        std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks, &hi_num);
-        for (std::map<int64_t, std::vector<std::string> >::iterator it = recover_blocks.begin();
-                it != recover_blocks.end(); ++it) {
+        int32_t priority = 0;
+        for (std::vector<std::pair<int64_t, std::vector<std::string> > >::iterator it =
+                recover_blocks.begin(); it != recover_blocks.end(); ++it) {
             ReplicaInfo* rep = response->add_new_replicas();
-            rep->set_block_id(it->first);
+            rep->set_block_id((*it).first);
             rep->set_priority(priority++ < hi_num);
-            for (std::vector<std::string>::iterator dest_it = (it->second).begin();
-                 dest_it != (it->second).end(); ++dest_it) {
+            for (std::vector<std::string>::iterator dest_it = (*it).second.begin();
+                 dest_it != (*it).second.end(); ++dest_it) {
                 rep->add_chunkserver_address(*dest_it);
             }
         }

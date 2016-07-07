@@ -572,7 +572,7 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
 }
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
-                                     std::map<int64_t, std::set<int32_t> >* recover_blocks,
+                                     std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                                      RecoverPri pri) {
     MutexLock lock(&mu_);
     if ((pri == kHigh && hi_pri_recover_.empty()) ||
@@ -743,7 +743,7 @@ void BlockMapping::ListRecover(std::set<int64_t>* hi_recover,
 }
 
 void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
-                                      std::map<int64_t, std::set<int32_t> >* recover_blocks,
+                                      std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                                       std::set<int64_t>* check_set) {
     mu_.AssertHeld();
     std::set<int64_t>::iterator it = recover_set->begin();
@@ -774,8 +774,7 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
             ++it;
             continue;
         }
-        //recover_blocks->insert(std::make_pair(block_id, replica));
-        (*recover_blocks)[block_id] = replica;
+        recover_blocks->push_back(std::make_pair(block_id, replica));
         check_set->insert(block_id);
         assert(cur_block->recover_stat == kHiRecover || cur_block->recover_stat == kLoRecover);
         cur_block->recover_stat = kCheck;
