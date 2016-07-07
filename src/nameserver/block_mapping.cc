@@ -690,38 +690,34 @@ void BlockMapping::ListCheckList(const CheckList& check_list, std::map<int32_t, 
         }
     }
 }
-void BlockMapping::ListRecover(std::set<int64_t>* hi_recover,
-                               std::set<int64_t>* lo_recover,
-                               std::set<int64_t>* lost,
-                               std::map<int32_t, std::set<int64_t> >* hi_check,
-                               std::map<int32_t, std::set<int64_t> >* lo_check,
-                               std::map<int32_t, std::set<int64_t> >* incomplete,
-                               int32_t upbound_size) {
+
+void BlockMapping::ListRecover(RecoverBlockSet* recover_blocks, int32_t upbound_size) {
     MutexLock lock(&mu_);
-    for (std::set<int64_t>::iterator it = lo_pri_recover_.begin(); it != lo_pri_recover_.end(); ++it) {
-        if (lo_recover->size() == (size_t)upbound_size) {
+    for (std::set<int64_t>::iterator it = lo_pri_recover_.begin();
+            it != lo_pri_recover_.end(); ++it) {
+        if (recover_blocks->lo_recover.size() == (size_t)upbound_size) {
             break;
         }
-        lo_recover->insert(*it);
+        recover_blocks->lo_recover.insert(*it);
     }
-
-    for (std::set<int64_t>::iterator it = hi_pri_recover_.begin(); it != hi_pri_recover_.end(); ++it) {
-        if (hi_recover->size() == (size_t)upbound_size) {
+    for (std::set<int64_t>::iterator it = hi_pri_recover_.begin();
+            it != hi_pri_recover_.end(); ++it) {
+        if (recover_blocks->hi_recover.size() == (size_t)upbound_size) {
             break;
         }
-        hi_recover->insert(*it);
+        recover_blocks->hi_recover.insert(*it);
     }
-
-    for (std::set<int64_t>::iterator it = lost_blocks_.begin(); it != lost_blocks_.end(); ++it) {
-        if (lost->size() == (size_t)upbound_size) {
+    for (std::set<int64_t>::iterator it = lost_blocks_.begin();
+            it != lost_blocks_.end(); ++it) {
+        if (recover_blocks->lost.size() == (size_t)upbound_size) {
             break;
         }
-        lost->insert(*it);
+        recover_blocks->lost.insert(*it);
     }
 
-    ListCheckList(hi_recover_check_, hi_check);
-    ListCheckList(lo_recover_check_, lo_check);
-    ListCheckList(incomplete_, incomplete);
+    ListCheckList(hi_recover_check_, &(recover_blocks->hi_check));
+    ListCheckList(lo_recover_check_, &(recover_blocks->lo_check));
+    ListCheckList(incomplete_, &(recover_blocks->incomplete));
 }
 
 void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,

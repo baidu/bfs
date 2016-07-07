@@ -46,6 +46,15 @@ struct RecoverBlockNum {
                         hi_pending(0), lost_num(0), incomplete_num(0) {}
 };
 
+struct RecoverBlockSet {
+    std::set<int64_t> hi_recover;
+    std::set<int64_t> lo_recover;
+    std::set<int64_t> lost;
+    std::map<int32_t, std::set<int64_t> > hi_check;
+    std::map<int32_t, std::set<int64_t> > lo_check;
+    std::map<int32_t, std::set<int64_t> > incomplete;
+};
+
 class BlockMapping {
 public:
     BlockMapping();
@@ -67,13 +76,7 @@ public:
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
-    void ListRecover(std::set<int64_t>* hi_recover,
-                     std::set<int64_t>* lo_recover,
-                     std::set<int64_t>* lost,
-                     std::map<int32_t, std::set<int64_t> >* hi_check,
-                     std::map<int32_t, std::set<int64_t> >* lo_check,
-                     std::map<int32_t, std::set<int64_t> >* incomplete,
-                     int32_t upbound_size);
+    void ListRecover(RecoverBlockSet* blocks, int32_t upbound_size);
     void SetSafeMode(bool safe_mode);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);

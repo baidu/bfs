@@ -806,9 +806,46 @@ void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* 
     done->Run();
 }
 
+void NameServerImpl::TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
+                                    std::string* output) {
+    for (std::map<int32_t, std::set<int64_t> >::const_iterator it =
+            chk_set.begin(); it != chk_set.end(); ++it) {
+        output->append(common::NumToString(it->first) + ": ");
+        const std::set<int64_t>& block_set = it->second;
+        uint32_t last = output->size();
+        for (std::set<int64_t>::iterator block_it = block_set.begin();
+                block_it != block_set.end(); ++block_it) {
+            output->append(common::NumToString(*block_it) + " ");
+            if (output->size() - last > 1024) {
+                output->append("...");
+                break;
+            }
+        }
+        output->append("<br>");
+    }
+}
+
+void NameServerImpl::TransToString(const std::set<int64_t>& block_set, std::string* output) {
+    for (std::set<int64_t>::const_iterator it = block_set.begin();
+            it != block_set.end(); ++it) {
+        output->append(common::NumToString(*it) + " ");
+        if (output->size() > 1024) {
+            output->append("...");
+            break;
+        }
+    }
+}
+
 void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
+    RecoverBlockSet recover_blocks;
+    block_mapping_manager_->ListRecover(&recover_blocks);
     std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
-    block_mapping_manager_->ListRecover(&hi_recover, &lo_recover, &lost, &hi_check, &lo_check, &incomplete);
+    TransToString(recover_blocks.hi_recover, &hi_recover);
+    TransToString(recover_blocks.lo_recover, &lo_recover);
+    TransToString(recover_blocks.lost, &lost);
+    TransToString(recover_blocks.hi_check, &hi_check);
+    TransToString(recover_blocks.lo_check, &lo_check);
+    TransToString(recover_blocks.incomplete, &incomplete);
     std::string str =
             "<html><head><title>Recover Details</title>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
