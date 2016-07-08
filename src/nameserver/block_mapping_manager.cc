@@ -86,13 +86,13 @@ StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t vers
 }
 
 void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
-                       std::map<int64_t, std::set<int32_t> >* recover_blocks,
+                       std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                        int32_t* hi_num) {
     int cur_check_num = 0;
     for (int i = 0; i < blockmapping_bucket_num_; i++) {
-        int64_t lo_check_num = 0, hi_check_num = 0;
-        block_mapping_[i]->GetStat(cs_id, NULL, NULL, &lo_check_num, &hi_check_num, NULL, NULL);
-        cur_check_num += (lo_check_num + hi_check_num);
+        RecoverBlockNum num;
+        block_mapping_[i]->GetStat(cs_id, &num);
+        cur_check_num += (num.lo_pending + num.hi_pending);
     }
     block_num -= cur_check_num;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
@@ -115,73 +115,23 @@ void BlockMappingManager::GetCloseBlocks(int32_t cs_id, google::protobuf::Repeat
     }
 }
 
-void BlockMappingManager::GetStat(int32_t cs_id, int64_t* lo_recover_num, int64_t* hi_recover_num,
-             int64_t* lo_pending, int64_t* hi_pending,
-             int64_t* lost_num, int64_t* incomplete_num) {
+void BlockMappingManager::GetStat(int32_t cs_id, RecoverBlockNum* recover_num) {
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        int64_t lr = 0, hr = 0, lp = 0, hp = 0, ln = 0, in = 0;
-        block_mapping_[i]->GetStat(cs_id, &lr, &hr, &lp, &hp, &ln, &in);
-        if (lo_recover_num) {
-            *(lo_recover_num) += lr;
-        }
-        if (hi_recover_num) {
-            *(hi_recover_num) += hr;
-        }
-        if (lo_pending) {
-            *(lo_pending) += lp;
-        }
-        if (hi_pending) {
-            *(hi_pending) += hp;
-        }
-        if (lost_num) {
-            *(lost_num) += ln;
-        }
-        if (incomplete_num) {
-            *(incomplete_num) += in;
-        }
+        RecoverBlockNum cur_num;
+        block_mapping_[i]->GetStat(cs_id, &cur_num);
+        recover_num->lo_recover_num += cur_num.lo_recover_num;
+        recover_num->hi_recover_num += cur_num.hi_recover_num;
+        recover_num->lo_pending += cur_num.lo_pending;
+        recover_num->hi_pending += cur_num.hi_pending;
+        recover_num->lost_num += cur_num.lost_num;
+        recover_num->incomplete_num += cur_num.incomplete_num;
     }
 }
 
-void BlockMappingManager::TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set, std::string* output) {
-    for (std::map<int32_t, std::set<int64_t> >::const_iterator it = chk_set.begin(); it != chk_set.end(); ++it) {
-        output->append(common::NumToString(it->first) + ": ");
-        const std::set<int64_t>& block_set = it->second;
-        uint32_t last = output->size();
-        for (std::set<int64_t>::iterator block_it = block_set.begin();
-                block_it != block_set.end(); ++block_it) {
-            output->append(common::NumToString(*block_it) + " ");
-            if (output->size() - last > 1024) {
-                output->append("...");
-                break;
-            }
-        }
-        output->append("<br>");
-    }
-}
-
-void BlockMappingManager::TransToString(const std::set<int64_t>& block_set, std::string* output) {
-    for (std::set<int64_t>::const_iterator it = block_set.begin(); it != block_set.end(); ++it) {
-        output->append(common::NumToString(*it) + " ");
-        if (output->size() > 1024) {
-            output->append("...");
-            break;
-        }
-    }
-}
-
-void BlockMappingManager::ListRecover(std::string* hi_recover, std::string* lo_recover, std::string* lost,
-                 std::string* hi_check, std::string* lo_check, std::string* incomplete) {
-    std::map<int32_t, std::set<int64_t> > hi_chk, lo_chk, inc;
-    std::set<int64_t> h_r, l_r, los;
+void BlockMappingManager::ListRecover(RecoverBlockSet* recover_blocks) {
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        block_mapping_[i]->ListRecover(&h_r, &l_r, &los, &hi_chk, &lo_chk, &inc, FLAGS_web_recover_list_size);
+        block_mapping_[i]->ListRecover(recover_blocks, FLAGS_web_recover_list_size);
     }
-    TransToString(h_r, hi_recover);
-    TransToString(l_r, lo_recover);
-    TransToString(los, lost);
-    TransToString(hi_chk, hi_check);
-    TransToString(lo_chk, lo_check);
-    TransToString(inc, incomplete);
 }
 
 void BlockMappingManager::SetSafeMode(bool safe_mode) {

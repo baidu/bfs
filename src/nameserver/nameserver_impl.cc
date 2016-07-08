@@ -245,7 +245,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    int priority = 0;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -269,16 +268,17 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
     // recover replica
     if (!safe_mode_) {
-        std::map<int64_t, std::vector<std::string> > recover_blocks;
+        std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks, &hi_num);
-        for (std::map<int64_t, std::vector<std::string> >::iterator it = recover_blocks.begin();
-                it != recover_blocks.end(); ++it) {
+        int32_t priority = 0;
+        for (std::vector<std::pair<int64_t, std::vector<std::string> > >::iterator it =
+                recover_blocks.begin(); it != recover_blocks.end(); ++it) {
             ReplicaInfo* rep = response->add_new_replicas();
-            rep->set_block_id(it->first);
+            rep->set_block_id((*it).first);
             rep->set_priority(priority++ < hi_num);
-            for (std::vector<std::string>::iterator dest_it = (it->second).begin();
-                 dest_it != (it->second).end(); ++dest_it) {
+            for (std::vector<std::string>::iterator dest_it = (*it).second.begin();
+                 dest_it != (*it).second.end(); ++dest_it) {
                 rep->add_chunkserver_address(*dest_it);
             }
         }
@@ -809,9 +809,40 @@ void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* 
     done->Run();
 }
 
+void NameServerImpl::TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
+                                    std::string* output) {
+    for (std::map<int32_t, std::set<int64_t> >::const_iterator it =
+            chk_set.begin(); it != chk_set.end(); ++it) {
+        output->append(common::NumToString(it->first) + ": ");
+        const std::set<int64_t>& block_set = it->second;
+        std::string cur_cs_str;
+        TransToString(block_set, &cur_cs_str);
+        output->append(cur_cs_str);
+        output->append("<br>");
+    }
+}
+
+void NameServerImpl::TransToString(const std::set<int64_t>& block_set, std::string* output) {
+    for (std::set<int64_t>::const_iterator it = block_set.begin();
+            it != block_set.end(); ++it) {
+        output->append(common::NumToString(*it) + " ");
+        if (output->size() > 1024) {
+            output->append("...");
+            break;
+        }
+    }
+}
+
 void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
+    RecoverBlockSet recover_blocks;
+    block_mapping_manager_->ListRecover(&recover_blocks);
     std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
-    block_mapping_manager_->ListRecover(&hi_recover, &lo_recover, &lost, &hi_check, &lo_check, &incomplete);
+    TransToString(recover_blocks.hi_recover, &hi_recover);
+    TransToString(recover_blocks.lo_recover, &lo_recover);
+    TransToString(recover_blocks.lost, &lost);
+    TransToString(recover_blocks.hi_check, &hi_check);
+    TransToString(recover_blocks.lo_check, &lo_check);
+    TransToString(recover_blocks.incomplete, &incomplete);
     std::string str =
             "<html><head><title>Recover Details</title>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
@@ -952,9 +983,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t lo_recover_num = 0, hi_recover_num = 0, lo_pending = 0, hi_pending = 0, lost_num = 0, incomplete_num = 0;
-    block_mapping_manager_->GetStat(-1, &lo_recover_num, &hi_recover_num, &lo_pending, &hi_pending,
-                            &lost_num, &incomplete_num);
+    RecoverBlockNum recover_num;
+    block_mapping_manager_->GetStat(-1, &recover_num);
     int32_t w_qps, r_qps;
     int64_t w_speed, r_speed, recover_speed;
     chunkserver_manager_->GetStat(&w_qps, &w_speed, &r_qps, &r_speed, &recover_speed);
@@ -979,10 +1009,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "Recover(hi/lo): " + common::NumToString(hi_recover_num) + "/" + common::NumToString(lo_recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(hi_pending) + "/" + common::NumToString(lo_pending) + "</br>";
-    str += "Lost: " + common::NumToString(lost_num) + "</br>";
-    str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
+    str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "</br>";
+    str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
+    str += "Incomplete: " + common::NumToString(recover_num.incomplete_num) + "</br>";
     str += "<a href=\"/dfs/details\">Details</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="col-sm-6 col-md-6">

@@ -41,7 +41,8 @@ public:
     void AddBlock(int32_t id, int64_t block_id);
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkServer(ChunkServerInfo* cs, const std::string& reason);
-    void PickRecoverBlocks(int cs_id, std::map<int64_t, std::vector<std::string> >* recover_blocks,
+    void PickRecoverBlocks(int cs_id,
+                           std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
                            int* hi_num);
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);

@@ -498,7 +498,7 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
 }
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
-                                           std::map<int64_t, std::vector<std::string> >* recover_blocks,
+                                           std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
                                            int* hi_num) {
     {
         MutexLock lock(&mu_, "PickRecoverBlocks 1", 10);
@@ -507,18 +507,17 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
             return;
         }
     }
-    std::map<int64_t, std::set<int32_t> > blocks;
+    std::vector<std::pair<int64_t, std::set<int32_t> > > blocks;
     block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
-    for (std::map<int64_t, std::set<int32_t> >::iterator it = blocks.begin();
+    for (std::vector<std::pair<int64_t, std::set<int32_t> > >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
-        std::map<int64_t, std::vector<std::string> >::iterator recover_it =
-            recover_blocks->insert(std::make_pair(it->first, std::vector<std::string>())).first;
-        if (GetRecoverChains(it->second, &(recover_it->second))) {
+        recover_blocks->push_back(std::make_pair((*it).first, std::vector<std::string>()));
+        if (GetRecoverChains((*it).second, &(recover_blocks->back().second))) {
             //
         } else {
-            block_mapping_manager_->ProcessRecoveredBlock(cs_id, it->first);
-            recover_blocks->erase(recover_it);
+            block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first);
+            recover_blocks->pop_back();
         }
     }
 }
@@ -591,11 +590,9 @@ void ChunkServerManager::ShutdownOneChunkServer() {
             return;
         }
     }
-    int64_t hi_recover_num = 0;
-    int64_t hi_pending_num = 0;
-    block_mapping_manager_->GetStat(-1, NULL, &hi_recover_num,
-                                    NULL, &hi_pending_num, NULL, NULL);
-    if (hi_recover_num != 0 || hi_pending_num != 0) {
+    RecoverBlockNum recover_num;
+    block_mapping_manager_->GetStat(-1, &recover_num);
+    if (recover_num.hi_recover_num != 0 || recover_num.hi_pending != 0) {
         boost::function<void ()> task =
             boost::bind(&ChunkServerManager::ShutdownOneChunkServer, this);
         thread_pool_->DelayTask((FLAGS_keepalive_timeout + 5) * 1000, task);
