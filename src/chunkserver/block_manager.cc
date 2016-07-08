@@ -243,7 +243,8 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
             return false;
         }
         BlockMeta meta;
-        meta.ParseFromArray(it->value().data(), it->value().size());
+        bool ret = meta.ParseFromArray(it->value().data(), it->value().size());
+        assert(ret);
         //skip blocks not in current configuration
         if (find(store_path_list_.begin(), store_path_list_.end(), meta.store_path())
                   == store_path_list_.end()) {

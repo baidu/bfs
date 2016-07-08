@@ -48,7 +48,8 @@ Block::Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cac
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size()), file_desc_(-1), refs_(0),
-  close_cv_(&mu_), deleted_(false), file_cache_(file_cache) {
+  close_cv_(&mu_), is_recover_(false), deleted_(false),
+  file_cache_(file_cache) {
     assert(meta_.block_id() < (1L<<40));
     g_data_size.Add(meta.block_size());
     disk_file_ = meta.store_path() + BuildFilePath(meta_.block_id());
