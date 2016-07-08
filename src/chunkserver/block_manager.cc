@@ -163,6 +163,7 @@ bool BlockManager::LoadStorage() {
             meta.set_block_size(oldmeta.block_size);
             meta.set_checksum(oldmeta.checksum);
             meta.set_version(oldmeta.version);
+            meta.set_store_path(GetStorePath(block_id));
             std::string meta_buf;
             meta.SerializeToString(&meta_buf);
             metadb_->Put(leveldb::WriteOptions(), it->key(), meta_buf);
