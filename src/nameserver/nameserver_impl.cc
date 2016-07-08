@@ -812,15 +812,9 @@ void NameServerImpl::TransToString(const std::map<int32_t, std::set<int64_t> >& 
             chk_set.begin(); it != chk_set.end(); ++it) {
         output->append(common::NumToString(it->first) + ": ");
         const std::set<int64_t>& block_set = it->second;
-        uint32_t last = output->size();
-        for (std::set<int64_t>::iterator block_it = block_set.begin();
-                block_it != block_set.end(); ++block_it) {
-            output->append(common::NumToString(*block_it) + " ");
-            if (output->size() - last > 1024) {
-                output->append("...");
-                break;
-            }
-        }
+        std::string cur_cs_str;
+        TransToString(block_set, &cur_cs_str);
+        output->append(cur_cs_str);
         output->append("<br>");
     }
 }
