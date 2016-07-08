@@ -134,9 +134,32 @@ TEST_F(NameSpaceTest, List) {
     ASSERT_TRUE(CreateTree(&ns));
     google::protobuf::RepeatedPtrField<FileInfo> outputs;
     ASSERT_EQ(0, ns.ListDirectory("/dir1", &outputs));
-    ASSERT_EQ(2, outputs.size());
-    ASSERT_EQ(std::string("subdir1"), outputs.Get(0).name());
-    ASSERT_EQ(std::string("subdir2"), outputs.Get(1).name());
+    ASSERT_EQ(4, outputs.size());
+    ASSERT_EQ(std::string("."), outputs.Get(0).name());
+    ASSERT_EQ(std::string(".."), outputs.Get(1).name());
+    ASSERT_EQ(std::string("subdir1"), outputs.Get(2).name());
+    ASSERT_EQ(std::string("subdir2"), outputs.Get(3).name());
+    ASSERT_EQ(0, ns.ListDirectory("/", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(std::string("file1"), outputs.Get(3).name());
+    ASSERT_EQ(0, ns.ListDirectory("/..", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(0, ns.ListDirectory("/.././../", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(std::string("file2"), outputs.Get(4).name());
+    ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1/../.", &outputs));
+    ASSERT_EQ(4, outputs.size());
+    ASSERT_EQ(std::string("subdir1"), outputs.Get(2).name());
+    ASSERT_EQ(std::string("subdir2"), outputs.Get(3).name());
+    ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1/file3", &outputs));
+    ASSERT_EQ(1, outputs.size());
+    ASSERT_EQ(std::string("file3"), outputs.Get(0).name());
+    ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1/../../", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(std::string("xdir"), outputs.Get(5).name());
+    ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1/../../..", &outputs));
+    ASSERT_EQ(6, outputs.size());
+    ASSERT_EQ(std::string("xdir"), outputs.Get(5).name());
 }
 
 TEST_F(NameSpaceTest, Rename) {
@@ -174,7 +197,7 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(0, ns.CreateFile("/tera/meta/0/00000001.dbtmp", 0, 0, -1, &blocks_to_remove));
     ASSERT_EQ(0, ns.Rename("/tera/meta/0/00000001.dbtmp", "/tera/meta/0/CURRENT", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
-    ASSERT_TRUE(ns.LookUp("/tera/meta/0/CURRENT", &remove_file));
+    ASSERT_TRUE(ns.LookUp("/tera/meta/0/CURRENT", &remove_file, NULL));
 }
 
 TEST_F(NameSpaceTest, RemoveFile) {
@@ -215,14 +238,14 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     // List after delete
     google::protobuf::RepeatedPtrField<FileInfo> outputs;
     ASSERT_EQ(0, ns.ListDirectory("/dir1", &outputs));
-    ASSERT_EQ(1, outputs.size());
-    ASSERT_EQ(std::string("subdir1"), outputs.Get(0).name());
+    ASSERT_EQ(3, outputs.size());
+    ASSERT_EQ(std::string("subdir1"), outputs.Get(2).name());
 
     // Delete another subdir
     printf("Delete another subdir\n");
     ASSERT_NE(0, ns.DeleteDirectory("/dir1/subdir1", false, &files_removed));
     ASSERT_EQ(0, ns.ListDirectory("/dir1/subdir1", &outputs));
-    ASSERT_EQ(2, outputs.size());
+    ASSERT_EQ(4, outputs.size());
 
     ASSERT_EQ(0, ns.DeleteDirectory("/dir1", true, &files_removed));
     ASSERT_EQ(files_removed.size(), 2U);
@@ -236,7 +259,7 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     // Rmr root path will clear the filesystem
     ASSERT_EQ(0, ns.DeleteDirectory("/", true, &files_removed));
     ASSERT_EQ(0, ns.ListDirectory("/", &outputs));
-    ASSERT_EQ(0, outputs.size());
+    ASSERT_EQ(2, outputs.size());
 }
 
 TEST_F(NameSpaceTest, DeleteDirectory2) {
@@ -252,7 +275,7 @@ TEST_F(NameSpaceTest, DeleteDirectory2) {
     ASSERT_EQ(files_removed.size(), 2UL);
     google::protobuf::RepeatedPtrField<FileInfo> outputs;
     ns.ListDirectory("/", &outputs);
-    ASSERT_EQ(outputs.size(), 0);
+    ASSERT_EQ(outputs.size(), 2);
 }
 
 TEST_F(NameSpaceTest, GetFileInfo) {

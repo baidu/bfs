@@ -66,7 +66,7 @@ private:
                           std::string* key_str);
     bool GetFromStore(const std::string& key, FileInfo* info);
     void SetupRoot();
-    bool LookUp(const std::string& path, FileInfo* info);
+    bool LookUp(const std::string& path, FileInfo* info, FileInfo* parent_info);
     bool LookUp(int64_t pid, const std::string& name, FileInfo* info);
     StatusCode InternalDeleteDirectory(const FileInfo& dir_info,
                                 bool recursive,
