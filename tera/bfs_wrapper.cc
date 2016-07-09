@@ -9,9 +9,15 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <gflags/gflags.h>
 #include <bfs.h>
 #include "common/logging.h"
 #include "common/timer.h"
+
+DECLARE_string(nameserver_nodes);
+DECLARE_string(bfs_log);
+DECLARE_int32(bfs_log_size);
+DECLARE_int32(bfs_log_limit);
 
 namespace baidu {
 namespace bfs {
@@ -223,9 +229,35 @@ leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) 
 extern "C" {
 
 leveldb::Dfs* NewDfs(const char* conf) {
-    baidu::common::SetLogFile("./bfslog");
-    baidu::common::SetWarningFile("./bfswf");
-    return new baidu::bfs::BfsImpl(conf);
+    const char* internal_conf;
+    bool set_log = false;
+    if (access(conf, R_OK) == 0) {
+        int argc = 2;
+        std::string flag = "--flagfile=" + std::string(conf);
+        char** argv = new char*[3];
+        argv[0] = const_cast<char*>("dummy");
+        argv[1] = const_cast<char*>(flag.c_str());
+        argv[2] = NULL;
+        ::google::ParseCommandLineFlags(&argc, &argv, false);
+        delete[] argv;
+        internal_conf = FLAGS_nameserver_nodes.c_str();
+        if (FLAGS_bfs_log != "") {
+            set_log = true;
+        }
+    } else {
+        internal_conf = conf;
+    }
+
+    if (set_log) {
+        baidu::common::SetLogFile((FLAGS_bfs_log).c_str());
+        baidu::common::SetLogSize(FLAGS_bfs_log_size);
+        baidu::common::SetLogSizeLimit(FLAGS_bfs_log_limit);
+        baidu::common::SetWarningFile("./bfswf");
+    } else {
+        baidu::common::SetLogFile("./bfslog");
+        baidu::common::SetWarningFile("./bfswf");
+    }
+    return new baidu::bfs::BfsImpl(internal_conf);
 }
 
 }
