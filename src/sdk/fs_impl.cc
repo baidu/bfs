@@ -19,6 +19,7 @@
 #include "rpc/nameserver_client.h"
 
 #include "file_impl.h"
+#include "proto/status_code.pb.h"
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
@@ -45,7 +46,7 @@ bool FSImpl::ConnectNameServer(const char* nameserver) {
     nameserver_client_ = new NameServerClient(rpc_client_, nameserver_nodes);
     return true;
 }
-bool FSImpl::CreateDirectory(const char* path) {
+int32_t FSImpl::CreateDirectory(const char* path) {
     CreateFileRequest request;
     CreateFileResponse response;
     request.set_file_name(path);
@@ -53,13 +54,14 @@ bool FSImpl::CreateDirectory(const char* path) {
     request.set_sequence_id(0);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 3);
-    if (!ret || response.status() != kOK) {
-        return false;
-    } else {
-        return true;
+    if (!ret) {
+        return kRpcFail;
+    } else if (response.status() != kOK) {
+        return response.status();
     }
+    return 0;
 }
-bool FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num) {
+int32_t FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num) {
     common::timer::AutoTimer at(1000, "ListDirectory", path);
     *filelist = NULL;
     *num = 0;
@@ -72,7 +74,11 @@ bool FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num) {
     if (!ret || response.status() != kOK) {
         LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
             path, ret, StatusCode_Name(response.status()).c_str());
-        return false;
+        if (!ret) {
+            return kRpcFail;
+        } else {
+            return response.status();
+        }
     }
     if (response.files_size() != 0) {
         *num = response.files_size();
@@ -86,9 +92,9 @@ bool FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num) {
             snprintf(binfo.name, sizeof(binfo.name), "%s", info.name().c_str());
         }
     }
-    return true;
+    return 0;
 }
-bool FSImpl::DeleteDirectory(const char* path, bool recursive) {
+int32_t FSImpl::DeleteDirectory(const char* path, bool recursive) {
     DeleteDirectoryRequest request;
     DeleteDirectoryResponse response;
     request.set_sequence_id(0);
@@ -98,14 +104,15 @@ bool FSImpl::DeleteDirectory(const char* path, bool recursive) {
             &request, &response, 15, 1);
     if (!ret) {
         LOG(WARNING, "DeleteDirectory fail: %s\n", path);
-        return false;
+        return kRpcFail;
     }
     if (response.status() == kNotFound) {
         LOG(WARNING, "%s is not found.", path);
+        return response.status();
     }
-    return response.status() == kOK;
+    return 0;
 }
-bool FSImpl::Access(const char* path, int32_t mode) {
+int32_t FSImpl::Access(const char* path, int32_t mode) {
     StatRequest request;
     StatResponse response;
     request.set_path(path);
@@ -114,11 +121,11 @@ bool FSImpl::Access(const char* path, int32_t mode) {
         &request, &response, 15, 1);
     if (!ret) {
         LOG(WARNING, "Stat fail: %s\n", path);
-        return false;
+        return kRpcFail;
     }
-    return (response.status() == kOK);
+    return response.status() == kOK ? 0 : response.status();
 }
-bool FSImpl::Stat(const char* path, BfsFileInfo* fileinfo) {
+int32_t FSImpl::Stat(const char* path, BfsFileInfo* fileinfo) {
     StatRequest request;
     StatResponse response;
     request.set_path(path);
@@ -127,7 +134,7 @@ bool FSImpl::Stat(const char* path, BfsFileInfo* fileinfo) {
         &request, &response, 15, 1);
     if (!ret) {
         LOG(WARNING, "Stat rpc fail: %s", path);
-        return false;
+        return kRpcFail;
     }
     if (response.status() == kOK) {
         const FileInfo& info = response.file_info();
@@ -135,13 +142,13 @@ bool FSImpl::Stat(const char* path, BfsFileInfo* fileinfo) {
         fileinfo->mode = info.type();
         fileinfo->size = info.size();
         snprintf(fileinfo->name, sizeof(fileinfo->name), "%s", info.name().c_str());
-        return true;
+        return 0;
     }
-    return false;
+    return response.status();
 }
-bool FSImpl::GetFileSize(const char* path, int64_t* file_size) {
+int32_t FSImpl::GetFileSize(const char* path, int64_t* file_size) {
     if (file_size == NULL) {
-        return false;
+        return kBadParameter;
     }
     FileLocationRequest request;
     FileLocationResponse response;
@@ -151,7 +158,11 @@ bool FSImpl::GetFileSize(const char* path, int64_t* file_size) {
         &request, &response, 15, 1);
     if (!ret || response.status() != kOK) {
         LOG(WARNING, "GetFileSize(%s) return %s", path, StatusCode_Name(response.status()).c_str());
-        return false;
+        if (!ret) {
+            return kRpcFail;
+        } else {
+            return response.status();
+        }
     }
     *file_size = 0;
     for (int i = 0; i < response.blocks_size(); i++) {
@@ -188,15 +199,15 @@ bool FSImpl::GetFileSize(const char* path, int64_t* file_size) {
         }
         if (!available) {
             LOG(WARNING, "GetFileSize(%s) fail no available chunkserver", path);
-            return false;
+            return kGetChunkServerError;
         }
     }
-    return true;
+    return 0;
 }
-bool FSImpl::GetFileLocation(const std::string& path,
+int32_t FSImpl::GetFileLocation(const std::string& path,
                      std::map<int64_t, std::vector<std::string> >* locations) {
     if (locations == NULL) {
-        return false;
+        return kBadParameter;
     }
     FileLocationRequest request;
     FileLocationResponse response;
@@ -207,7 +218,11 @@ bool FSImpl::GetFileLocation(const std::string& path,
     if (!ret || response.status() != kOK) {
         LOG(WARNING, "GetFileLocation(%s) return %s", path.c_str(),
                 StatusCode_Name(response.status()).c_str());
-        return false;
+        if (!ret) {
+            return kRpcFail;
+        } else {
+            return response.status();
+        }
     }
     for (int i = 0; i < response.blocks_size(); i++) {
         const LocatedBlock& block = response.blocks(i);
@@ -217,15 +232,15 @@ bool FSImpl::GetFileLocation(const std::string& path,
             (it->second).push_back(block.chains(j).address());
         }
     }
-    return true;
+    return 0;
 }
-bool FSImpl::OpenFile(const char* path, int32_t flags, File** file) {
+int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file) {
     return OpenFile(path, flags, 0, -1, file);
 }
-bool FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
+int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
               int32_t replica, File** file) {
     common::timer::AutoTimer at(100, "OpenFile", path);
-    bool ret = false;
+    int32_t ret = false;
     *file = NULL;
     if (flags & O_WRONLY) {
         CreateFileRequest request;
@@ -240,7 +255,11 @@ bool FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         if (!ret || response.status() != kOK) {
             LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
                 path, ret, StatusCode_Name(response.status()).c_str());
-            ret = false;
+            if (!ret) {
+                ret = kRpcFail;
+            } else {
+                ret = response.status();
+            }
         } else {
             *file = new FileImpl(this, rpc_client_, path, flags);
         }
@@ -259,18 +278,22 @@ bool FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         } else {
             //printf("GetFileLocation return %d\n", response.blocks_size());
             LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
-            ret = false;
+            if (!ret) {
+                ret = kRpcFail;
+            } else {
+                ret = response.status();
+            }
         }
     } else {
         LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY, but %d", flags);
-        ret = false;
+        ret = kOpenModeError;
     }
     return ret;
 }
-bool FSImpl::CloseFile(File* file) {
+int32_t FSImpl::CloseFile(File* file) {
     return file->Close();
 }
-bool FSImpl::DeleteFile(const char* path) {
+int32_t FSImpl::DeleteFile(const char* path) {
     UnlinkRequest request;
     UnlinkResponse response;
     request.set_path(path);
@@ -281,15 +304,15 @@ bool FSImpl::DeleteFile(const char* path) {
         &request, &response, 15, 1);
     if (!ret) {
         LOG(WARNING, "Unlink rpc fail: %s", path);
-        return false;
+        return kRpcFail;
     }
     if (response.status() != kOK) {
         LOG(WARNING, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
-        return false;
+        return response.status();
     }
-    return true;
+    return 0;
 }
-bool FSImpl::Rename(const char* oldpath, const char* newpath) {
+int32_t FSImpl::Rename(const char* oldpath, const char* newpath) {
     RenameRequest request;
     RenameResponse response;
     request.set_oldpath(oldpath);
@@ -299,16 +322,16 @@ bool FSImpl::Rename(const char* oldpath, const char* newpath) {
         &request, &response, 15, 1);
     if (!ret) {
         LOG(WARNING, "Rename rpc fail: %s to %s\n", oldpath, newpath);
-        return false;
+        return kRpcFail;
     }
     if (response.status() != kOK) {
         LOG(WARNING, "Rename %s to %s return: %s\n",
             oldpath, newpath, StatusCode_Name(response.status()).c_str());
-        return false;
+        return response.status();
     }
-    return true;
+    return 0;
 }
-bool FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
+int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
     ChangeReplicaNumRequest request;
     ChangeReplicaNumResponse response;
     request.set_file_name(file_name);
@@ -319,23 +342,23 @@ bool FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
     if (!ret) {
         LOG(WARNING, "Change %s replica num to %d rpc fail\n",
                 file_name, replica_num);
-        return false;
+        return kRpcFail;
     }
     if (response.status() != kOK) {
         LOG(WARNING, "Change %s replida num to %d return: %s\n",
                 file_name, replica_num, StatusCode_Name(response.status()).c_str());
-        return false;
+        return response.status();
     }
-    return true;
+    return 0;
 }
-bool FSImpl::SysStat(const std::string& stat_name, std::string* result) {
+int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     SysStatRequest request;
     SysStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::SysStat,
                                                &request, &response, 15, 1);
     if (!ret) {
         LOG(WARNING, "SysStat fail %s", StatusCode_Name(response.status()).c_str());
-        return false;
+        return kRpcFail;
     }
     bool stat_all = (stat_name == "StatAll");
     common::TPrinter tp(7);
@@ -362,9 +385,9 @@ bool FSImpl::SysStat(const std::string& stat_name, std::string* result) {
         << "Block num: " << response.block_num() << std::endl;
     result->assign(oss.str());*/
     result->append(tp.ToString());
-    return true;
+    return 0;
 }
-bool FSImpl::ShutdownChunkServer(const std::vector<std::string>& cs_addr) {
+int32_t FSImpl::ShutdownChunkServer(const std::vector<std::string>& cs_addr) {
    ShutdownChunkServerRequest request;
    ShutdownChunkServerResponse response;
    for (size_t i = 0; i < cs_addr.size(); i++) {
@@ -375,18 +398,24 @@ bool FSImpl::ShutdownChunkServer(const std::vector<std::string>& cs_addr) {
    if (!ret || response.status() != kOK) {
        LOG(WARNING, "Shutdown ChunkServer fail. ret: %d, status: %s",
                ret, StatusCode_Name(response.status()).c_str());
+       if (!ret) {
+           return kRpcFail;
+       } else {
+           return response.status();
+       }
    }
-    return ret;
+   return 0;
 }
-int FSImpl::ShutdownChunkServerStat() {
+int32_t FSImpl::ShutdownChunkServerStat() {
     ShutdownChunkServerStatRequest request;
     ShutdownChunkServerStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServerStat,
                                                &request, &response, 15, 1);
     if (!ret) {
         LOG(WARNING, "Get shutdown chunnkserver stat fail");
-        return -1;
+        return kRpcFail;
     }
+    //TODO change return value
     return response.in_offline_progress();
 }
 

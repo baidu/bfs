@@ -402,7 +402,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     if (!namespace_->GetFileInfo(path, &file_info)) {
         LOG(INFO, "AddBlock file not found: %s", path.c_str());
-        response->set_status(kNotFound);
+        response->set_status(kFileNotExist);
         done->Run();
         return;
     }
@@ -478,7 +478,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(INFO, "FinishBlock file not found: #%ld %s", block_id, file_name.c_str());
-        response->set_status(kNotFound);
+        response->set_status(kFileNotExist);
         done->Run();
         return;
     }
@@ -487,7 +487,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     NameServerLog log;
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
         LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
-        response->set_status(kUpdateError);
+        response->set_status(kSyncMetaFailed);
         done->Run();
         return;
     }
@@ -524,7 +524,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
         // No this file
         LOG(INFO, "NameServerImpl::GetFileLocation: NotFound: %s",
             request->file_name().c_str());
-        response->set_status(kNotFound);
+        response->set_status(kFileNotExist);
     } else {
         for (int i = 0; i < info.blocks_size(); i++) {
             int64_t block_id = info.blocks(i);
@@ -617,7 +617,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         LOG(INFO, "Stat: %s return: %ld", path.c_str(), out_info->size());
     } else {
         LOG(INFO, "Stat: %s return: not found", path.c_str());
-        response->set_status(kNotFound);
+        response->set_status(kFileNotExist);
     }
     done->Run();
 }
@@ -746,7 +746,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         return;
     } else {
         LOG(INFO, "Change replica num not found: %s", file_name.c_str());
-        ret_status = kNotFound;
+        ret_status = kFileNotExist;
     }
     response->set_status(ret_status);
     done->Run();
