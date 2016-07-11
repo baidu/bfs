@@ -42,7 +42,7 @@ private:
     void BackgroundLog();
     void ReplicateLog();
     void LogStatus();
-    void PorcessCallbck(int64_t index, bool timeout_check);
+    void ProcessCallbck(int64_t index, bool timeout_check);
 
 private:
     RpcClient* rpc_client_;

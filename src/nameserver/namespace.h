@@ -31,13 +31,13 @@ public:
         common::Counter ref;
         SS(const leveldb::Snapshot* s) : snapshot(s) {}
     };
-    void Add(uint64_t index);
-    bool Get(const leveldb::Snapshot** s, uint64_t* index);
-    void Release(uint64_t index);
+    void Add(int64_t index);
+    bool Get(const leveldb::Snapshot** s, int64_t* index);
+    void Release(int64_t index);
 private:
     leveldb::DB* db_;
     Mutex mu_;
-    std::map<uint64_t, SS*> snapshots_;
+    std::map<int64_t, SS*> snapshots_;
 };
 
 class NameSpace {

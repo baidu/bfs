@@ -120,6 +120,10 @@ private:
                          ::google::protobuf::Closure* done,
                          std::vector<FileInfo>* removed,
                          int64_t seq);
+    void TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
+                       std::string* output);
+    void TransToString(const std::set<int64_t>& block_set, std::string* output);
+
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;

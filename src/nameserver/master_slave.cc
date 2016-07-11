@@ -148,16 +148,16 @@ void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (int64_
             LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld ", current_idx_ + 1);
         }
     }
-    log_callback_(entry, current_idx_);
+    log_callback_(entry, current_idx_ + 1);
     current_idx_++;
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
         callbacks_.insert(std::make_pair(current_idx_, callback));
-        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,this,
+        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::ProcessCallbck,this,
                                             current_idx_, true));
     } else {
         callbacks_.insert(std::make_pair(current_idx_, callback));
         LOG(DEBUG, "\033[32m[Sync]\033[0m insert callback index = %d", current_idx_);
-        thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::PorcessCallbck,
+        thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::ProcessCallbck,
                                                    this, current_idx_, true));
         cond_.Signal();
     }
@@ -175,6 +175,7 @@ void MasterSlaveImpl::SwitchToLeader() {
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
     worker_.Start(boost::bind(&MasterSlaveImpl::BackgroundLog, this));
     is_leader_ = true;
+    master_only_ = true;
     LOG(INFO, "\033[32m[Sync]\033[0m node switch to leader");
 }
 
@@ -261,7 +262,7 @@ void MasterSlaveImpl::ReplicateLog() {
             LOG(INFO, "[Sync] set sync_idx_ to %d", sync_idx_);
             continue;
         }
-        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_ + 1, false));
+        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::ProcessCallbck, this, sync_idx_ + 1, false));
         mu_.Lock();
         sync_idx_++;
         LOG(DEBUG, "\033[32m[Sync]\033[0m Replicate log done. sync_idx_ = %d, current_idx_ = %d",
@@ -272,7 +273,7 @@ void MasterSlaveImpl::ReplicateLog() {
     log_done_.Signal();
 }
 
-void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
+void MasterSlaveImpl::ProcessCallbck(int64_t index, bool timeout_check) {
     boost::function<void (int64_t)> callback;
     MutexLock lock(&mu_);
     std::map<int64_t, boost::function<void (int64_t)> >::iterator it = callbacks_.find(index);
