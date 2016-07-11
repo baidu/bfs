@@ -47,8 +47,8 @@ int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    bool ret = fs->CreateDirectory(argv[0]);
-    if (!ret) {
+    int32_t ret = fs->CreateDirectory(argv[0]);
+    if (ret != 0) {
         fprintf(stderr, "Create dir %s fail\n", argv[0]);
         return 1;
     }
@@ -60,8 +60,8 @@ int BfsRename(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    bool ret = fs->Rename(argv[0], argv[1]);
-    if (!ret) {
+    int32_t ret = fs->Rename(argv[0], argv[1]);
+    if (ret != 0) {
         fprintf(stderr, "Rename %s to %s fail\n", argv[0], argv[1]);
         return 1;
     }
@@ -210,7 +210,7 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         len += bytes;
     }
     fclose(fp);
-    if (!file->Close()) {
+    if (file->Close() != 0) {
         fprintf(stderr, "close fail: %s\n", target.c_str());
         ret = 1;
     }
@@ -268,8 +268,8 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
     }
     baidu::bfs::BfsFileInfo* files = NULL;
     int num;
-    bool ret = fs->ListDirectory(path.c_str(), &files, &num);
-    if (!ret) {
+    int32_t ret = fs->ListDirectory(path.c_str(), &files, &num);
+    if (ret != 0) {
         fprintf(stderr, "List dir %s fail\n", path.c_str());
         return 1;
     }
@@ -299,8 +299,8 @@ int BfsRmdir(baidu::bfs::FS* fs, int argc, char* argv[], bool recursive) {
         print_usage();
         return 1;
     }
-    bool ret = fs->DeleteDirectory(argv[0], recursive);
-    if (!ret) {
+    int32_t ret = fs->DeleteDirectory(argv[0], recursive);
+    if (ret != 0) {
         fprintf(stderr, "Remove dir %s fail\n", argv[0]);
         return 1;
     }
@@ -328,8 +328,8 @@ int BfsStat(baidu::bfs::FS* fs, int argc, char* argv[]) {
         stat_name = "StatAll";
     }
     std::string result;
-    bool ret = fs->SysStat(stat_name, &result);
-    if (!ret) {
+    int32_t ret = fs->SysStat(stat_name, &result);
+    if (ret != 0) {
         fprintf(stderr, "SysStat fail\n");
         return 1;
     }
