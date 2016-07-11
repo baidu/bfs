@@ -14,15 +14,14 @@ enum StatusCode {
     kBadParameter = 7;
     kUpdateError = 8;
     kGetChunkServerError = 9;
-    kNsCreateError = 10;
-    kCsCreateError = 11;
     kCsTooMuchPendingBuffer = 12;
     kReadOnly = 16;
-    kLogNotOpen = 17;
     kCsTooMuchUnfinishedWrite = 18;
     kSafeMode = 20;
     kIsFollower = 21;
     kInShutdownProgress = 22;
+    kDirNotEmpty = 23;
+    kTargetDirExists = 24;
 }
 
 enum ChunkServerStatus {

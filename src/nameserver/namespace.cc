@@ -343,7 +343,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
             if (IsDir(dst_file.type())) {
                 LOG(INFO, "Rename %s to %s, target %o is a exist directory",
                     old_path.c_str(), new_path.c_str(), dst_file.type());
-                return kNotOK;
+                return kTargetDirExists;
             }
             *need_unlink = true;
             remove_file->CopyFrom(dst_file);
@@ -378,8 +378,6 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         LOG(WARNING, "Rename write leveldb fail: %s %s", old_path.c_str(), s.ToString().c_str());
         return kUpdateError;
     }
-
-    return kNotOK;
 }
 
 StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log) {
@@ -420,7 +418,7 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
         return kNotFound;
     } else if (!IsDir(info.type())) {
         LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
-        return kNotOK;
+        return kBadParameter;
     }
     return InternalDeleteDirectory(info, recursive, files_removed, log);
 }
@@ -440,7 +438,7 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
         LOG(INFO, "Try to delete an unempty directory unrecursively: %s",
             dir_info.name().c_str());
         delete it;
-        return kNotOK;
+        return kDirNotEmpty;
     }
 
     StatusCode ret_status = kOK;
@@ -484,8 +482,8 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
         LOG(INFO, "Delete directory done: %s[%s]",
             dir_info.name().c_str(), common::DebugString(store_key).c_str());
     } else {
-        LOG(FATAL, "Namespace write to storage fail!");
         LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
+        LOG(FATAL, "Namespace write to storage fail!");
         ret_status = kUpdateError;
     }
     return ret_status;
