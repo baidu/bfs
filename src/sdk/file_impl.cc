@@ -685,12 +685,12 @@ int32_t FileImpl::Close() {
         request.set_block_version(last_seq_);
         request.set_block_size(write_offset_);
         request.set_close_with_error(bg_error_);
-        ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::FinishBlock,
+        bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::FinishBlock,
                                                    &request, &response, 15, 1);
-        if (!(ret && response.status() == kOK))  {
+        if (!(rpc_ret && response.status() == kOK))  {
             LOG(WARNING, "Close file %s fail, finish report returns %d, status: %s",
                     name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
-            if (!ret) {
+            if (!rpc_ret) {
                 return RPC_ERROR;
             } else {
                 return GetErrorCode(response.status());
