@@ -2,27 +2,36 @@ package baidu.bfs;
 
 enum StatusCode {
     kOK = 0;
-    kNotOK = 1;
-    kUnknownCs = 2;
-    kVersionError = 3;
-    kNotFound = 4;
-    kBlockExist = 14;
-    kSyncMetaFailed = 15;
-    kWriteError = 5;
-    kBlockClosed = 13;
-    kReadError = 6;
-    kBadParameter = 7;
-    kUpdateError = 8;
-    kGetChunkServerError = 9;
-    kNsCreateError = 10;
-    kCsCreateError = 11;
-    kCsTooMuchPendingBuffer = 12;
-    kReadOnly = 16;
-    kLogNotOpen = 17;
-    kCsTooMuchUnfinishedWrite = 18;
-    kSafeMode = 20;
-    kIsFollower = 21;
-    kInShutdownProgress = 22;
+    kNotOK = -1;
+    kUnknownCs = -2;
+    kVersionError = -3;
+    kNotFound = -4;
+    kBlockExist = -14;
+    kSyncMetaFailed = -15;
+    kWriteError = -5;
+    kBlockClosed = -13;
+    kReadError = -6;
+    kBadParameter = -7;
+    kUpdateError = -8;
+    kGetChunkServerError = -9;
+    kNsCreateError = -10;
+    kCsCreateError = -11;
+    kCsTooMuchPendingBuffer = -12;
+    kReadOnly = -16;
+    kLogNotOpen = -17;
+    kCsTooMuchUnfinishedWrite = -18;
+    kSafeMode = -20;
+    kIsFollower = -21;
+    kInShutdownProgress = -22;
+    kNoLocatedBlock = -23;
+    kRpcFail = -24;
+    kOpenModeError = -25;
+    kBackgroundWriteError = -26;
+    kAddBlockError = -27;
+    kTimeout = -28;
+    kTargetExist = -29;
+    kFileNotExist = -30;
+    kDirNotEmpty = -31;
 }
 
 enum ChunkServerStatus {
