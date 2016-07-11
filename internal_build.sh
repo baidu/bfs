@@ -45,6 +45,20 @@ if [ ! -f "${FLAG_DIR}/protobuf_2_6_1" ] \
     touch "${FLAG_DIR}/protobuf_2_6_1"
 fi
 
+#leveldb
+if [ ! -f "${FLAG_DIR}/leveldb" ] \
+    || [ ! -f "${DEPS_PREFIX}/lib/libleveldb.a" ] \
+    || [ ! -d "${DEPS_PREFIX}/include/leveldb" ]; then
+    rm -rf leveldb
+    git clone https://github.com/lylei/leveldb.git leveldb
+    cd leveldb
+    echo "PREFIX=${DEPS_PREFIX}" > config.mk
+    make -j4
+    make install
+    cd -
+    touch "${FLAG_DIR}/leveldb"
+fi
+
 # snappy
 if [ ! -f "${FLAG_DIR}/snappy_1_1_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libsnappy.a" ] \
@@ -145,9 +159,10 @@ fi
 if [ ! -f "${FLAG_DIR}/common" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libcommon.a" ]; then
     rm -rf common
-    git clone https://github.com/baidu/common
+    git clone -b dev https://github.com/baidu/common
     cd common
     sed -i 's/^PREFIX=.*/PREFIX=..\/..\/thirdparty/' config.mk
+    sed -i '/^INCLUDE_PATH=*/s/$/ -I..\/..\/thirdparty\/boost_1_57_0/g' Makefile
     make -j4
     make install
     cd -

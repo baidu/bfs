@@ -9,7 +9,9 @@
 
 #include <stdint.h>
 #include <string>
+#include <map>
 #include <common/mutex.h>
+#include <common/counter.h>
 #include <boost/function.hpp>
 
 #include <leveldb/db.h>
@@ -19,6 +21,24 @@
 
 namespace baidu {
 namespace bfs {
+
+class SyncSnapshot {
+public:
+    SyncSnapshot(leveldb::DB* db);
+    struct SS
+    {
+        const leveldb::Snapshot* snapshot;
+        common::Counter ref;
+        SS(const leveldb::Snapshot* s) : snapshot(s) {}
+    };
+    void Add(int64_t index);
+    bool Get(const leveldb::Snapshot** s, int64_t* index);
+    void Release(int64_t index);
+private:
+    leveldb::DB* db_;
+    Mutex mu_;
+    std::map<int64_t, SS*> snapshots_;
+};
 
 class NameSpace {
 public:
@@ -30,7 +50,8 @@ public:
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
     StatusCode CreateFile(const std::string& file_name, int flags, int mode,
-                          int replica_num, NameServerLog* log = NULL);
+                          int replica_num, std::vector<int64_t>* blocks_to_remove,
+                          NameServerLog* log = NULL);
     /// Remove file by name
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
@@ -55,7 +76,9 @@ public:
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master
-    void TailLog(const std::string& log);
+    void TailLog(const std::string& log, int64_t seq);
+    void CleanSnapshot(int64_t seq);
+    int64_t GetNewBlockId(NameServerLog* log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
@@ -71,15 +94,17 @@ private:
                                 NameServerLog* log);
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
+    void UpdateBlockIdUpbound(NameServerLog* log);
+
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;
-
-    /// HA module
-    //Sync* sync_;
-    //Mutex mu_;
+    int64_t block_id_upbound_;
+    int64_t next_block_id_;
+    Mutex mu_;
+    SyncSnapshot* sync_snapshots_;
 };
 
 } // namespace bfs

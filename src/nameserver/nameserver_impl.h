@@ -23,7 +23,7 @@ namespace bfs {
 
 class NameSpace;
 class ChunkServerManager;
-class BlockMapping;
+class BlockMappingManager;
 class Sync;
 
 class NameServerImpl : public NameServer {
@@ -94,6 +94,14 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void ShutdownChunkServer(::google::protobuf::RpcController* controller,
+            const ShutdownChunkServerRequest* request,
+            ShutdownChunkServerResponse* response,
+            ::google::protobuf::Closure* done);
+    void ShutdownChunkServerStat(::google::protobuf::RpcController* controller,
+            const ShutdownChunkServerStatRequest* request,
+            ShutdownChunkServerStatResponse* response,
+            ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
@@ -105,21 +113,25 @@ private:
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
-    bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
+    bool LogRemote(const NameServerLog& log, boost::function<void (int64_t)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,
                          ::google::protobuf::Message* response,
                          ::google::protobuf::Closure* done,
                          std::vector<FileInfo>* removed,
-                         bool ret);
+                         int64_t seq);
+    void TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
+                       std::string* output);
+    void TransToString(const std::set<int64_t>& block_set, std::string* output);
+
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
-    /// Chunkserver map
+    /// ChunkServer map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
-    BlockMapping* block_mapping_;
+    BlockMappingManager* block_mapping_manager_;
     /// Safemode
     volatile int safe_mode_;
     int64_t start_time_;

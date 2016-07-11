@@ -46,7 +46,7 @@ int bfs_getattr(const char* path, struct stat* st) {
         st->st_mode = (file.mode & 0777) | S_IFREG;
         if (file.size == 0) {
             int64_t file_size = 0;
-            if (g_fs->GetFileSize(path, &file_size) && file_size > 0) {
+            if (g_fs->GetFileSize((g_bfs_path + path).c_str(), &file_size) && file_size > 0) {
                 st->st_size = file_size;
             } else {
                 st->st_size = 0;
@@ -60,6 +60,7 @@ int bfs_getattr(const char* path, struct stat* st) {
     st->st_atime = file.ctime;
     st->st_ctime = file.ctime;
     st->st_mtime = file.ctime;
+    st->st_nlink = 1;
     return 0;
 }
 
@@ -403,6 +404,10 @@ void* bfs_init(struct fuse_conn_info *conn) {
     }
     if (!baidu::bfs::FS::OpenFileSystem(g_bfs_cluster.c_str(), &g_fs)) {
         fprintf(stderr, BFS"Open file sytem: %s fail\n", g_bfs_cluster.c_str());
+        abort();
+    }
+    if (!g_fs->Access(g_bfs_path.c_str(), R_OK | W_OK)) {
+        fprintf(stderr, BFS"Mount a wrong path or have no permission: %s\n", g_bfs_path.c_str());
         abort();
     }
     return g_fs;

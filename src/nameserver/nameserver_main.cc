@@ -25,6 +25,7 @@ DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
 DECLARE_string(bfs_log);
 DECLARE_int32(bfs_log_size);
+DECLARE_int32(bfs_log_limit);
 DECLARE_string(ha_strategy);
 
 int main(int argc, char* argv[])
@@ -43,6 +44,7 @@ int main(int argc, char* argv[])
     if (FLAGS_bfs_log != "") {
         baidu::common::SetLogFile(FLAGS_bfs_log.c_str());
         baidu::common::SetLogSize(FLAGS_bfs_log_size);
+        baidu::common::SetLogSizeLimit(FLAGS_bfs_log_limit);
     }
     ::baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
     ::baidu::common::SetWarningFile(FLAGS_nameserver_warninglog.c_str());

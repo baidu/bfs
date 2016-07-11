@@ -19,8 +19,6 @@
 namespace baidu {
 namespace bfs {
 
-const std::string kLogEndMark = "Raft:";
-
 RaftNodeImpl::RaftNodeImpl(const std::string& raft_nodes,
                            int node_index,
                            const std::string& db_path)
@@ -60,34 +58,27 @@ RaftNodeImpl::~RaftNodeImpl() {
 }
 
 void RaftNodeImpl::LoadStorage(const std::string& db_path) {
-    leveldb::Options options;
-    options.create_if_missing = true;
-    leveldb::Status s = leveldb::DB::Open(options, db_path, &log_db_);
-    if (!s.ok()) {
-        //log_db_ = NULL;
-        LOG(FATAL, "Open raft db fail: %s\n", s.ToString().c_str());
+    LogDB::Open(db_path, DBOption(), &log_db_);
+    if (log_db_ == NULL) {
+        LOG(FATAL, "Open logdb fail");
+        return;
     }
-    if (!GetContext("last_applied", &last_applied_)) {
+    StatusCode s = log_db_->ReadMarker("last_applied", &last_applied_);
+    if (s != kOK) {
         last_applied_ = 0;
     }
-    if (!GetContext("current_term", &current_term_)) {
+    s = log_db_->ReadMarker("current_term", &current_term_);
+    if (s != kOK) {
         current_term_ = 0;
     }
-    if (!GetContext("voted_for_", &voted_for_)) {
+    s = log_db_->ReadMarker("voted_for_", &voted_for_);
+    if (s != kOK) {
         voted_for_ = "";
     }
-    leveldb::Iterator* it = log_db_->NewIterator(leveldb::ReadOptions());
-    it->Seek(kLogEndMark);
-    if (!it->Valid() || (it->Prev(), !it->Valid())) {
+    s = log_db_->GetLargestIdx(&log_index_);
+    if (s != kOK) {
         log_index_ = 0;
-    } else {
-        LogEntry entry;
-        if (!entry.ParseFromString(it->value().ToString())) {
-            LOG(FATAL, "Parse log entry failed");
-        }
-        log_index_ = entry.index();
     }
-    delete it;
     LOG(INFO, "LoadStorage term %ld index %ld applied %ld",
         current_term_, log_index_, last_applied_);
     for (uint32_t i = 0; i < nodes_.size(); i++) {
@@ -295,49 +286,46 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
     request->set_term(current_term_);
     request->set_leader(self_);
     request->set_leader_commit(commit_index_);
+    LOG(INFO, "M %ld N %ld I %ld", match_index, next_index, log_index_);
     if (match_index < log_index_) {
         assert(match_index <= next_index);
-        leveldb::Iterator* it = log_db_->NewIterator(leveldb::ReadOptions());
-        it->Seek(Index2Logkey(next_index));
-        if (it->Valid()) {
-            it->Prev();
-            int64_t prev_index = 0;
-            int64_t prev_term = 0;
-            if (it->Valid()) {
-                LogEntry entry;
-                bool ret = entry.ParseFromString(it->value().ToString());
-                assert(ret);
-                prev_index = entry.index();
-                prev_term = entry.term();
-                it->Next();
-            } else {
-                delete it;
-                it = log_db_->NewIterator(leveldb::ReadOptions());
-                it->Seek(Index2Logkey(next_index));
-            }
-            request->set_prev_log_index(prev_index);
-            request->set_prev_log_term(prev_term);
-        } else {
-            LOG(FATAL, "No next_index %ld in logdb", next_index);
-        }
-        while (it->Valid()
-            && it->key().compare(kLogEndMark) < 0
-            && request->ByteSize() < 1024*1024) {
-            LogEntry* entry = request->add_entries();
-            bool ret = entry->ParseFromString(it->value().ToString());
+        int64_t prev_index = 0;
+        int64_t prev_term = 0;
+        std::string prev_log;
+        StatusCode s = log_db_->Read(next_index - 1, &prev_log);
+        if (s == kOK) {
+            LogEntry prev_entry;
+            bool ret = prev_entry.ParseFromString(prev_log);
             assert(ret);
-            it->Next();
+            prev_index = prev_entry.index();
+            prev_term = prev_entry.term();
+        }
+        request->set_prev_log_index(prev_index);
+        request->set_prev_log_term(prev_term);
+        for (int64_t i = next_index; i <= log_index_; i++) {
+            std::string log;
+            s = log_db_->Read(i, &log);
+            if (s != kOK) {
+                LOG(FATAL, "Data lost: %ld", i);
+                break;
+            }
+            LOG(INFO, "Add %ld to request", i);
+            LogEntry* entry = request->add_entries();
+            bool ret = entry->ParseFromString(log);
+            assert(ret);
             max_index = entry->index();
             max_term = entry->term();
+            if (request->ByteSize() >= 1024*1024) {
+                break;
+            }
         }
-        delete it;
     }
     RaftNode_Stub* node;
     rpc_client_->GetStub(nodes_[id], &node);
     bool ret = rpc_client_->SendRequest(node, &RaftNode_Stub::AppendEntries,
                                         request, response, 1, 1);
-    //LOG(INFO, "Replicate %d entrys to %s return %d",
-    //    request->entries_size(), nodes_[id].c_str(), ret);
+    LOG(INFO, "Replicate %d entrys to %s return %d",
+        request->entries_size(), nodes_[id].c_str(), ret);
     delete node;
 
     mu_.Lock();
@@ -371,10 +359,10 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                         while (last_applied_ < commit_index) {
                             last_applied_ ++;
                             LOG(INFO, "[Raft] Apply %ld to leader", last_applied_);
-                            std::map<int64_t, boost::function<void (bool)> >::iterator cb_it =
+                            std::map<int64_t, boost::function<void (int64_t)> >::iterator cb_it =
                                 callback_map_.find(last_applied_);
                             if (cb_it != callback_map_.end()) {
-                                boost::function<void (bool)> callback = cb_it->second;
+                                boost::function<void (int64_t)> callback = cb_it->second;
                                 callback_map_.erase(cb_it);
                                 mu_.Unlock();
                                 LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
@@ -435,9 +423,10 @@ bool RaftNodeImpl::StoreLog(int64_t term, int64_t index, const std::string& log,
     entry.set_type(type);
     std::string log_value;
     entry.SerializeToString(&log_value);
-    leveldb::Status s = log_db_->Put(leveldb::WriteOptions(), Index2Logkey(index), log_value);
-    LOG(INFO, "Store %ld %ld %s to logdb", term, index, common::DebugString(log).c_str());
-    return s.ok();
+    StatusCode s = log_db_->Write(index, log_value);
+    LOG(INFO, "Store %ld %ld %s to logdb return %s",
+        term, index, common::DebugString(log).c_str(), StatusCode_Name(s).c_str());
+    return s == kOK;
 }
 
 bool RaftNodeImpl::StoreContext(const std::string& context, int64_t value) {
@@ -445,33 +434,12 @@ bool RaftNodeImpl::StoreContext(const std::string& context, int64_t value) {
 }
 
 bool RaftNodeImpl::StoreContext(const std::string& context, const std::string& value) {
-    std::string key = kLogEndMark + context;
-    LOG(INFO, "Store %s %s", key.c_str(), common::DebugString(value).c_str());
-    leveldb::Status s = log_db_->Put(leveldb::WriteOptions(), key, value);
-    return s.ok();
+    LOG(INFO, "Store %s %s", context.c_str(), common::DebugString(value).c_str());
+    StatusCode s = log_db_->WriteMarker(context, value);
+    return s == kOK;
 }
 
-bool RaftNodeImpl::GetContext(const std::string& context, int64_t* value) {
-    std::string str;
-    if (GetContext(context, &str)) {
-        assert(str.size() == 8U);
-        *value = *(reinterpret_cast<int64_t*>(&str[0]));
-        LOG(INFO, "Load %s %ld", context.c_str(), *value);
-        return true;
-    }
-    return false;
-}
-bool RaftNodeImpl::GetContext(const std::string& context, std::string* value) {
-    if (value == NULL) {
-        return false;
-    }
-    std::string key = kLogEndMark + context;
-    leveldb::Status s = log_db_->Get(leveldb::ReadOptions(), key, value);
-    LOG(INFO, "Load %s %s", context.c_str(), common::DebugString(*value).c_str());
-    return s.ok();
-}
-
-void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void (bool)> callback) {
+void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void (int64_t)> callback) {
     MutexLock lock(&mu_);
     int64_t index = ++log_index_;
     ///TODO: optimize lock
@@ -499,6 +467,12 @@ bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {
             return false;
         }
     }
+
+    for (uint32_t i = 0; i < nodes_.size(); i++) {
+        if (follower_context_[i]) {
+            follower_context_[i]->condition.Signal();
+        }
+    }
     for (int i = 0; i < timeout_ms; i++) {
         usleep(1);
         if (commit_index_ >= index) {
@@ -515,31 +489,23 @@ void RaftNodeImpl::ApplyLog() {
         return;
     }
     applying_ = true;
-    if (last_applied_ < commit_index_) {
-        std::string start = Index2Logkey(last_applied_);
-        std::string end = Index2Logkey(commit_index_);
-        leveldb::Iterator* it = log_db_->NewIterator(leveldb::ReadOptions());
-        it->Seek(start);
-        assert(it->Valid());
-        if (it->key().compare(start) <= 0) {
-            it->Next();
-            assert(it->Valid());
+    for (int64_t i = last_applied_ + 1; i <= commit_index_; i++) {
+        std::string log;
+        StatusCode s = log_db_->Read(i, &log);
+        if (s != kOK) {
+            LOG(FATAL, "Read logdb %ld fail", i);
         }
-        do {
-            LogEntry entry;
-            bool ret = entry.ParseFromString(it->value().ToString());
-            assert(ret);
-            if (entry.type() == kUserLog) {
-                mu_.Unlock();
-                LOG(INFO, "Callback %ld %s",
-                    entry.index(), common::DebugString(entry.log_data()).c_str());
-                    log_callback_(entry.log_data());
-                mu_.Lock();
-            }
-            last_applied_ = entry.index();
-            it->Next();
-        } while (it->Valid() && it->key().compare(end) <= 0);
-        delete it;
+        LogEntry entry;
+        bool ret = entry.ParseFromString(log);
+        assert(ret);
+        if (entry.type() == kUserLog) {
+            mu_.Unlock();
+            LOG(INFO, "Callback %ld %s",
+                entry.index(), common::DebugString(entry.log_data()).c_str());
+                log_callback_(entry.log_data(), -1);
+            mu_.Lock();
+        }
+        last_applied_ = entry.index();
     }
     LOG(INFO, "Apply to %ld", last_applied_);
     StoreContext("last_applied", last_applied_);
@@ -568,15 +534,13 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
     int64_t prev_log_term = request->prev_log_term();
     int64_t prev_log_index = request->prev_log_index();
     if (prev_log_index > 0) {   // check prev term
-        std::string value;
-        leveldb::Status s = log_db_->Get(leveldb::ReadOptions(),
-                                         Index2Logkey(prev_log_index),
-                                         &value);
+        std::string log;
+        StatusCode s = log_db_->Read(prev_log_index, &log);
         LogEntry entry;
-        if (!s.IsNotFound() && !entry.ParseFromString(value)) {
+        if (s == kOK && !entry.ParseFromString(log)) {
             LOG(FATAL, "Paser logdb value fail:%ld", prev_log_index);
         }
-        if (s.IsNotFound() || entry.term() != prev_log_term) {
+        if (s == kNotFound || entry.term() != prev_log_term) {
             LOG(INFO, "[Raft] Last index %ld term %ld / %ld mismatch",
                 prev_log_index, prev_log_term, entry.term());
             response->set_success(false);
@@ -619,7 +583,7 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
 }
 
 
-void RaftNodeImpl::Init(boost::function<void (const std::string& log)> callback) {
+void RaftNodeImpl::Init(boost::function<void (const std::string& log, int64_t)> callback) {
     log_callback_ = callback;
     ApplyLog();
 }

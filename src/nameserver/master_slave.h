@@ -7,7 +7,6 @@
 #define  BFS_NAMESERVER_MASTER_SLAVE_H_
 
 #include <string>
-#include <stdio.h>
 #include <map>
 #include <boost/function.hpp>
 #include <common/mutex.h>
@@ -15,7 +14,7 @@
 #include <common/thread_pool.h>
 
 #include "nameserver/sync.h"
-#include "proto/status_code.pb.h"
+#include "nameserver/logdb.h"
 #include "proto/master_slave.pb.h"
 
 namespace baidu {
@@ -27,10 +26,10 @@ class MasterSlaveImpl : public Sync, public master_slave::MasterSlave {
 public:
     MasterSlaveImpl();
     virtual ~MasterSlaveImpl() {};
-    virtual void Init(boost::function<void (const std::string& log)> callback);
+    virtual void Init(boost::function<void (const std::string& log, int64_t)> callback);
     virtual bool IsLeader(std::string* leader_addr = NULL);
     virtual bool Log(const std::string& entry, int timeout_ms = 10000);
-    virtual void Log(const std::string& entry, boost::function<void (bool)> callback);
+    virtual void Log(const std::string& entry, boost::function<void (int64_t)> callback);
     virtual void SwitchToLeader();
 
     // rpc
@@ -38,20 +37,18 @@ public:
                    const master_slave::AppendLogRequest* request,
                    master_slave::AppendLogResponse* response,
                    ::google::protobuf::Closure* done);
-    int LogLocal(const std::string& entry);
 
 private:
-    bool ReadEntry(std::string* entry);
     void BackgroundLog();
     void ReplicateLog();
     void LogStatus();
-    void PorcessCallbck(int offset, int len, bool timeout_check);
+    void ProcessCallbck(int64_t index, bool timeout_check);
 
 private:
     RpcClient* rpc_client_;
     master_slave::MasterSlave_Stub* slave_stub_;
 
-    boost::function<void (const std::string& log)> log_callback_;
+    boost::function<void (const std::string& log, int64_t)> log_callback_;
     bool exiting_;
     bool master_only_;
     bool is_leader_;
@@ -64,13 +61,12 @@ private:
     common::Thread worker_;
     ThreadPool* thread_pool_;
 
-    int log_;
-    FILE* read_log_;
-    int current_offset_;
-    int applied_offset_;
-    int sync_offset_;
+    LogDB* logdb_;
+    int64_t current_idx_;   // last log's index
+    int64_t applied_idx_;   // last applied entry index
+    int64_t sync_idx_;      // last entry index which slave has received
 
-    std::map<int, boost::function<void (bool)> > callbacks_;
+    std::map<int64_t, boost::function<void (int64_t)> > callbacks_;
 };
 
 } // namespace bfs

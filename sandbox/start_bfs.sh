@@ -20,7 +20,8 @@ if [ "$1"x == "master_slave"x ]; then
     ./bin/nameserver --master_slave_role=slave --node_index=0 1>nlog 2>&1 &
     echo $! > pid
     cd -
-
+    
+    sleep 0.5
     cd nameserver1;
     ./bin/nameserver --master_slave_role=master --node_index=1 1>nlog 2>&1 &
     echo $! > pid

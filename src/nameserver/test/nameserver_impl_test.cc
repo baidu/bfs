@@ -34,7 +34,7 @@ common::Counter create_counter;
 common::ThreadPool thread_pool(5);
 bool stop = false;
 
-void callabck(CreateFileRequest* request, CreateFileResponse* response) {
+void callback(CreateFileRequest* request, CreateFileResponse* response) {
     delete request;
     delete response;
     create_counter.Inc();
@@ -47,7 +47,7 @@ void CreateWorder(NameServerImpl* nameserver, sofa::pbrpc::RpcController* cntl, 
         CreateFileResponse* response = new CreateFileResponse;
         request->set_file_name(prefix + "/" + common::NumToString(i));
         request->set_sequence_id(0);
-        ::google::protobuf::Closure* done = sofa::pbrpc::NewClosure(callabck, request, response);
+        ::google::protobuf::Closure* done = sofa::pbrpc::NewClosure(callback, request, response);
         nameserver->CreateFile(cntl, request, response, done);
         ++i;
     }

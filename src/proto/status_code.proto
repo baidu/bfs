@@ -13,7 +13,7 @@ enum StatusCode {
     kReadError = 6;
     kBadParameter = 7;
     kUpdateError = 8;
-    kGetChunkserverError = 9;
+    kGetChunkServerError = 9;
     kNsCreateError = 10;
     kCsCreateError = 11;
     kCsTooMuchPendingBuffer = 12;
@@ -22,6 +22,7 @@ enum StatusCode {
     kCsTooMuchUnfinishedWrite = 18;
     kSafeMode = 20;
     kIsFollower = 21;
+    kInShutdownProgress = 22;
 }
 
 enum ChunkServerStatus {
@@ -30,6 +31,7 @@ enum ChunkServerStatus {
     kCsCleaning = 103;
     kCsOffLine = 104;
     kCsStandby = 105;
+    kCsReadonly = 106;
 }
 
 enum RecoverStat {
@@ -46,4 +48,9 @@ enum RecoverStat {
 enum SyncStatus {
     kSyncWrite = 0;
     kSyncDelete = 1;
+}
+
+enum RecoverPri {
+    kHigh = 0;
+    kLow = 1;
 }

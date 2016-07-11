@@ -18,7 +18,7 @@
 #include <common/logging.h>
 #include <common/string_util.h>
 
-#include "nameserver/block_mapping.h"
+#include "nameserver/block_mapping_manager.h"
 
 #include "nameserver/sync.h"
 #include "nameserver/chunkserver_manager.h"
@@ -31,6 +31,7 @@ DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
+DECLARE_int32(blockmapping_bucket_num);
 
 namespace baidu {
 namespace bfs {
@@ -47,16 +48,15 @@ common::Counter g_report_blocks;
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time), sync_(sync) {
     namespace_ = new NameSpace(false);
     if (sync_) {
-        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1));
+        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1, _2));
     }
-    block_mapping_ = new BlockMapping();
+    block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
-    chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_);
+    chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     CheckLeader();
     start_time_ = common::timer::get_micros();
     work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 
 NameServerImpl::~NameServerImpl() {
@@ -71,11 +71,12 @@ void NameServerImpl::CheckLeader() {
             LOG(FATAL, "LogRemote namespace update fail");
         }
         namespace_->RebuildBlockMap(boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1));
+        safe_mode_ = FLAGS_nameserver_safemode_time;
+        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
     } else {
         is_leader_ = false;
         work_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
-        //LOG(INFO, "Delay CheckLeader");
     }
 }
 
@@ -96,7 +97,7 @@ void NameServerImpl::CheckSafemode() {
 }
 void NameServerImpl::LeaveSafemode() {
     LOG(INFO, "Nameserver leave safemode");
-    block_mapping_->SetSafeMode(false);
+    block_mapping_manager_->SetSafeMode(false);
     safe_mode_ = 0;
 }
 
@@ -181,9 +182,9 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
-    int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
+    int old_id = chunkserver_manager_->GetChunkServerId(request->chunkserver_addr());
     if (cs_id != old_id) {
-        LOG(INFO, "Chunkserver %s id mismatch, old: C%d new: C%d",
+        LOG(INFO, "ChunkServer %s id mismatch, old: C%d new: C%d",
             request->chunkserver_addr().c_str(), old_id, cs_id);
         response->set_status(kUnknownCs);
         done->Run();
@@ -198,7 +199,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
             cs_id, block_id, block_version, block_size);
         // update block -> cs;
-        if (block_mapping_->UpdateBlockInfo(block_id, cs_id,
+        if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id,
                                             block_size,
                                             block_version)) {
             // update cs -> block
@@ -234,15 +235,14 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
-    int old_id = chunkserver_manager_->GetChunkserverId(request->chunkserver_addr());
+    int old_id = chunkserver_manager_->GetChunkServerId(request->chunkserver_addr());
     if (cs_id != old_id) {
-        LOG(INFO, "Chunkserver %s id mismatch, old: C%d new: C%d , need to re-register",
+        LOG(INFO, "ChunkServer %s id mismatch, old: C%d new: C%d , need to re-register",
             request->chunkserver_addr().c_str(), old_id, cs_id);
         response->set_status(kUnknownCs);
         done->Run();
         return;
     }
-    int priority = 0;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -251,7 +251,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
         // update block -> cs
         int64_t block_version = block.version();
-        if (!block_mapping_->UpdateBlockInfo(cur_block_id, cs_id,
+        if (!block_mapping_manager_->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
                                              block_version)) {
             response->add_obsolete_blocks(cur_block_id);
@@ -266,23 +266,24 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
     // recover replica
     if (!safe_mode_) {
-        std::map<int64_t, std::vector<std::string> > recover_blocks;
+        std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks, &hi_num);
-        for (std::map<int64_t, std::vector<std::string> >::iterator it = recover_blocks.begin();
-                it != recover_blocks.end(); ++it) {
+        int32_t priority = 0;
+        for (std::vector<std::pair<int64_t, std::vector<std::string> > >::iterator it =
+                recover_blocks.begin(); it != recover_blocks.end(); ++it) {
             ReplicaInfo* rep = response->add_new_replicas();
-            rep->set_block_id(it->first);
+            rep->set_block_id((*it).first);
             rep->set_priority(priority++ < hi_num);
-            for (std::vector<std::string>::iterator dest_it = (it->second).begin();
-                 dest_it != (it->second).end(); ++dest_it) {
+            for (std::vector<std::string>::iterator dest_it = (*it).second.begin();
+                 dest_it != (*it).second.end(); ++dest_it) {
                 rep->add_chunkserver_address(*dest_it);
             }
         }
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
-    block_mapping_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
+    block_mapping_manager_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     response->set_status(kOK);
     done->Run();
 }
@@ -300,7 +301,7 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_->ProcessRecoveredBlock(cs_id, request->blocks(i));
+        block_mapping_manager_->ProcessRecoveredBlock(cs_id, request->blocks(i));
     }
     done->Run();
 }
@@ -324,18 +325,22 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     }
     int replica_num = request->replica_num();
     NameServerLog log;
-    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &log);
+    std::vector<int64_t> blocks_to_remove;
+    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove, &log);
     response->set_status(status);
     if (status != kOK) {
         done->Run();
         return;
+    }
+    for (size_t i = 0; i < blocks_to_remove.size(); i++) {
+        block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
     }
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
                                (std::vector<FileInfo>*)NULL, _1));
 }
 
-bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (bool)> callback) {
+bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (int64_t)> callback) {
     if (sync_ == NULL) {
         if (!callback.empty()) {
             work_thread_pool_->AddTask(boost::bind(callback, true));
@@ -359,18 +364,15 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
                                      ::google::protobuf::Message* response,
                                      ::google::protobuf::Closure* done,
                                      std::vector<FileInfo>* removed,
-                                     bool ret) {
-    if (!ret) {
-        controller->SetFailed("SyncLogFail");
-    } else if (removed) {
+                                     int64_t seq) {
+    if (removed) {
         for (uint32_t i = 0; i < removed->size(); i++) {
-            block_mapping_->RemoveBlocksForFile((*removed)[i]);
+            block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
         }
+        delete removed;
     }
+    namespace_->CleanSnapshot(seq);
     done->Run();
-    if (!ret) {
-        LOG(FATAL, "SyncLog fail");
-    }
 }
 
 void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
@@ -400,7 +402,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     }
 
     if (file_info.blocks_size() > 0) {
-        block_mapping_->RemoveBlocksForFile(file_info);
+        block_mapping_manager_->RemoveBlocksForFile(file_info);
         file_info.clear_blocks();
     }
     /// replica num
@@ -408,7 +410,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
-        int64_t new_block_id = block_mapping_->NewBlockID();
+        NameServerLog log;
+        int64_t new_block_id = namespace_->GetNewBlockId(&log);
         LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
             path.c_str(), new_block_id, replica_num, request->client_address().c_str());
         file_info.add_blocks(new_block_id);
@@ -417,7 +420,6 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         for (int i = 0; i < replica_num; i++) {
             file_info.add_cs_addrs(chunkserver_manager_->GetChunkServerAddr(chains[i].first));
         }
-        NameServerLog log;
         if (!namespace_->UpdateFileInfo(file_info, &log)) {
             LOG(WARNING, "Update file info fail: %s", path.c_str());
             response->set_status(kUpdateError);
@@ -434,7 +436,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
         }
-        block_mapping_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
+        block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);
         response->set_status(kOK);
         LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
@@ -442,7 +444,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                                    (std::vector<FileInfo>*)NULL, _1));
     } else {
         LOG(WARNING, "AddBlock for %s failed.", path.c_str());
-        response->set_status(kGetChunkserverError);
+        response->set_status(kGetChunkServerError);
         done->Run();
     }
 }
@@ -460,6 +462,13 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
+    if (request->close_with_error()) {
+        LOG(INFO, "Sdk close %s with error", file_name.c_str());
+        block_mapping_manager_->MarkIncomplete(block_id);
+        response->set_status(kOK);
+        done->Run();
+        return;
+    }
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(INFO, "FinishBlock file not found: #%ld %s", block_id, file_name.c_str());
@@ -476,7 +485,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    StatusCode ret = block_mapping_->CheckBlockVersion(block_id, block_version);
+    StatusCode ret = block_mapping_manager_->CheckBlockVersion(block_id, block_version);
     response->set_status(ret);
     if (ret != kOK) {
         LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
@@ -515,7 +524,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             std::vector<int32_t> replica;
             int64_t block_size = 0;
-            if (!block_mapping_->GetLocatedBlock(block_id, &replica, &block_size)) {
+            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size)) {
                 LOG(WARNING, "GetFileLocation GetBlockReplica fail #%ld ", block_id);
                 break;
             }
@@ -551,7 +560,6 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
         done->Run();
         return;
     }
-    g_block_report.Inc();
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         boost::function<void ()> task =
@@ -592,7 +600,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
             for (int i = 0; i < out_info->blocks_size(); i++) {
                 int64_t block_id = out_info->blocks(i);
                 NSBlock nsblock;
-                if (!block_mapping_->GetBlock(block_id, &nsblock)) {
+                if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
                     continue;
                 }
                 file_size += nsblock.block_size;
@@ -716,7 +724,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         bool ret = namespace_->UpdateFileInfo(file_info, &log);
         assert(ret);
         for (int i = 0; i < file_info.blocks_size(); i++) {
-            if (block_mapping_->ChangeReplicaNum(file_info.blocks(i), replica_num)) {
+            if (block_mapping_manager_->ChangeReplicaNum(file_info.blocks(i), replica_num)) {
                 LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
             } else {
                 ///TODO: need to undo when file have multiple blocks?
@@ -742,7 +750,7 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
-        block_mapping_->AddNewBlock(block_id, file_info.replicas(),
+        block_mapping_manager_->AddNewBlock(block_id, file_info.replicas(),
                                     version, file_info.size(), NULL);
     }
 }
@@ -763,9 +771,69 @@ void NameServerImpl::SysStat(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+void NameServerImpl::ShutdownChunkServer(::google::protobuf::RpcController* controller,
+        const ShutdownChunkServerRequest* request,
+        ShutdownChunkServerResponse* response,
+        ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    StatusCode status = chunkserver_manager_->ShutdownChunkServer(request->chunkserver_address());
+    response->set_status(status);
+    done->Run();
+}
+
+void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* controller,
+        const ShutdownChunkServerStatRequest* request,
+        ShutdownChunkServerStatResponse* response,
+        ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    bool in_progress = chunkserver_manager_->GetShutdownChunkServerStat();
+    response->set_status(kOK);
+    response->set_in_offline_progress(in_progress);
+    done->Run();
+}
+
+void NameServerImpl::TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
+                                    std::string* output) {
+    for (std::map<int32_t, std::set<int64_t> >::const_iterator it =
+            chk_set.begin(); it != chk_set.end(); ++it) {
+        output->append(common::NumToString(it->first) + ": ");
+        const std::set<int64_t>& block_set = it->second;
+        std::string cur_cs_str;
+        TransToString(block_set, &cur_cs_str);
+        output->append(cur_cs_str);
+        output->append("<br>");
+    }
+}
+
+void NameServerImpl::TransToString(const std::set<int64_t>& block_set, std::string* output) {
+    for (std::set<int64_t>::const_iterator it = block_set.begin();
+            it != block_set.end(); ++it) {
+        output->append(common::NumToString(*it) + " ");
+        if (output->size() > 1024) {
+            output->append("...");
+            break;
+        }
+    }
+}
+
 void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
+    RecoverBlockSet recover_blocks;
+    block_mapping_manager_->ListRecover(&recover_blocks);
     std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
-    block_mapping_->ListRecover(&hi_recover, &lo_recover, &lost, &hi_check, &lo_check, &incomplete);
+    TransToString(recover_blocks.hi_recover, &hi_recover);
+    TransToString(recover_blocks.lo_recover, &lo_recover);
+    TransToString(recover_blocks.lost, &lost);
+    TransToString(recover_blocks.hi_check, &hi_check);
+    TransToString(recover_blocks.lo_check, &lo_check);
+    TransToString(recover_blocks.incomplete, &incomplete);
     std::string str =
             "<html><head><title>Recover Details</title>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
@@ -817,7 +885,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         }
         std::stringstream ss(it->second);
         int cs_id;
-        if (ss >> cs_id && chunkserver_manager_->KickChunkserver(cs_id)) {
+        if (ss >> cs_id && chunkserver_manager_->KickChunkServer(cs_id)) {
             response.content->Append("<body onload=\"history.back()\"></body>");
             return true;
         }
@@ -846,7 +914,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         "<table class=\"table\">"
         "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
         "<td>Disk quota</td><td>Disk used</td><td>Writing buffers</td>"
-        "<td>alive</td><td>last_check</td><tr>";
+        "<td>status</td><td>last_check</td><tr>";
     int dead_num = 0;
     int64_t total_quota = 0;
     int64_t total_data = 0;
@@ -891,6 +959,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             table_str += "dead";
         } else if (chunkserver.kick()) {
             table_str += "kicked";
+        } else if (chunkserver.status() == kCsReadonly) {
+            table_str += "Readonly";
         } else if (FLAGS_bfs_web_kick_enable) {
             table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
                       + "\">kick</a>)";
@@ -904,9 +974,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     table_str += "</table>";
 
-    int64_t lo_recover_num, hi_recover_num, lo_pending, hi_pending, lost_num, incomplete_num;
-    block_mapping_->GetStat(&lo_recover_num, &hi_recover_num, &lo_pending, &hi_pending,
-                            &lost_num, &incomplete_num);
+    RecoverBlockNum recover_num;
+    block_mapping_manager_->GetStat(-1, &recover_num);
     int32_t w_qps, r_qps;
     int64_t w_speed, r_speed, recover_speed;
     chunkserver_manager_->GetStat(&w_qps, &w_speed, &r_qps, &r_speed, &recover_speed);
@@ -931,16 +1000,16 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "Recover(hi/lo): " + common::NumToString(hi_recover_num) + "/" + common::NumToString(lo_recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(hi_pending) + "/" + common::NumToString(lo_pending) + "</br>";
-    str += "Lost: " + common::NumToString(lost_num) + "</br>";
-    str += "Incomplete: " + common::NumToString(incomplete_num) + "</br>";
+    str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "</br>";
+    str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
+    str += "Incomplete: " + common::NumToString(recover_num.incomplete_num) + "</br>";
     str += "<a href=\"/dfs/details\">Details</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "<h4 align=left>Chunkserver status</h4>";
+    str += "<h4 align=left>ChunkServer status</h4>";
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";

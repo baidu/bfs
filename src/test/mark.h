@@ -16,7 +16,9 @@ class Mark {
 public:
     Mark();
     void Put(const std::string& filename, const std::string& base, int thread_id);
+    bool FinishPut(File* file, int thread_id);
     void Read(const std::string& filename, const std::string& base, int thread_id);
+    bool FinishRead(File* file);
     void Delete(const std::string& filename);
     void PutWrapper(int thread_id);
     void ReadWrapper(int thread_id);
@@ -29,6 +31,7 @@ private:
     common::Counter put_counter_;
     common::Counter del_counter_;
     common::Counter read_counter_;
+    common::Counter all_counter_;
     common::ThreadPool* thread_pool_;
     Random** rand_;
     int64_t file_size_;
