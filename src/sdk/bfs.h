@@ -13,15 +13,6 @@
 #include <map>
 #include <vector>
 
-#include "proto/status_code.pb.h"
-
-namespace {
-    std::string GetErrorCodeString(int32_t error_code) {
-        assert(error_code < 0);
-        return baidu::bfs::StatusCode_Name(static_cast<baidu::bfs::StatusCode>(error_code));
-    }
-}
-
 namespace baidu {
 namespace bfs {
 
