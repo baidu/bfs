@@ -42,6 +42,8 @@ enum RecoverStat {
     kIncomplete = 4;
     kLost = 5;
     kBlockWriting = 6;
+    kHiPreRecover = 7;
+    kLoPreRecover = 8;
     kAny = 20;
 }
 

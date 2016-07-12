@@ -603,25 +603,42 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
 bool BlockMapping::RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id) {
     mu_.AssertHeld();
     std::set<int64_t>::iterator it = lo_recover_check_[cs_id].find(block_id);
-    if (it != lo_recover_check_[cs_id].end()){
+    if (it != lo_recover_check_[cs_id].end()) {
         lo_recover_check_[cs_id].erase(it);
         LOG(DEBUG, "Remove #%ld from lo_recover_check", block_id);
         if (lo_recover_check_[cs_id].empty()) {
             lo_recover_check_.erase(cs_id);
         }
-    } else {
-        it = hi_recover_check_[cs_id].find(block_id);
-        if (it != hi_recover_check_[cs_id].end()) {
-            LOG(DEBUG, "Remove #%ld from hi_recover_check", block_id);
-            hi_recover_check_[cs_id].erase(it);
-            if (hi_recover_check_[cs_id].empty()) {
-                hi_recover_check_.erase(cs_id);
-            }
-        } else {
-            return false;
-        }
+        return true;
     }
-    return true;
+    it = hi_recover_check_[cs_id].find(block_id);
+    if (it != hi_recover_check_[cs_id].end()) {
+        LOG(DEBUG, "Remove #%ld from hi_recover_check", block_id);
+        hi_recover_check_[cs_id].erase(it);
+        if (hi_recover_check_[cs_id].empty()) {
+            hi_recover_check_.erase(cs_id);
+        }
+        return true;
+    }
+    it = hi_pre_recover_check_[cs_id].find(block_id);
+    if (it != hi_pre_recover_check_[cs_id].end()) {
+        LOG(DEBUG, "Remove #%ld from hi_pre_recover_check", block_id);
+        hi_pre_recover_check_[cs_id].erase(it);
+        if (hi_pre_recover_check_[cs_id].empty()) {
+            hi_pre_recover_check_.erase(cs_id);
+        }
+        return true;
+    }
+    it = lo_pre_recover_check_[cs_id].find(block_id);
+    if (it != lo_pre_recover_check_[cs_id].end()) {
+        LOG(DEBUG, "Remove #%ld from lo_pre_recover_check", block_id);
+        lo_pre_recover_check_[cs_id].erase(it);
+        if (lo_pre_recover_check_[cs_id].empty()) {
+            lo_pre_recover_check_.erase(cs_id);
+        }
+        return true;
+    }
+    return false;
 }
 void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id) {
     MutexLock lock(&mu_);
@@ -656,26 +673,35 @@ void BlockMapping::GetCloseBlocks(int32_t cs_id,
 void BlockMapping::GetStat(int32_t cs_id, RecoverBlockNum* recover_num) {
     MutexLock lock(&mu_);
     recover_num->lo_recover_num = lo_pri_recover_.size();
-    if (cs_id != -1) {
-        recover_num->lo_pending += lo_recover_check_[cs_id].size();
-    } else {
-        for (CheckList::iterator it = lo_recover_check_.begin(); it != lo_recover_check_.end(); ++it) {
-            recover_num->lo_pending += (it->second).size();
-        }
-    }
-    if (cs_id != -1) {
-        recover_num->hi_pending += hi_recover_check_[cs_id].size();
-    } else {
-        for (CheckList::iterator it = hi_recover_check_.begin(); it != hi_recover_check_.end(); ++it) {
-            recover_num->hi_pending += (it->second).size();
-        }
-    }
     recover_num->hi_recover_num = hi_pri_recover_.size();
+    recover_num->lo_pre_recover_num = lo_pre_recover_.size();
+    recover_num->hi_pre_recover_num = hi_pre_recover_.size();
     recover_num->lost_num = lost_blocks_.size();
     if (cs_id != -1) {
+        recover_num->lo_pending += lo_recover_check_[cs_id].size();
+        recover_num->hi_pending += hi_recover_check_[cs_id].size();
+        recover_num->lo_pre_pending += lo_pre_recover_check_[cs_id].size();
+        recover_num->hi_pre_pending += hi_pre_recover_check_[cs_id].size();
         recover_num->incomplete_num += incomplete_[cs_id].size();
     } else {
-        for (CheckList::iterator it = incomplete_.begin(); it != incomplete_.end(); ++it) {
+        for (CheckList::iterator it = lo_recover_check_.begin();
+                it != lo_recover_check_.end(); ++it) {
+            recover_num->lo_pending += (it->second).size();
+        }
+        for (CheckList::iterator it = hi_recover_check_.begin();
+                it != hi_recover_check_.end(); ++it) {
+            recover_num->hi_pending += (it->second).size();
+        }
+        for (CheckList::iterator it = lo_pre_recover_check_.begin();
+                it != lo_pre_recover_check_.end(); ++it) {
+            recover_num->lo_pre_pending += (it->second).size();
+        }
+        for (CheckList::iterator it = hi_pre_recover_check_.begin();
+                it != hi_pre_recover_check_.end(); ++it) {
+            recover_num->hi_pre_pending += (it->second).size();
+        }
+        for (CheckList::iterator it = incomplete_.begin();
+                it != incomplete_.end(); ++it) {
             recover_num->incomplete_num += (it->second).size();
         }
     }
@@ -707,6 +733,20 @@ void BlockMapping::ListRecover(RecoverBlockSet* recover_blocks, int32_t upbound_
         }
         recover_blocks->hi_recover.insert(*it);
     }
+    for (std::set<int64_t>::iterator it = lo_pre_recover_.begin();
+            it != lo_pre_recover_.end(); ++it) {
+        recover_blocks->lo_pre_pending.insert(*it);
+        if (recover_blocks->lo_pre_pending.size() == (size_t)upbound_size) {
+            break;
+        }
+    }
+    for (std::set<int64_t>::iterator it = hi_pre_recover_.begin();
+            it != hi_pre_recover_.end(); ++it) {
+        recover_blocks->hi_pre_pending.insert(*it);
+        if (recover_blocks->hi_pre_pending.size() == (size_t)upbound_size) {
+            break;
+        }
+    }
     for (std::set<int64_t>::iterator it = lost_blocks_.begin();
             it != lost_blocks_.end(); ++it) {
         if (recover_blocks->lost.size() == (size_t)upbound_size) {
@@ -717,6 +757,8 @@ void BlockMapping::ListRecover(RecoverBlockSet* recover_blocks, int32_t upbound_
 
     ListCheckList(hi_recover_check_, &(recover_blocks->hi_check));
     ListCheckList(lo_recover_check_, &(recover_blocks->lo_check));
+    ListCheckList(hi_pre_recover_check_, &(recover_blocks->hi_pre_check));
+    ListCheckList(lo_pre_recover_check_, &(recover_blocks->lo_pre_check));
     ListCheckList(incomplete_, &(recover_blocks->incomplete));
 }
 
@@ -774,28 +816,51 @@ void BlockMapping::TryRecover(NSBlock* block) {
     }
     int64_t block_id = block->id;
     if (block->replica.size() < block->expect_replica_num) {
-        if (block->replica.size() == 0 && block->recover_stat != kLost) {
-            LOG(INFO, "[TryRecover] lost block #%ld ", block_id);
-            lost_blocks_.insert(block_id);
-            SetState(block, kLost);
-            lo_pri_recover_.erase(block_id);
-            hi_pri_recover_.erase(block_id);
-        } else if (block->replica.size() == 1 && block->recover_stat != kHiRecover) {
-            hi_pri_recover_.insert(block_id);
-            LOG(INFO, "[TryRecover] need more recover: #%ld %s->kHiRecover",
-                block_id, RecoverStat_Name(block->recover_stat).c_str());
-            SetState(block, kHiRecover);
-            lost_blocks_.erase(block_id);
-            lo_pri_recover_.erase(block_id);
-        } else if (block->replica.size() > 1 && block->recover_stat != kLoRecover) {
-            lo_pri_recover_.insert(block_id);
-            LOG(INFO, "[TryRecover] need more recover: #%ld %s->kLoRecover",
-                block_id, RecoverStat_Name(block->recover_stat).c_str());
-            SetState(block, kLoRecover);
-            lost_blocks_.erase(block_id);
-            hi_pri_recover_.erase(block_id);
-        } // else  Don't change recover_stat
-        return;
+        if (block->readonly_replica.empty()) {
+            if (block->replica.size() == 0 &&
+                    block->recover_stat != kLost) {
+                LOG(INFO, "[TryRecover] lost block #%ld ", block_id);
+                lost_blocks_.insert(block_id);
+                SetState(block, kLost);
+                lo_pri_recover_.erase(block_id);
+                hi_pri_recover_.erase(block_id);
+            } else if (block->replica.size() == 1 &&
+                    block->recover_stat != kHiRecover) {
+                hi_pri_recover_.insert(block_id);
+                LOG(INFO, "[TryRecover] need more recover: #%ld %s->kHiRecover",
+                        block_id, RecoverStat_Name(block->recover_stat).c_str());
+                SetState(block, kHiRecover);
+                lost_blocks_.erase(block_id);
+                lo_pri_recover_.erase(block_id);
+            } else if (block->replica.size() == 2 &&
+                    block->recover_stat != kLoRecover) {
+                lo_pri_recover_.insert(block_id);
+                LOG(INFO, "[TryRecover] need more recover: #%ld %s->kLoRecover",
+                        block_id, RecoverStat_Name(block->recover_stat).c_str());
+                SetState(block, kLoRecover);
+                lost_blocks_.erase(block_id);
+                hi_pri_recover_.erase(block_id);
+            } // else  Don't change recover_stat
+            return;
+        } else {
+            //TODO deal with stat transfer between hi/lo recover and pre recover
+            if (block->readonly_replica.size() >= 2 &&
+                    block->recover_stat != kHiPreRecover) {
+                hi_pre_recover_.insert(block_id);
+                LOG(INFO, "[TryRecover] need more recover: #%ld %s->kHiPreRecover",
+                        block_id, RecoverStat_Name(block->recover_stat).c_str());
+                SetState(block, kHiPreRecover);
+                lo_pre_recover_.erase(block_id);
+            } else if (block->readonly_replica.size() == 1 &&
+                    block->recover_stat != kLoPreRecover) {
+                lo_pre_recover_.insert(block_id);
+                LOG(INFO, "[TryRecover] need more recover: #%ld %s->kLoPreRecover",
+                        block_id, RecoverStat_Name(block->recover_stat).c_str());
+                SetState(block, kLoPreRecover);
+                hi_pre_recover_.erase(block_id);
+            }
+            return;
+        }
     }
     if (block->recover_stat != kNotInRecover) {
         LOG(INFO, "Block #%ld V%ld %ld R%lu back to normal from %s",

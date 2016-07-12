@@ -24,10 +24,11 @@ struct NSBlock {
     int64_t id;
     int64_t version;
     std::set<int32_t> replica;
+    std::set<int32_t> incomplete_replica;
+    std::set<int32_t> readonly_replica;
     int64_t block_size;
     uint32_t expect_replica_num;
     RecoverStat recover_stat;
-    std::set<int32_t> incomplete_replica;
     NSBlock();
     NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size);
     bool operator<(const NSBlock &b) const {
@@ -38,20 +39,30 @@ struct NSBlock {
 struct RecoverBlockNum {
     int64_t lo_recover_num;
     int64_t hi_recover_num;
+    int64_t lo_pre_recover_num;
+    int64_t hi_pre_recover_num;
     int64_t lo_pending;
     int64_t hi_pending;
+    int64_t lo_pre_pending;
+    int64_t hi_pre_pending;
     int64_t lost_num;
     int64_t incomplete_num;
-    RecoverBlockNum() : lo_recover_num(0), hi_recover_num(0), lo_pending(0),
-                        hi_pending(0), lost_num(0), incomplete_num(0) {}
+    RecoverBlockNum() : lo_recover_num(0), hi_recover_num(0), lo_pre_recover_num(0),
+                        hi_pre_recover_num(0), lo_pending(0), hi_pending(0),
+                        lo_pre_pending(0), hi_pre_pending(0),
+                        lost_num(0), incomplete_num(0) {}
 };
 
 struct RecoverBlockSet {
     std::set<int64_t> hi_recover;
     std::set<int64_t> lo_recover;
+    std::set<int64_t> hi_pre_pending;
+    std::set<int64_t> lo_pre_pending;
     std::set<int64_t> lost;
     std::map<int32_t, std::set<int64_t> > hi_check;
     std::map<int32_t, std::set<int64_t> > lo_check;
+    std::map<int32_t, std::set<int64_t> > hi_pre_check;
+    std::map<int32_t, std::set<int64_t> > lo_pre_check;
     std::map<int32_t, std::set<int64_t> > incomplete;
 };
 
@@ -112,9 +123,13 @@ private:
 
     CheckList hi_recover_check_;
     CheckList lo_recover_check_;
+    CheckList hi_pre_recover_check_;
+    CheckList lo_pre_recover_check_;
     CheckList incomplete_;
     std::set<int64_t> lo_pri_recover_;
     std::set<int64_t> hi_pri_recover_;
+    std::set<int64_t> hi_pre_recover_;
+    std::set<int64_t> lo_pre_recover_;
     std::set<int64_t> lost_blocks_;
 };
 
