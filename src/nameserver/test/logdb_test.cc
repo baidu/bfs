@@ -158,7 +158,7 @@ TEST_F(LogDBTest, Write) {
     WriteLog_Helper(3, 2, logdb);
     ReadLog_Helper(0, 5, logdb);
     std::string entry;
-    ASSERT_EQ(logdb->Read(6, &entry), kNotFound);
+    ASSERT_EQ(logdb->Read(6, &entry), kNsNotFound);
     ASSERT_EQ(logdb->Write(1, "bad"), kBadParameter);
     ASSERT_EQ(logdb->Write(7, "bad"), kBadParameter);
     delete logdb;
@@ -268,7 +268,7 @@ TEST_F(LogDBTest, DeleteUpTo) {
     ASSERT_EQ(logdb->DeleteUpTo(81515), kOK);
     ASSERT_EQ(logdb->DeleteUpTo(200000), kBadParameter);
     std::string str;
-    ASSERT_EQ(logdb->Read(81515, &str), kNotFound);
+    ASSERT_EQ(logdb->Read(81515, &str), kNsNotFound);
     ReadLog_Helper(81516, 10, logdb);
     delete logdb;
 

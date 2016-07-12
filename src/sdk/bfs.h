@@ -18,32 +18,26 @@
 
 namespace {
     int32_t GetErrorCode(baidu::bfs::StatusCode stat) {
-        switch (stat) {
-            case baidu::bfs::kOK :
+        if (stat < 100) {
+            if (stat == 0) {
                 return OK;
-            case baidu::bfs::kBadParameter :
+            } else {
+                return UNKNOWN_ERROR;
+            }
+        }
+        switch (stat / 100) {
+            case 1:
                 return BAD_PARAMETER;
-            case baidu::bfs::kUpdateError :
-            case baidu::bfs::kSafeMode :
+            case 2:
                 return META_NOT_AVAILABLE;
-            case baidu::bfs::kGetChunkServerError :
-                return NO_ENOUGH_CS;
-            case baidu::bfs::kCsTooMuchUnfinishedWrite:
-            case baidu::bfs::kBlockExist :
-            case baidu::bfs::kSyncMetaFailed :
-            case baidu::bfs::kWriteError :
-            case baidu::bfs::kBlockClosed :
-            case baidu::bfs::kReadOnly :
-                return WRITE_ERROR;
-            case baidu::bfs::kReadError :
-                return READ_ERROR;
-            case baidu::bfs::kNotFound:
+            case 3:
+                return IO_ERROR;
+            case 4:
                 return NOT_FOUND;
-            case baidu::bfs::kDirNotEmpty :
-            case baidu::bfs::kTargetDirExists :
-                return ILLEGAL_OPERATION;
-            default :
-                return ILLEGAL_OPERATION;
+            case 5:
+                return NO_ENOUGH_CS;
+            default:
+                return UNKNOWN_ERROR;
         }
     }
 }

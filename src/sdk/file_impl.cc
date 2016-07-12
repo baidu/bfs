@@ -153,7 +153,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
         } else if (located_blocks_.blocks_[0].chains_size() == 0) {
             LOG(WARNING, "No located chunkserver of block #%ld",
                 located_blocks_.blocks_[0].block_id());
-            return READ_ERROR;
+            return IO_ERROR;
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
         if (last_chunkserver_index_ == -1 || !chunkserver_) {
@@ -221,7 +221,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
     if (!ret || response.status() != kOK) {
         LOG(WARNING, "Read block %ld fail, ret= %d status= %s\n", block_id, ret, StatusCode_Name(response.status()).c_str());
         if (!ret) {
-            return RPC_ERROR;
+            return TIMEOUT;
         } else {
             return GetErrorCode(response.status());
         }
@@ -250,7 +250,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
 int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
     //printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
     if (open_flags_ != O_RDONLY) {
-        return ILLEGAL_OPERATION;
+        return BAD_PARAMETER;
     }
     MutexLock lock(&read_offset_mu_);
     if (whence == SEEK_SET) {
@@ -267,7 +267,7 @@ int32_t FileImpl::Read(char* buf, int32_t read_len) {
     //LOG(DEBUG, "[%p] Read[%s:%ld] offset= %ld\n",
     //    this, _name.c_str(), read_len, read_offset_);
     if (open_flags_ != O_RDONLY) {
-        return ILLEGAL_OPERATION;
+        return BAD_PARAMETER;
     }
     MutexLock lock(&read_offset_mu_);
     int32_t ret = Pread(buf, read_len, read_offset_, true);
@@ -291,7 +291,7 @@ int32_t FileImpl::AddBlock() {
         LOG(WARNING, "Nameserver AddBlock fail: %s, ret= %d, status= %s",
             name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
         if (!ret) {
-            return RPC_ERROR;
+            return TIMEOUT;
         } else {
             return GetErrorCode(response.status());
         }
@@ -337,7 +337,7 @@ int32_t FileImpl::AddBlock() {
             delete block_for_write_;
             block_for_write_ = NULL;
             if (!ret) {
-                return RPC_ERROR;
+                return TIMEOUT;
             } else {
                 return GetErrorCode(response.status());
             }
@@ -353,11 +353,11 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
     {
         MutexLock lock(&mu_, "Write", 1000);
         if (!(open_flags_ & O_WRONLY)) {
-            return ILLEGAL_OPERATION;
+            return BAD_PARAMETER;
         } else if (bg_error_) {
-            return WRITE_ERROR;
+            return IO_ERROR;
         } else if (closed_) {
-            return ILLEGAL_OPERATION;
+            return BAD_PARAMETER;
         }
         common::atomic_inc(&back_writing_);
     }
@@ -617,7 +617,7 @@ int32_t FileImpl::Flush() {
 int32_t FileImpl::Sync(int32_t timeout) {
     common::timer::AutoTimer at(50, "Sync", name_.c_str());
     if (open_flags_ != O_WRONLY) {
-        return ILLEGAL_OPERATION;
+        return BAD_PARAMETER;
     }
     MutexLock lock(&mu_, "Sync", 1000);
     if (write_buf_ && write_buf_->Size()) {
@@ -633,7 +633,7 @@ int32_t FileImpl::Sync(int32_t timeout) {
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
     if (bg_error_) {
-        return WRITE_ERROR;
+        return IO_ERROR;
     } else if (back_writing_) {
         return TIMEOUT;
     }
@@ -674,7 +674,7 @@ int32_t FileImpl::Close() {
     int32_t ret = OK;
     if (bg_error_) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
-        ret = WRITE_ERROR;
+        ret = IO_ERROR;
     }
     if (need_report_finish) {
         FinishBlockRequest request;
@@ -691,7 +691,7 @@ int32_t FileImpl::Close() {
             LOG(WARNING, "Close file %s fail, finish report returns %d, status: %s",
                     name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
             if (!rpc_ret) {
-                return RPC_ERROR;
+                return TIMEOUT;
             } else {
                 return GetErrorCode(response.status());
             }

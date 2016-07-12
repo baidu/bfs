@@ -482,7 +482,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
         block = block_manager_->FindBlock(block_id);
         if (!block) {
             LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
-            response->set_status(kNotFound);
+            response->set_status(kCsNotFound);
             g_unfinished_bytes.Sub(databuf.size());
             done->Run();
             return;
@@ -589,7 +589,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     int64_t find_start = common::timer::get_micros();
     Block* block = block_manager_->FindBlock(block_id);
     if (block == NULL) {
-        status = kNotFound;
+        status = kCsNotFound;
         LOG(WARNING, "ReadBlock not found: #%ld offset: %ld len: %d\n",
                 block_id, offset, read_len);
     } else {
@@ -749,7 +749,7 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
     Block* block = block_manager_->FindBlock(block_id);
     int64_t find_end = common::timer::get_micros();
     if (block == NULL) {
-        status = kNotFound;
+        status = kCsNotFound;
         LOG(WARNING, "GetBlockInfo not found: #%ld ", block_id);
     } else {
         int64_t block_size = block->GetMeta().block_size();

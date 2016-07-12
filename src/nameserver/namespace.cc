@@ -236,7 +236,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     if (exist) {
         if ((flags & O_TRUNC) == 0) {
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
-            return kNotOK;
+            return kBadParameter;
         } else {
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 blocks_to_remove->push_back(file_info.blocks(i));
@@ -262,7 +262,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
         return kOK;
     } else {
         LOG(WARNING, "CreateFile %s fail: db put fail %s", path.c_str(), s.ToString().c_str());
-        return kNotOK;
+        return kUpdateError;
     }
 }
 
@@ -271,7 +271,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
     outputs->Clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
-        return kNotFound;
+        return kNsNotFound;
     }
     int64_t entry_id = info.entry_id();
     LOG(DEBUG, "ListDirectory entry_id= E%ld ", entry_id);
@@ -310,7 +310,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     FileInfo old_file;
     if (!LookUp(old_path, &old_file)) {
         LOG(INFO, "Rename not found: %s\n", old_path.c_str());
-        return kNotFound;
+        return kNsNotFound;
     }
 
     std::vector<std::string> new_paths;
@@ -324,7 +324,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         FileInfo path_file;
         if (!LookUp(parent_id, new_paths[i], &path_file)) {
             LOG(INFO, "Rename to %s which not exist", new_paths[i].c_str());
-            return kNotFound;
+            return kNsNotFound;
         }
         if (!IsDir(path_file.type())) {
             LOG(INFO, "Rename %s to %s fail: %s is not a directory",
@@ -403,7 +403,7 @@ StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed
         }
     } else {
         LOG(INFO, "Unlink not found: %s\n", path.c_str());
-        ret_status = kNotFound;
+        ret_status = kNsNotFound;
     }
     return ret_status;
 }
@@ -415,7 +415,7 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
     std::string store_key;
     if (!LookUp(path, &info)) {
         LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
-        return kNotFound;
+        return kNsNotFound;
     } else if (!IsDir(info.type())) {
         LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
         return kBadParameter;

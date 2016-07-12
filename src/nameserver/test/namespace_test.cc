@@ -188,11 +188,11 @@ TEST_F(NameSpaceTest, RemoveFile) {
     ASSERT_EQ(kBadParameter, ns.RemoveFile("/dir1", &file_removed));
     ASSERT_EQ(kOK, ns.RemoveFile("/file2",&file_removed));
     ASSERT_EQ(3, file_removed.entry_id());
-    ASSERT_EQ(kBadParameter, ns.RemoveFile("/",&file_removed));
-    ASSERT_EQ(kOK, ns.RemoveFile("/file1",&file_removed));
+    ASSERT_EQ(kBadParameter, ns.RemoveFile("/", &file_removed));
+    ASSERT_EQ(kOK, ns.RemoveFile("/file1", &file_removed));
     ASSERT_EQ(2, file_removed.entry_id());
-    ASSERT_EQ(kNotFound, ns.RemoveFile("/file2",&file_removed));
-    ASSERT_EQ(kNotFound, ns.RemoveFile("/file3",&file_removed));
+    ASSERT_EQ(kNsNotFound, ns.RemoveFile("/file2", &file_removed));
+    ASSERT_EQ(kNsNotFound, ns.RemoveFile("/file3", &file_removed));
 }
 
 TEST_F(NameSpaceTest, DeleteDirectory) {
@@ -229,8 +229,8 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     ASSERT_EQ(files_removed.size(), 2U);
     ASSERT_EQ(files_removed[0].entry_id(), 6);
     ASSERT_EQ(files_removed[1].entry_id(), 7);
-    ASSERT_EQ(kNotFound, ns.ListDirectory("/dir1/subdir1", &outputs));
-    ASSERT_EQ(kNotFound, ns.ListDirectory("/dir1", &outputs));
+    ASSERT_EQ(kNsNotFound, ns.ListDirectory("/dir1/subdir1", &outputs));
+    ASSERT_EQ(kNsNotFound, ns.ListDirectory("/dir1", &outputs));
 
     // Use rmr to delete a file
     ASSERT_EQ(kBadParameter, ns.DeleteDirectory("/file1", true, &files_removed));

@@ -5,23 +5,25 @@ enum StatusCode {
     kNotOK = 1;
     kUnknownCs = 2;
     kVersionError = 3;
-    kNotFound = 4;
-    kBlockExist = 14;
-    kSyncMetaFailed = 15;
-    kWriteError = 5;
-    kBlockClosed = 13;
-    kReadError = 6;
-    kBadParameter = 7;
-    kUpdateError = 8;
-    kGetChunkServerError = 9;
-    kCsTooMuchPendingBuffer = 12;
-    kReadOnly = 16;
-    kCsTooMuchUnfinishedWrite = 18;
-    kSafeMode = 20;
-    kIsFollower = 21;
-    kInShutdownProgress = 22;
-    kDirNotEmpty = 23;
-    kTargetDirExists = 24;
+    kIsFollower = 4;
+    kInShutdownProgress = 5;
+    kBadParameter = 100;
+    kDirNotEmpty = 101;
+    kTargetDirExists = 102;
+    kUpdateError = 200;
+    kSafeMode = 201;
+    kCsTooMuchUnfinishedWrite = 300;
+    kBlockExist = 301;
+    kSyncMetaFailed = 302;
+    kWriteError = 303;
+    kBlockClosed = 304;
+    kReadOnly = 305;
+    kReadError = 306;
+    kCsTooMuchPendingBuffer = 307;
+    kNsNotFound = 400;
+    kCsNotFound = 401;
+    kGetChunkServerError = 500;
+    kTimeout = 600;
 }
 
 enum ChunkServerStatus {
