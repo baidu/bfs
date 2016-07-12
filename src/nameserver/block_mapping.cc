@@ -576,13 +576,18 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                      RecoverPri pri) {
     MutexLock lock(&mu_);
     if ((pri == kHigh && hi_pri_recover_.empty()) ||
-            (pri == kLow && lo_pri_recover_.empty())) {
+            (pri == kLow && lo_pri_recover_.empty()) ||
+            (pri == kPreHigh && hi_pre_recover_.empty()) ||
+            (pri == kPreLow && lo_pre_recover_.empty())) {
         return;
     }
     std::set<int64_t>& hi_check_set = hi_recover_check_[cs_id];
     std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
-    LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
-        cs_id, hi_check_set.size(), lo_check_set.size());
+    std::set<int64_t>& hi_pre_check_set = hi_pre_recover_check_[cs_id];
+    std::set<int64_t>& lo_pre_check_set = lo_pre_recover_check_[cs_id];
+    LOG(DEBUG, "C%d has %lu/%lu/%lu/%lu pending_recover blocks",
+        cs_id, hi_check_set.size(), lo_check_set.size(),
+        hi_pre_check_set.size(), lo_pre_check_set.size());
     /*
     int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
     quota = quota < block_num ? quota : block_num;
@@ -591,12 +596,20 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     if (pri == kHigh) {
         target_set = &hi_pri_recover_;
         check_set = &hi_check_set;
-    } else {
+    } else if (pri == kLow) {
         target_set = &lo_pri_recover_;
         check_set = &lo_check_set;
+    } else if (pri == kPreHigh) {
+        target_set = &hi_pre_recover_;
+        check_set = &hi_pre_check_set;
+    } else {
+        target_set = &lo_pre_recover_;
+        check_set = &lo_pre_check_set;
     }
     PickRecoverFromSet(cs_id, block_num, target_set, recover_blocks, check_set);
-    LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
+    LOG(DEBUG, "After Pick: recover num(hi/lo/hi_pre/lo_pre): %lu/%lu/%lu/%lu ",
+            hi_pri_recover_.size(), lo_pri_recover_.size(),
+            hi_pre_recover_.size(), lo_pre_recover_.size());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
 

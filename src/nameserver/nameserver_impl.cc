@@ -836,9 +836,11 @@ void NameServerImpl::TransToString(const std::set<int64_t>& block_set, std::stri
 void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     RecoverBlockSet recover_blocks;
     block_mapping_manager_->ListRecover(&recover_blocks);
-    std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
+    std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete, hi_pre_recover, lo_pre_recover;
     TransToString(recover_blocks.hi_recover, &hi_recover);
     TransToString(recover_blocks.lo_recover, &lo_recover);
+    TransToString(recover_blocks.hi_pre_pending, &hi_pre_recover);
+    TransToString(recover_blocks.lo_pre_pending, &lo_pre_recover);
     TransToString(recover_blocks.lost, &lost);
     TransToString(recover_blocks.hi_check, &hi_check);
     TransToString(recover_blocks.lo_check, &lo_check);
@@ -864,7 +866,11 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     str += "<tr><td>hi_recover</td></tr>";
     str += "<tr><td>" + hi_recover + "</td></tr>";
     str += "<tr><td>lo_recover</td></tr>";
-    str += "<tr><td>" + lo_recover + "</td></tr></table>";
+    str += "<tr><td>" + lo_recover + "</td></tr>";
+    str += "<tr><td>hi_pre_recover</td></tr>";
+    str += "<tr><td>" + hi_pre_recover + "</td></tr>";
+    str += "<tr><td>lo_pre_recover</td></tr>";
+    str += "<tr><td>" + lo_pre_recover + "</td></tr></table>";
 
     str += "</div></body><html>";
     response->content->Append(str);
@@ -1009,8 +1015,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "</br>";
+    str += "Recover(hi/lo/hi_pre/lo_pre): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "/" + common::NumToString(recover_num.hi_pre_recover_num) + "/" + common::NumToString(recover_num.lo_pre_recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "/" + common::NumToString(recover_num.hi_pre_pending) + "/" + common::NumToString(recover_num.lo_pre_pending) + "</br>";
     str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(recover_num.incomplete_num) + "</br>";
     str += "<a href=\"/dfs/details\">Details</a>";

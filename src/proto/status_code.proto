@@ -55,4 +55,6 @@ enum SyncStatus {
 enum RecoverPri {
     kHigh = 0;
     kLow = 1;
+    kPreHigh = 2;
+    kPreLow = 3;
 }
