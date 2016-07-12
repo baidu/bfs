@@ -50,7 +50,7 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     }
 }
 
-void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callback) {
+void MasterSlaveImpl::Init(boost::function<void (const std::string& log, int64_t)> callback) {
     log_callback_ = callback;
     if (logdb_->GetLargestIdx(&current_idx_) == kReadError) {
         LOG(FATAL, "\033[32m[Sync]\033[0m  Read current_idx_ failed");
@@ -72,7 +72,7 @@ void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callba
                     applied_idx_ + 1, StatusCode_Name(ret).c_str());
         }
         if (!entry.empty()) {
-            log_callback_(entry);
+            log_callback_(entry, -1);
         }
         applied_idx_++;
     }
@@ -134,23 +134,30 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
     return true;
 }
 
-void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)> callback) {
+void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (int64_t)> callback) {
     if (!IsLeader()) {
         return;
     }
     MutexLock lock(&mu_);
-    if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
-        LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld ", current_idx_ + 1);
+    StatusCode s = logdb_->Write(current_idx_ + 1, entry);
+    if (s != kOK) {
+        if (s != kWriteError) {
+            LOG(INFO, "\033[32m[Sync]\033[0m write logdb failed index %ld reason %s",
+                current_idx_, StatusCode_Name(s).c_str());
+        } else {
+            LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld ", current_idx_ + 1);
+        }
     }
+    log_callback_(entry, current_idx_ + 1);
     current_idx_++;
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
         callbacks_.insert(std::make_pair(current_idx_, callback));
-        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,this,
+        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::ProcessCallbck,this,
                                             current_idx_, true));
     } else {
         callbacks_.insert(std::make_pair(current_idx_, callback));
         LOG(DEBUG, "\033[32m[Sync]\033[0m insert callback index = %d", current_idx_);
-        thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::PorcessCallbck,
+        thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::ProcessCallbck,
                                                    this, current_idx_, true));
         cond_.Signal();
     }
@@ -202,7 +209,7 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     }
     current_idx_++;
     mu_.Unlock();
-    log_callback_(request->log_data());
+    log_callback_(request->log_data(), -1);
     applied_idx_ = current_idx_;
     response->set_success(true);
     done->Run();
@@ -255,7 +262,7 @@ void MasterSlaveImpl::ReplicateLog() {
             LOG(INFO, "[Sync] set sync_idx_ to %d", sync_idx_);
             continue;
         }
-        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_ + 1, false));
+        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::ProcessCallbck, this, sync_idx_ + 1, false));
         mu_.Lock();
         sync_idx_++;
         LOG(DEBUG, "\033[32m[Sync]\033[0m Replicate log done. sync_idx_ = %d, current_idx_ = %d",
@@ -266,16 +273,16 @@ void MasterSlaveImpl::ReplicateLog() {
     log_done_.Signal();
 }
 
-void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
-    boost::function<void (bool)> callback;
+void MasterSlaveImpl::ProcessCallbck(int64_t index, bool timeout_check) {
+    boost::function<void (int64_t)> callback;
     MutexLock lock(&mu_);
-    std::map<int64_t, boost::function<void (bool)> >::iterator it = callbacks_.find(index);
+    std::map<int64_t, boost::function<void (int64_t)> >::iterator it = callbacks_.find(index);
     if (it != callbacks_.end()) {
         callback = it->second;
         LOG(DEBUG, "\033[32m[Sync]\033[0m calling callback %d", it->first);
         callbacks_.erase(it);
         mu_.Unlock();
-        callback(true);
+        callback(index);
         mu_.Lock();
         if (index > applied_idx_) {
             applied_idx_ = index;

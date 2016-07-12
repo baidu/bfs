@@ -113,16 +113,17 @@ private:
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
-    bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
+    bool LogRemote(const NameServerLog& log, boost::function<void (int64_t)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,
                          ::google::protobuf::Message* response,
                          ::google::protobuf::Closure* done,
                          std::vector<FileInfo>* removed,
-                         bool ret);
+                         int64_t seq);
     void TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
                        std::string* output);
     void TransToString(const std::set<int64_t>& block_set, std::string* output);
+
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;
