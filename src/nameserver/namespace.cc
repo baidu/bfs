@@ -236,7 +236,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     if (exist) {
         if ((flags & O_TRUNC) == 0) {
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
-            return kBadParameter;
+            return kFileExists;
         } else {
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 blocks_to_remove->push_back(file_info.blocks(i));
