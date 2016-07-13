@@ -836,7 +836,8 @@ void NameServerImpl::TransToString(const std::set<int64_t>& block_set, std::stri
 void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     RecoverBlockSet recover_blocks;
     block_mapping_manager_->ListRecover(&recover_blocks);
-    std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete, hi_pre_recover, lo_pre_recover;
+    std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
+    std::string hi_pre_recover, lo_pre_recover, hi_pre_check, lo_pre_check;
     TransToString(recover_blocks.hi_recover, &hi_recover);
     TransToString(recover_blocks.lo_recover, &lo_recover);
     TransToString(recover_blocks.hi_pre_pending, &hi_pre_recover);
@@ -844,6 +845,8 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     TransToString(recover_blocks.lost, &lost);
     TransToString(recover_blocks.hi_check, &hi_check);
     TransToString(recover_blocks.lo_check, &lo_check);
+    TransToString(recover_blocks.hi_pre_check, &hi_pre_check);
+    TransToString(recover_blocks.lo_pre_check, &lo_pre_check);
     TransToString(recover_blocks.incomplete, &incomplete);
     std::string str =
             "<html><head><title>Recover Details</title>\n"
@@ -863,6 +866,10 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     str += "<tr><td>" + hi_check + "</td></tr>";
     str += "<tr><td>lo_check</td></tr>";
     str += "<tr><td>" + lo_check + "</td></tr>";
+    str += "<tr><td>hi_pre_check</td></tr>";
+    str += "<tr><td>" + hi_pre_check + "</td></tr>";
+    str += "<tr><td>lo_pre_check</td></tr>";
+    str += "<tr><td>" + lo_pre_check + "</td></tr>";
     str += "<tr><td>hi_recover</td></tr>";
     str += "<tr><td>" + hi_recover + "</td></tr>";
     str += "<tr><td>lo_recover</td></tr>";

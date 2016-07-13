@@ -135,8 +135,12 @@ void BlockMappingManager::GetStat(int32_t cs_id, RecoverBlockNum* recover_num) {
         block_mapping_[i]->GetStat(cs_id, &cur_num);
         recover_num->lo_recover_num += cur_num.lo_recover_num;
         recover_num->hi_recover_num += cur_num.hi_recover_num;
+        recover_num->lo_pre_recover_num += cur_num.lo_pre_recover_num;
+        recover_num->hi_pre_recover_num += cur_num.hi_pre_recover_num;
         recover_num->lo_pending += cur_num.lo_pending;
         recover_num->hi_pending += cur_num.hi_pending;
+        recover_num->lo_pre_pending += cur_num.lo_pre_pending;
+        recover_num->hi_pre_pending += cur_num.hi_pre_pending;
         recover_num->lost_num += cur_num.lost_num;
         recover_num->incomplete_num += cur_num.incomplete_num;
     }

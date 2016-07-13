@@ -824,7 +824,10 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
         }
         recover_blocks->push_back(std::make_pair(block_id, replica));
         check_set->insert(block_id);
-        assert(cur_block->recover_stat == kHiRecover || cur_block->recover_stat == kLoRecover);
+        assert(cur_block->recover_stat == kHiRecover ||
+                cur_block->recover_stat == kLoRecover ||
+                cur_block->recover_stat == kHiPreRecover ||
+                cur_block->recover_stat == kLoPreRecover);
         cur_block->recover_stat = kCheck;
         LOG(INFO, "PickRecoverBlocks for C%d #%ld %s",
                 cs_id, block_id, RecoverStat_Name(cur_block->recover_stat).c_str());
@@ -898,6 +901,8 @@ void BlockMapping::TryRecover(NSBlock* block) {
         lost_blocks_.erase(block_id);
         hi_pri_recover_.erase(block_id);
         lo_pri_recover_.erase(block_id);
+        hi_pre_recover_.erase(block_id);
+        lo_pre_recover_.erase(block_id);
     }
 }
 
