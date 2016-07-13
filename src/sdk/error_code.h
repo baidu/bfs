@@ -12,8 +12,8 @@
 #define TIMEOUT -3
 #define META_NOT_AVAILABLE -4
 #define NOT_FOUND -5
-#define NO_PERMISSION -6
-#define NO_ENOUGH_CS -7
+#define NO_ENOUGH_RESOURCE -6
+#define NO_PERMISSION -7
 #define UNKNOWN_ERROR -8
 
 #endif //BFS_SDK_ERROR_CODE_H_

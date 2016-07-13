@@ -13,35 +13,6 @@
 #include <map>
 #include <vector>
 
-#include "proto/status_code.pb.h"
-#include "error_code.h"
-
-namespace {
-    int32_t GetErrorCode(baidu::bfs::StatusCode stat) {
-        if (stat < 100) {
-            if (stat == 0) {
-                return OK;
-            } else {
-                return UNKNOWN_ERROR;
-            }
-        }
-        switch (stat / 100) {
-            case 1:
-                return BAD_PARAMETER;
-            case 2:
-                return META_NOT_AVAILABLE;
-            case 3:
-                return IO_ERROR;
-            case 4:
-                return NOT_FOUND;
-            case 5:
-                return NO_ENOUGH_CS;
-            default:
-                return UNKNOWN_ERROR;
-        }
-    }
-}
-
 namespace baidu {
 namespace bfs {
 

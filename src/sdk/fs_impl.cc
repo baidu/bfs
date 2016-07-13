@@ -23,9 +23,62 @@
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
+/*
+int32_t GetErrorCode(baidu::bfs::StatusCode stat) {
+    if (stat < 100) {
+        if (stat == 0) {
+            return OK;
+        } else {
+            return UNKNOWN_ERROR;
+        }
+    }
+    switch (stat / 100) {
+        case 1:
+            return BAD_PARAMETER;
+        case 2:
+            return META_NOT_AVAILABLE;
+        case 3:
+            return IO_ERROR;
+        case 4:
+            return NOT_FOUND;
+        case 5:
+            return NO_ENOUGH_CS;
+        default:
+            return UNKNOWN_ERROR;
+    }
+}
+*/
 
 namespace baidu {
 namespace bfs {
+
+int32_t GetErrorCode(StatusCode stat) {
+    if (stat < 100) {
+        if (stat == 0) {
+            return OK;
+        } else {
+            return UNKNOWN_ERROR;
+        }
+    }
+    switch (stat / 100) {
+        case 1:
+            return BAD_PARAMETER;
+        case 2:
+            return META_NOT_AVAILABLE;
+        case 3:
+            return IO_ERROR;
+        case 4:
+            return NO_ENOUGH_RESOURCE;
+        case 5:
+            return NOT_FOUND;
+        case 6:
+            return TIMEOUT;
+        case 7:
+            return NO_PERMISSION;
+        default:
+            return UNKNOWN_ERROR;
+    }
+}
 
 FSImpl::FSImpl() : rpc_client_(NULL), nameserver_client_(NULL), leader_nameserver_idx_(0) {
     local_host_name_ = common::util::GetLocalHostName();

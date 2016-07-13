@@ -12,12 +12,16 @@
 #include <common/thread_pool.h>
 
 #include "bfs.h"
+#include "proto/status_code.pb.h"
+
 
 namespace baidu {
 namespace bfs {
 
 class RpcClient;
 class NameServerClient;
+
+int32_t GetErrorCode(baidu::bfs::StatusCode stat);
 
 class FSImpl : public FS {
 public:
