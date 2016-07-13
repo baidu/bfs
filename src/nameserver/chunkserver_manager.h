@@ -59,6 +59,9 @@ private:
         std::vector<std::pair<int32_t,std::string> >* chains);
     void MarkChunkServerReadonly(const std::string& chunkserver_address);
     void ShutdownOneChunkServer();
+    void FillPreRecoverSet(const std::set<int64_t>& blocks);
+    void MarkShutdownBlocksReadonly();
+    void CheckPreRecoverFinished();
 private:
     ThreadPool* thread_pool_;
     BlockMappingManager* block_mapping_manager_;

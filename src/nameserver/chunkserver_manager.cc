@@ -630,11 +630,15 @@ StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::Repe
         chunkserver_to_shutdown_.push_back(chunkserver_address.Get(i));
         MarkChunkServerReadonly(chunkserver_to_shutdown_.back());
     }
+    /*
     if (next_shutdown_offset_ == 0) {
         boost::function<void ()> task =
             boost::bind(&ChunkServerManager::ShutdownOneChunkServer, this);
         thread_pool_->AddTask(task);
     }
+    */
+    boost::function<void ()> task = boost::bind(&ChunkServerManager::MarkShutdownBlocksReadonly, this);
+    thread_pool_->AddTask(task);
     return kOK;
 }
 
@@ -642,6 +646,49 @@ void ChunkServerManager::GetShutdownChunkServerStat(std::vector<std::string> *cs
     MutexLock lock(&mu_);
     for (size_t i = next_shutdown_offset_; i < chunkserver_to_shutdown_.size(); i++) {
         cs->push_back(chunkserver_to_shutdown_[i]);
+    }
+}
+
+void ChunkServerManager::MarkShutdownBlocksReadonly() {
+    for (size_t i = 0; i < chunkserver_to_shutdown_.size(); i++) {
+        MutexLock lock(&mu_);
+        std::map<std::string, int32_t>::iterator it =
+            address_map_.find(chunkserver_to_shutdown_[i]);
+        if (it == address_map_.end()) {
+            LOG(WARNING, "chunkserver %s not found", chunkserver_to_shutdown_[i].c_str());
+            continue;
+        }
+        int32_t cs_id = it->second;
+        const std::set<int64_t>& blocks = chunkserver_block_map_[cs_id];
+        mu_.Unlock();
+        block_mapping_manager_->MoveReplicasToReadonlySet(cs_id, blocks);
+        mu_.Lock();
+    }
+    boost::function<void ()> task = boost::bind(&ChunkServerManager::CheckPreRecoverFinished, this);
+    thread_pool_->AddTask(task);
+}
+
+void ChunkServerManager::CheckPreRecoverFinished() {
+    if (block_mapping_manager_->GetPreRecoverSetSize() != 0) {
+        boost::function<void ()> task = boost::bind(&ChunkServerManager::CheckPreRecoverFinished, this);
+        thread_pool_->DelayTask(20 * 1000, task);
+        return;
+    }
+    for (size_t i = 0; i < chunkserver_to_shutdown_.size(); i++) {
+        int32_t cs_id;
+        {
+            MutexLock lock(&mu_);
+            std::map<std::string, int32_t>::iterator it =
+                address_map_.find(chunkserver_to_shutdown_[i]);
+            if (it == address_map_.end()) {
+                LOG(WARNING, "chunkserver %s not found",
+                        chunkserver_to_shutdown_[i].c_str());
+                continue;
+            }
+            cs_id = it->second;
+        }
+        KickChunkServer(cs_id);
+        LOG(INFO, "Shutdown chunkserver C%d", cs_id);
     }
 }
 

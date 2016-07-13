@@ -56,7 +56,12 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,in
         LOG(WARNING, "GetReplicaLocation can not find block: #%ld ", id);
         return false;
     }
-    replica->assign(block->replica.begin(), block->replica.end());
+    if (!block->replica.empty()) {
+        replica->assign(block->replica.begin(), block->replica.end());
+    }
+    if (!block->readonly_replica.empty()) {
+        replica->assign(block->readonly_replica.begin(), block->readonly_replica.end());
+    }
     if (block->recover_stat == kBlockWriting
         || block->recover_stat == kIncomplete) {
         LOG(DEBUG, "GetLocatedBlock return writing block #%ld ", id);
@@ -182,10 +187,11 @@ bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
 }
 bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
                                       int32_t cs_id, int64_t block_size,
-                                      int64_t block_version) {
+                                      int64_t block_version, bool *clear_pre_recover) {
     int64_t block_id = nsblock->id;
     std::set<int32_t>& inc_replica = nsblock->incomplete_replica;
     std::set<int32_t>& replica = nsblock->replica;
+    std::set<int32_t>& readonly_replica = nsblock->readonly_replica;
     if (block_version < 0) {
         if (nsblock->recover_stat == kCheck) {
             return true;
@@ -240,9 +246,11 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         }
     }
 
-    if (replica.insert(cs_id).second) {
-        LOG(INFO, "New replica C%d V%ld %ld for #%ld R%lu",
-            cs_id, block_version, block_size, block_id, replica.size());
+    if (readonly_replica.find(cs_id) == readonly_replica.end()) {
+        if (replica.insert(cs_id).second) {
+            LOG(INFO, "New replica C%d V%ld %ld for #%ld R%lu",
+                    cs_id, block_version, block_size, block_id, replica.size());
+        }
     }
 
     if (!safe_mode_ || replica.size() >= nsblock->expect_replica_num) {
@@ -253,6 +261,10 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
             block_id, replica.size(), nsblock->expect_replica_num, cs_id);
         replica.erase(cs_id);
         return false;
+    }
+    if (replica.size() >= 2 && readonly_replica.size() != 0) {
+        LOG(DEBUG, "Enough replica for block #%ld on shutdown chunkservers", block_id);
+        *clear_pre_recover = true;
     }
     return true;
 }
@@ -439,7 +451,7 @@ bool BlockMapping::UpdateBlockInfoMerge(NSBlock* nsblock,
 }
 */
 bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
-                                   int64_t block_version) {
+                                   int64_t block_version, bool *clear_pre_recover) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
@@ -452,7 +464,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
       case kIncomplete:
         return UpdateIncompleteBlock(block, server_id, block_size, block_version);
       default:  // kNotInRecover kLow kHi kLost kCheck
-        return UpdateNormalBlock(block, server_id, block_size, block_version);
+        return UpdateNormalBlock(block, server_id, block_size, block_version, clear_pre_recover);
     }
 }
 
@@ -511,12 +523,13 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
     }
     std::set<int32_t>& inc_replica = block->incomplete_replica;
     std::set<int32_t>& replica = block->replica;
+    std::set<int32_t>& readonly_replica = block->readonly_replica;
     if (inc_replica.erase(cs_id)) {
         if (block->recover_stat == kIncomplete) {
             RemoveFromIncomplete(block_id, cs_id);
         } // else kBlockWriting
     } else {
-        if (replica.erase(cs_id) == 0) {
+        if (replica.erase(cs_id) == 0 && readonly_replica.erase(cs_id) == 0) {
             LOG(INFO, "Dead replica C%d #%ld not in blockmapping, ignore it R%lu IR%lu",
                 cs_id, block_id, replica.size(), inc_replica.size());
             return;
@@ -788,6 +801,7 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
             continue;
         }
         std::set<int32_t>& replica = cur_block->replica;
+        std::set<int32_t>& readonly_replica = cur_block->readonly_replica;
         int64_t block_id = cur_block->id;
         if (replica.size() >= cur_block->expect_replica_num) {
             LOG(DEBUG, "Replica num enough #%ld %lu", block_id, replica.size());
@@ -795,7 +809,7 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
             SetState(cur_block, kNotInRecover);
             continue;
         }
-        if (replica.size() == 0) {
+        if (replica.size() == 0 && readonly_replica.size() == 0) {
             LOG(WARNING, "All Replica lost #%ld , give up recover.", block_id);
             abort();
             SetStateIf(cur_block, kAny, kLost);
@@ -803,7 +817,8 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
             recover_set->erase(it++);
             continue;
         }
-        if (replica.find(cs_id) == replica.end()) {
+        if (replica.find(cs_id) == replica.end() &&
+                readonly_replica.find(cs_id) == readonly_replica.end()) {
             ++it;
             continue;
         }
@@ -973,6 +988,21 @@ void BlockMapping::MarkIncomplete(int64_t block_id) {
             LOG(INFO, "Mark #%ld in C%d incomplete", block_id, *it);
         }
         SetState(block, kIncomplete);
+    }
+}
+
+void BlockMapping::MoveReplicaToReadonlySet(int32_t cs_id, int64_t block_id) {
+    MutexLock lock(&mu_);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        return;
+    }
+    //TODO deal with other recover stat
+    if (block->recover_stat == kNotInRecover || block->readonly_replica.size() != 0) {
+        block->replica.erase(cs_id);
+        block->readonly_replica.insert(cs_id);
+        LOG(DEBUG, "Move block #%ld replica on C%d to readonly set", block_id, cs_id);
+        TryRecover(block);
     }
 }
 

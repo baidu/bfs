@@ -6,7 +6,9 @@
 
 #include "proto/status_code.pb.h"
 
+#include <common/logging.h>
 #include <common/string_util.h>
+#include <common/mutex.h>
 
 DECLARE_int32(web_recover_list_size);
 
@@ -53,7 +55,13 @@ void BlockMappingManager::AddNewBlock(int64_t block_id, int32_t replica,
 bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                      int64_t block_version) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    return block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id, block_size, block_version);
+    bool clear_pre_recover = false;
+    bool ret = block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id, block_size, block_version, &clear_pre_recover);
+    if (clear_pre_recover) {
+        MutexLock lock(&mu_);
+        pre_recover_blocks_.erase(block_id);
+    }
+    return ret;
 }
 
 void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info) {
@@ -149,6 +157,21 @@ void BlockMappingManager::SetSafeMode(bool safe_mode) {
 void BlockMappingManager::MarkIncomplete(int64_t block_id) {
     int32_t bucket_offset = GetBucketOffset(block_id);
     block_mapping_[bucket_offset]->MarkIncomplete(block_id);
+}
+
+void BlockMappingManager::MoveReplicasToReadonlySet(int32_t cs_id, const std::set<int64_t>& blocks) {
+    for(std::set<int64_t>::const_iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        MutexLock lock(&mu_);
+        int32_t bucket_offset = GetBucketOffset(*it);
+        block_mapping_[bucket_offset]->MoveReplicaToReadonlySet(cs_id, *it);
+        pre_recover_blocks_.insert(*it);
+    }
+}
+
+size_t BlockMappingManager::GetPreRecoverSetSize() {
+    MutexLock lock(&mu_);
+    LOG(DEBUG, "Remain %d pre reccover blocks", pre_recover_blocks_.size());
+    return pre_recover_blocks_.size();
 }
 
 } //namespace bfs

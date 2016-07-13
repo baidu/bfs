@@ -76,7 +76,7 @@ public:
                      int64_t version, int64_t block_size,
                      const std::vector<int32_t>* init_replicas);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
-                         int64_t block_version);
+                         int64_t block_version, bool *clear_pre_recover);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
@@ -91,6 +91,7 @@ public:
     void SetSafeMode(bool safe_mode);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);
+    void MoveReplicaToReadonlySet(int32_t cs_id, int64_t block_id);
 private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
@@ -110,7 +111,7 @@ private:
     bool UpdateWritingBlock(NSBlock* nsblock, int32_t cs_id, int64_t block_size,
                             int64_t block_version);
     bool UpdateNormalBlock(NSBlock* nsblock, int32_t cs_id, int64_t block_size,
-                           int64_t block_version);
+                           int64_t block_version, bool *clear_pre_recover);
     bool UpdateIncompleteBlock(NSBlock* nsblock,int32_t cs_id, int64_t block_size,
                                int64_t block_version);
 private:
