@@ -367,13 +367,13 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
                                      ::google::protobuf::Closure* done,
                                      std::vector<FileInfo>* removed,
                                      int64_t seq) {
+    namespace_->CleanSnapshot(seq);
     if (removed) {
         for (uint32_t i = 0; i < removed->size(); i++) {
             block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
         }
         delete removed;
     }
-    namespace_->CleanSnapshot(seq);
     done->Run();
 }
 

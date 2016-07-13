@@ -45,17 +45,17 @@ void SyncSnapshot::Add(int64_t index) {
     ss->ref.Inc();
 }
 
-bool SyncSnapshot::Get(const leveldb::Snapshot** s, int64_t* index) {
+const leveldb::Snapshot* SyncSnapshot::Get(int64_t* index) {
     MutexLock lock(&mu_);
     if (snapshots_.empty()) {
-        return false;
+        *index = -1;
+        return NULL;
     }
     std::map<int64_t, SS*>::iterator it = snapshots_.begin();
     *index = it->first;
     SS* ss = it->second;
-    *s = ss->snapshot;
     ss->ref.Inc();
-    return true;
+    return ss->snapshot;
 }
 
 void SyncSnapshot::Release(int64_t index) {
@@ -74,6 +74,7 @@ void SyncSnapshot::Release(int64_t index) {
         delete ss;
         snapshots_.erase(it);
     }
+    LOG(INFO, "SyncSnapshot size %ld", snapshots_.size());
 }
 
 NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
@@ -150,11 +151,8 @@ void NameSpace::EncodingStoreKey(int64_t entry_id,
 bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
     std::string value;
     int64_t seq = -1;
-    const leveldb::Snapshot* s;
     leveldb::ReadOptions read_option = leveldb::ReadOptions();
-    if (sync_snapshots_->Get(&s, &seq)) {
-        read_option.snapshot = s;
-    }
+    read_option.snapshot = sync_snapshots_->Get(&seq);
     leveldb::Status status = db_->Get(read_option, key, &value);
     sync_snapshots_->Release(seq);
     if (!status.ok()) {

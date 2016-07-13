@@ -32,7 +32,7 @@ public:
         SS(const leveldb::Snapshot* s) : snapshot(s) {}
     };
     void Add(int64_t index);
-    bool Get(const leveldb::Snapshot** s, int64_t* index);
+    const leveldb::Snapshot* Get(int64_t* index);
     void Release(int64_t index);
 private:
     leveldb::DB* db_;
