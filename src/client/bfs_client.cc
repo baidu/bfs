@@ -270,7 +270,7 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
     int num;
     int32_t ret = fs->ListDirectory(path.c_str(), &files, &num);
     if (ret != 0) {
-        fprintf(stderr, "List dir %s fail\n", path.c_str());
+        fprintf(stderr, "List dir %s fail, ret = %d\n", path.c_str(), ret);
         return 1;
     }
     printf("Found %d items\n", num);
