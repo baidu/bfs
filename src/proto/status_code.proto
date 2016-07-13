@@ -11,21 +11,21 @@ enum StatusCode {
     kDirNotEmpty = 101;
     kTargetDirExists = 102;
     kFileExists = 103;
+    kBlockClosed = 104;
+    kBlockExist = 105;
+    kReadOnly = 106;
     kUpdateError = 200;
-    kSafeMode = 201;
-    kBlockExist = 300;
-    kSyncMetaFailed = 301;
-    kWriteError = 302;
-    kBlockClosed = 303;
-    kReadOnly = 304;
-    kReadError = 305;
-    kCsTooMuchUnfinishedWrite = 400;
-    kCsTooMuchPendingBuffer = 401;
-    kGetChunkServerError = 402;
-    kNsNotFound = 500;
-    kCsNotFound = 501;
-    kTimeout = 600;
-    kNoPermission = 700;
+    kSyncMetaFailed = 201;
+    kSafeMode = 202;
+    kNsNotFound = 300;
+    kCsNotFound = 301;
+    kTimeout = 400;
+    kCsTooMuchUnfinishedWrite = 401;
+    kCsTooMuchPendingBuffer = 402;
+    kGetChunkServerError = 403;
+    kWriteError = 404;
+    kReadError = 405;
+    kNoPermission = 500;
 }
 
 enum ChunkServerStatus {

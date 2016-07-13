@@ -426,11 +426,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
                      "status= %s, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
             StatusCode_Name(next_response->status()).c_str(), error);
-        if (next_response->status() == kOK) {
-            response->set_status(kNotOK);
-        } else {
-            response->set_status(next_response->status());
-        }
+        response->set_status(kWriteError);
         delete next_response;
         g_unfinished_bytes.Sub(databuf.size());
         done->Run();

@@ -8,12 +8,11 @@
 
 #define OK 0
 #define BAD_PARAMETER -1
-#define IO_ERROR -2
-#define TIMEOUT -3
-#define META_NOT_AVAILABLE -4
-#define NOT_FOUND -5
-#define NO_ENOUGH_RESOURCE -6
-#define NO_PERMISSION -7
-#define UNKNOWN_ERROR -8
+#define TIMEOUT -2
+#define META_NOT_AVAILABLE -3
+#define NOT_FOUND -4
+#define NO_ENOUGH_RESOURCE -5
+#define NO_PERMISSION -6
+#define UNKNOWN_ERROR -7
 
 #endif //BFS_SDK_ERROR_CODE_H_

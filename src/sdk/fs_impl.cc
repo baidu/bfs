@@ -23,31 +23,6 @@
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
-/*
-int32_t GetErrorCode(baidu::bfs::StatusCode stat) {
-    if (stat < 100) {
-        if (stat == 0) {
-            return OK;
-        } else {
-            return UNKNOWN_ERROR;
-        }
-    }
-    switch (stat / 100) {
-        case 1:
-            return BAD_PARAMETER;
-        case 2:
-            return META_NOT_AVAILABLE;
-        case 3:
-            return IO_ERROR;
-        case 4:
-            return NOT_FOUND;
-        case 5:
-            return NO_ENOUGH_CS;
-        default:
-            return UNKNOWN_ERROR;
-    }
-}
-*/
 
 namespace baidu {
 namespace bfs {
@@ -66,16 +41,14 @@ int32_t GetErrorCode(StatusCode stat) {
         case 2:
             return META_NOT_AVAILABLE;
         case 3:
-            return IO_ERROR;
-        case 4:
-            return NO_ENOUGH_RESOURCE;
-        case 5:
             return NOT_FOUND;
-        case 6:
+        case 4:
             return TIMEOUT;
-        case 7:
+        case 5:
             return NO_PERMISSION;
-        default:
+        case 6:
+            return NO_ENOUGH_RESOURCE;
+        case 7:
             return UNKNOWN_ERROR;
     }
 }
@@ -291,7 +264,8 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file) {
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
               int32_t replica, File** file) {
     common::timer::AutoTimer at(100, "OpenFile", path);
-    int32_t ret = false;
+    int32_t ret = OK;
+    bool rpc_ret = false;
     *file = NULL;
     if (flags & O_WRONLY) {
         CreateFileRequest request;
@@ -301,12 +275,12 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         request.set_flags(flags);
         request.set_mode(mode&0777);
         request.set_replica_num(replica);
-        ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
+        bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
             &request, &response, 15, 1);
-        if (!ret || response.status() != kOK) {
-            LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
-                path, ret, StatusCode_Name(response.status()).c_str());
-            if (!ret) {
+        if (!rpc_ret || response.status() != kOK) {
+            LOG(WARNING, "Open file for write fail: %s, rpc_ret= %d, status= %s\n",
+                path, rpc_ret, StatusCode_Name(response.status()).c_str());
+            if (!rpc_ret) {
                 ret = TIMEOUT;
             } else {
                 ret = GetErrorCode(response.status());
@@ -319,9 +293,9 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         FileLocationResponse response;
         request.set_file_name(path);
         request.set_sequence_id(0);
-        ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
+        rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
             &request, &response, 15, 1);
-        if (ret && response.status() == kOK) {
+        if (rpc_ret && response.status() == kOK) {
             FileImpl* f = new FileImpl(this, rpc_client_, path, flags);
             f->located_blocks_.CopyFrom(response.blocks());
             *file = f;
@@ -329,7 +303,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         } else {
             //printf("GetFileLocation return %d\n", response.blocks_size());
             LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
-            if (!ret) {
+            if (!rpc_ret) {
                 ret = TIMEOUT;
             } else {
                 ret = GetErrorCode(response.status());

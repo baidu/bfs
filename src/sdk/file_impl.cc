@@ -153,7 +153,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
         } else if (located_blocks_.blocks_[0].chains_size() == 0) {
             LOG(WARNING, "No located chunkserver of block #%ld",
                 located_blocks_.blocks_[0].block_id());
-            return IO_ERROR;
+            return TIMEOUT;
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
         if (last_chunkserver_index_ == -1 || !chunkserver_) {
@@ -355,7 +355,7 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
         if (!(open_flags_ & O_WRONLY)) {
             return BAD_PARAMETER;
         } else if (bg_error_) {
-            return IO_ERROR;
+            return TIMEOUT;
         } else if (closed_) {
             return BAD_PARAMETER;
         }
@@ -632,9 +632,7 @@ int32_t FileImpl::Sync(int32_t timeout) {
         }
     }
     // fprintf(stderr, "Sync %s fail\n", _name.c_str());
-    if (bg_error_) {
-        return IO_ERROR;
-    } else if (back_writing_) {
+    if (bg_error_ || back_writing_) {
         return TIMEOUT;
     }
     return OK;
@@ -674,7 +672,7 @@ int32_t FileImpl::Close() {
     int32_t ret = OK;
     if (bg_error_) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
-        ret = IO_ERROR;
+        ret = TIMEOUT;
     }
     if (need_report_finish) {
         FinishBlockRequest request;
