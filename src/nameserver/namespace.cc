@@ -95,7 +95,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
         Activate(NULL, &log);
         std::string logstr;
         log.SerializeToString(&logstr);
-        TailLog(logstr, -1);
+        ApplyToDB(logstr, -1);
     }
 }
 
@@ -568,7 +568,7 @@ std::string NameSpace::NormalizePath(const std::string& path) {
     return ret;
 }
 
-void NameSpace::TailLog(const std::string& logstr, int64_t seq) {
+void NameSpace::ApplyToDB(const std::string& logstr, int64_t seq) {
     NameServerLog log;
     if(!log.ParseFromString(logstr)) {
         LOG(FATAL, "Parse log fail: %s", common::DebugString(logstr).c_str());
@@ -589,7 +589,7 @@ void NameSpace::TailLog(const std::string& logstr, int64_t seq) {
     }
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (!s.ok()) {
-        LOG(FATAL, "TailLog failed");
+        LOG(FATAL, "ApplyToDB failed");
     }
 }
 

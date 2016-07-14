@@ -63,7 +63,7 @@ int CreateFile(const std::string& file_name, int flags, int mode,
     int ret = ns->CreateFile(file_name, flags, mode, replica_num, blocks_to_remove, &log);
     std::string logstr;
     log.SerializeToString(&logstr);
-    ns->TailLog(logstr, -1);
+    ns->ApplyToDB(logstr, -1);
     return ret;
 }
 
@@ -73,7 +73,7 @@ int Rename(const std::string& old_path, const std::string& new_path, bool* need_
     int ret = ns->Rename(old_path, new_path, need_unlink, remove_file, &log);
     std::string logstr;
     log.SerializeToString(&logstr);
-    ns->TailLog(logstr, -1);
+    ns->ApplyToDB(logstr, -1);
     return ret;
 }
 
@@ -82,7 +82,7 @@ int RemoveFile(const std::string& path, FileInfo* file_removed, NameSpace* ns) {
     int ret = ns->RemoveFile(path, file_removed, &log);
     std::string logstr;
     log.SerializeToString(&logstr);
-    ns->TailLog(logstr, -1);
+    ns->ApplyToDB(logstr, -1);
     return ret;
 }
 
@@ -92,7 +92,7 @@ int DeleteDirectory(const std::string& path, bool recursive,
     int ret = ns->DeleteDirectory(path, recursive, files_removed, &log);
     std::string logstr;
     log.SerializeToString(&logstr);
-    ns->TailLog(logstr, -1);
+    ns->ApplyToDB(logstr, -1);
     return ret;
 }
 

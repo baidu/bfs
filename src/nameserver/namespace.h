@@ -76,7 +76,7 @@ public:
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master
-    void TailLog(const std::string& log, int64_t seq);
+    void ApplyToDB(const std::string& log, int64_t seq);
     void CleanSnapshot(int64_t seq);
     int64_t GetNewBlockId(NameServerLog* log);
     void InitBlockIdUpbound(NameServerLog* log);

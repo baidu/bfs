@@ -52,7 +52,7 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
     if (sync_) {
-        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1, _2));
+        sync_->Init(boost::bind(&NameSpace::ApplyToDB, namespace_, _1, _2));
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
@@ -347,7 +347,7 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (i
         LOG(FATAL, "Serialize log fail");
     }
     if (sync_ == NULL) {
-        namespace_->TailLog(logstr, -1);
+        namespace_->ApplyToDB(logstr, -1);
         if (!callback.empty()) {
             work_thread_pool_->AddTask(boost::bind(callback, -1));
         }
