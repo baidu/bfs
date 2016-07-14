@@ -173,4 +173,4 @@ install:
 
 .PHONY: test
 test:
-	cd sandbox; ./small_test.sh; ./small_test.sh raft
+	cd sandbox; ./small_test.sh; ./small_test.sh raft; ./small_test.sh master_slave
