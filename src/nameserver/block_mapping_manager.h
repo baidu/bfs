@@ -38,7 +38,7 @@ public :
     void SetSafeMode(bool safe_mode);
     void MarkIncomplete(int64_t block_id);
     void MoveReplicasToReadonlySet(int32_t cs_id, const std::set<int64_t>& blocks);
-    size_t GetPreRecoverSetSize();
+    size_t GetHiPreRecoverSetSize();
 private:
     int32_t GetBucketOffset(int64_t block_id);
 private:

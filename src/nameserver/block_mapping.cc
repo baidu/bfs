@@ -855,6 +855,8 @@ void BlockMapping::TryRecover(NSBlock* block) {
                 SetState(block, kLost);
                 lo_pri_recover_.erase(block_id);
                 hi_pri_recover_.erase(block_id);
+                lo_pre_recover_.erase(block_id);
+                hi_pre_recover_.erase(block_id);
             } else if (block->replica.size() == 1 &&
                     block->recover_stat != kHiRecover) {
                 hi_pri_recover_.insert(block_id);
@@ -863,6 +865,8 @@ void BlockMapping::TryRecover(NSBlock* block) {
                 SetState(block, kHiRecover);
                 lost_blocks_.erase(block_id);
                 lo_pri_recover_.erase(block_id);
+                lo_pre_recover_.erase(block_id);
+                hi_pre_recover_.erase(block_id);
             } else if (block->replica.size() == 2 &&
                     block->recover_stat != kLoRecover) {
                 lo_pri_recover_.insert(block_id);
@@ -871,11 +875,15 @@ void BlockMapping::TryRecover(NSBlock* block) {
                 SetState(block, kLoRecover);
                 lost_blocks_.erase(block_id);
                 hi_pri_recover_.erase(block_id);
+                hi_pre_recover_.erase(block_id);
+                lo_pre_recover_.erase(block_id);
             } // else  Don't change recover_stat
             return;
         } else {
             //TODO deal with stat transfer between hi/lo recover and pre recover
+            /*
             if (block->readonly_replica.size() >= 2 &&
+                    block->replica.size() < 2 &&
                     block->recover_stat != kHiPreRecover) {
                 hi_pre_recover_.insert(block_id);
                 LOG(INFO, "[TryRecover] need more recover: #%ld %s->kHiPreRecover",
@@ -884,6 +892,20 @@ void BlockMapping::TryRecover(NSBlock* block) {
                 lo_pre_recover_.erase(block_id);
             } else if (block->readonly_replica.size() == 1 &&
                     block->recover_stat != kLoPreRecover) {
+                lo_pre_recover_.insert(block_id);
+                LOG(INFO, "[TryRecover] need more recover: #%ld %s->kLoPreRecover",
+                        block_id, RecoverStat_Name(block->recover_stat).c_str());
+                SetState(block, kLoPreRecover);
+                hi_pre_recover_.erase(block_id);
+            }
+            */
+            if (block->replica.size() < 2 && block->recover_stat != kHiPreRecover) {
+                hi_pre_recover_.insert(block_id);
+                LOG(INFO, "[TryRecover] need more recover: #%ld %s->kHiPreRecover",
+                        block_id, RecoverStat_Name(block->recover_stat).c_str());
+                SetState(block, kHiPreRecover);
+                lo_pre_recover_.erase(block_id);
+            } else if (block->recover_stat != kLoPreRecover) {
                 lo_pre_recover_.insert(block_id);
                 LOG(INFO, "[TryRecover] need more recover: #%ld %s->kLoPreRecover",
                         block_id, RecoverStat_Name(block->recover_stat).c_str());

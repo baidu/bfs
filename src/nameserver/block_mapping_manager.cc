@@ -172,10 +172,21 @@ void BlockMappingManager::MoveReplicasToReadonlySet(int32_t cs_id, const std::se
     }
 }
 
-size_t BlockMappingManager::GetPreRecoverSetSize() {
+size_t BlockMappingManager::GetHiPreRecoverSetSize() {
     MutexLock lock(&mu_);
-    LOG(DEBUG, "Remain %d pre reccover blocks", pre_recover_blocks_.size());
+    RecoverBlockNum recover_block_num;
+    for (int i = 0; i < blockmapping_bucket_num_; i++) {
+        RecoverBlockNum cur_num;
+        block_mapping_[i]->GetStat(-1, &cur_num);
+        recover_block_num.hi_pre_recover_num += cur_num.hi_pre_recover_num;
+        recover_block_num.hi_pre_pending += cur_num.hi_pre_pending;
+    }
+    return recover_block_num.hi_pre_recover_num +
+            recover_block_num.hi_pre_pending;
+    /*
+    LOG(DEBUG, "Remain %d hi pre reccover blocks", pre_recover_blocks_.size());
     return pre_recover_blocks_.size();
+    */
 }
 
 } //namespace bfs

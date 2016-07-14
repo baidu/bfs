@@ -669,7 +669,7 @@ void ChunkServerManager::MarkShutdownBlocksReadonly() {
 }
 
 void ChunkServerManager::CheckPreRecoverFinished() {
-    if (block_mapping_manager_->GetPreRecoverSetSize() != 0) {
+    if (block_mapping_manager_->GetHiPreRecoverSetSize() != 0) {
         boost::function<void ()> task = boost::bind(&ChunkServerManager::CheckPreRecoverFinished, this);
         thread_pool_->DelayTask(20 * 1000, task);
         return;
