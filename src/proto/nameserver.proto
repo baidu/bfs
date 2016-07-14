@@ -270,7 +270,7 @@ message ShutdownChunkServerStatRequest {
 message ShutdownChunkServerStatResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
-    optional bool in_offline_progress = 3;
+    repeated string unfinished_chunkservers = 3;
 }
 
 service NameServer {

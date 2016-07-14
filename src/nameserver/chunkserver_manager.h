@@ -47,7 +47,7 @@ public:
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
-    bool GetShutdownChunkServerStat();
+    void GetShutdownChunkServerStat(std::vector<std::string> *cs);
 private:
     double GetChunkServerLoad(ChunkServerInfo* cs);
     void DeadCheck();
@@ -58,6 +58,7 @@ private:
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains);
     void MarkChunkServerReadonly(const std::string& chunkserver_address);
+    void ShutdownOneChunkServer();
 private:
     ThreadPool* thread_pool_;
     BlockMappingManager* block_mapping_manager_;
@@ -74,7 +75,8 @@ private:
     std::string localhostname_;
     std::string localzone_;
 
-    std::vector<std::string> chunkservers_to_offline_;
+    std::vector<std::string> chunkserver_to_shutdown_;
+    size_t next_shutdown_offset_;
 };
 
 } // namespace bfs

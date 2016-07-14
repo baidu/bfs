@@ -42,7 +42,7 @@ public:
     bool ChangeReplicaNum(const char* file_name, int32_t replica_num);
     bool SysStat(const std::string& stat_name, std::string* result);
     bool ShutdownChunkServer(const std::vector<std::string>& cs_addr);
-    int ShutdownChunkServerStat();
+    int ShutdownChunkServerStat(std::vector<std::string> *cs);
 private:
     RpcClient* rpc_client_;
     NameServerClient* nameserver_client_;
