@@ -8,11 +8,13 @@
 
 #define OK 0
 #define BAD_PARAMETER -1
-#define TIMEOUT -2
-#define META_NOT_AVAILABLE -3
-#define NOT_FOUND -4
-#define NO_ENOUGH_RESOURCE -5
-#define NO_PERMISSION -6
-#define UNKNOWN_ERROR -7
+#define NO_PERMISSION -2
+#define NO_ENOUGH_QUOTA -3
+#define NETWORK_UNAVAILABLE -4
+#define TIMEOUT -5
+#define NO_ENOUGH_SPACE -6
+#define OVERLOAD -7
+#define META_NOT_AVAILABLE -8
+#define UNKNOWN_ERROR -9
 
 #endif //BFS_SDK_ERROR_CODE_H_

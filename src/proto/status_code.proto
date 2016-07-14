@@ -14,18 +14,21 @@ enum StatusCode {
     kBlockClosed = 104;
     kBlockExist = 105;
     kReadOnly = 106;
-    kUpdateError = 200;
-    kSyncMetaFailed = 201;
-    kSafeMode = 202;
-    kNsNotFound = 300;
-    kCsNotFound = 301;
-    kTimeout = 400;
-    kCsTooMuchUnfinishedWrite = 401;
-    kCsTooMuchPendingBuffer = 402;
-    kGetChunkServerError = 403;
-    kWriteError = 404;
-    kReadError = 405;
-    kNoPermission = 500;
+    kNsNotFound = 107;
+    kCsNotFound = 108;
+    kNoPermission = 200;
+    kNoEnoughQuota = 300;
+    kNetworkUnavailable = 400;
+    kTimeout = 500;
+    kWriteError = 501;
+    kReadError = 502;
+    kNoEnoughSpace = 600;
+    kCsTooMuchUnfinishedWrite = 700;
+    kCsTooMuchPendingBuffer = 701;
+    kGetChunkServerError = 702;
+    kUpdateError = 800;
+    kSyncMetaFailed = 801;
+    kSafeMode = 802;
 }
 
 enum ChunkServerStatus {

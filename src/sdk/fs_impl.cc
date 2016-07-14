@@ -39,16 +39,20 @@ int32_t GetErrorCode(StatusCode stat) {
         case 1:
             return BAD_PARAMETER;
         case 2:
-            return META_NOT_AVAILABLE;
-        case 3:
-            return NOT_FOUND;
-        case 4:
-            return TIMEOUT;
-        case 5:
             return NO_PERMISSION;
+        case 3:
+            return NO_ENOUGH_QUOTA;
+        case 4:
+            return NETWORK_UNAVAILABLE;
+        case 5:
+            return TIMEOUT;
         case 6:
-            return NO_ENOUGH_RESOURCE;
+            return NO_ENOUGH_SPACE;
         case 7:
+            return OVERLOAD;
+        case 8:
+            return META_NOT_AVAILABLE;
+        default:
             return UNKNOWN_ERROR;
     }
 }
