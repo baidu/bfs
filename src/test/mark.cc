@@ -208,8 +208,6 @@ void Mark::Delete(const std::string& filename) {
 
 void Mark::PutWrapper(int thread_id) {
     std::string prefix = common::NumToString(thread_id);
-    fs_->CreateDirectory(("/" + FLAGS_folder).c_str());
-    fs_->CreateDirectory(("/" + FLAGS_folder + "/" + prefix).c_str());
     int name_id = 0;
     int64_t count = 0;
     std::string base;
@@ -250,6 +248,11 @@ void Mark::PrintStat() {
 void Mark::Run() {
     PrintStat();
     if (FLAGS_mode == "put") {
+        fs_->CreateDirectory(("/" + FLAGS_folder).c_str());
+        for (int i = 0; i < FLAGS_thread; ++i) {
+            std::string prefix = common::NumToString(i);
+            fs_->CreateDirectory(("/" + FLAGS_folder + "/" + prefix).c_str());
+        }
         for (int i = 0; i < FLAGS_thread; ++i) {
             thread_pool_->AddTask(boost::bind(&Mark::PutWrapper, this, i));
         }

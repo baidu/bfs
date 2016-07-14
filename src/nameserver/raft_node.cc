@@ -366,7 +366,7 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                                 callback_map_.erase(cb_it);
                                 mu_.Unlock();
                                 LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
-                                callback(true);
+                                callback(last_applied_);
                                 mu_.Lock();
                             } else {
                                 LOG(INFO, "[Raft] no callback for %ld", last_applied_);
@@ -445,9 +445,10 @@ void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void (int64
     ///TODO: optimize lock
     if (!StoreLog(current_term_, index, log)) {
         log_index_ --;
-        thread_pool_->AddTask(boost::bind(callback,false));
+        thread_pool_->AddTask(boost::bind(callback, index));
         return;
     }
+    log_callback_(log, index);
     callback_map_.insert(std::make_pair(index, callback));
     for (uint32_t i = 0; i < nodes_.size(); i++) {
         if (follower_context_[i]) {
