@@ -163,6 +163,7 @@ bool BlockManager::LoadStorage() {
             meta.set_block_size(oldmeta.block_size);
             meta.set_checksum(oldmeta.checksum);
             meta.set_version(oldmeta.version);
+            meta.set_store_path(GetStorePath(block_id));
             std::string meta_buf;
             meta.SerializeToString(&meta_buf);
             metadb_->Put(leveldb::WriteOptions(), it->key(), meta_buf);
@@ -243,7 +244,8 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
             return false;
         }
         BlockMeta meta;
-        meta.ParseFromArray(it->value().data(), it->value().size());
+        bool ret = meta.ParseFromArray(it->value().data(), it->value().size());
+        assert(ret);
         //skip blocks not in current configuration
         if (find(store_path_list_.begin(), store_path_list_.end(), meta.store_path())
                   == store_path_list_.end()) {
