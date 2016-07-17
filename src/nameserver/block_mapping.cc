@@ -187,7 +187,7 @@ bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
 }
 bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
                                       int32_t cs_id, int64_t block_size,
-                                      int64_t block_version, bool *clear_pre_recover) {
+                                      int64_t block_version) {
     int64_t block_id = nsblock->id;
     std::set<int32_t>& inc_replica = nsblock->incomplete_replica;
     std::set<int32_t>& replica = nsblock->replica;
@@ -264,7 +264,6 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
     }
     if (replica.size() >= 2 && readonly_replica.size() != 0) {
         LOG(DEBUG, "Enough replica for block #%ld on shutdown chunkservers", block_id);
-        *clear_pre_recover = true;
     }
     return true;
 }
@@ -451,7 +450,7 @@ bool BlockMapping::UpdateBlockInfoMerge(NSBlock* nsblock,
 }
 */
 bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
-                                   int64_t block_version, bool *clear_pre_recover) {
+                                   int64_t block_version) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
@@ -464,7 +463,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
       case kIncomplete:
         return UpdateIncompleteBlock(block, server_id, block_size, block_version);
       default:  // kNotInRecover kLow kHi kLost kCheck
-        return UpdateNormalBlock(block, server_id, block_size, block_version, clear_pre_recover);
+        return UpdateNormalBlock(block, server_id, block_size, block_version);
     }
 }
 
@@ -880,26 +879,7 @@ void BlockMapping::TryRecover(NSBlock* block) {
             } // else  Don't change recover_stat
             return;
         } else {
-            //TODO deal with stat transfer between hi/lo recover and pre recover
-            /*
-            if (block->readonly_replica.size() >= 2 &&
-                    block->replica.size() < 2 &&
-                    block->recover_stat != kHiPreRecover) {
-                hi_pre_recover_.insert(block_id);
-                LOG(INFO, "[TryRecover] need more recover: #%ld %s->kHiPreRecover",
-                        block_id, RecoverStat_Name(block->recover_stat).c_str());
-                SetState(block, kHiPreRecover);
-                lo_pre_recover_.erase(block_id);
-            } else if (block->readonly_replica.size() == 1 &&
-                    block->recover_stat != kLoPreRecover) {
-                lo_pre_recover_.insert(block_id);
-                LOG(INFO, "[TryRecover] need more recover: #%ld %s->kLoPreRecover",
-                        block_id, RecoverStat_Name(block->recover_stat).c_str());
-                SetState(block, kLoPreRecover);
-                hi_pre_recover_.erase(block_id);
-            }
-            */
-            if (block->replica.size() < 2 && block->recover_stat != kHiPreRecover) {
+           if (block->replica.size() < 2 && block->recover_stat != kHiPreRecover) {
                 hi_pre_recover_.insert(block_id);
                 LOG(INFO, "[TryRecover] need more recover: #%ld %s->kHiPreRecover",
                         block_id, RecoverStat_Name(block->recover_stat).c_str());

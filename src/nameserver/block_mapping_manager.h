@@ -44,7 +44,6 @@ private:
 private:
     int32_t blockmapping_bucket_num_;
     std::vector<BlockMapping*> block_mapping_;
-    std::set<int64_t> pre_recover_blocks_;
     Mutex mu_;
 };
 

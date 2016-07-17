@@ -55,12 +55,8 @@ void BlockMappingManager::AddNewBlock(int64_t block_id, int32_t replica,
 bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                      int64_t block_version) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    bool clear_pre_recover = false;
-    bool ret = block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id, block_size, block_version, &clear_pre_recover);
-    if (clear_pre_recover) {
-        MutexLock lock(&mu_);
-        pre_recover_blocks_.erase(block_id);
-    }
+    bool ret = block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id,
+                                                              block_size, block_version);
     return ret;
 }
 
@@ -168,7 +164,6 @@ void BlockMappingManager::MoveReplicasToReadonlySet(int32_t cs_id, const std::se
         MutexLock lock(&mu_);
         int32_t bucket_offset = GetBucketOffset(*it);
         block_mapping_[bucket_offset]->MoveReplicaToReadonlySet(cs_id, *it);
-        pre_recover_blocks_.insert(*it);
     }
 }
 
@@ -183,10 +178,6 @@ size_t BlockMappingManager::GetHiPreRecoverSetSize() {
     }
     return recover_block_num.hi_pre_recover_num +
             recover_block_num.hi_pre_pending;
-    /*
-    LOG(DEBUG, "Remain %d hi pre reccover blocks", pre_recover_blocks_.size());
-    return pre_recover_blocks_.size();
-    */
 }
 
 } //namespace bfs
