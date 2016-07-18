@@ -47,8 +47,8 @@ int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    bool ret = fs->CreateDirectory(argv[0]);
-    if (!ret) {
+    int32_t ret = fs->CreateDirectory(argv[0]);
+    if (ret != 0) {
         fprintf(stderr, "Create dir %s fail\n", argv[0]);
         return 1;
     }
@@ -60,8 +60,8 @@ int BfsRename(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    bool ret = fs->Rename(argv[0], argv[1]);
-    if (!ret) {
+    int32_t ret = fs->Rename(argv[0], argv[1]);
+    if (ret != 0) {
         fprintf(stderr, "Rename %s to %s fail\n", argv[0], argv[1]);
         return 1;
     }
@@ -77,7 +77,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
     int32_t len;
     for (int i = 0; i < argc; i++) {
         baidu::bfs::File* file;
-        if (!fs->OpenFile(argv[i], O_RDONLY, &file)) {
+        if (fs->OpenFile(argv[i], O_RDONLY, &file) != 0) {
             fprintf(stderr, "Can't Open bfs file %s\n", argv[0]);
             return 1;
         }
@@ -124,7 +124,7 @@ int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
 
     baidu::common::timer::AutoTimer at(0, "BfsGet", argv[0]);
     baidu::bfs::File* file;
-    if (!fs->OpenFile(source.c_str(), O_RDONLY, &file)) {
+    if (fs->OpenFile(source.c_str(), O_RDONLY, &file) != 0) {
         fprintf(stderr, "Can't Open bfs file %s\n", source.c_str());
         return 1;
     }
@@ -192,7 +192,7 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         return 1;
     }
     baidu::bfs::File* file;
-    if (!fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode, -1, &file)) {
+    if (fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode, -1, &file) != 0) {
         fprintf(stderr, "Can't Open bfs file %s\n", target.c_str());
         fclose(fp);
         return 1;
@@ -210,7 +210,7 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         len += bytes;
     }
     fclose(fp);
-    if (!file->Close()) {
+    if (file->Close() != 0) {
         fprintf(stderr, "close fail: %s\n", target.c_str());
         ret = 1;
     }
@@ -227,7 +227,7 @@ int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
     }
     baidu::bfs::BfsFileInfo* files = NULL;
     int num = 0;
-    if (!fs->ListDirectory(path.c_str(), &files, &num)) {
+    if (fs->ListDirectory(path.c_str(), &files, &num) != 0) {
         fprintf(stderr, "List directory fail: %s\n", path.c_str());
         return ret;
     }
@@ -239,7 +239,7 @@ int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
             continue;
         }
         baidu::bfs::BfsFileInfo fileinfo;
-        if (fs->Stat(file_path.c_str(), &fileinfo)) {
+        if (fs->Stat(file_path.c_str(), &fileinfo) == 0) {
             ret += fileinfo.size;
             printf("%s\t %ld\n", file_path.c_str(), fileinfo.size);
         }
@@ -268,8 +268,8 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
     }
     baidu::bfs::BfsFileInfo* files = NULL;
     int num;
-    bool ret = fs->ListDirectory(path.c_str(), &files, &num);
-    if (!ret) {
+    int32_t ret = fs->ListDirectory(path.c_str(), &files, &num);
+    if (ret != 0) {
         fprintf(stderr, "List dir %s fail\n", path.c_str());
         return 1;
     }
@@ -299,8 +299,8 @@ int BfsRmdir(baidu::bfs::FS* fs, int argc, char* argv[], bool recursive) {
         print_usage();
         return 1;
     }
-    bool ret = fs->DeleteDirectory(argv[0], recursive);
-    if (!ret) {
+    int32_t ret = fs->DeleteDirectory(argv[0], recursive);
+    if (ret != 0) {
         fprintf(stderr, "Remove dir %s fail\n", argv[0]);
         return 1;
     }
@@ -314,8 +314,8 @@ int BfsChangeReplicaNum(baidu::bfs::FS* fs, int argc, char* argv[]) {
     }
     char* file_name = argv[0];
     int32_t replica_num = atoi(argv[1]);
-    bool ret = fs->ChangeReplicaNum(file_name, replica_num);
-    if (!ret) {
+    int32_t ret = fs->ChangeReplicaNum(file_name, replica_num);
+    if (ret != 0) {
         fprintf(stderr, "Change %s replica num to %d fail\n", file_name, replica_num);
         return 1;
     }
@@ -328,8 +328,8 @@ int BfsStat(baidu::bfs::FS* fs, int argc, char* argv[]) {
         stat_name = "StatAll";
     }
     std::string result;
-    bool ret = fs->SysStat(stat_name, &result);
-    if (!ret) {
+    int32_t ret = fs->SysStat(stat_name, &result);
+    if (ret != 0) {
         fprintf(stderr, "SysStat fail\n");
         return 1;
     }
@@ -339,8 +339,8 @@ int BfsStat(baidu::bfs::FS* fs, int argc, char* argv[]) {
 
 int BfsLocation(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::map<int64_t, std::vector<std::string> > locations;
-    bool ret = fs->GetFileLocation(argv[0], &locations);
-    if (!ret) {
+    int32_t ret = fs->GetFileLocation(argv[0], &locations);
+    if (ret != 0) {
         fprintf(stderr, "GetFileLocation fail\n");
         return 1;
     }
@@ -373,7 +373,7 @@ int BfsShutdownChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
         }
         address.push_back(addr);
     }
-    bool ret = fs->ShutdownChunkServer(address);
+    int32_t ret = fs->ShutdownChunkServer(address);
     if (!ret) {
         printf("Shutdown chunkserver fail\n");
         fclose(fp);
@@ -384,7 +384,7 @@ int BfsShutdownChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
 }
 
 int BfsShutdownStat(baidu::bfs::FS* fs) {
-    int ret = fs->ShutdownChunkServerStat();
+    int32_t ret = fs->ShutdownChunkServerStat();
     if (ret < 0) {
         printf("Get offline chunkserver stat fail\n");
         return 1;
@@ -422,7 +422,7 @@ int main(int argc, char* argv[]) {
             return ret;
         }
         baidu::bfs::File* file;
-        if (!fs->OpenFile(argv[2], O_WRONLY, 644, 0, &file)) {
+        if (fs->OpenFile(argv[2], O_WRONLY, 644, 0, &file) != 0) {
             fprintf(stderr, "Open %s fail\n", argv[2]);
         } else {
             ret = 0;
@@ -432,7 +432,7 @@ int main(int argc, char* argv[]) {
             print_usage();
             return ret;
         }
-        if (fs->DeleteFile(argv[2])) {
+        if (fs->DeleteFile(argv[2]) == 0) {
             printf("%s Removed\n", argv[2]);
             ret = 0;
         } else {

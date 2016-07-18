@@ -88,9 +88,9 @@ public:
     /// When rpc buffer full deley send write reqeust
     void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
                          int retry_times, std::string cs_addr);
-    bool Flush();
-    bool Sync(int32_t timeout = 0);
-    bool Close();
+    int32_t Flush();
+    int32_t Sync(int32_t timeout = 0);
+    int32_t Close();
 
     struct WriteBufferCmp {
         bool operator()(const WriteBuffer* a, const WriteBuffer* b) {
