@@ -6,6 +6,9 @@
 #ifndef BFS_SDK_ERROR_CODE_H_
 #define BFS_SDK_ERROR_CODE_H_
 
+namespace baidu {
+namespace bfs {
+
 #define OK 0
 #define BAD_PARAMETER -1
 #define NO_PERMISSION -2
@@ -16,5 +19,10 @@
 #define OVERLOAD -7
 #define META_NOT_AVAILABLE -8
 #define UNKNOWN_ERROR -9
+
+const char* SdkErrorCodeToString(int error_code);
+
+}
+}
 
 #endif //BFS_SDK_ERROR_CODE_H_
