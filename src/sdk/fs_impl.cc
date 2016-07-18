@@ -39,15 +39,15 @@ int32_t GetErrorCode(StatusCode stat) {
         case 1:
             return BAD_PARAMETER;
         case 2:
-            return NO_PERMISSION;
+            return PERMISSION_DENIED;
         case 3:
-            return NO_ENOUGH_QUOTA;
+            return NOT_ENOUGH_QUOTA;
         case 4:
             return NETWORK_UNAVAILABLE;
         case 5:
             return TIMEOUT;
         case 6:
-            return NO_ENOUGH_SPACE;
+            return NOT_ENOUGH_SPACE;
         case 7:
             return OVERLOAD;
         case 8:

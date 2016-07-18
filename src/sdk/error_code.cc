@@ -14,11 +14,11 @@ const char* SdkErrorCodeToString(int error_code) {
     switch (error_code) {
         MAKE_CASE(OK);
         MAKE_CASE(BAD_PARAMETER);
-        MAKE_CASE(NO_PERMISSION);
-        MAKE_CASE(NO_ENOUGH_QUOTA);
+        MAKE_CASE(PERMISSION_DENIED);
+        MAKE_CASE(NOT_ENOUGH_QUOTA);
         MAKE_CASE(NETWORK_UNAVAILABLE);
         MAKE_CASE(TIMEOUT);
-        MAKE_CASE(NO_ENOUGH_SPACE);
+        MAKE_CASE(NOT_ENOUGH_SPACE);
         MAKE_CASE(OVERLOAD);
         MAKE_CASE(META_NOT_AVAILABLE);
         MAKE_CASE(UNKNOWN_ERROR);
