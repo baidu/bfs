@@ -15,7 +15,6 @@
 #include "rpc/nameserver_client.h"
 
 #include "fs_impl.h"
-#include "error_code.h"
 
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);

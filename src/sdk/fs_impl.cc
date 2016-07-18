@@ -19,7 +19,6 @@
 #include "rpc/nameserver_client.h"
 
 #include "file_impl.h"
-#include "error_code.h"
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
@@ -54,6 +53,23 @@ int32_t GetErrorCode(StatusCode stat) {
             return META_NOT_AVAILABLE;
         default:
             return UNKNOWN_ERROR;
+    }
+}
+
+#define MAKE_CASE(name) case name: return (#name)
+
+const char* SdkErrorCodeToString(int error_code) {
+    switch (error_code) {
+        MAKE_CASE(OK);
+        MAKE_CASE(BAD_PARAMETER);
+        MAKE_CASE(PERMISSION_DENIED);
+        MAKE_CASE(NOT_ENOUGH_QUOTA);
+        MAKE_CASE(NETWORK_UNAVAILABLE);
+        MAKE_CASE(TIMEOUT);
+        MAKE_CASE(NOT_ENOUGH_SPACE);
+        MAKE_CASE(OVERLOAD);
+        MAKE_CASE(META_NOT_AVAILABLE);
+        MAKE_CASE(UNKNOWN_ERROR);
     }
 }
 
