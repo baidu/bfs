@@ -81,7 +81,7 @@ void WriteBuffer::DecRef() {
 }
 
 FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
-                   const std::string name, int32_t flags, WriteOptions options)
+                   const std::string& name, int32_t flags, const WriteOptions& options)
   : fs_(fs), rpc_client_(rpc_client), name_(name),
     open_flags_(flags), write_offset_(0), block_for_write_(NULL),
     write_buf_(NULL), last_seq_(-1), back_writing_(0),
@@ -95,7 +95,7 @@ FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
 }
 
 FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
-                   const std::string name, int32_t flags, ReadOptions options)
+                   const std::string& name, int32_t flags, const ReadOptions& options)
   : fs_(fs), rpc_client_(rpc_client), name_(name),
     open_flags_(flags), write_offset_(0), block_for_write_(NULL),
     write_buf_(NULL), last_seq_(-1), back_writing_(0),
@@ -647,7 +647,7 @@ int32_t FileImpl::Sync() {
                 wait_time, name_.c_str(), back_writing_, finish);
         }
     }
-    if (bg_error_ || (back_writing_ && w_options_.sync_timeout != 0)) {
+    if (bg_error_ || back_writing_) {
         return TIMEOUT;
     }
     return OK;

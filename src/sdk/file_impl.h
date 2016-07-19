@@ -67,10 +67,10 @@ struct LocatedBlocks {
 
 class FileImpl : public File {
 public:
-    FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name,
-             int32_t flags, WriteOptions options);
-    FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name,
-             int32_t flags, ReadOptions options);
+    FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string& name,
+             int32_t flags, const WriteOptions& options);
+    FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string& name,
+             int32_t flags, const ReadOptions& options);
     ~FileImpl ();
     int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false);
     int64_t Seek(int64_t offset, int32_t whence);

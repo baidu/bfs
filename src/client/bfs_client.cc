@@ -410,7 +410,7 @@ int main(int argc, char* argv[]) {
 
     baidu::bfs::FS* fs;
     std::string ns_address = FLAGS_nameserver_nodes;
-    if (!baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &fs, baidu::bfs::BFSOptions())) {
+    if (!baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &fs, baidu::bfs::FSOptions())) {
         fprintf(stderr, "Open filesytem %s fail\n", ns_address.c_str());
         return 1;
     }

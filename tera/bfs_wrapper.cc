@@ -100,7 +100,7 @@ int32_t BfsFile::CloseFile() {
 }
 
 BfsImpl::BfsImpl(const std::string& conf) {
-    if (!FS::OpenFileSystem(conf.c_str(), &_fs, BFSOptions())) {
+    if (!FS::OpenFileSystem(conf.c_str(), &_fs, FSOptions())) {
         assert(0);
     }
 }
