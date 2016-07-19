@@ -278,8 +278,11 @@ int32_t FSImpl::GetFileLocation(const std::string& path,
     }
     return OK;
 }
+int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const WriteOptions options) {
+    return OpenFile(path, flags, 0, file, options);
+}
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
-                     File** file, const WriteOptions options) {
+                         File** file, const WriteOptions options) {
     if (!(flags & O_WRONLY)) {
         return BAD_PARAMETER;
     }
@@ -309,8 +312,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     }
     return ret;
 }
-int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file,
-                             const ReadOptions options) {
+int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const ReadOptions options) {
     if (flags != O_RDONLY) {
         return BAD_PARAMETER;
     }
@@ -466,7 +468,7 @@ int32_t FSImpl::ShutdownChunkServerStat() {
     return response.in_offline_progress();
 }
 
-bool FS::OpenFileSystem(const char* nameserver, FS** fs, BFSOptoins) {
+bool FS::OpenFileSystem(const char* nameserver, FS** fs, BFSOptions) {
     FSImpl* impl = new FSImpl;
     if (!impl->ConnectNameServer(nameserver)) {
         *fs = NULL;

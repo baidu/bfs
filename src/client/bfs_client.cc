@@ -77,7 +77,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
     int32_t len;
     for (int i = 0; i < argc; i++) {
         baidu::bfs::File* file;
-        if (fs->OpenFile(argv[i], O_RDONLY, &file) != 0) {
+        if (fs->OpenFile(argv[i], O_RDONLY, &file, baidu::bfs::ReadOptions()) != 0) {
             fprintf(stderr, "Can't Open bfs file %s\n", argv[0]);
             return 1;
         }
@@ -124,7 +124,7 @@ int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
 
     baidu::common::timer::AutoTimer at(0, "BfsGet", argv[0]);
     baidu::bfs::File* file;
-    if (fs->OpenFile(source.c_str(), O_RDONLY, &file) != 0) {
+    if (fs->OpenFile(source.c_str(), O_RDONLY, &file, baidu::bfs::ReadOptions()) != 0) {
         fprintf(stderr, "Can't Open bfs file %s\n", source.c_str());
         return 1;
     }
@@ -192,7 +192,7 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
         return 1;
     }
     baidu::bfs::File* file;
-    if (fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode, &file) != 0) {
+    if (fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode, &file, baidu::bfs::WriteOptions()) != 0) {
         fprintf(stderr, "Can't Open bfs file %s\n", target.c_str());
         fclose(fp);
         return 1;
@@ -410,7 +410,7 @@ int main(int argc, char* argv[]) {
 
     baidu::bfs::FS* fs;
     std::string ns_address = FLAGS_nameserver_nodes;
-    if (!baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &fs)) {
+    if (!baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &fs, baidu::bfs::BFSOptions())) {
         fprintf(stderr, "Open filesytem %s fail\n", ns_address.c_str());
         return 1;
     }
@@ -422,7 +422,7 @@ int main(int argc, char* argv[]) {
             return ret;
         }
         baidu::bfs::File* file;
-        if (fs->OpenFile(argv[2], O_WRONLY, 644, &file) != 0) {
+        if (fs->OpenFile(argv[2], O_WRONLY, 644, &file, baidu::bfs::WriteOptions()) != 0) {
             fprintf(stderr, "Open %s fail\n", argv[2]);
         } else {
             ret = 0;
