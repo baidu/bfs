@@ -278,60 +278,65 @@ int32_t FSImpl::GetFileLocation(const std::string& path,
     }
     return OK;
 }
-int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file) {
-    return OpenFile(path, flags, 0, -1, file);
+int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const WriteOptions& options) {
+    return OpenFile(path, flags, 0, file, options);
 }
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
-              int32_t replica, File** file) {
+                         File** file, const WriteOptions& options) {
+    if (!(flags & O_WRONLY)) {
+        return BAD_PARAMETER;
+    }
     common::timer::AutoTimer at(100, "OpenFile", path);
     int32_t ret = OK;
-    bool rpc_ret = false;
     *file = NULL;
-    if (flags & O_WRONLY) {
-        CreateFileRequest request;
-        CreateFileResponse response;
-        request.set_file_name(path);
-        request.set_sequence_id(0);
-        request.set_flags(flags);
-        request.set_mode(mode&0777);
-        request.set_replica_num(replica);
-        bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
-            &request, &response, 15, 1);
-        if (!rpc_ret || response.status() != kOK) {
-            LOG(WARNING, "Open file for write fail: %s, rpc_ret= %d, status= %s\n",
-                path, rpc_ret, StatusCode_Name(response.status()).c_str());
-            if (!rpc_ret) {
-                ret = TIMEOUT;
-            } else {
-                ret = GetErrorCode(response.status());
-            }
+
+    CreateFileRequest request;
+    CreateFileResponse response;
+    request.set_file_name(path);
+    request.set_sequence_id(0);
+    request.set_flags(flags);
+    request.set_mode(mode&0777);
+    request.set_replica_num(options.replica);
+    bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
+        &request, &response, 15, 1);
+    if (!rpc_ret || response.status() != kOK) {
+        LOG(WARNING, "Open file for write fail: %s, rpc_ret= %d, status= %s\n",
+            path, rpc_ret, StatusCode_Name(response.status()).c_str());
+        if (!rpc_ret) {
+            ret = TIMEOUT;
         } else {
-            *file = new FileImpl(this, rpc_client_, path, flags);
-        }
-    } else if (flags == O_RDONLY) {
-        FileLocationRequest request;
-        FileLocationResponse response;
-        request.set_file_name(path);
-        request.set_sequence_id(0);
-        rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
-            &request, &response, 15, 1);
-        if (rpc_ret && response.status() == kOK) {
-            FileImpl* f = new FileImpl(this, rpc_client_, path, flags);
-            f->located_blocks_.CopyFrom(response.blocks());
-            *file = f;
-            //printf("OpenFile success: %s\n", path);
-        } else {
-            //printf("GetFileLocation return %d\n", response.blocks_size());
-            LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
-            if (!rpc_ret) {
-                ret = TIMEOUT;
-            } else {
-                ret = GetErrorCode(response.status());
-            }
+            ret = GetErrorCode(response.status());
         }
     } else {
-        LOG(WARNING, "Open flags only O_RDONLY or O_WRONLY, but %d", flags);
-        ret = BAD_PARAMETER;
+        *file = new FileImpl(this, rpc_client_, path, flags, options);
+    }
+    return ret;
+}
+int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const ReadOptions& options) {
+    if (flags != O_RDONLY) {
+        return BAD_PARAMETER;
+    }
+    common::timer::AutoTimer at(100, "OpenFile", path);
+    int32_t ret = OK;
+    *file = NULL;
+
+    FileLocationRequest request;
+    FileLocationResponse response;
+    request.set_file_name(path);
+    request.set_sequence_id(0);
+    bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
+        &request, &response, 15, 1);
+    if (rpc_ret && response.status() == kOK) {
+        FileImpl* f = new FileImpl(this, rpc_client_, path, flags, options);
+        f->located_blocks_.CopyFrom(response.blocks());
+        *file = f;
+    } else {
+        LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
+        if (!rpc_ret) {
+            ret = TIMEOUT;
+        } else {
+            ret = GetErrorCode(response.status());
+        }
     }
     return ret;
 }
@@ -463,7 +468,7 @@ int32_t FSImpl::ShutdownChunkServerStat() {
     return response.in_offline_progress();
 }
 
-bool FS::OpenFileSystem(const char* nameserver, FS** fs) {
+bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
     FSImpl* impl = new FSImpl;
     if (!impl->ConnectNameServer(nameserver)) {
         *fs = NULL;
