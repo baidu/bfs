@@ -69,8 +69,8 @@ const char* SdkErrorCodeToString(int error_code) {
         MAKE_CASE(NOT_ENOUGH_SPACE);
         MAKE_CASE(OVERLOAD);
         MAKE_CASE(META_NOT_AVAILABLE);
-        MAKE_CASE(UNKNOWN_ERROR);
     }
+    return "UNKNOWN_ERROR";
 }
 
 FSImpl::FSImpl() : rpc_client_(NULL), nameserver_client_(NULL), leader_nameserver_idx_(0) {
