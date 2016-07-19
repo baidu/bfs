@@ -67,7 +67,10 @@ struct LocatedBlocks {
 
 class FileImpl : public File {
 public:
-    FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name, int32_t flags);
+    FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name,
+             int32_t flags, WriteOptions options);
+    FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string name,
+             int32_t flags, ReadOptions options);
     ~FileImpl ();
     int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false);
     int64_t Seek(int64_t offset, int32_t whence);
@@ -89,7 +92,7 @@ public:
     void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
                          int retry_times, std::string cs_addr);
     int32_t Flush();
-    int32_t Sync(int32_t timeout = 0);
+    int32_t Sync();
     int32_t Close();
 
     struct WriteBufferCmp {
@@ -117,6 +120,7 @@ private:
     std::priority_queue<WriteBuffer*, std::vector<WriteBuffer*>, WriteBufferCmp>
         write_queue_;                   ///< Write buffer list
     volatile int back_writing_;         ///< Async write running backgroud
+    const WriteOptions w_options_;
 
     /// for read
     LocatedBlocks located_blocks_;      ///< block meta for read
@@ -131,6 +135,7 @@ private:
     int64_t reada_base_;                ///< Read ahead base offset
     int32_t sequential_ratio_;          ///< Sequential read ratio
     int64_t last_read_offset_;
+    const ReadOptions r_options_;
 
     bool closed_;                       ///< 是否关闭
     Mutex   mu_;

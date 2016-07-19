@@ -81,14 +81,29 @@ void WriteBuffer::DecRef() {
 }
 
 FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
-                         const std::string name, int32_t flags)
+                   const std::string name, int32_t flags, WriteOptions options)
   : fs_(fs), rpc_client_(rpc_client), name_(name),
     open_flags_(flags), write_offset_(0), block_for_write_(NULL),
     write_buf_(NULL), last_seq_(-1), back_writing_(0),
+    w_options_(options),
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), closed_(false),
+    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false),
+    sync_signal_(&mu_), bg_error_(false) {
+        thread_pool_ = fs->thread_pool_;
+}
+
+FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
+                   const std::string name, int32_t flags, ReadOptions options)
+  : fs_(fs), rpc_client_(rpc_client), name_(name),
+    open_flags_(flags), write_offset_(0), block_for_write_(NULL),
+    write_buf_(NULL), last_seq_(-1), back_writing_(0),
+    w_options_(WriteOptions()),
+    chunkserver_(NULL), last_chunkserver_index_(-1),
+    read_offset_(0), reada_buffer_(NULL),
+    reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
+    last_read_offset_(-1), r_options_(options), closed_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -613,7 +628,7 @@ int32_t FileImpl::Flush() {
     // Not implement
     return 0;
 }
-int32_t FileImpl::Sync(int32_t timeout) {
+int32_t FileImpl::Sync() {
     common::timer::AutoTimer at(50, "Sync", name_.c_str());
     if (open_flags_ != O_WRONLY) {
         return BAD_PARAMETER;
@@ -623,15 +638,16 @@ int32_t FileImpl::Sync(int32_t timeout) {
         StartWrite();
     }
     int wait_time = 0;
-    while (back_writing_ && !bg_error_ && (timeout == 0 || wait_time < timeout)) {
-        bool finish = sync_signal_.TimeWait(1000, "Sync wait");
-        if (++wait_time >= 30 && (wait_time % 10 == 0)) {
-            LOG(WARNING, "Sync timeout %d s, %s back_writing_= %d, finish= %d",
+    while (back_writing_ && !bg_error_ &&
+           (w_options_.sync_timeout < 0 || wait_time < w_options_.sync_timeout)) {
+        bool finish = sync_signal_.TimeWait(100, "Sync wait");
+        wait_time += 100;
+        if (wait_time >= 30000 && (wait_time % 10000 == 0)) {
+            LOG(WARNING, "Sync w_options_.sync_timeout %d ms, %s back_writing_= %d, finish= %d",
                 wait_time, name_.c_str(), back_writing_, finish);
         }
     }
-    // fprintf(stderr, "Sync %s fail\n", _name.c_str());
-    if (bg_error_ || back_writing_) {
+    if (bg_error_ || (back_writing_ && w_options_.sync_timeout != 0)) {
         return TIMEOUT;
     }
     return OK;

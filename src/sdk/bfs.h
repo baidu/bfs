@@ -29,6 +29,27 @@ namespace bfs {
 
 const char* SdkErrorCodeToString(int error_code);
 
+struct WriteOptions {
+    int write_timeout;  // in ms, <= 0 means do not timeout, == 0 means do not wait
+    int sync_timeout;   // in ms, <= 0 means do not timeout, == 0 means do not wait
+    int close_timeout;  // in ms, <= 0 means do not timeout, == 0 means do not wait
+    bool sync_when_closed;
+    int replica;
+    WriteOptions() : write_timeout(-1), sync_timeout(-1), close_timeout(-1),
+                     sync_when_closed(true), replica(-1) {}
+};
+
+struct ReadOptions {
+    int timeout;    // in ms, <= 0 means do not timeout, == 0 means do not wait
+    ReadOptions() : timeout(-1) {}
+};
+
+struct BFSOptoins {
+    const char* username;
+    const char* passwd;
+    BFSOptoins() : username(NULL), passwd(NULL) {}
+};
+
 /// Bfs File interface
 class File {
 public:
@@ -39,7 +60,7 @@ public:
     virtual int32_t Read(char* buf, int32_t read_size) = 0;
     virtual int32_t Write(const char* buf, int32_t write_size) = 0;
     virtual int32_t Flush() = 0;
-    virtual int32_t Sync(int32_t timeout = 0) = 0;
+    virtual int32_t Sync() = 0;
     virtual int32_t Close() = 0;
 private:
     // No copying allowed
@@ -60,7 +81,8 @@ public:
     FS() { }
     virtual ~FS() { }
     /// Open filesystem with nameserver address (host:port)
-    static bool OpenFileSystem(const char* nameserver, FS** fs);
+    static bool OpenFileSystem(const char* nameserver, FS** fs,
+                               const BFSOptoins options = BFSOptoins());
     /// Create directory
     virtual int32_t CreateDirectory(const char* path) = 0;
     /// List Directory
@@ -74,9 +96,10 @@ public:
     /// GetFileSize: get real file size
     virtual int32_t GetFileSize(const char* path, int64_t* file_size) = 0;
     /// Open file for read or write, flags: O_WRONLY or O_RDONLY
-    virtual int32_t OpenFile(const char* path, int32_t flags, File** file) = 0;
     virtual int32_t OpenFile(const char* path, int32_t flags, int32_t mode,
-                          int replica, File** file) = 0;
+                             File** file, const WriteOptions options = WriteOptions()) = 0;
+    virtual int32_t OpenFile(const char* path, int32_t flags, File** file,
+                             const ReadOptions options = ReadOptions()) = 0;
     virtual int32_t CloseFile(File* file) = 0;
     virtual int32_t DeleteFile(const char* path) = 0;
     virtual int32_t Rename(const char* oldpath, const char* newpath) = 0;
