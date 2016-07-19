@@ -36,23 +36,17 @@ int32_t BfsFile::Write(const char* buf, int32_t len) {
 
 int32_t BfsFile::Flush() {
     common::timer::AutoTimer ac;
-    int ret = -1;
-    if (_file->Flush() == 0) {
-        ret = 0;
-    }
+    int ret = _file->Flush();
     LOG(INFO, "Flush(%s) return %d use %.3f ms",
-        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
+            _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Sync() {
     LOG(INFO, "Sync(%s) start", _name.c_str());
     common::timer::AutoTimer ac;
-    int ret = -1;
-    if (_file->Sync() == 0) {
-        ret = 0;
-    }
+    int ret = _file->Sync();
     LOG(INFO, "Sync(%s) return %d usd %.3f ms",
-        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
+            _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Read(char* buf, int32_t len) {
