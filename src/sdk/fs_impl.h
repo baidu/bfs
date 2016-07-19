@@ -12,6 +12,8 @@
 #include <common/thread_pool.h>
 
 #include "bfs.h"
+#include "proto/status_code.pb.h"
+
 
 namespace baidu {
 namespace bfs {
@@ -19,30 +21,32 @@ namespace bfs {
 class RpcClient;
 class NameServerClient;
 
+int32_t GetErrorCode(baidu::bfs::StatusCode stat);
+
 class FSImpl : public FS {
 public:
     friend class FileImpl;
     FSImpl();
     ~FSImpl();
     bool ConnectNameServer(const char* nameserver);
-    bool CreateDirectory(const char* path);
-    bool ListDirectory(const char* path, BfsFileInfo** filelist, int *num);
-    bool DeleteDirectory(const char* path, bool recursive);
-    bool Access(const char* path, int32_t mode);
-    bool Stat(const char* path, BfsFileInfo* fileinfo);
-    bool GetFileSize(const char* path, int64_t* file_size);
-    bool GetFileLocation(const std::string& path,
+    int32_t CreateDirectory(const char* path);
+    int32_t ListDirectory(const char* path, BfsFileInfo** filelist, int *num);
+    int32_t DeleteDirectory(const char* path, bool recursive);
+    int32_t Access(const char* path, int32_t mode);
+    int32_t Stat(const char* path, BfsFileInfo* fileinfo);
+    int32_t GetFileSize(const char* path, int64_t* file_size);
+    int32_t GetFileLocation(const std::string& path,
                          std::map<int64_t, std::vector<std::string> >* locations);
-    bool OpenFile(const char* path, int32_t flags, File** file);
-    bool OpenFile(const char* path, int32_t flags, int32_t mode,
+    int32_t OpenFile(const char* path, int32_t flags, File** file);
+    int32_t OpenFile(const char* path, int32_t flags, int32_t mode,
                   int32_t replica, File** file);
-    bool CloseFile(File* file);
-    bool DeleteFile(const char* path);
-    bool Rename(const char* oldpath, const char* newpath);
-    bool ChangeReplicaNum(const char* file_name, int32_t replica_num);
-    bool SysStat(const std::string& stat_name, std::string* result);
-    bool ShutdownChunkServer(const std::vector<std::string>& cs_addr);
-    int ShutdownChunkServerStat(std::vector<std::string> *cs);
+    int32_t CloseFile(File* file);
+    int32_t DeleteFile(const char* path);
+    int32_t Rename(const char* oldpath, const char* newpath);
+    int32_t ChangeReplicaNum(const char* file_name, int32_t replica_num);
+    int32_t SysStat(const std::string& stat_name, std::string* result);
+    int32_t ShutdownChunkServer(const std::vector<std::string>& cs_addr);
+    int32_t ShutdownChunkServerStat(std::vector<std::string>* cs);
 private:
     RpcClient* rpc_client_;
     NameServerClient* nameserver_client_;

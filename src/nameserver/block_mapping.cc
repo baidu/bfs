@@ -503,7 +503,7 @@ StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
         LOG(WARNING, "CheckBlockVersion can not find block: #%ld ", block_id);
-        return kNotFound;
+        return kNsNotFound;
     }
     if (block->version != version) {
         LOG(INFO, "CheckBlockVersion fail #%ld V%ld to V%ld",

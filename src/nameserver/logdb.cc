@@ -113,7 +113,7 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
 
 StatusCode LogDB::Read(int64_t index, std::string* entry) {
     if (read_log_.empty() || index >= next_index_ || index < smallest_index_) {
-        return kNotFound;
+        return kNsNotFound;
     }
     FileCache::iterator it = read_log_.lower_bound(index);
     if (it == read_log_.end() || (it != read_log_.begin() && index != it->first)) {
@@ -189,7 +189,7 @@ StatusCode LogDB::ReadMarker(const std::string& key, std::string* value) {
     MutexLock lock(&mu_);
     std::map<std::string, std::string>::iterator it = markers_.find(key);
     if (it == markers_.end()) {
-        return kNotFound;
+        return kNsNotFound;
     }
     *value = it->second;
     return kOK;
@@ -209,7 +209,7 @@ StatusCode LogDB::GetLargestIdx(int64_t* value) {
     MutexLock lock(&mu_);
     if (smallest_index_ == next_index_) {
         *value = -1;
-        return kNotFound;
+        return kNsNotFound;
     }
     *value = next_index_ - 1;
     return kOK;
@@ -517,7 +517,7 @@ StatusCode LogDB::ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int6
     char buf[16];
     int ret = fread(buf, 1, 16, fp);
     if (ret == 0) {
-        return kNotFound;
+        return kNsNotFound;
     } else if (ret != 16) {
         LOG(WARNING, "[logdb] Read index file error %ld", expect_index);
         return kReadError;
