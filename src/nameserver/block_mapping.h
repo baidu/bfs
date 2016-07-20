@@ -25,7 +25,7 @@ struct NSBlock {
     int64_t version;
     std::set<int32_t> replica;
     std::set<int32_t> incomplete_replica;
-    std::set<int32_t> readonly_replica;
+    std::set<int32_t> pre_recover_replica;
     int64_t block_size;
     uint32_t expect_replica_num;
     RecoverStat recover_stat;
