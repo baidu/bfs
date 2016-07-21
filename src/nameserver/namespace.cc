@@ -243,11 +243,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             }
         }
     }
-    if (mode) {
-        file_info.set_type(((1 << 10) - 1) & mode);
-    } else {
-        file_info.set_type(0755);
-    }
+    file_info.set_type(((1 << 10) - 1) & mode);
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);

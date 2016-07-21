@@ -36,10 +36,13 @@ public:
     int32_t Stat(const char* path, BfsFileInfo* fileinfo);
     int32_t GetFileSize(const char* path, int64_t* file_size);
     int32_t GetFileLocation(const std::string& path,
-                         std::map<int64_t, std::vector<std::string> >* locations);
-    int32_t OpenFile(const char* path, int32_t flags, File** file);
+                            std::map<int64_t, std::vector<std::string> >* locations);
+    int32_t OpenFile(const char* path, int32_t flags, File** file,
+                     const ReadOptions& options);
+    int32_t OpenFile(const char* path, int32_t flags, File** file,
+                     const WriteOptions& options);
     int32_t OpenFile(const char* path, int32_t flags, int32_t mode,
-                  int32_t replica, File** file);
+                     File** file, const WriteOptions& options);
     int32_t CloseFile(File* file);
     int32_t DeleteFile(const char* path);
     int32_t Rename(const char* oldpath, const char* newpath);

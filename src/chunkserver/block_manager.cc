@@ -149,7 +149,8 @@ bool BlockManager::LoadStorage() {
             return false;
         }
         BlockMeta meta;
-        if (!meta.ParseFromArray(it->value().data(), it->value().size())) {
+        meta.ParseFromArray(it->value().data(), it->value().size());
+        if (meta.block_id() != block_id) {
             struct OldBlockMeta {
                 int64_t block_id;
                 int64_t block_size;
@@ -159,6 +160,7 @@ bool BlockManager::LoadStorage() {
             assert(it->value().size() == sizeof(struct OldBlockMeta));
             OldBlockMeta oldmeta;
             memcpy(&oldmeta, it->value().data(), it->value().size());
+            assert(oldmeta.block_id == block_id);
             meta.set_block_id(oldmeta.block_id);
             meta.set_block_size(oldmeta.block_size);
             meta.set_checksum(oldmeta.checksum);
@@ -169,7 +171,6 @@ bool BlockManager::LoadStorage() {
             metadb_->Put(leveldb::WriteOptions(), it->key(), meta_buf);
             LOG(INFO, "Old meta info of #%ld has been trans to new meta info", oldmeta.block_id);
         }
-        assert(meta.block_id() == block_id);
         std::string file_path = meta.store_path() + Block::BuildFilePath(block_id);
         if (meta.version() < 0) {
             LOG(INFO, "Incomplete block #%ld V%ld %ld, drop it",
