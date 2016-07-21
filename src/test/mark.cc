@@ -47,7 +47,7 @@ public:
 };
 
 Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10), exit_(false) {
-    if (!FS::OpenFileSystem(FLAGS_nameserver_nodes.c_str(), &fs_)) {
+    if (!FS::OpenFileSystem(FLAGS_nameserver_nodes.c_str(), &fs_, FSOptions())) {
         std::cerr << "Open filesytem failed " << FLAGS_nameserver_nodes << std::endl;
         exit(EXIT_FAILURE);
     }
@@ -74,7 +74,7 @@ bool Mark::FinishPut(File* file, int thread_id) {
 
 void Mark::Put(const std::string& filename, const std::string& base, int thread_id) {
     File* file;
-    if (!fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, -1, &file)) {
+    if (!fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, &file, WriteOptions())) {
         if (FLAGS_break_on_failure) {
             std::cerr << "OpenFile failed " << filename << std::endl;
             exit(EXIT_FAILURE);
@@ -129,7 +129,7 @@ bool Mark::FinishRead(File* file) {
 
 void Mark::Read(const std::string& filename, const std::string& base, int thread_id) {
     File* file;
-    if (!fs_->OpenFile(filename.c_str(), O_RDONLY, &file)) {
+    if (!fs_->OpenFile(filename.c_str(), O_RDONLY, &file, ReadOptions())) {
         if (FLAGS_break_on_failure) {
             std::cerr << "Open file failed " << filename << std::endl;
             exit(EXIT_FAILURE);
