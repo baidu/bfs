@@ -61,7 +61,7 @@ Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10), exit_(false) {
 
 bool Mark::FinishPut(File* file, int thread_id) {
     if (file) {
-        if (!file->Close()) {
+        if (OK != file->Close()) {
             delete file;
             rand_[thread_id]->Next();
             return false;
@@ -74,7 +74,7 @@ bool Mark::FinishPut(File* file, int thread_id) {
 
 void Mark::Put(const std::string& filename, const std::string& base, int thread_id) {
     File* file;
-    if (!fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, &file, WriteOptions())) {
+    if (OK != fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, &file, WriteOptions())) {
         if (FLAGS_break_on_failure) {
             std::cerr << "OpenFile failed " << filename << std::endl;
             exit(EXIT_FAILURE);
@@ -118,7 +118,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
 
 bool Mark::FinishRead(File* file) {
     if (file) {
-        if (!file->Close()) {
+        if (OK != file->Close()) {
             delete file;
             return false;
         }
@@ -129,7 +129,7 @@ bool Mark::FinishRead(File* file) {
 
 void Mark::Read(const std::string& filename, const std::string& base, int thread_id) {
     File* file;
-    if (!fs_->OpenFile(filename.c_str(), O_RDONLY, &file, ReadOptions())) {
+    if (OK != fs_->OpenFile(filename.c_str(), O_RDONLY, &file, ReadOptions())) {
         if (FLAGS_break_on_failure) {
             std::cerr << "Open file failed " << filename << std::endl;
             exit(EXIT_FAILURE);
@@ -200,7 +200,7 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
 }
 
 void Mark::Delete(const std::string& filename) {
-    if(!fs_->DeleteFile(filename.c_str())) {
+    if(OK != fs_->DeleteFile(filename.c_str())) {
         assert(0);
     }
     del_counter_.Dec();
