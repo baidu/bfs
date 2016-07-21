@@ -34,7 +34,6 @@ namespace bfs {
 SyncSnapshot::SyncSnapshot(leveldb::DB* db) : db_(db) {}
 
 void SyncSnapshot::Add(int64_t index) {
-    LOG(INFO, "LL: add %ld", index);
     MutexLock lock(&mu_);
     std::map<int64_t, SS*>::iterator it = snapshots_.find(index);
     if (it != snapshots_.end()) {
@@ -303,7 +302,9 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     std::string file_key;
+    EncodingStoreKey(parent_id, fname, &file_key);
     EncodeLog(log, kSyncWrite, file_key, info_value);
+    LOG(INFO, "CreateFile %s", path.c_str());
     return kOK;
 }
 

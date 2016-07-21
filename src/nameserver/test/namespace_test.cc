@@ -187,7 +187,7 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(kOK, Rename("/dir1/subdir1", "/dir1/subdir3", &need_unlink, &remove_file, &ns));
     ASSERT_FALSE(need_unlink);
     /// dir -> existing dir
-    ASSERT_NE(kOK， Rename("/dir1/subdir2", "/dir1/subdir3", &need_unlink, &remove_file, &ns));
+    ASSERT_NE(kOK, Rename("/dir1/subdir2", "/dir1/subdir3", &need_unlink, &remove_file, &ns));
     ASSERT_FALSE(need_unlink);
     /// file -> not exist parent
     ASSERT_NE(kOK, Rename("/file1", "/dir1/subdir4/file1", &need_unlink, &remove_file, &ns));
@@ -223,15 +223,15 @@ TEST_F(NameSpaceTest, RemoveFile) {
     NameSpace ns;
     ASSERT_TRUE(CreateTree(&ns));
     FileInfo file_removed;
-    ASSERT_NE(kBadParameter, RemoveFile("/", &file_removed, &ns));
-    ASSERT_NE(kBadParameter, RemoveFile("/dir1", &file_removed, &ns));
+    ASSERT_EQ(kBadParameter, RemoveFile("/", &file_removed, &ns));
+    ASSERT_EQ(kBadParameter, RemoveFile("/dir1", &file_removed, &ns));
     ASSERT_EQ(kOK, RemoveFile("/file2",&file_removed, &ns));
     ASSERT_EQ(3, file_removed.entry_id());
-    ASSERT_NE(kBadParameter, RemoveFile("/",&file_removed, &ns));
+    ASSERT_EQ(kBadParameter, RemoveFile("/",&file_removed, &ns));
     ASSERT_EQ(kOK, RemoveFile("/file1",&file_removed, &ns));
     ASSERT_EQ(2, file_removed.entry_id());
-    ASSERT_NE(kNsNotFound, RemoveFile("/file2",&file_removed, &ns));
-    ASSERT_NE(kNsNotFound, RemoveFile("/file3",&file_removed, &ns));
+    ASSERT_EQ(kNsNotFound, RemoveFile("/file2",&file_removed, &ns));
+    ASSERT_EQ(kNsNotFound, RemoveFile("/file3",&file_removed, &ns));
 }
 
 TEST_F(NameSpaceTest, DeleteDirectory) {
@@ -242,12 +242,12 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     std::vector<FileInfo> files_removed;
 
     // Delete not empty
-    ASSERT_NE(kDirNotEmpty, DeleteDirectory("/dir1", false, &files_removed, &ns));
-    ASSERT_NE(kDirNotEmpty, DeleteDirectory("/dir1/subdir2", false, &files_removed, &ns));
+    ASSERT_EQ(kDirNotEmpty, DeleteDirectory("/dir1", false, &files_removed, &ns));
+    ASSERT_EQ(kDirNotEmpty, DeleteDirectory("/dir1/subdir2", false, &files_removed, &ns));
     // Delete empty
     ASSERT_EQ(kOK, DeleteDirectory("/xdir", true, &files_removed, &ns));
     // Delete root dir
-    ASSERT_NE(kDirNotEmpty, DeleteDirectory("/", false, &files_removed, &ns));
+    ASSERT_EQ(kDirNotEmpty, DeleteDirectory("/", false, &files_removed, &ns));
     // Delete subdir
     ASSERT_EQ(0, DeleteDirectory("/dir1/subdir2", true, &files_removed, &ns));
     ASSERT_EQ(files_removed.size(), 1U);
@@ -260,7 +260,7 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
 
     // Delete another subdir
     printf("Delete another subdir\n");
-    ASSERT_NE(kDirNotEmpty, DeleteDirectory("/dir1/subdir1", false, &files_removed, &ns));
+    ASSERT_EQ(kDirNotEmpty, DeleteDirectory("/dir1/subdir1", false, &files_removed, &ns));
     ASSERT_EQ(kOK, ns.ListDirectory("/dir1/subdir1", &outputs));
     ASSERT_EQ(2, outputs.size());
 
