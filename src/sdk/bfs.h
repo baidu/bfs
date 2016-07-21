@@ -16,11 +16,36 @@
 namespace baidu {
 namespace bfs {
 
-enum Status {
-    OK = 0,
-    NotFound = 1,
-    NotFile = 2,
-    NotDirectory = 3,
+#define OK 0
+#define BAD_PARAMETER -1
+#define PERMISSION_DENIED -2
+#define NOT_ENOUGH_QUOTA -3
+#define NETWORK_UNAVAILABLE -4
+#define TIMEOUT -5
+#define NOT_ENOUGH_SPACE -6
+#define OVERLOAD -7
+#define META_NOT_AVAILABLE -8
+#define UNKNOWN_ERROR -9
+
+const char* SdkErrorCodeToString(int error_code);
+
+struct WriteOptions {
+    int flush_timeout;  // in ms, <= 0 means do not timeout, == 0 means do not wait
+    int sync_timeout;   // in ms, <= 0 means do not timeout, == 0 means do not wait
+    int close_timeout;  // in ms, <= 0 means do not timeout, == 0 means do not wait
+    int replica;
+    WriteOptions() : flush_timeout(-1), sync_timeout(-1), close_timeout(-1), replica(-1) {}
+};
+
+struct ReadOptions {
+    int timeout;    // in ms, <= 0 means do not timeout, == 0 means do not wait
+    ReadOptions() : timeout(-1) {}
+};
+
+struct FSOptions {
+    const char* username;
+    const char* passwd;
+    FSOptions() : username(NULL), passwd(NULL) {}
 };
 
 /// Bfs File interface
@@ -32,9 +57,9 @@ public:
     virtual int64_t Seek(int64_t offset, int32_t whence) = 0;
     virtual int32_t Read(char* buf, int32_t read_size) = 0;
     virtual int32_t Write(const char* buf, int32_t write_size) = 0;
-    virtual bool Flush() = 0;
-    virtual bool Sync(int32_t timeout = 0) = 0;
-    virtual bool Close() = 0;
+    virtual int32_t Flush() = 0;
+    virtual int32_t Sync() = 0;
+    virtual int32_t Close() = 0;
 private:
     // No copying allowed
     File(const File&);
@@ -54,35 +79,38 @@ public:
     FS() { }
     virtual ~FS() { }
     /// Open filesystem with nameserver address (host:port)
-    static bool OpenFileSystem(const char* nameserver, FS** fs);
+    static bool OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&);
     /// Create directory
-    virtual bool CreateDirectory(const char* path) = 0;
+    virtual int32_t CreateDirectory(const char* path) = 0;
     /// List Directory
-    virtual bool ListDirectory(const char* path, BfsFileInfo** filelist, int *num) = 0;
+    virtual int32_t ListDirectory(const char* path, BfsFileInfo** filelist, int *num) = 0;
     /// Delete Directory
-    virtual bool DeleteDirectory(const char* path, bool recursive) = 0;
+    virtual int32_t DeleteDirectory(const char* path, bool recursive) = 0;
     /// Access
-    virtual bool Access(const char* path, int32_t mode) = 0;
+    virtual int32_t Access(const char* path, int32_t mode) = 0;
     /// Stat
-    virtual bool Stat(const char* path, BfsFileInfo* fileinfo) = 0;
+    virtual int32_t Stat(const char* path, BfsFileInfo* fileinfo) = 0;
     /// GetFileSize: get real file size
-    virtual bool GetFileSize(const char* path, int64_t* file_size) = 0;
+    virtual int32_t GetFileSize(const char* path, int64_t* file_size) = 0;
     /// Open file for read or write, flags: O_WRONLY or O_RDONLY
-    virtual bool OpenFile(const char* path, int32_t flags, File** file) = 0;
-    virtual bool OpenFile(const char* path, int32_t flags, int32_t mode,
-                          int replica, File** file) = 0;
-    virtual bool CloseFile(File* file) = 0;
-    virtual bool DeleteFile(const char* path) = 0;
-    virtual bool Rename(const char* oldpath, const char* newpath) = 0;
-    virtual bool ChangeReplicaNum(const char* file_name, int32_t replica_num) = 0;
+    virtual int32_t OpenFile(const char* path, int32_t flags, File** file,
+                             const ReadOptions& options) = 0;
+    virtual int32_t OpenFile(const char* path, int32_t flags, File** file,
+                             const WriteOptions& options) = 0;
+    virtual int32_t OpenFile(const char* path, int32_t flags, int32_t mode,
+                             File** file, const WriteOptions& options) = 0;
+    virtual int32_t CloseFile(File* file) = 0;
+    virtual int32_t DeleteFile(const char* path) = 0;
+    virtual int32_t Rename(const char* oldpath, const char* newpath) = 0;
+    virtual int32_t ChangeReplicaNum(const char* file_name, int32_t replica_num) = 0;
 
     /// Show system status
-    virtual bool SysStat(const std::string& stat_name, std::string* result) = 0;
+    virtual int32_t SysStat(const std::string& stat_name, std::string* result) = 0;
     /// GetFileLocation: get file locate, return chunkserver address and port
-    virtual bool GetFileLocation(const std::string& path,
+    virtual int32_t GetFileLocation(const std::string& path,
                                  std::map<int64_t, std::vector<std::string> >* locations) = 0;
-    virtual bool ShutdownChunkServer(const std::vector<std::string>& cs_address) = 0;
-    virtual int ShutdownChunkServerStat() = 0;
+    virtual int32_t ShutdownChunkServer(const std::vector<std::string>& cs_address) = 0;
+    virtual int32_t ShutdownChunkServerStat() = 0;
 private:
     // No copying allowed
     FS(const FS&);

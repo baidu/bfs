@@ -541,7 +541,7 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
         if (s == kOK && !entry.ParseFromString(log)) {
             LOG(FATAL, "Paser logdb value fail:%ld", prev_log_index);
         }
-        if (s == kNotFound || entry.term() != prev_log_term) {
+        if (s == kNsNotFound || entry.term() != prev_log_term) {
             LOG(INFO, "[Raft] Last index %ld term %ld / %ld mismatch",
                 prev_log_index, prev_log_term, entry.term());
             response->set_success(false);

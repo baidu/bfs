@@ -81,14 +81,29 @@ void WriteBuffer::DecRef() {
 }
 
 FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
-                         const std::string name, int32_t flags)
+                   const std::string& name, int32_t flags, const WriteOptions& options)
   : fs_(fs), rpc_client_(rpc_client), name_(name),
     open_flags_(flags), write_offset_(0), block_for_write_(NULL),
     write_buf_(NULL), last_seq_(-1), back_writing_(0),
+    w_options_(options),
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), closed_(false),
+    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false),
+    sync_signal_(&mu_), bg_error_(false) {
+        thread_pool_ = fs->thread_pool_;
+}
+
+FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
+                   const std::string& name, int32_t flags, const ReadOptions& options)
+  : fs_(fs), rpc_client_(rpc_client), name_(name),
+    open_flags_(flags), write_offset_(0), block_for_write_(NULL),
+    write_buf_(NULL), last_seq_(-1), back_writing_(0),
+    w_options_(WriteOptions()),
+    chunkserver_(NULL), last_chunkserver_index_(-1),
+    read_offset_(0), reada_buffer_(NULL),
+    reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
+    last_read_offset_(-1), r_options_(options), closed_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -120,7 +135,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
     if (read_len <= 0 || buf == NULL || offset < 0) {
         LOG(WARNING, "Pread(%s, %ld, %d), bad parameters!",
             name_.c_str(), offset, read_len);
-        return -1;
+        return BAD_PARAMETER;
     }
     {
         MutexLock lock(&mu_, "Pread read buffer", 1000);
@@ -152,7 +167,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
         } else if (located_blocks_.blocks_[0].chains_size() == 0) {
             LOG(WARNING, "No located chunkserver of block #%ld",
                 located_blocks_.blocks_[0].block_id());
-            return -3;
+            return TIMEOUT;
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
         if (last_chunkserver_index_ == -1 || !chunkserver_) {
@@ -219,7 +234,11 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
 
     if (!ret || response.status() != kOK) {
         LOG(WARNING, "Read block %ld fail, ret= %d status= %s\n", block_id, ret, StatusCode_Name(response.status()).c_str());
-        return -4;
+        if (!ret) {
+            return TIMEOUT;
+        } else {
+            return GetErrorCode(response.status());
+        }
     }
 
     //printf("Pread[%s:%ld:%ld] return %lu bytes\n",
@@ -245,7 +264,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
 int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
     //printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
     if (open_flags_ != O_RDONLY) {
-        return -2;
+        return BAD_PARAMETER;
     }
     MutexLock lock(&read_offset_mu_);
     if (whence == SEEK_SET) {
@@ -253,7 +272,7 @@ int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
     } else if (whence == SEEK_CUR) {
         read_offset_ += offset;
     } else {
-        return -1;
+        return BAD_PARAMETER;
     }
     return read_offset_;
 }
@@ -262,7 +281,7 @@ int32_t FileImpl::Read(char* buf, int32_t read_len) {
     //LOG(DEBUG, "[%p] Read[%s:%ld] offset= %ld\n",
     //    this, _name.c_str(), read_len, read_offset_);
     if (open_flags_ != O_RDONLY) {
-        return -2;
+        return BAD_PARAMETER;
     }
     MutexLock lock(&read_offset_mu_);
     int32_t ret = Pread(buf, read_len, read_offset_, true);
@@ -285,7 +304,11 @@ int32_t FileImpl::AddBlock() {
     if (!ret || !response.has_block()) {
         LOG(WARNING, "Nameserver AddBlock fail: %s, ret= %d, status= %s",
             name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
-        return kNsCreateError;
+        if (!ret) {
+            return TIMEOUT;
+        } else {
+            return GetErrorCode(response.status());
+        }
     }
     block_for_write_ = new LocatedBlock(response.block());
     int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 :
@@ -327,12 +350,16 @@ int32_t FileImpl::AddBlock() {
             chunkservers_.clear();
             delete block_for_write_;
             block_for_write_ = NULL;
-            return kCsCreateError;
+            if (!ret) {
+                return TIMEOUT;
+            } else {
+                return GetErrorCode(response.status());
+            }
         }
         write_windows_[addr]->Add(0, 0);
     }
     last_seq_ = 0;
-    return kOK;
+    return OK;
 }
 int32_t FileImpl::Write(const char* buf, int32_t len) {
     common::timer::AutoTimer at(100, "Write", name_.c_str());
@@ -340,11 +367,11 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
     {
         MutexLock lock(&mu_, "Write", 1000);
         if (!(open_flags_ & O_WRONLY)) {
-            return -2;
+            return BAD_PARAMETER;
         } else if (bg_error_) {
-            return -3;
+            return TIMEOUT;
         } else if (closed_) {
-            return -4;
+            return BAD_PARAMETER;
         }
         common::atomic_inc(&back_writing_);
     }
@@ -597,32 +624,36 @@ void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
 void FileImpl::OnWriteCommit(int32_t, int) {
 }
 
-bool FileImpl::Flush() {
+int32_t FileImpl::Flush() {
     // Not implement
-    return true;
+    return 0;
 }
-bool FileImpl::Sync(int32_t timeout) {
+int32_t FileImpl::Sync() {
     common::timer::AutoTimer at(50, "Sync", name_.c_str());
     if (open_flags_ != O_WRONLY) {
-        return false;
+        return BAD_PARAMETER;
     }
     MutexLock lock(&mu_, "Sync", 1000);
     if (write_buf_ && write_buf_->Size()) {
         StartWrite();
     }
     int wait_time = 0;
-    while (back_writing_ && !bg_error_ && (timeout == 0 || wait_time < timeout)) {
-        bool finish = sync_signal_.TimeWait(1000, "Sync wait");
-        if (++wait_time >= 30 && (wait_time % 10 == 0)) {
-            LOG(WARNING, "Sync timeout %d s, %s back_writing_= %d, finish= %d",
+    while (back_writing_ && !bg_error_ &&
+           (w_options_.sync_timeout < 0 || wait_time < w_options_.sync_timeout)) {
+        bool finish = sync_signal_.TimeWait(100, "Sync wait");
+        wait_time += 100;
+        if (wait_time >= 30000 && (wait_time % 10000 == 0)) {
+            LOG(WARNING, "Sync w_options_.sync_timeout %d ms, %s back_writing_= %d, finish= %d",
                 wait_time, name_.c_str(), back_writing_, finish);
         }
     }
-    // fprintf(stderr, "Sync %s fail\n", _name.c_str());
-    return !bg_error_ && !back_writing_;
+    if (bg_error_ || back_writing_) {
+        return TIMEOUT;
+    }
+    return OK;
 }
 
-bool FileImpl::Close() {
+int32_t FileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", name_.c_str());
     MutexLock lock(&mu_, "Close", 1000);
     bool need_report_finish = false;
@@ -653,10 +684,10 @@ bool FileImpl::Close() {
     chunkserver_ = NULL;
     LOG(DEBUG, "File %s closed", name_.c_str());
     closed_ = true;
-    bool ret = true;
+    int32_t ret = OK;
     if (bg_error_) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
-        ret = false;
+        ret = TIMEOUT;
     }
     if (need_report_finish) {
         FinishBlockRequest request;
@@ -667,12 +698,16 @@ bool FileImpl::Close() {
         request.set_block_version(last_seq_);
         request.set_block_size(write_offset_);
         request.set_close_with_error(bg_error_);
-        ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::FinishBlock,
+        bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::FinishBlock,
                                                    &request, &response, 15, 1);
-        if (!(ret && response.status() == kOK))  {
+        if (!(rpc_ret && response.status() == kOK))  {
             LOG(WARNING, "Close file %s fail, finish report returns %d, status: %s",
                     name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
-            ret = false;
+            if (!rpc_ret) {
+                return TIMEOUT;
+            } else {
+                return GetErrorCode(response.status());
+            }
         }
     }
     return ret;
