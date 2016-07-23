@@ -51,7 +51,7 @@ Chunkserver必须指定的flag：
 3. 查看集群  
 有两种方式可以查看集群：  
 a) 命令行方式  
-    ./bfs_clinet stat -a  
+    ./bfs_client stat -a  
 b) Web方式  
     用浏览器访问http://$nshost1:8828/dfs  
 
