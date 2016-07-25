@@ -58,7 +58,7 @@ int32_t GetErrorCode(StatusCode stat) {
 
 #define MAKE_CASE(name) case name: return (#name)
 
-const char* SdkErrorCodeToString(int error_code) {
+const char* StrError(int error_code) {
     switch (error_code) {
         MAKE_CASE(OK);
         MAKE_CASE(BAD_PARAMETER);
