@@ -9,6 +9,7 @@
 #include <iostream>
 #include <common/string_util.h>
 #include <common/thread_pool.h>
+#include <common/timer.h>
 #include <boost/bind.hpp>
 
 #include "mark.h"
@@ -23,6 +24,8 @@ DEFINE_int32(seed, 301, "random seed");
 DEFINE_int32(file_size, 1024, "file size in KB");
 DEFINE_string(folder, "test", "write data to which folder");
 DEFINE_bool(break_on_failure, true, "exit when error occurs");
+DEFINE_int32(write_speed_limit, 30, "write speed limit(MB) for each thread");
+DEFINE_int32(read_speed_limit, 30, "read speed limit(MB) for each thread");
 
 namespace baidu {
 namespace bfs {
@@ -86,9 +89,21 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     }
     int64_t len = 0;
     int64_t base_size = (1 << 20) / 2;
+    uint64_t last_write_time = baidu::common::timer::get_micros();
+    uint64_t last_len = 0;
     while (len < file_size_) {
+        uint64_t now_time = baidu::common::timer::get_micros();
+        if ((len - last_len) >
+                ((FLAGS_write_speed_limit << 20) / 1000000.0 * (now_time - last_write_time))) {
+            uint64_t sleep_time = static_cast<uint64_t>(((len - last_len) / (FLAGS_write_speed_limit << 20) * 1000000.0)
+                                      - (now_time - last_write_time));
+            usleep(sleep_time);
+        }
         uint32_t w = base_size + rand_[thread_id]->Uniform(base_size);
 
+        last_len = len;
+        last_write_time = baidu::common::timer::get_micros();
+        common::timer::get_micros();
         uint32_t write_len = file->Write(base.c_str(), w);
         if (write_len != w) {
             if (FLAGS_break_on_failure) {
@@ -144,8 +159,19 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     char buf[buf_size];
     int64_t bytes = 0;
     int32_t len = 0;
+    uint64_t last_read_time = baidu::common::timer::get_micros();
+    uint64_t last_bytes = 0;
     while (1) {
+        uint64_t now_time = baidu::common::timer::get_micros();
+        if ((bytes - last_bytes) >
+                ((FLAGS_read_speed_limit << 20) / 1000000.0 * (now_time - last_read_time))) {
+            uint64_t sleep_time = static_cast<uint64_t>(((bytes - last_bytes) / (FLAGS_read_speed_limit << 20) * 1000000.0)
+                - (now_time - last_read_time));
+            usleep(sleep_time);
+        }
+        last_bytes = bytes;
         uint32_t r = base_size + rand_[thread_id]->Uniform(base_size);
+        last_read_time = baidu::common::timer::get_micros();
         len = file->Read(buf, r);
         if (len < 0) {
             if (FLAGS_break_on_failure) {
