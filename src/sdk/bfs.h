@@ -27,7 +27,7 @@ namespace bfs {
 #define META_NOT_AVAILABLE -8
 #define UNKNOWN_ERROR -9
 
-const char* SdkErrorCodeToString(int error_code);
+const char* StrError(int error_code);
 
 struct WriteOptions {
     int flush_timeout;  // in ms, <= 0 means do not timeout, == 0 means do not wait
