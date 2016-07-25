@@ -34,8 +34,10 @@ baidu::bfs::File* get_bfs_file(const struct fuse_file_info* finfo, MountFile** m
 int bfs_getattr(const char* path, struct stat* st) {
     fprintf(stderr, BFS"bfs_getattr(%s)\n", path);
     baidu::bfs::BfsFileInfo file;
-    if (g_fs->Stat((g_bfs_path + path).c_str(), &file) != OK) {
-        fprintf(stderr, BFS"stat %s fail\n", path);
+    int32_t ret = g_fs->Stat((g_bfs_path + path).c_str(), &file);
+    if (ret != OK) {
+        fprintf(stderr, BFS"stat %s fail, error code:%s\n",
+                path, baidu::bfs::SdkErrorCodeToString(ret));
         return -ENOENT;
     }
     memset(st, 0, sizeof(struct stat));
@@ -77,7 +79,10 @@ int bfs_mknod(const char* path, mode_t, dev_t) {
 
 int bfs_mkdir(const char *path, mode_t) {
     fprintf(stderr, BFS"mkdir(%s)\n", path);
-    if (g_fs->CreateDirectory((g_bfs_path+path).c_str()) != OK) {
+    int32_t ret = g_fs->CreateDirectory((g_bfs_path+path).c_str());
+    if (ret != OK) {
+        fprintf(stderr, BFS"mkdir %s fail, error code %s\n",
+                path, baidu::bfs::SdkErrorCodeToString(ret));
         return EACCES;
     }
     return 0;
@@ -85,7 +90,10 @@ int bfs_mkdir(const char *path, mode_t) {
 
 int bfs_ulink(const char* path) {
     fprintf(stderr, BFS"unlink(%s)\n", path);
-    if (g_fs->DeleteFile((g_bfs_path + path).c_str()) != OK) {
+    int32_t ret = g_fs->DeleteFile((g_bfs_path + path).c_str());
+    if (ret != OK) {
+        fprintf(stderr, BFS"unlink %s fail, error code %s\n",
+                path, baidu::bfs::SdkErrorCodeToString(ret));
         return EACCES;
     }
     return 0;
@@ -93,7 +101,10 @@ int bfs_ulink(const char* path) {
 
 int bfs_rmdir(const char* path) {
     fprintf(stderr, BFS"unlink(%s)\n", path);
-    if (g_fs->DeleteDirectory((g_bfs_path + path).c_str(), true) != OK) {
+    int32_t ret = g_fs->DeleteDirectory((g_bfs_path + path).c_str(), true);
+    if (ret != OK) {
+        fprintf(stderr, BFS"unlink %s fail, error code %s\n",
+                path, baidu::bfs::SdkErrorCodeToString(ret));
         return EACCES;
     }
     return 0;
@@ -106,8 +117,10 @@ int bfs_symlink(const char* oldpath, const char* newpath) {
 
 int bfs_rename(const char* oldpath, const char* newpath) {
     fprintf(stderr, BFS"Rename(%s, %s)\n", oldpath, newpath);
-    if (g_fs->Rename((g_bfs_path + oldpath).c_str(),
-                (g_bfs_path + newpath).c_str()) != OK) {
+    int32_t ret = g_fs->Rename((g_bfs_path + oldpath).c_str(), (g_bfs_path + newpath).c_str());
+    if (ret != OK) {
+        fprintf(stderr, BFS"Rename %s to %s fail, error code %s\n",
+                oldpath, newpath, baidu::bfs::SdkErrorCodeToString(ret));
         return EACCES;
     }
     return 0;
@@ -142,9 +155,11 @@ void prepare_write_buf(MountFile* mfile, baidu::bfs::File* file = NULL) {
 int bfs_open(const char* path, struct fuse_file_info* finfo) {
     fprintf(stderr, BFS"open(%s, %o)\n", path, finfo->flags);
     baidu::bfs::File* file = NULL;
-    if (g_fs->OpenFile((g_bfs_path + path).c_str(), O_RDONLY,
-                &file, baidu::bfs::ReadOptions()) != OK) {
-        fprintf(stderr, BFS"open(%s) return EACCES\n", path);
+    int32_t ret = g_fs->OpenFile((g_bfs_path + path).c_str(), O_RDONLY,
+                                    &file, baidu::bfs::ReadOptions());
+    if (ret != OK) {
+        fprintf(stderr, BFS"open(%s) fail, error code %s\n",
+                path, baidu::bfs::SdkErrorCodeToString(ret));
         return EACCES;
     }
     fprintf(stderr, BFS"open(%s) return %p\n", path, file);
@@ -237,8 +252,10 @@ int bfs_statfs(const char* path, struct statvfs*) {
 int bfs_flush(const char* path, struct fuse_file_info* finfo) {
     baidu::bfs::File* file = get_bfs_file(finfo);
     fprintf(stderr, BFS"flush(%s, %p)\n", path, file);
-    if (file->Sync() != OK) {
-        fprintf(stderr, BFS"fsync(%s, %p) return timeout\n", path, file);
+    int32_t ret = file->Sync();
+    if (ret != OK) {
+        fprintf(stderr, BFS"fsync(%s, %p) fail, error code %s\n",
+                path, file, baidu::bfs::SdkErrorCodeToString(ret));
         return EIO;
     }
     fprintf(stderr, BFS"flush(%s, %p) return 0\n", path, file);
@@ -255,9 +272,11 @@ int bfs_release(const char* path, struct fuse_file_info* finfo) {
     int retval = 0;
     if (mfile->buf) {
         g_fs->DeleteFile(path);
-        if (g_fs->OpenFile((g_bfs_path + path).c_str() , O_WRONLY,
-                    0755, &file, baidu::bfs::WriteOptions()) != OK) {
-            fprintf(stderr, BFS"create(%s) for release fail\n", path);
+        int32_t ret = g_fs->OpenFile((g_bfs_path + path).c_str() , O_WRONLY,
+                                    0755, &file, baidu::bfs::WriteOptions());
+        if (ret != OK) {
+            fprintf(stderr, BFS"create(%s) for release fail, error code %s\n",
+                    path, baidu::bfs::SdkErrorCodeToString(ret));
             retval = EACCES;
         }
         int wlen = file->Write(mfile->buf, mfile->buf_len);
@@ -275,8 +294,10 @@ int bfs_release(const char* path, struct fuse_file_info* finfo) {
 int bfs_fsync(const char* path, int datasync, struct fuse_file_info* finfo) {
     baidu::bfs::File* file = get_bfs_file(finfo);
     fprintf(stderr, BFS"fsync(%s, %p)\n", path, file);
-    if (file->Sync() != OK) {
-        fprintf(stderr, BFS"fsync(%s, %p) return timeout\n", path, file);
+    int32_t ret = file->Sync();
+    if (ret != OK) {
+        fprintf(stderr, BFS"fsync(%s, %p) fail, error code\n",
+                path, file, baidu::bfs::SdkErrorCodeToString(ret));
         return EIO;
     }
     fprintf(stderr, BFS"fsync(%s, %p) return 0\n", path, file);
@@ -362,9 +383,11 @@ int (*create) (const char *, mode_t, struct fuse_file_info *);
 int bfs_create(const char* path, mode_t mode, struct fuse_file_info* finfo) {
     fprintf(stderr, BFS"create(%s, %o, %o)\n", path, mode, finfo->flags);
     baidu::bfs::File* file = NULL;
-    if (g_fs->OpenFile((g_bfs_path + path).c_str() , O_WRONLY, mode,
-                &file, baidu::bfs::WriteOptions()) != OK) {
-        fprintf(stderr, BFS"create(%s) return EACCES\n", path);
+    int32_t ret = g_fs->OpenFile((g_bfs_path + path).c_str() , O_WRONLY, mode,
+                                 &file, baidu::bfs::WriteOptions());
+    if (ret != OK) {
+        fprintf(stderr, BFS"create(%s) fail, error code %s\n",
+                path, baidu::bfs::SdkErrorCodeToString(ret));
         return EACCES;
     }
     fprintf(stderr, BFS"create(%s) return %p\n", path, file);
@@ -408,8 +431,10 @@ void* bfs_init(struct fuse_conn_info *conn) {
         fprintf(stderr, BFS"Open file sytem: %s fail\n", g_bfs_cluster.c_str());
         abort();
     }
-    if (g_fs->Access(g_bfs_path.c_str(), R_OK | W_OK) != OK) {
-        fprintf(stderr, BFS"Mount a wrong path or have no permission: %s\n", g_bfs_path.c_str());
+    int32_t ret = g_fs->Access(g_bfs_path.c_str(), R_OK | W_OK);
+    if (ret != OK) {
+        fprintf(stderr, BFS"Access %s fail, error code %s\n",
+                g_bfs_path.c_str(), baidu::bfs::SdkErrorCodeToString(ret));
         abort();
     }
     return g_fs;
