@@ -1002,6 +1002,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Pending tasks: "
         + common::NumToString(work_thread_pool_->PendingNum()) + " "
         + common::NumToString(report_thread_pool_->PendingNum()) + "</br>";
+    std::string ha_status = sync_ ? sync_->GetStatus() : "none";
+    str += "HA status: " + ha_status + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 

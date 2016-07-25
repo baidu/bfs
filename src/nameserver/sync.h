@@ -36,6 +36,7 @@ public:
     // Turn a follower to leader.
     // Leader will ignore this call.
     virtual void SwitchToLeader() = 0;
+    virtual std::string GetStatus() { return "none";}
 };
 
 } // namespace bfs
