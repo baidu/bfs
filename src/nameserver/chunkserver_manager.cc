@@ -466,6 +466,26 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     return id;
 }
 
+bool ChunkServerManager::DeleteChunkServer(int32_t cs_id) {
+    MutexLock lock(&mu_);
+    ServerMap::iterator it = chunkservers_.find(cs_id);
+    if (it == chunkservers_.end()) {
+        return false;
+    }
+    ChunkServerInfo* info = it->second;
+    if (!info->is_dead()) {
+        return false;
+    }
+    heartbeat_list_[info->last_heartbeat()].erase(info);
+    if (heartbeat_list_[info->last_heartbeat()].empty()) {
+        heartbeat_list_.erase(info->last_heartbeat());
+    }
+    address_map_.erase(info->address());
+    chunkservers_.erase(it);
+    delete info;
+    return true;
+}
+
 std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
     MutexLock lock(&mu_, "GetChunkServerAddr", 10);
     ChunkServerInfo* cs = NULL;

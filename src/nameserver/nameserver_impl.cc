@@ -896,6 +896,19 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             return true;
         }
         return false;
+    } else if (path == "/dfs/delete") {
+        std::map<std::string, std::string>::const_iterator it =
+            request.query_params->find("cs");
+        if (it == request.query_params->end()) {
+            return false;
+        }
+        std::stringstream ss(it->second);
+        int cs_id;
+        if (ss >> cs_id && chunkserver_manager_->DeleteChunkServer(cs_id)) {
+            response.content->Append("<body onload=\"history.back()\"></body>");
+            return true;
+        }
+        return false;
     }
 
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
@@ -962,7 +975,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                      common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
         if (chunkserver.is_dead()) {
-            table_str += "dead";
+            table_str += "dead (<a href=\"/dfs/delete?cs=" + common::NumToString(chunkserver.id())
+                      + "\">delete</a>)";
         } else if (chunkserver.kick()) {
             table_str += "kicked";
         } else if (chunkserver.status() == kCsReadonly) {

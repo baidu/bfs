@@ -31,8 +31,8 @@ public:
     bool GetChunkServerChains(int num, std::vector<std::pair<int32_t,std::string> >* chains,
                               const std::string& client_address);
     bool GetRecoverChains(const std::set<int32_t>& replica, std::vector<std::string>* chains);
-    int32_t AddChunkServer(const std::string& address, int64_t quota);
     int32_t AddChunkServer(const std::string& address, const std::string& ip, int64_t quota);
+    bool DeleteChunkServer(int32_t cs_id);
     bool KickChunkServer(int cs_id);
     bool UpdateChunkServer(int cs_id, int64_t quota);
     bool RemoveChunkServer(const std::string& address);
