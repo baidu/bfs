@@ -73,6 +73,7 @@ void NameServerImpl::CheckLeader() {
             LOG(FATAL, "LogRemote namespace update fail");
         }
         safe_mode_ = FLAGS_nameserver_safemode_time;
+        start_time_ = common::timer::get_micros();
         work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
     } else {
