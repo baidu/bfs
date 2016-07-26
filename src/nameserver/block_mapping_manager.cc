@@ -15,9 +15,10 @@ namespace bfs {
 
 BlockMappingManager::BlockMappingManager(int32_t bucket_num) :
     blockmapping_bucket_num_(bucket_num) {
+    thread_pool_ = new ThreadPool(blockmapping_bucket_num_);
     block_mapping_.resize(blockmapping_bucket_num_);
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        block_mapping_[i] = new BlockMapping();
+        block_mapping_[i] = new BlockMapping(thread_pool_);
     }
 }
 
