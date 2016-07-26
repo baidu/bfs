@@ -107,7 +107,6 @@ private:
     ThreadPool* thread_pool_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
-    int64_t next_block_id_;
     bool safe_mode_;
 
     CheckList hi_recover_check_;
