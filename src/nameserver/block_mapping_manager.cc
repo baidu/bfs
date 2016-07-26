@@ -9,15 +9,17 @@
 #include <common/string_util.h>
 
 DECLARE_int32(web_recover_list_size);
+DECLARE_int32(blockmapping_working_thread_num);
 
 namespace baidu {
 namespace bfs {
 
 BlockMappingManager::BlockMappingManager(int32_t bucket_num) :
     blockmapping_bucket_num_(bucket_num) {
+    thread_pool_ = new ThreadPool(FLAGS_blockmapping_working_thread_num);
     block_mapping_.resize(blockmapping_bucket_num_);
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        block_mapping_[i] = new BlockMapping();
+        block_mapping_[i] = new BlockMapping(thread_pool_);
     }
 }
 

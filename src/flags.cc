@@ -30,6 +30,7 @@ DEFINE_int32(nameserver_work_thread_num, 20, "Work threads num");
 DEFINE_bool(select_chunkserver_by_zone, false, "Select chunkserver by zone");
 DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locality");
 DEFINE_int32(blockmapping_bucket_num, 19, "Partation num of blockmapping");
+DEFINE_int32(blockmapping_working_thread_num, 5, "Working thread num of blockmapping");
 DEFINE_int32(block_id_allocation_size, 10000, "Block id allocatoin size");
 
 // ha
