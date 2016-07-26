@@ -33,7 +33,7 @@ DEFINE_int32(blockmapping_bucket_num, 20, "Partation num of blockmapping");
 DEFINE_int32(block_id_allocation_size, 10000, "Block id allocatoin size");
 
 // ha
-DEFINE_string(ha_strategy,"master_slave", "[master_slave, raft]");
+DEFINE_string(ha_strategy, "master_slave", "[master_slave, raft, none]");
 DEFINE_string(nameserver_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 DEFINE_int32(node_index, 0, "Nameserver node index");
 // ha - master_slave
