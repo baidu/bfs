@@ -93,11 +93,10 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     uint64_t last_len = 0;
     while (len < file_size_) {
         uint64_t now_time = baidu::common::timer::get_micros();
-        if ((len - last_len) >
-                ((FLAGS_write_speed_limit << 20) / 1000000.0 * (now_time - last_write_time))) {
-            uint64_t sleep_time = static_cast<uint64_t>(((len - last_len) / (FLAGS_write_speed_limit << 20) * 1000000.0)
-                                      - (now_time - last_write_time));
-            usleep(sleep_time);
+        double bytes = len - last_len - (FLAGS_write_speed_limit << 20) * (now_time - last_write_time) / 1000000.0;
+        if (bytes > 0) {
+            double sleep_time = (bytes / 1024.0 / 1024.0) / (FLAGS_write_speed_limit) * 1000000.0;
+            usleep(static_cast<uint32_t>(sleep_time));
         }
         uint32_t w = base_size + rand_[thread_id]->Uniform(base_size);
 
@@ -163,11 +162,10 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     uint64_t last_bytes = 0;
     while (1) {
         uint64_t now_time = baidu::common::timer::get_micros();
-        if ((bytes - last_bytes) >
-                ((FLAGS_read_speed_limit << 20) / 1000000.0 * (now_time - last_read_time))) {
-            uint64_t sleep_time = static_cast<uint64_t>(((bytes - last_bytes) / (FLAGS_read_speed_limit << 20) * 1000000.0)
-                - (now_time - last_read_time));
-            usleep(sleep_time);
+        double sleep_bytes = bytes - last_bytes - (FLAGS_read_speed_limit << 20) * (now_time - last_read_time) / 1000000.0;
+        if (sleep_bytes > 0) {
+            double sleep_time = (sleep_bytes / 1024.0 / 1024.0) / (FLAGS_read_speed_limit) * 1000000.0;
+            usleep(static_cast<uint32_t>(sleep_time));
         }
         last_bytes = bytes;
         uint32_t r = base_size + rand_[thread_id]->Uniform(base_size);
