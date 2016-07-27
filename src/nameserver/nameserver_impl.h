@@ -133,6 +133,7 @@ private:
     BlockMappingManager* block_mapping_manager_;
     /// Safemode
     volatile int safe_mode_;
+    volatile int start_recover_;
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;
