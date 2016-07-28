@@ -40,6 +40,13 @@ private:
     std::map<int64_t, SS*> snapshots_;
 };
 
+struct SnapshotTask {
+    int64_t id;
+    leveldb::Snapshot* snapshot;
+    leveldb::Iterator* iterator;
+    SnapshotTask(int64_t id, snapshot, iterator) : id(id), snapshot(snapshot), iterator(iterator) {}
+};
+
 class NameSpace {
 public:
     NameSpace(bool standalone = true);
@@ -75,8 +82,10 @@ public:
     bool RebuildBlockMap(boost::function<void (const FileInfo&)> callback);
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
-    /// ha - tail log from leader/master
+    /// ha - apply entries to leveldb
     void ApplyToDB(const std::string& log, int64_t seq);
+    /// ha - write snapshot to sync
+    bool ScanSnapshot(int64_t id, NameServerLog* log, bool* done);
     void CleanSnapshot(int64_t seq);
     int64_t GetNewBlockId(NameServerLog* log);
     void InitBlockIdUpbound(NameServerLog* log);
@@ -106,6 +115,7 @@ private:
     int64_t next_block_id_;
     Mutex mu_;
     SyncSnapshot* sync_snapshots_;
+    std::map<int64_t, SnapshotTask*> snapshot_tasks_;
 };
 
 } // namespace bfs

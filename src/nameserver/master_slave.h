@@ -37,10 +37,11 @@ public:
                    const master_slave::AppendLogRequest* request,
                    master_slave::AppendLogResponse* response,
                    ::google::protobuf::Closure* done);
-
 private:
     void BackgroundLog();
     void ReplicateLog();
+    void ReplicateSnapshot();
+    void ClearLog();
     void LogStatus();
     void ProcessCallbck(int64_t index, bool timeout_check);
 

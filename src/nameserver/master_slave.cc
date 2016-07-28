@@ -16,6 +16,7 @@
 DECLARE_string(nameserver_nodes);
 DECLARE_int32(node_index);
 DECLARE_string(master_slave_role);
+DECLARE_int64(log_gc_interval);
 
 namespace baidu {
 namespace bfs {
@@ -243,7 +244,13 @@ void MasterSlaveImpl::ReplicateLog() {
                 sync_idx_, current_idx_);
         mu_.Unlock();
         std::string entry;
-        if (logdb_->Read(sync_idx_ + 1, &entry) != kOK) {
+        StatusCode s = logdb_->Read(sync_idx_ + 1, &entry);
+        if (s != kOK) {
+            if (s == kNsNotFound) {
+                LOG(INFO, "Slave is too old, write snapshot to slave sync_idx_ = %ld", sync_idx_);
+                ReplicateSnapshot();
+                continue;
+            }
             LOG(FATAL, "\033[32m[Sync]\033[0m Read logdb_ failed sync_idx_ = %ld ", sync_idx_ + 1);
         }
         master_slave::AppendLogRequest request;
@@ -300,6 +307,11 @@ void MasterSlaveImpl::ProcessCallbck(int64_t index, bool timeout_check) {
         LOG(INFO, "\033[32m[Sync]\033[0m leaves master-only mode");
         master_only_ = false;
     }
+}
+
+void MasterSlaveImpl::ClearLog() {
+    logdb_->DeletUpto(sync_idx_);
+    thread_pool_->DelayTask(FLAGS_log_gc_interval * 1000, boost::bind(&MasterSlaveImpl::ClearLog, this));
 }
 
 void MasterSlaveImpl::LogStatus() {

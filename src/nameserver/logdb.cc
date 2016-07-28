@@ -205,6 +205,16 @@ StatusCode LogDB::ReadMarker(const std::string& key, int64_t* value) {
     return kOK;
 }
 
+StatusCode LogDB::GetSmallestIdx(int64_t* value) {
+    MutexLock lock(&mu_);
+    if (smallest_index_ == next_index_) {
+        *value = -1;
+        return kNsNotFound;
+    }
+    *value = smallest_index_;
+    return kOK;
+}
+
 StatusCode LogDB::GetLargestIdx(int64_t* value) {
     MutexLock lock(&mu_);
     if (smallest_index_ == next_index_) {

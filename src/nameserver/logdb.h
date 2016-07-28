@@ -50,6 +50,8 @@ public:
     // Read marker. Return -1 string if cannot find 'key'
     StatusCode ReadMarker(const std::string& key, int64_t* value);
 
+    // Return the smallest index in logdb. Return -1 if db is empty.
+    StatusCode GetSmallestIdx(int64_t* value);
     // Return the largest index in logdb. Return -1 if db is empty.
     StatusCode GetLargestIdx(int64_t* value);
     // delete all entries smaller than or equal to 'index'

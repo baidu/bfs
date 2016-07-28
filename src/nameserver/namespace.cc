@@ -24,6 +24,7 @@ DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(block_id_allocation_size);
+DECLARE_int64(snapshot_step);
 
 const int64_t kRootEntryid = 1;
 
@@ -588,6 +589,33 @@ void NameSpace::ApplyToDB(const std::string& logstr, int64_t seq) {
     if (!s.ok()) {
         LOG(FATAL, "ApplyToDB failed");
     }
+}
+
+bool Namespace::ScanSnapshot(int64_t id, NameServerLog* log, bool* done) {
+    std::map<int64_t, SnapshotTask*>::iterator it = snapshot_tasks_.find(id);
+    SnapshotTask* task;
+    if (it == snapshot_tasks_.end()) {
+        LOG(INFO, "ScanSnapshot create a new task id = %ld", id);
+        leveldb::Snapshot* snapshot = db_.GetSnapshot();
+        leveldb::ReadOptions option;
+        option.snapshot = snapshot;
+        leveldb::Iterator* it = db_->NewIterator(option);
+        task = new SnapshotTask(id, snapshot, it);
+        snapshot_tasks_[id] = task;
+    }
+    *done = false;
+    for (int i = 0; i < FLAGS_snapshot_step; ++i) {
+        if (!task->iterator->Valid()) {
+            *done = true;
+            delete it->iterator;
+            db_->ReleaseSnapshot(it->snapshot);
+            snapshot_tasks_.erase(id);
+            break;
+        }
+        EncodeLog(log, kSyncWrite, it->key().data(), it->value().data());
+        assert(ret);
+    }
+    return true;
 }
 
 void NameSpace::CleanSnapshot(int64_t seq) {

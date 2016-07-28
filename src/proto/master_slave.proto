@@ -5,6 +5,7 @@ option cc_generic_services = true;
 message AppendLogRequest {
     optional bytes log_data = 1;
     optional int32 index = 2;
+    optional bool is_snapshot = 3;
 }
 
 message AppendLogResponse {
