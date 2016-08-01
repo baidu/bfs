@@ -353,7 +353,7 @@ int32_t FileImpl::AddBlock() {
             if (!ret) {
                 return TIMEOUT;
             } else {
-                return GetErrorCode(response.status());
+                return GetErrorCode(create_response.status());
             }
         }
         write_windows_[addr]->Add(0, 0);

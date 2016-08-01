@@ -73,6 +73,7 @@ void NameServerImpl::CheckLeader() {
             LOG(FATAL, "LogRemote namespace update fail");
         }
         safe_mode_ = FLAGS_nameserver_safemode_time;
+        start_time_ = common::timer::get_micros();
         work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
     } else {
@@ -1002,6 +1003,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Pending tasks: "
         + common::NumToString(work_thread_pool_->PendingNum()) + " "
         + common::NumToString(report_thread_pool_->PendingNum()) + "</br>";
+    std::string ha_status = sync_ ? sync_->GetStatus() : "none";
+    str += "HA status: " + ha_status + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 

@@ -120,14 +120,14 @@ void ChunkServerImpl::LogStatus(bool routine) {
 
     LOG(INFO, "[Status] blocks %ld %ld buffers %ld pending %ld data %sB, "
               "find %ld read %ld write %ld %ld %.2f MB, rpc %ld %ld %ld, "
-              "unfinished: %ld",
+              "unfinished: %ld recovering %ld",
         g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(), g_pending_writes.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
         counters.find_ops, counters.read_ops,
         counters.write_ops, counters.refuse_ops,
         counters.write_bytes / 1024.0 / 1024,
         counters.rpc_delay, counters.delay_all, work_thread_pool_->PendingNum(),
-        counters.unfinished_write_bytes);
+        counters.unfinished_write_bytes, g_recover_count.Get());
     if (routine) {
         heartbeat_thread_->DelayTask(1000,
             boost::bind(&ChunkServerImpl::LogStatus, this, true));
@@ -678,7 +678,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
 
 bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver) {
     int32_t read_len = 1 << 20;
-    int32_t offset = 0;
+    int64_t offset = 0;
     int32_t seq = 0;
     char* buf = new char[read_len];
     int64_t start_recover = common::timer::get_micros();

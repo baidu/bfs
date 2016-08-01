@@ -57,7 +57,7 @@ struct RecoverBlockSet {
 
 class BlockMapping {
 public:
-    BlockMapping();
+    BlockMapping(ThreadPool* thread_pool);
     bool GetBlock(int64_t block_id, NSBlock* block);
     bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
@@ -104,10 +104,9 @@ private:
                                int64_t block_version);
 private:
     Mutex mu_;
-    ThreadPool thread_pool_;
+    ThreadPool* thread_pool_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
-    int64_t next_block_id_;
     bool safe_mode_;
 
     CheckList hi_recover_check_;

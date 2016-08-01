@@ -12,7 +12,7 @@ DEFINE_bool(bfs_web_kick_enable, false, "Enable kick button on website");
 DEFINE_int32(web_recover_list_size, 512, "Max recover list size displayed in website");
 DEFINE_string(bfs_log, "", "BFS log");
 DEFINE_int32(bfs_log_size, 1024, "BFS log size");
-DEFINE_int32(bfs_log_limit, 10240, "BFS log total size limit");
+DEFINE_int32(bfs_log_limit, 102400, "BFS log total size limit");
 // nameserver
 DEFINE_string(namedb_path, "./db", "Namespace database");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
@@ -29,11 +29,12 @@ DEFINE_int32(nameserver_report_thread_num, 20, "Threads to handle block report")
 DEFINE_int32(nameserver_work_thread_num, 20, "Work threads num");
 DEFINE_bool(select_chunkserver_by_zone, false, "Select chunkserver by zone");
 DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locality");
-DEFINE_int32(blockmapping_bucket_num, 20, "Partation num of blockmapping");
+DEFINE_int32(blockmapping_bucket_num, 19, "Partation num of blockmapping");
+DEFINE_int32(blockmapping_working_thread_num, 5, "Working thread num of blockmapping");
 DEFINE_int32(block_id_allocation_size, 10000, "Block id allocatoin size");
 
 // ha
-DEFINE_string(ha_strategy,"master_slave", "[master_slave, raft]");
+DEFINE_string(ha_strategy, "master_slave", "[master_slave, raft, none]");
 DEFINE_string(nameserver_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 DEFINE_int32(node_index, 0, "Nameserver node index");
 // ha - master_slave
