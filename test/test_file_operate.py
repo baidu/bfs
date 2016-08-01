@@ -1,5 +1,5 @@
 '''
-Copyright (c) 2015, Baidu.com, Inc. All Rights Reserved
+Copyright (c) 2016, Baidu.com, Inc. All Rights Reserved
 Use of this source code is governed by a BSD-style license that can be
 found in the LICENSE file.
 '''
@@ -165,7 +165,7 @@ def test_cat_file_exist():
     '''
     test cat file method
     '''
-def test_cat_file_exist():
+def test_cat_file_not_exist():
 
     cmd = "%s/bfs_client cat /file_not_exist" % const.bfs_client_dir
     (ret, out, err) = common.runcmd(cmd)
@@ -264,6 +264,32 @@ def test_move_file_samedir_diffname():
     cmd = "%s/bfs_client mv /README.md /README.md.new" % const.bfs_client_dir
     (ret, out, err) = common.runcmd(cmd)
     nose.tools.assert_equal(ret, 0)
+
+
+    '''
+    test move(rename) file method
+    '''
+def test_move_file_samedir_samename():
+
+    cmd = "%s/bfs_client mkdir /test_move_file_4" % const.bfs_client_dir
+    (ret, out, err) = common.runcmd(cmd)
+
+    cmd = "%s/bfs_client put %s/data/urllist /test_move_file_4/urllist" % (const.bfs_client_dir, const.work_dir)
+    (ret, out, err) = common.runcmd(cmd)
+    assert(ret == 0)
+
+    cmd = "%s/bfs_client mv /test_move_file_4/urllist /test_move_file_4/urllist" % const.bfs_client_dir
+    (ret, out, err) = common.runcmd(cmd)
+    nose.tools.assert_equal(ret, 0)
+
+    cmd = "cat %s/data/urllist" % const.work_dir
+    (ret1, out1, err1) = common.runcmd(cmd)
+    assert(ret1 == 0)
+
+    cmd = "%s/bfs_client cat /test_move_file_4/urllist" % const.bfs_client_dir
+    (ret2, out2, err2) = common.runcmd(cmd)
+    nose.tools.assert_equal(ret2, 0)
+    nose.tools.assert_equal(out1, out2)
 
 
     '''

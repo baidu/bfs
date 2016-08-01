@@ -89,4 +89,11 @@ def check_process(type = all):
                 ret = 1 
     return ret
 
+def modify_conf(file, key, value):
+    (ret, out, err) = runcmd("sed -i 's/%s.*$/%s=%s/g' %s" % (key, key, value, file))
+    assert(ret == 0)
+
+def check_log(file, str):
+    (ret, out, err) = runcmd("grep %s %s" % (str, file))
+    return ret, out, err
 
