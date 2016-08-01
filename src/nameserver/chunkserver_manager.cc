@@ -580,46 +580,6 @@ void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_
     }
 }
 
-void ChunkServerManager::ShutdownOneChunkServer() {
-    {
-        MutexLock lock(&mu_);
-        if (next_shutdown_offset_ == chunkserver_to_shutdown_.size()) {
-            LOG(INFO, "Shutdown chunkserver progress finished");
-            chunkserver_to_shutdown_.clear();
-            next_shutdown_offset_ = 0;
-            return;
-        }
-    }
-    RecoverBlockNum recover_num;
-    block_mapping_manager_->GetStat(-1, &recover_num);
-    if (recover_num.hi_recover_num != 0 || recover_num.hi_pending != 0) {
-        boost::function<void ()> task =
-            boost::bind(&ChunkServerManager::ShutdownOneChunkServer, this);
-        thread_pool_->DelayTask((FLAGS_keepalive_timeout + 5) * 1000, task);
-        return;
-    }
-    int32_t cs_id;
-    {
-        MutexLock lock(&mu_);
-        std::map<std::string, int32_t>::iterator it =
-            address_map_.find(chunkserver_to_shutdown_[next_shutdown_offset_]);
-        if (it == address_map_.end()) {
-            LOG(WARNING, "chunkserver %s not found",
-                    chunkserver_to_shutdown_[next_shutdown_offset_].c_str());
-            boost::function<void ()> task =
-                boost::bind(&ChunkServerManager::ShutdownOneChunkServer, this);
-            thread_pool_->AddTask(task);
-            return;
-        }
-        cs_id = it->second;
-    }
-    KickChunkServer(cs_id);
-    next_shutdown_offset_++;
-    boost::function<void ()> task =
-        boost::bind(&ChunkServerManager::ShutdownOneChunkServer, this);
-    thread_pool_->DelayTask((FLAGS_keepalive_timeout + 5) * 1000, task);
-}
-
 StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>&
                                                   chunkserver_address) {
     MutexLock lock(&mu_);
@@ -630,13 +590,6 @@ StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::Repe
         chunkserver_to_shutdown_.push_back(chunkserver_address.Get(i));
         MarkChunkServerReadonly(chunkserver_to_shutdown_.back());
     }
-    /*
-    if (next_shutdown_offset_ == 0) {
-        boost::function<void ()> task =
-            boost::bind(&ChunkServerManager::ShutdownOneChunkServer, this);
-        thread_pool_->AddTask(task);
-    }
-    */
     boost::function<void ()> task = boost::bind(&ChunkServerManager::MarkShutdownBlocksReadonly, this);
     thread_pool_->AddTask(task);
     return kOK;
