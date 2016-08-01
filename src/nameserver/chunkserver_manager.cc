@@ -46,12 +46,10 @@ void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string
     int32_t id = cs->id();
     MutexLock lock(&mu_, "CleanChunkServer", 10);
     chunkserver_num_--;
-    std::map<int32_t, std::pair<Mutex*, std::set<int64_t> > >::iterator it =
-        chunkserver_block_map_.find(id);
+    std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(id);
     assert(it != chunkserver_block_map_.end());
-    std::swap(blocks, (it->second).second);
-    delete (it->second).first;
-    chunkserver_block_map_.erase(id);
+    ChunkServerBlockMap* cs_block_map = it->second;
+    std::swap(blocks, cs_block_map->blocks);
     LOG(INFO, "Remove ChunkServer C%d %s %s, cs_num=%d",
             cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     cs->set_status(kCsCleaning);
@@ -467,8 +465,8 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
     ++chunkserver_num_;
-    Mutex* mu = new Mutex;
-    chunkserver_block_map_.insert(std::make_pair(id, std::make_pair(mu, std::set<int64_t>())));
+    ChunkServerBlockMap* cs_block_map = new ChunkServerBlockMap;
+    chunkserver_block_map_.insert(std::make_pair(id, cs_block_map));
     return id;
 }
 
@@ -491,33 +489,27 @@ int32_t ChunkServerManager::GetChunkServerId(const std::string& addr) {
 }
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
-    Mutex* mu = NULL;
-    std::set<int64_t>* block_set = NULL;
+    ChunkServerBlockMap* cs_block_map = NULL;
     {
         MutexLock lock(&mu_);
-        std::map<int32_t, std::pair<Mutex*, std::set<int64_t> > >::iterator it
-            = chunkserver_block_map_.find(id);
+        std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(id);
         assert(it != chunkserver_block_map_.end());
-        mu = (it->second).first;
-        block_set = &((it->second).second);
+        cs_block_map = it->second;
     }
-    MutexLock lock(mu);
-    block_set->insert(block_id);
+    MutexLock lock(cs_block_map->mu);
+    cs_block_map->blocks.insert(block_id);
 }
 
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
-    Mutex* mu = NULL;
-    std::set<int64_t>* block_set = NULL;
-    std::map<int32_t, std::pair<Mutex*, std::set<int64_t> > >::iterator it;
+    ChunkServerBlockMap* cs_block_map = NULL;
     {
         MutexLock lock(&mu_, "RemoveBlock", 10);
-        it = chunkserver_block_map_.find(id);
+        std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(id);
         assert(it != chunkserver_block_map_.end());
-        mu = (it->second).first;
-        block_set = &((it->second).second);
+        cs_block_map = it->second;
     }
-    MutexLock lock(mu);
-    block_set->erase(block_id);
+    MutexLock lock(cs_block_map->mu);
+    cs_block_map->blocks.erase(block_id);
 }
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,

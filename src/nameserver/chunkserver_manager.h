@@ -67,7 +67,17 @@ private:
     ServerMap chunkservers_;
     std::map<std::string, int32_t> address_map_;
     std::map<int32_t, std::set<ChunkServerInfo*> > heartbeat_list_;
-    std::map<int32_t, std::pair<Mutex*, std::set<int64_t> > > chunkserver_block_map_;
+    struct ChunkServerBlockMap {
+        Mutex* mu;
+        std::set<int64_t> blocks;
+        ChunkServerBlockMap() {
+            mu = new Mutex;
+        }
+        ~ChunkServerBlockMap() {
+            delete mu;
+        }
+    };
+    std::map<int32_t, ChunkServerBlockMap*> chunkserver_block_map_;
     int32_t chunkserver_num_;
     int32_t next_chunkserver_id_;
 
