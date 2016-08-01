@@ -44,7 +44,6 @@ private:
 private:
     int32_t blockmapping_bucket_num_;
     std::vector<BlockMapping*> block_mapping_;
-    Mutex mu_;
 };
 
 } // namespace bfs

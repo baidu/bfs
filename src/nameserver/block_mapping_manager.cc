@@ -161,14 +161,12 @@ void BlockMappingManager::MarkIncomplete(int64_t block_id) {
 
 void BlockMappingManager::MoveReplicasToReadonlySet(int32_t cs_id, const std::set<int64_t>& blocks) {
     for(std::set<int64_t>::const_iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        MutexLock lock(&mu_);
         int32_t bucket_offset = GetBucketOffset(*it);
         block_mapping_[bucket_offset]->MoveReplicaToReadonlySet(cs_id, *it);
     }
 }
 
 size_t BlockMappingManager::GetHiPreRecoverSetSize() {
-    MutexLock lock(&mu_);
     RecoverBlockNum recover_block_num;
     for (int i = 0; i < blockmapping_bucket_num_; i++) {
         RecoverBlockNum cur_num;
