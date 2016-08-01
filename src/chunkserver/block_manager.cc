@@ -149,8 +149,8 @@ bool BlockManager::LoadStorage() {
             return false;
         }
         BlockMeta meta;
-        meta.ParseFromArray(it->value().data(), it->value().size());
-        if (meta.block_id() != block_id) {
+        if (!meta.ParseFromArray(it->value().data(), it->value().size())
+            || meta.block_id() != block_id) {
             struct OldBlockMeta {
                 int64_t block_id;
                 int64_t block_size;

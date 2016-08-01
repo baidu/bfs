@@ -32,6 +32,7 @@ public:
     virtual bool Log(const std::string& entry, int timeout_ms = 10000);
     virtual void Log(const std::string& entry, boost::function<void (int64_t)> callback);
     virtual void SwitchToLeader();
+    std::string GetStatus();
 
     // rpc
     void AppendLog(::google::protobuf::RpcController* controller,

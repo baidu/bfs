@@ -430,5 +430,17 @@ void MasterSlaveImpl::LogStatus() {
     thread_pool_->DelayTask(5000, boost::bind(&MasterSlaveImpl::LogStatus, this));
 }
 
+std::string MasterSlaveImpl::GetStatus() {
+    if (is_leader_) {
+        if (master_only_) {
+            return "master_only";
+        } else {
+            return "master_slave";
+        }
+    } else {
+        return "slave";
+    }
+}
+
 } // namespace bfs
 } // namespace baidu

@@ -32,6 +32,7 @@ public:
     bool Log(const std::string& entry, int timeout_ms = 10000);
     void Log(const std::string& entry, boost::function<void (int64_t)> callback);
     void SwitchToLeader() {}
+    std::string GetStatus();
 public:
     google::protobuf::Service* GetService();
 private:

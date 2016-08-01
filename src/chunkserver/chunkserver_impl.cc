@@ -674,7 +674,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
 
 bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver) {
     int32_t read_len = 1 << 20;
-    int32_t offset = 0;
+    int64_t offset = 0;
     int32_t seq = 0;
     char* buf = new char[read_len];
     int64_t start_recover = common::timer::get_micros();
