@@ -490,11 +490,9 @@ int32_t ChunkServerManager::GetChunkServerId(const std::string& addr) {
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
     ChunkServerBlockMap* cs_block_map = NULL;
-    {
-        MutexLock lock(&mu_);
-        std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(id);
-        assert(it != chunkserver_block_map_.end());
-        cs_block_map = it->second;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
     }
     MutexLock lock(cs_block_map->mu);
     cs_block_map->blocks.insert(block_id);
@@ -502,11 +500,9 @@ void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
 
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     ChunkServerBlockMap* cs_block_map = NULL;
-    {
-        MutexLock lock(&mu_, "RemoveBlock", 10);
-        std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(id);
-        assert(it != chunkserver_block_map_.end());
-        cs_block_map = it->second;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
     }
     MutexLock lock(cs_block_map->mu);
     cs_block_map->blocks.erase(block_id);
@@ -612,6 +608,18 @@ StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::Repe
 bool ChunkServerManager::GetShutdownChunkServerStat() {
     MutexLock lock(&mu_);
     return !chunkservers_to_offline_.empty();
+}
+
+bool ChunkServerManager::GetChunkServerBlockMapPtr(int32_t cs_id, ChunkServerBlockMap** cs_block_map)
+{
+    MutexLock lock(&mu_);
+    std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(cs_id);
+    if (it == chunkserver_block_map_.end()) {
+        *cs_block_map = NULL;
+        return false;
+    }
+    *cs_block_map = it->second;
+    return true;
 }
 
 } // namespace bfs
