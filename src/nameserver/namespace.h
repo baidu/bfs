@@ -42,9 +42,11 @@ private:
 
 struct SnapshotTask {
     int64_t id;
-    leveldb::Snapshot* snapshot;
+    const leveldb::Snapshot* snapshot;
     leveldb::Iterator* iterator;
-    SnapshotTask(int64_t id, snapshot, iterator) : id(id), snapshot(snapshot), iterator(iterator) {}
+    SnapshotTask(int64_t id) : id(id), snapshot(NULL), iterator(NULL) {}
+    SnapshotTask(int64_t id, const leveldb::Snapshot* snapshot, leveldb::Iterator* iterator)
+        : id(id), snapshot(snapshot), iterator(iterator) {}
 };
 
 class NameSpace {
@@ -85,7 +87,7 @@ public:
     /// ha - apply entries to leveldb
     void ApplyToDB(const std::string& log, int64_t seq);
     /// ha - write snapshot to sync
-    bool ScanSnapshot(int64_t id, NameServerLog* log, bool* done);
+    bool ScanSnapshot(int64_t id, std::string* log, bool* done);
     void CleanSnapshot(int64_t seq);
     int64_t GetNewBlockId(NameServerLog* log);
     void InitBlockIdUpbound(NameServerLog* log);

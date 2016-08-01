@@ -26,7 +26,8 @@ class RaftImpl : public Sync {
 public:
     RaftImpl();
     ~RaftImpl();
-    void Init(boost::function<void (const std::string& log, int64_t)> callback);
+    void Init(boost::function<void (const std::string& log, int64_t)> callback,
+              boost::function<void (int64_t, std::string*, bool*)> scan_func);
     bool IsLeader(std::string* leader_addr = NULL);
     bool Log(const std::string& entry, int timeout_ms = 10000);
     void Log(const std::string& entry, boost::function<void (int64_t)> callback);

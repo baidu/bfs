@@ -576,10 +576,14 @@ void NameSpace::ApplyToDB(const std::string& logstr, int64_t seq) {
         LOG(INFO, "SyncSnapshot add %ld", seq);
     }
     leveldb::WriteBatch batch;
+    LOG(INFO, "LL: log size = %ld", log.entries_size());
     for (int i = 0; i < log.entries_size(); i++) {
         const NsLogEntry& entry = log.entries(i);
         int type = entry.type();
         if (type == kSyncWrite) {
+            LOG(INFO, "LL: put %s %s %ld %ld",
+                    common::DebugString(entry.key()).c_str(),
+                    common::DebugString(entry.value()).c_str(), entry.key().size(), entry.value().size());
             batch.Put(entry.key(), entry.value());
         } else if (type == kSyncDelete) {
             batch.Delete(entry.key());
@@ -591,30 +595,52 @@ void NameSpace::ApplyToDB(const std::string& logstr, int64_t seq) {
     }
 }
 
-bool Namespace::ScanSnapshot(int64_t id, NameServerLog* log, bool* done) {
+bool NameSpace::ScanSnapshot(int64_t id, std::string* log, bool* done) {
     std::map<int64_t, SnapshotTask*>::iterator it = snapshot_tasks_.find(id);
     SnapshotTask* task;
+    if (log == NULL) { // terminate this task
+        if (it == snapshot_tasks_.end()) {
+            return true;
+        }
+        task = it->second;
+        delete task->iterator;
+        db_->ReleaseSnapshot(task->snapshot);
+        snapshot_tasks_.erase(id);
+        delete task;
+        return true;
+    }
     if (it == snapshot_tasks_.end()) {
         LOG(INFO, "ScanSnapshot create a new task id = %ld", id);
-        leveldb::Snapshot* snapshot = db_.GetSnapshot();
+        task = new SnapshotTask(id);
+        task->snapshot = db_->GetSnapshot();
         leveldb::ReadOptions option;
-        option.snapshot = snapshot;
-        leveldb::Iterator* it = db_->NewIterator(option);
-        task = new SnapshotTask(id, snapshot, it);
+        option.snapshot = task->snapshot;
+        task->iterator = db_->NewIterator(option);
+        task->iterator->SeekToFirst();
         snapshot_tasks_[id] = task;
+    } else {
+        task = it->second;
     }
     *done = false;
+    NameServerLog l;
     for (int i = 0; i < FLAGS_snapshot_step; ++i) {
         if (!task->iterator->Valid()) {
             *done = true;
-            delete it->iterator;
-            db_->ReleaseSnapshot(it->snapshot);
+            delete task->iterator;
+            db_->ReleaseSnapshot(task->snapshot);
             snapshot_tasks_.erase(id);
+            delete task;
+            LOG(INFO, "ScanSnapshot done id = %ld", id);
             break;
         }
-        EncodeLog(log, kSyncWrite, it->key().data(), it->value().data());
-        assert(ret);
+        EncodeLog(&l, kSyncWrite, task->iterator->key().ToString(), task->iterator->value().ToString());
+        LOG(DEBUG, "ScanSnapshot %d %ld %ld", i, task->iterator->key().size(),
+                task->iterator->value().size());
+        task->iterator->Next();
     }
+    std::string logstr;
+    l.SerializeToString(&logstr);
+    log->assign(logstr);
     return true;
 }
 

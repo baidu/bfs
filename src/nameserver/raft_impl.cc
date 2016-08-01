@@ -41,7 +41,8 @@ void RaftImpl::Log(const std::string& entry, boost::function<void (int64_t)> cal
     raft_node_->AppendLog(entry, callback);
 }
 
-void RaftImpl::Init(boost::function<void (const std::string& log, int64_t)> callback) {
+void RaftImpl::Init(boost::function<void (const std::string& log, int64_t)> callback,
+                    boost::function<void (int64_t, std::string*, bool*)>) {
     return raft_node_->Init(callback);
 }
 

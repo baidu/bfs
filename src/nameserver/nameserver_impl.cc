@@ -52,7 +52,8 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
     if (sync_) {
-        sync_->Init(boost::bind(&NameSpace::ApplyToDB, namespace_, _1, _2));
+        sync_->Init(boost::bind(&NameSpace::ApplyToDB, namespace_, _1, _2),
+                    boost::bind(&NameSpace::ScanSnapshot, namespace_, _1, _2, _3));
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
