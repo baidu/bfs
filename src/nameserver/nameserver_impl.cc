@@ -228,7 +228,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     }
     g_block_report.Inc();
     if (!response->has_sequence_id()) {
-        response->set_sequence_id(request->sequence_id());
+        int64_t receive_report_time = common::timer::get_micros();
+        response->set_sequence_id(receive_report_time);
         boost::function<void ()> task =
             boost::bind(&NameServerImpl::BlockReport, this, controller, request, response, done);
         report_thread_pool_->AddTask(task);
@@ -239,6 +240,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
+    int64_t start_report = common::timer::get_micros();
     int old_id = chunkserver_manager_->GetChunkServerId(request->chunkserver_addr());
     if (cs_id != old_id) {
         LOG(INFO, "ChunkServer %s id mismatch, old: C%d new: C%d , need to re-register",
@@ -247,6 +249,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    int64_t before_update = common::timer::get_micros();
+    int64_t add_time = 0;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -265,8 +269,12 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         }
 
         // update cs -> block
+        int64_t before_add_block = common::timer::get_micros();
         chunkserver_manager_->AddBlock(cs_id, cur_block_id);
+        int64_t after_add_block = common::timer::get_micros();
+        add_time = (after_add_block - before_add_block);
     }
+    int64_t after_update = common::timer::get_micros();
 
     // recover replica
     if (!safe_mode_ && start_recover_) {
@@ -288,6 +296,12 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
     block_mapping_manager_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
+    int64_t end_report = common::timer::get_micros();
+    if (end_report - start_report > 100 * 1000) {
+        LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors, wait %d micros",
+                cs_id, after_update - before_update,
+                end_report - start_report, add_time, start_report - response.sequence_id());
+    }
     response->set_status(kOK);
     done->Run();
 }
