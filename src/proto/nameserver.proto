@@ -17,7 +17,7 @@ message ChunkServerInfo {
     optional int32 ip = 10;
     optional int32 buffers = 11;
     optional int32 pending_writes = 28;
-    optional int64 pending_recover = 29;
+    optional int32 pending_recover = 29;
     optional bool kick = 12;
     optional string zone = 13;
     optional string datacenter = 14;
@@ -158,7 +158,7 @@ message HeartBeatRequest {
     optional int64 data_size = 6;
     optional int32 buffers = 7;
     optional int32 pending_writes = 13;
-    optional int64 pending_recover = 14;
+    optional int32 pending_recover = 14;
     optional int32 w_qps = 8;
     optional int64 w_speed = 9;
     optional int32 r_qps = 10;
