@@ -359,14 +359,14 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                         while (last_applied_ < commit_index) {
                             last_applied_ ++;
                             LOG(INFO, "[Raft] Apply %ld to leader", last_applied_);
-                            std::map<int64_t, boost::function<void (bool)> >::iterator cb_it =
+                            std::map<int64_t, boost::function<void (int64_t)> >::iterator cb_it =
                                 callback_map_.find(last_applied_);
                             if (cb_it != callback_map_.end()) {
-                                boost::function<void (bool)> callback = cb_it->second;
+                                boost::function<void (int64_t)> callback = cb_it->second;
                                 callback_map_.erase(cb_it);
                                 mu_.Unlock();
                                 LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
-                                callback(true);
+                                callback(last_applied_);
                                 mu_.Lock();
                             } else {
                                 LOG(INFO, "[Raft] no callback for %ld", last_applied_);
@@ -439,15 +439,16 @@ bool RaftNodeImpl::StoreContext(const std::string& context, const std::string& v
     return s == kOK;
 }
 
-void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void (bool)> callback) {
+void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void (int64_t)> callback) {
     MutexLock lock(&mu_);
     int64_t index = ++log_index_;
     ///TODO: optimize lock
     if (!StoreLog(current_term_, index, log)) {
         log_index_ --;
-        thread_pool_->AddTask(boost::bind(callback,false));
+        thread_pool_->AddTask(boost::bind(callback, index));
         return;
     }
+    log_callback_(log, index);
     callback_map_.insert(std::make_pair(index, callback));
     for (uint32_t i = 0; i < nodes_.size(); i++) {
         if (follower_context_[i]) {
@@ -502,7 +503,7 @@ void RaftNodeImpl::ApplyLog() {
             mu_.Unlock();
             LOG(INFO, "Callback %ld %s",
                 entry.index(), common::DebugString(entry.log_data()).c_str());
-                log_callback_(entry.log_data());
+                log_callback_(entry.log_data(), -1);
             mu_.Lock();
         }
         last_applied_ = entry.index();
@@ -583,7 +584,7 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
 }
 
 
-void RaftNodeImpl::Init(boost::function<void (const std::string& log)> callback) {
+void RaftNodeImpl::Init(boost::function<void (const std::string& log, int64_t)> callback) {
     log_callback_ = callback;
     ApplyLog();
 }

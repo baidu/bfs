@@ -37,8 +37,10 @@ DEFINE_int32(block_id_allocation_size, 10000, "Block id allocatoin size");
 DEFINE_string(ha_strategy, "master_slave", "[master_slave, raft, none]");
 DEFINE_string(nameserver_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 DEFINE_int32(node_index, 0, "Nameserver node index");
+DEFINE_int64(snapshot_step, 1000, "Sync snapshot step");
 // ha - master_slave
 DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
+DEFINE_int64(log_gc_interval, 60, "logdb gc interval, in second");
 // ha - raft
 DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
 

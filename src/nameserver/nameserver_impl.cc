@@ -52,7 +52,8 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
     if (sync_) {
-        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1));
+        sync_->Init(boost::bind(&NameSpace::ApplyToDB, namespace_, _1, _2),
+                    boost::bind(&NameSpace::ScanSnapshot, namespace_, _1, _2, _3));
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
@@ -79,7 +80,6 @@ void NameServerImpl::CheckLeader() {
     } else {
         is_leader_ = false;
         work_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
-        //LOG(INFO, "Delay CheckLeader");
     }
 }
 
@@ -343,16 +343,17 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
                                (std::vector<FileInfo>*)NULL, _1));
 }
 
-bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (bool)> callback) {
-    if (sync_ == NULL) {
-        if (!callback.empty()) {
-            work_thread_pool_->AddTask(boost::bind(callback, true));
-        }
-        return true;
-    }
+bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (int64_t)> callback) {
     std::string logstr;
     if (!log.SerializeToString(&logstr)) {
         LOG(FATAL, "Serialize log fail");
+    }
+    if (sync_ == NULL) {
+        namespace_->ApplyToDB(logstr, -1);
+        if (!callback.empty()) {
+            work_thread_pool_->AddTask(boost::bind(callback, -1));
+        }
+        return true;
     }
     if (callback.empty()) {
         return sync_->Log(logstr);
@@ -367,19 +368,15 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
                                      ::google::protobuf::Message* response,
                                      ::google::protobuf::Closure* done,
                                      std::vector<FileInfo>* removed,
-                                     bool ret) {
-    if (!ret) {
-        controller->SetFailed("SyncLogFail");
-    } else if (removed) {
+                                     int64_t seq) {
+    namespace_->CleanSnapshot(seq);
+    if (removed) {
         for (uint32_t i = 0; i < removed->size(); i++) {
             block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
         }
         delete removed;
     }
     done->Run();
-    if (!ret) {
-        LOG(FATAL, "SyncLog fail");
-    }
 }
 
 void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,

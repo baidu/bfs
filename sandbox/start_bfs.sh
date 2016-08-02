@@ -13,6 +13,7 @@ do
     ./bin/nameserver --node_index=$i 1>nlog 2>&1 &
     echo $! > pid
     cd -
+    sleep 1
 done;
 
 if [ "$1"x == "master_slave"x ]; then

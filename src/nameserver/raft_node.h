@@ -45,9 +45,9 @@ public:
                        ::google::protobuf::Closure* done);
 public:
     bool GetLeader(std::string* leader);
-    void AppendLog(const std::string& log, boost::function<void (bool)> callback);
+    void AppendLog(const std::string& log, boost::function<void (int64_t)> callback);
     bool AppendLog(const std::string& log, int timeout_ms = 10000);
-    void Init(boost::function<void (const std::string& log)> callback);
+    void Init(boost::function<void (const std::string& log, int64_t)> callback);
 private:
     bool StoreContext(const std::string& context, int64_t value);
     bool StoreContext(const std::string& context, const std::string& value);
@@ -105,8 +105,8 @@ private:
     std::string leader_;
     int64_t election_taskid_;
 
-    boost::function<void (const std::string& log)> log_callback_;
-    std::map<int64_t, boost::function<void (bool)> > callback_map_;
+    boost::function<void (const std::string& log, int64_t)> log_callback_;
+    std::map<int64_t, boost::function<void (int64_t)> > callback_map_;
     NodeState node_state_;
 };
 

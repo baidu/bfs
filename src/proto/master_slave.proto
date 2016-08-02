@@ -5,13 +5,29 @@ option cc_generic_services = true;
 message AppendLogRequest {
     optional bytes log_data = 1;
     optional int64 index = 2;
+    optional int64 snapshot_idx = 3;
 }
 
 message AppendLogResponse {
     optional bool success = 1;
     optional int64 index = 2;
+    optional int64 snapshot_idx = 3;
+}
+
+message WriteSnapshotReqeust {
+    optional int64 idx = 1;
+    optional int64 step = 2;
+    optional bool done = 3;
+    optional bytes log_data = 4;
+}
+
+message WriteSnapshotResponse {
+    optional bool success = 1;
+    optional int64 idx = 2;
+    optional int64 step = 3;
 }
 
 service MasterSlave {
     rpc AppendLog(AppendLogRequest) returns(AppendLogResponse);
+    rpc WriteSnapshot(WriteSnapshotReqeust) returns(WriteSnapshotResponse);
 }
