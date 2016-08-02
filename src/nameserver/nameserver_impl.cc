@@ -272,7 +272,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         int64_t before_add_block = common::timer::get_micros();
         chunkserver_manager_->AddBlock(cs_id, cur_block_id);
         int64_t after_add_block = common::timer::get_micros();
-        add_time = (after_add_block - before_add_block);
+        add_time += (after_add_block - before_add_block);
     }
     int64_t after_update = common::timer::get_micros();
 
@@ -300,7 +300,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     if (end_report - start_report > 100 * 1000) {
         LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors, wait %d micros",
                 cs_id, after_update - before_update,
-                end_report - start_report, add_time, start_report - response.sequence_id());
+                end_report - start_report, add_time, start_report - response->sequence_id());
     }
     response->set_status(kOK);
     done->Run();
