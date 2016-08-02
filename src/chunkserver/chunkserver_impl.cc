@@ -67,6 +67,7 @@ extern common::Counter g_read_bytes;
 extern common::Counter g_write_ops;
 extern common::Counter g_write_bytes;
 extern common::Counter g_recover_bytes;
+extern common::Counter g_recover_count;
 extern common::Counter g_refuse_ops;
 extern common::Counter g_rpc_delay;
 extern common::Counter g_rpc_delay_all;
@@ -119,14 +120,14 @@ void ChunkServerImpl::LogStatus(bool routine) {
 
     LOG(INFO, "[Status] blocks %ld %ld buffers %ld pending %ld data %sB, "
               "find %ld read %ld write %ld %ld %.2f MB, rpc %ld %ld %ld, "
-              "unfinished: %ld",
+              "unfinished: %ld recovering %ld",
         g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(), g_pending_writes.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
         counters.find_ops, counters.read_ops,
         counters.write_ops, counters.refuse_ops,
         counters.write_bytes / 1024.0 / 1024,
         counters.rpc_delay, counters.delay_all, work_thread_pool_->PendingNum(),
-        counters.unfinished_write_bytes);
+        counters.unfinished_write_bytes, g_recover_count.Get());
     if (routine) {
         heartbeat_thread_->DelayTask(1000,
             boost::bind(&ChunkServerImpl::LogStatus, this, true));
@@ -197,6 +198,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_data_size(g_data_size.Get());
     request.set_buffers(g_block_buffers.Get());
     request.set_pending_writes(g_pending_writes.Get());
+    request.set_pending_recover(g_recover_count.Get());
     request.set_w_qps(counters.write_ops);
     request.set_w_speed(counters.write_bytes);
     request.set_r_qps(counters.read_ops);
@@ -271,6 +273,7 @@ void ChunkServerImpl::SendBlockReport() {
         }
 
         LOG(INFO, "Block report done. %d replica blocks", response.new_replicas_size());
+        g_recover_count.Add(response.new_replicas_size());
         for (int i = 0; i < response.new_replicas_size(); ++i) {
             const ReplicaInfo& rep = response.new_replicas(i);
             boost::function<void ()> new_replica_task =
@@ -640,6 +643,7 @@ void ChunkServerImpl::PushBlock(const ReplicaInfo& new_replica_info) {
     } else {
         LOG(INFO, "Report push finish done #%ld ", block_id);
     }
+    g_recover_count.Dec();
 }
 
 void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {

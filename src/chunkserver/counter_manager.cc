@@ -26,6 +26,7 @@ common::Counter g_read_bytes;
 common::Counter g_write_ops;
 common::Counter g_write_bytes;
 common::Counter g_recover_bytes;
+common::Counter g_recover_count;
 common::Counter g_refuse_ops;
 common::Counter g_rpc_delay;
 common::Counter g_rpc_delay_all;

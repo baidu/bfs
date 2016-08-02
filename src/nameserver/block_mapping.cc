@@ -582,8 +582,8 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     }
     std::set<int64_t>& hi_check_set = hi_recover_check_[cs_id];
     std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
-    LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks",
-        cs_id, hi_check_set.size(), lo_check_set.size());
+    LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks, quota=%d",
+        cs_id, hi_check_set.size(), lo_check_set.size(), block_num);
     /*
     int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
     quota = quota < block_num ? quota : block_num;
