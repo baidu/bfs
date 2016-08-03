@@ -248,12 +248,24 @@ int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
     return ret;
 }
 
+int64_t BfsDuV2(baidu::bfs::FS* fs, const std::string& path) {
+    int64_t du_size = 0;
+    if (fs->DiskUsage(path.c_str(), &du_size) != 0) {
+        fprintf(stderr, "Compute Disk Usage fail: %s\n", path.c_str());
+        return -1;
+    }
+    return du_size;
+}
+
 int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc != 1) {
         print_usage();
         return 1;
     }
-    int64_t du = BfsDuRecursive(fs, argv[0]);
+    int64_t du = 0;
+    if ((du = BfsDuV2(fs, argv[0])) < 0) {
+        du = BfsDuRecursive(fs, argv[0]);
+    }
     printf("Total:\t%ld\n", du);
     return 0;
 }

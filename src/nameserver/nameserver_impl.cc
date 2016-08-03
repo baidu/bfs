@@ -683,6 +683,30 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                                removed, _1));
 }
 
+void NameServerImpl::DiskUsage(::google::protobuf::RpcController* controller,
+                               const DiskUsageRequest* request,
+                               DiskUsageResponse* response,
+                               ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    response->set_sequence_id(request->sequence_id());
+    std::string path = NameSpace::NormalizePath(request->path());
+    if (path.empty() || path[0] != '/') {
+        response->set_status(kBadParameter);
+        done->Run();
+        return;
+    }
+    uint64_t du_size = 0;
+    StatusCode ret_status = namespace_->DiskUsage(path, &du_size);
+    response->set_status(ret_status);
+    response->set_du_size(du_size);
+    done->Run();
+    return;
+}
+
 void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controller,
                                      const DeleteDirectoryRequest* request,
                                      DeleteDirectoryResponse* response,
@@ -698,6 +722,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     if (path.empty() || path[0] != '/') {
         response->set_status(kBadParameter);
         done->Run();
+        return;
     }
     std::vector<FileInfo>* removed = new std::vector<FileInfo>;
     NameServerLog log;

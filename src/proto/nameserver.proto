@@ -275,6 +275,17 @@ message ShutdownChunkServerStatResponse {
     optional bool in_offline_progress = 3;
 }
 
+message DiskUsageRequest {
+    optional int64 sequence_id = 1;
+    optional string path = 2;
+}
+
+message DiskUsageResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+    optional uint64 du_size = 3;
+}
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
@@ -288,6 +299,7 @@ service NameServer {
     rpc ChangeReplicaNum(ChangeReplicaNumRequest) returns(ChangeReplicaNumResponse);
     rpc ShutdownChunkServer(ShutdownChunkServerRequest) returns(ShutdownChunkServerResponse);
     rpc ShutdownChunkServerStat(ShutdownChunkServerStatRequest) returns(ShutdownChunkServerStatResponse);
+    rpc DiskUsage(DiskUsageRequest) returns(DiskUsageResponse);
 
     rpc Register(RegisterRequest) returns(RegisterResponse);
     rpc HeartBeat(HeartBeatRequest) returns(HeartBeatResponse);
