@@ -299,8 +299,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     int64_t end_report = common::timer::get_micros();
     if (end_report - start_report > 100 * 1000) {
         LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors, wait %d micros",
-                cs_id, after_update - before_update,
-                end_report - start_report, add_time, start_report - response->sequence_id());
+                cs_id, end_report - start_report,
+                after_update - before_udpate, add_time, start_report - response->sequence_id());
     }
     response->set_status(kOK);
     done->Run();
