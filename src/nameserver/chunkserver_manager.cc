@@ -623,5 +623,17 @@ bool ChunkServerManager::GetChunkServerBlockMapPtr(int32_t cs_id, ChunkServerBlo
     return true;
 }
 
+void ChunkServerManager::AddBlock(int32_t id, const::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks) {
+    ChunkServerBlockMap* cs_block_map = NULL;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
+    }
+    MutexLock lock(cs_block_map->mu);
+    for (int i = 0; i < blocks.size(); i++) {
+        cs_block_map->blocks.insert(blocks.Get(i).block_id());
+    }
+}
+
 } // namespace bfs
 } // namespace baidu
