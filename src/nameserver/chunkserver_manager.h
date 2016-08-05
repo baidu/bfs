@@ -48,7 +48,18 @@ public:
                  int64_t* r_speed, int64_t* recover_speed);
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
     bool GetShutdownChunkServerStat();
+    void AddBlock(int32_t id, const::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks);
 private:
+    struct ChunkServerBlockMap {
+        Mutex* mu;
+        std::set<int64_t> blocks;
+        ChunkServerBlockMap() {
+            mu = new Mutex;
+        }
+        ~ChunkServerBlockMap() {
+            delete mu;
+        }
+    };
     double GetChunkServerLoad(ChunkServerInfo* cs);
     void DeadCheck();
     void RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads, int num);
@@ -58,6 +69,7 @@ private:
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains);
     void MarkChunkServerReadonly(const std::string& chunkserver_address);
+    bool GetChunkServerBlockMapPtr(int32_t cs_id, ChunkServerBlockMap** cs_block_map);
 private:
     ThreadPool* thread_pool_;
     BlockMappingManager* block_mapping_manager_;
@@ -67,7 +79,7 @@ private:
     ServerMap chunkservers_;
     std::map<std::string, int32_t> address_map_;
     std::map<int32_t, std::set<ChunkServerInfo*> > heartbeat_list_;
-    std::map<int32_t, std::set<int64_t> > chunkserver_block_map_;
+    std::map<int32_t, ChunkServerBlockMap*> chunkserver_block_map_;
     int32_t chunkserver_num_;
     int32_t next_chunkserver_id_;
 
@@ -76,6 +88,7 @@ private:
 
     std::vector<std::string> chunkservers_to_offline_;
 };
+
 
 } // namespace bfs
 } // namespace baidu

@@ -140,6 +140,22 @@ int32_t FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num
     }
     return OK;
 }
+int32_t FSImpl::DiskUsage(const char* path, int64_t* du_size) {
+    DiskUsageRequest request;
+    DiskUsageResponse response;
+    request.set_sequence_id(0);
+    request.set_path(path);
+    bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DiskUsage,
+            &request, &response, 15, 1);
+    if (!ret) {
+        LOG(WARNING, "Compute Disk Usage fail: %s\n", path);
+        return TIMEOUT;
+    } else if (response.status() != kOK) {
+        return GetErrorCode(response.status());
+    }
+    *du_size = response.du_size();
+    return OK;
+}
 int32_t FSImpl::DeleteDirectory(const char* path, bool recursive) {
     DeleteDirectoryRequest request;
     DeleteDirectoryResponse response;

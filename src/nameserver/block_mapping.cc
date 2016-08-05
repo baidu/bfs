@@ -101,7 +101,11 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
     } else {
         nsblock->recover_stat = kLost;
         lost_blocks_.insert(block_id);
-        LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
+        if (version < 0) {
+            LOG(INFO, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
+        } else {
+            LOG(DEBUG, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
+        }
     }
 
     g_blocks_num.Inc();
