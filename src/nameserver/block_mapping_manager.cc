@@ -6,6 +6,7 @@
 
 #include "proto/status_code.pb.h"
 
+#include <common/counter.h>
 #include <common/string_util.h>
 
 DECLARE_int32(web_recover_list_size);
@@ -13,6 +14,8 @@ DECLARE_int32(blockmapping_working_thread_num);
 
 namespace baidu {
 namespace bfs {
+
+common::Counter g_blocks_num;
 
 BlockMappingManager::BlockMappingManager(int32_t bucket_num) :
     blockmapping_bucket_num_(bucket_num) {

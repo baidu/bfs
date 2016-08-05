@@ -8,6 +8,7 @@
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
+#include <common/counter.h>
 #include <common/logging.h>
 #include <common/string_util.h>
 
@@ -18,6 +19,8 @@ DECLARE_bool(clean_redundancy);
 
 namespace baidu {
 namespace bfs {
+
+extern common::Counter g_blocks_num;
 
 NSBlock::NSBlock()
     : id(-1), version(-1), block_size(-1),
@@ -96,9 +99,12 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
         }
         LOG(DEBUG, "Init block info: #%ld ", block_id);
     } else {
+        nsblock->recover_stat = kLost;
+        lost_blocks_.insert(block_id);
         LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
     }
 
+    g_blocks_num.Inc();
     MutexLock lock(&mu_);
     std::pair<NSBlockMap::iterator, bool> ret =
         block_map_.insert(std::make_pair(block_id,nsblock));
@@ -486,6 +492,7 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     }
     delete block;
     block_map_.erase(block_id);
+    g_blocks_num.Dec();
 }
 
 StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {

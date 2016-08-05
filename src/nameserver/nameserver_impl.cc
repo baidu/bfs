@@ -44,6 +44,7 @@ common::Counter g_unlink;
 common::Counter g_create_file;
 common::Counter g_list_dir;
 common::Counter g_report_blocks;
+extern common::Counter g_blocks_num;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time),
     start_recover_(1), sync_(sync) {
@@ -1031,6 +1032,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "Blocks: " + common::NumToString(g_blocks_num.Get()) + "</br>";
     str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "</br>";
     str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "</br>";
     str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
