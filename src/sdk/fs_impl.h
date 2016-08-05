@@ -32,6 +32,7 @@ public:
     int32_t CreateDirectory(const char* path);
     int32_t ListDirectory(const char* path, BfsFileInfo** filelist, int *num);
     int32_t DeleteDirectory(const char* path, bool recursive);
+    int32_t DiskUsage(const char* path, int64_t* du_size);
     int32_t Access(const char* path, int32_t mode);
     int32_t Stat(const char* path, BfsFileInfo* fileinfo);
     int32_t GetFileSize(const char* path, int64_t* file_size);

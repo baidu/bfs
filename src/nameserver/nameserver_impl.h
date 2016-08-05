@@ -102,6 +102,10 @@ public:
             const ShutdownChunkServerStatRequest* request,
             ShutdownChunkServerStatResponse* response,
             ::google::protobuf::Closure* done);
+    void DiskUsage(::google::protobuf::RpcController* controller,
+            const DiskUsageRequest* request,
+            DiskUsageResponse* response,
+            ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
