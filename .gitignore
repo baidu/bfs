@@ -38,3 +38,4 @@ thirdsrc
 thirdparty
 output
 .build
+src/version.cc
