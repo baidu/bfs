@@ -205,6 +205,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
     info->set_pending_writes(request->pending_writes());
+    info->set_pending_recover(request->pending_recover());
     info->set_w_qps(request->w_qps());
     info->set_w_speed(request->w_speed());
     info->set_r_qps(request->r_qps());
@@ -497,15 +498,15 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
                                            std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
                                            int* hi_num) {
+    ChunkServerInfo* cs = NULL;
     {
         MutexLock lock(&mu_, "PickRecoverBlocks 1", 10);
-        ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(cs_id, &cs)) {
             return;
         }
     }
     std::vector<std::pair<int64_t, std::set<int32_t> > > blocks;
-    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
+    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed - cs->pending_recover(), &blocks, hi_num);
     for (std::vector<std::pair<int64_t, std::set<int32_t> > >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
