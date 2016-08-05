@@ -95,8 +95,10 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
             nsblock->incomplete_replica.insert(init_replicas->begin(), init_replicas->end());
         }
         LOG(DEBUG, "Init block info: #%ld ", block_id);
+    } else if (version < 0) {
+        LOG(INFO, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
     } else {
-        LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
+        LOG(DEBUG, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
     }
 
     MutexLock lock(&mu_);
