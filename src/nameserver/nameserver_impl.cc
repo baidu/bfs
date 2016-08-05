@@ -250,7 +250,6 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         return;
     }
     int64_t before_update = common::timer::get_micros();
-    int64_t add_time = 0;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -269,13 +268,10 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         }
 
         // update cs -> block
-        int64_t before_add_block = common::timer::get_micros();
-//        chunkserver_manager_->AddBlock(cs_id, cur_block_id);
-        int64_t after_add_block = common::timer::get_micros();
-        add_time += (after_add_block - before_add_block);
     }
-    int64_t after_update = common::timer::get_micros();
-    chunkserver_manager_->AddBlock(cs_id, blocks); 
+    int64_t before_add_block = common::timer::get_micros();
+    chunkserver_manager_->AddBlock(cs_id, blocks);
+    int64_t after_add_block = common::timer::get_micros();
 
     // recover replica
     if (!safe_mode_ && start_recover_) {
@@ -301,7 +297,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     if (end_report - start_report > 100 * 1000) {
         LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors, wait %d micros",
                 cs_id, end_report - start_report,
-                after_update - before_update, add_time, start_report - response->sequence_id());
+                before_add_block - before_update, after_add_block - before_add_block, start_report - response->sequence_id());
     }
     response->set_status(kOK);
     done->Run();
