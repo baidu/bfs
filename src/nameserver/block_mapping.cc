@@ -462,6 +462,19 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
         return UpdateWritingBlock(block, server_id, block_size, block_version);
       case kIncomplete:
         return UpdateIncompleteBlock(block, server_id, block_size, block_version);
+      case kLost:
+        if (block->version < 0) {
+            bool ret = UpdateWritingBlock(block, server_id, block_size, block_version);
+            if (block->recover_stat == kLost) {
+                lost_blocks_.erase(block_id);
+                if (block->version < 0) {
+                    block->recover_stat = kBlockWriting;
+                }
+            }
+            return ret;
+        } else {
+            return UpdateNormalBlock(block, server_id, block_size, block_version);
+        }
       default:  // kNotInRecover kLow kHi kLost kCheck
         return UpdateNormalBlock(block, server_id, block_size, block_version);
     }
