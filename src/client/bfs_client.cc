@@ -15,8 +15,9 @@
 #include <sys/stat.h>
 #include <map>
 
-#include <common/util.h>
 #include <common/timer.h>
+#include <common/string_util.h>
+#include <common/util.h>
 #include "sdk/bfs.h"
 
 DECLARE_string(flagfile);
@@ -266,7 +267,7 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if ((du = BfsDuV2(fs, argv[0])) < 0) {
         du = BfsDuRecursive(fs, argv[0]);
     }
-    printf("Total:\t%ld\n", du);
+    printf("Total:\t%ld\t%s\n", du, baidu::common::HumanReadableString(du).c_str());
     return 0;
 }
 

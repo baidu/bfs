@@ -146,7 +146,7 @@ int32_t FSImpl::DiskUsage(const char* path, int64_t* du_size) {
     request.set_sequence_id(0);
     request.set_path(path);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DiskUsage,
-            &request, &response, 15, 1);
+            &request, &response, 3600, 1);
     if (!ret) {
         LOG(WARNING, "Compute Disk Usage fail: %s\n", path);
         return TIMEOUT;
