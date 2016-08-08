@@ -560,7 +560,7 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
     }
     delete it;
     LOG(INFO, "RebuildBlockMap done. %ld files, %ld blocks, last_entry_id= E%ld",
-        last_entry_id_);
+        file_num, block_num, last_entry_id_);
     return true;
 }
 
