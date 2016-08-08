@@ -13,6 +13,7 @@ message ChunkServerInfo {
     optional int64 disk_quota = 5;
     optional int32 block_num = 7;
     optional bool is_dead = 8;
+    optional double load = 30;
     optional ChunkServerStatus status = 9;
     optional int32 ip = 10;
     optional int32 buffers = 11;

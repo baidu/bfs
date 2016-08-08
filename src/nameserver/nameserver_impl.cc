@@ -933,7 +933,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         } else {
             total_quota += chunkserver.disk_quota();
             total_data += chunkserver.data_size();
-            if (chunkserver.buffers() > FLAGS_chunkserver_max_pending_buffers * 0.8) {
+            if (chunkserver.load() == -1.0) {
                 overladen_num++;
             }
         }
@@ -968,11 +968,20 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             table_str += "kicked";
         } else if (chunkserver.status() == kCsReadonly) {
             table_str += "Readonly";
-        } else if (FLAGS_bfs_web_kick_enable) {
-            table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
-                      + "\">kick</a>)";
+        } else if (chunkserver.load() == -1.0) {
+            if (FLAGS_bfs_web_kick_enable) {
+                table_str += "overload (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
+                        + "\">kick</a>)";
+            } else {
+                table_str += "overload";
+            }
         } else {
-            table_str += "alive";
+            if (FLAGS_bfs_web_kick_enable) {
+                table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
+                        + "\">kick</a>)";
+            } else {
+                table_str += "alive";
+            }
         }
         table_str += "</td><td>";
         table_str += common::NumToString(
