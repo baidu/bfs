@@ -25,8 +25,6 @@ DECLARE_double(select_chunkserver_local_factor);
 namespace baidu {
 namespace bfs {
 
-const int kChunkServerLoadMax = -1;
-
 ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingManager* block_mapping_manager)
     : thread_pool_(thread_pool),
       block_mapping_manager_(block_mapping_manager),
@@ -219,6 +217,8 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_last_heartbeat(now_time);
     if (info->kick()) {
         response->set_kick(true);
+    } else {
+        info->set_load(GetChunkServerLoad(info));
     }
 }
 
@@ -239,9 +239,9 @@ double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
     if (data_score > 0.95 || space_left < (5L << 30) || pending_score > 1.0) {
-        return kChunkServerLoadMax;
+        return 1.0;
     }
-    return data_score * data_score + pending_score;
+    return (data_score * data_score + pending_score) / 2;
 }
 
 void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads,
@@ -294,20 +294,20 @@ bool ChunkServerManager::GetChunkServerChains(int num,
                 LOG(INFO, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
                 continue;
             }
-            double load = GetChunkServerLoad(cs);
-            if (load != kChunkServerLoadMax) {
+            double load = cs->load();
+            if (load <= kChunkServerLoadMax) {
                 double local_factor =
                     (cs == local_cs ? FLAGS_select_chunkserver_local_factor : 0) ;
                 loads.push_back(std::make_pair(load - local_factor, cs));
             } else {
-                LOG(INFO, "Alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
+                LOG(DEBUG, "Alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
                     cs->address().c_str(), cs->data_size(),
                     cs->disk_quota(), cs->buffers());
             }
         }
     }
     if ((int)loads.size() < num) {
-        LOG(WARNING, "Only %ld chunkserver of %d is not over overladen, GetChunkServerChains(%d) return false",
+        LOG(DEBUG, "Only %ld chunkserver of %d is not over overladen, GetChunkServerChains(%d) return false",
             loads.size(), chunkserver_num_, num);
         return false;
     }
@@ -349,14 +349,14 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
                 LOG(DEBUG, "Remote zone server C%d ignore PickRecoverBlocks", cs->id());
                 continue;
             } else if (cs->status() == kCsReadonly) {
-                LOG(INFO, "C%d is in offline progress, igore", cs->id());
+                LOG(DEBUG, "C%d is in offline progress, igore", cs->id());
                 continue;
             }
-            double load = GetChunkServerLoad(cs);
-            if (load != kChunkServerLoadMax) {
+            double load = cs->load();
+            if (load <= kChunkServerLoadMax) {
                 loads.push_back(std::make_pair(load, cs));
             } else {
-                LOG(INFO, "Recover alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
+                LOG(DEBUG, "Recover alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
                     cs->address().c_str(), cs->data_size(),
                     cs->disk_quota(), cs->buffers());
             }
@@ -557,6 +557,7 @@ bool ChunkServerManager::GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs) 
 void ChunkServerManager::LogStats() {
     int32_t w_qps = 0, r_qps = 0;
     int64_t w_speed = 0, r_speed = 0, recover_speed = 0;
+    int32_t overload = 0;
     for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
         ChunkServerInfo* cs = it->second;
         w_qps += cs->w_qps();
@@ -564,16 +565,19 @@ void ChunkServerManager::LogStats() {
         r_qps += cs->r_qps();
         r_speed += cs->r_speed();
         recover_speed += cs->recover_speed();
+        if (cs->load() > kChunkServerLoadMax) {
+            ++overload;
+        }
     }
     stats_.w_qps = w_qps;
     stats_.w_speed = w_speed;
     stats_.r_qps = r_qps;
     stats_.r_speed = r_speed;
     stats_.recover_speed = recover_speed;
-    LOG(INFO, "[LogStats] w_qps=%d w_speed=%s r_qps=%d r_speed=%s recover_speed=%s",
+    LOG(INFO, "[LogStats] w_qps=%d w_speed=%s r_qps=%d r_speed=%s recover_speed=%s overload=%d",
                w_qps, common::HumanReadableString(w_speed).c_str(), r_qps,
                common::HumanReadableString(r_speed).c_str(),
-               common::HumanReadableString(recover_speed).c_str());
+               common::HumanReadableString(recover_speed).c_str(), overload);
     thread_pool_->DelayTask(FLAGS_heartbeat_interval * 1000,
                            boost::bind(&ChunkServerManager::LogStats, this));
 }

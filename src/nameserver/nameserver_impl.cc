@@ -934,7 +934,6 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
         = new ::google::protobuf::RepeatedPtrField<ChunkServerInfo>;
     chunkserver_manager_->ListChunkServers(chunkservers);
-
     std::string table_str;
     std::string str =
             "<html><head><title>BFS console</title>\n"
@@ -965,7 +964,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         } else {
             total_quota += chunkserver.disk_quota();
             total_data += chunkserver.data_size();
-            if (chunkserver.buffers() > FLAGS_chunkserver_max_pending_buffers * 0.8) {
+            if (chunkserver.load() >= kChunkServerLoadMax) {
                 overladen_num++;
             }
         }
@@ -1000,11 +999,20 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             table_str += "kicked";
         } else if (chunkserver.status() == kCsReadonly) {
             table_str += "Readonly";
-        } else if (FLAGS_bfs_web_kick_enable) {
-            table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
-                      + "\">kick</a>)";
+        } else if (chunkserver.load() >= kChunkServerLoadMax) {
+            if (FLAGS_bfs_web_kick_enable) {
+                table_str += "overload (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
+                        + "\">kick</a>)";
+            } else {
+                table_str += "overload";
+            }
         } else {
-            table_str += "alive";
+            if (FLAGS_bfs_web_kick_enable) {
+                table_str += "alive (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
+                        + "\">kick</a>)";
+            } else {
+                table_str += "alive";
+            }
         }
         table_str += "</td><td>";
         table_str += common::NumToString(
