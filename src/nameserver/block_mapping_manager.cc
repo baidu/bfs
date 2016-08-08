@@ -8,7 +8,6 @@
 
 #include <common/logging.h>
 #include <common/string_util.h>
-#include <common/mutex.h>
 
 DECLARE_int32(web_recover_list_size);
 DECLARE_int32(blockmapping_working_thread_num);

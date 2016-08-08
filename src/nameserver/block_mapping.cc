@@ -265,9 +265,6 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         replica.erase(cs_id);
         return false;
     }
-    if (replica.size() >= 2 && pre_recover_replica.size() != 0) {
-        LOG(DEBUG, "Enough replica for block #%ld on shutdown chunkservers", block_id);
-    }
     return true;
 }
 
