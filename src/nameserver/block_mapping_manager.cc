@@ -11,15 +11,17 @@
 #include <common/mutex.h>
 
 DECLARE_int32(web_recover_list_size);
+DECLARE_int32(blockmapping_working_thread_num);
 
 namespace baidu {
 namespace bfs {
 
 BlockMappingManager::BlockMappingManager(int32_t bucket_num) :
     blockmapping_bucket_num_(bucket_num) {
+    thread_pool_ = new ThreadPool(FLAGS_blockmapping_working_thread_num);
     block_mapping_.resize(blockmapping_bucket_num_);
     for (size_t i = 0; i < block_mapping_.size(); i++) {
-        block_mapping_[i] = new BlockMapping();
+        block_mapping_[i] = new BlockMapping(thread_pool_);
     }
 }
 
@@ -92,13 +94,6 @@ StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t vers
 void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                        std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                        int32_t* hi_num) {
-    int cur_check_num = 0;
-    for (int i = 0; i < blockmapping_bucket_num_; i++) {
-        RecoverBlockNum num;
-        block_mapping_[i]->GetStat(cs_id, &num);
-        cur_check_num += (num.lo_pending + num.hi_pending);
-    }
-    block_num -= cur_check_num;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, kHigh);
     }

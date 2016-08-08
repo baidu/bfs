@@ -38,6 +38,7 @@ public:
                    master_slave::AppendLogResponse* response,
                    ::google::protobuf::Closure* done);
 
+    std::string GetStatus();
 private:
     void BackgroundLog();
     void ReplicateLog();

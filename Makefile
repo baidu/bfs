@@ -139,6 +139,9 @@ mark: $(MARK_OBJ) $(LIBS)
 logdb_dump: src/nameserver/logdb.o src/utils/logdb_dump.o
 	$(CXX) src/nameserver/logdb.o src/utils/logdb_dump.o $(OBJS) -o $@ $(LDFLAGS)
 
+ns_dump: src/utils/ns_dump.o
+	$(CXX) src/utils/ns_dump.o $(OBJS) -o $@ $(LDFLAGS)
+
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
 
@@ -160,6 +163,7 @@ clean:
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
+	rm -rf $(LIBS)
 
 install:
 	rm -rf output

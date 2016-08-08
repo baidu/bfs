@@ -43,14 +43,17 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingMana
 }
 
 void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string& reason) {
+    std::set<int64_t> blocks;
+    int32_t id = cs->id();
     MutexLock lock(&mu_, "CleanChunkServer", 10);
     chunkserver_num_--;
+    std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(id);
+    assert(it != chunkserver_block_map_.end());
+    ChunkServerBlockMap* cs_block_map = it->second;
+    MutexLock cs_block_map_lock(cs_block_map->mu);
+    std::swap(blocks, cs_block_map->blocks);
     LOG(INFO, "Remove ChunkServer C%d %s %s, cs_num=%d",
-        cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
-    int32_t id = cs->id();
-    std::set<int64_t> blocks;
-    std::swap(blocks, chunkserver_block_map_[id]);
-    chunkserver_block_map_.erase(id);
+            cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
     block_mapping_manager_->DealWithDeadNode(id, blocks);
@@ -208,6 +211,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
     info->set_pending_writes(request->pending_writes());
+    info->set_pending_recover(request->pending_recover());
     info->set_w_qps(request->w_qps());
     info->set_w_speed(request->w_speed());
     info->set_r_qps(request->r_qps());
@@ -233,14 +237,14 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 
 double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
     double max_pending = FLAGS_chunkserver_max_pending_buffers * 0.8;
-    double pending_socre = cs->buffers() / max_pending;
-    double data_socre = cs->data_size() * 1.0 / cs->disk_quota();
+    double pending_score = cs->buffers() / max_pending;
+    double data_score = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
-    if (data_socre > 0.95 || space_left < (5L << 30) || pending_socre > 1.0) {
+    if (data_score > 0.95 || space_left < (5L << 30) || pending_score > 1.0) {
         return kChunkServerLoadMax;
     }
-    return data_socre * data_socre + pending_socre;
+    return data_score * data_score + pending_score;
 }
 
 void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads,
@@ -466,6 +470,8 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
     ++chunkserver_num_;
+    ChunkServerBlockMap* cs_block_map = new ChunkServerBlockMap;
+    chunkserver_block_map_.insert(std::make_pair(id, cs_block_map));
     return id;
 }
 
@@ -488,27 +494,37 @@ int32_t ChunkServerManager::GetChunkServerId(const std::string& addr) {
 }
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
-    MutexLock lock(&mu_, "AddBlock", 10);
-    chunkserver_block_map_[id].insert(block_id);
+    ChunkServerBlockMap* cs_block_map = NULL;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
+    }
+    MutexLock lock(cs_block_map->mu);
+    cs_block_map->blocks.insert(block_id);
 }
 
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
-    MutexLock lock(&mu_, "RemoveBlock", 10);
-    chunkserver_block_map_[id].erase(block_id);
+    ChunkServerBlockMap* cs_block_map = NULL;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
+    }
+    MutexLock lock(cs_block_map->mu);
+    cs_block_map->blocks.erase(block_id);
 }
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
                                            std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
                                            int* hi_num) {
+    ChunkServerInfo* cs = NULL;
     {
         MutexLock lock(&mu_, "PickRecoverBlocks 1", 10);
-        ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(cs_id, &cs)) {
             return;
         }
     }
     std::vector<std::pair<int64_t, std::set<int32_t> > > blocks;
-    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
+    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed - cs->pending_recover(), &blocks, hi_num);
     for (std::vector<std::pair<int64_t, std::set<int32_t> > >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
@@ -642,6 +658,30 @@ void ChunkServerManager::CheckPreRecoverFinished() {
         }
         KickChunkServer(cs_id);
         LOG(INFO, "Shutdown chunkserver C%d", cs_id);
+    }
+}
+
+bool ChunkServerManager::GetChunkServerBlockMapPtr(int32_t cs_id, ChunkServerBlockMap** cs_block_map)
+{
+    MutexLock lock(&mu_);
+    std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(cs_id);
+    if (it == chunkserver_block_map_.end()) {
+        *cs_block_map = NULL;
+        return false;
+    }
+    *cs_block_map = it->second;
+    return true;
+}
+
+void ChunkServerManager::AddBlock(int32_t id, const::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks) {
+    ChunkServerBlockMap* cs_block_map = NULL;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
+    }
+    MutexLock lock(cs_block_map->mu);
+    for (int i = 0; i < blocks.size(); i++) {
+        cs_block_map->blocks.insert(blocks.Get(i).block_id());
     }
 }
 

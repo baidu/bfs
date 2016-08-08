@@ -4,12 +4,12 @@ option cc_generic_services = true;
 
 message AppendLogRequest {
     optional bytes log_data = 1;
-    optional int32 index = 2;
+    optional int64 index = 2;
 }
 
 message AppendLogResponse {
     optional bool success = 1;
-    optional bool index = 2;
+    optional int64 index = 2;
 }
 
 service MasterSlave {

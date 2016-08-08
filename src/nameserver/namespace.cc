@@ -243,11 +243,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             }
         }
     }
-    if (mode) {
-        file_info.set_type(((1 << 10) - 1) & mode);
-    } else {
-        file_info.set_type(0755);
-    }
+    file_info.set_type(((1 << 10) - 1) & mode);
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
@@ -408,11 +404,58 @@ StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed
     return ret_status;
 }
 
+StatusCode NameSpace::DiskUsage(const std::string& path, uint64_t* du_size) {
+    if (!du_size) {
+        return kOK;
+    }
+    *du_size = 0;
+    FileInfo info;
+    if (!LookUp(path, &info)) {
+        LOG(INFO, "Du Directory or File, %s is not found.", path.c_str());
+        return kNsNotFound;
+    } else if (!IsDir(info.type())) {
+        *du_size = info.size();
+        return kOK;
+    }
+    return InternalComputeDiskUsage(info, du_size);
+}
+
+StatusCode NameSpace::InternalComputeDiskUsage(const FileInfo& info, uint64_t* du_size) {
+    int64_t entry_id = info.entry_id();
+    std::string key_start, key_end;
+    EncodingStoreKey(entry_id, "", &key_start);
+    EncodingStoreKey(entry_id + 1, "", &key_end);
+    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
+    it->Seek(key_start);
+
+    StatusCode ret_status = kOK;
+    for (; it->Valid(); it->Next()) {
+        leveldb::Slice key = it->key();
+        if (key.compare(key_end) >= 0) {
+            break;
+        }
+        std::string entry_name(key.data() + 8, key.size() - 8);
+        FileInfo child_info;
+        assert(child_info.ParseFromArray(it->value().data(), it->value().size()));
+        if (IsDir(child_info.type())) {
+            child_info.set_parent_entry_id(entry_id);
+            ret_status = InternalComputeDiskUsage(child_info, du_size);
+            if (ret_status != kOK) {
+                break;
+            }
+        } else {
+            //LOG(DEBUG, "Compute Disk Usage: E%ld, file %s, size %lu", entry_id, entry_name.c_str(), child_info.size());
+            *du_size += child_info.size();
+        }
+    }
+    delete it;
+    return ret_status;
+}
+
 StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
                                std::vector<FileInfo>* files_removed, NameServerLog* log) {
     files_removed->clear();
     FileInfo info;
-    std::string store_key;
     if (!LookUp(path, &info)) {
         LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
         return kNsNotFound;

@@ -36,23 +36,17 @@ int32_t BfsFile::Write(const char* buf, int32_t len) {
 
 int32_t BfsFile::Flush() {
     common::timer::AutoTimer ac;
-    int ret = -1;
-    if (_file->Flush() == 0) {
-        ret = 0;
-    }
+    int ret = _file->Flush();
     LOG(INFO, "Flush(%s) return %d use %.3f ms",
-        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
+            _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Sync() {
     LOG(INFO, "Sync(%s) start", _name.c_str());
     common::timer::AutoTimer ac;
-    int ret = -1;
-    if (_file->Sync() == 0) {
-        ret = 0;
-    }
+    int ret = _file->Sync();
     LOG(INFO, "Sync(%s) return %d usd %.3f ms",
-        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
+            _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Read(char* buf, int32_t len) {
@@ -106,7 +100,7 @@ int32_t BfsFile::CloseFile() {
 }
 
 BfsImpl::BfsImpl(const std::string& conf) {
-    if (!FS::OpenFileSystem(conf.c_str(), &_fs)) {
+    if (!FS::OpenFileSystem(conf.c_str(), &_fs, FSOptions())) {
         assert(0);
     }
 }
@@ -209,12 +203,13 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
 leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) {
     common::timer::AutoTimer ac;
     LOG(INFO, "OpenFile(%s,%d)", filename.c_str(), flags);
-    int openflag = O_WRONLY;
-    if (leveldb::WRONLY != flags) {
-        openflag = O_RDONLY;
-    }
     bfs::File* file = NULL;
-    int32_t ret = _fs->OpenFile(filename.c_str(), openflag, &file);
+    int ret = -1;
+    if (leveldb::WRONLY == flags) {
+        ret = _fs->OpenFile(filename.c_str(), O_WRONLY, &file, WriteOptions());
+    } else {
+        ret = _fs->OpenFile(filename.c_str(), O_RDONLY, &file, ReadOptions());
+    }
     if (ret != 0) {
         LOG(WARNING, "OpenFile(%s,%d) fail, ret = %d", filename.c_str(), flags, ret);
         return NULL;

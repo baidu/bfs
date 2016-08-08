@@ -30,7 +30,8 @@ NSBlock::NSBlock(int64_t block_id, int32_t replica,
       recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover) {
 }
 
-BlockMapping::BlockMapping() : safe_mode_(true) {}
+BlockMapping::BlockMapping(ThreadPool* thread_pool) :
+                           thread_pool_(thread_pool), safe_mode_(true) {}
 
 void BlockMapping::SetSafeMode(bool safe_mode) {
     safe_mode_ = safe_mode;
@@ -99,8 +100,10 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
             nsblock->incomplete_replica.insert(init_replicas->begin(), init_replicas->end());
         }
         LOG(DEBUG, "Init block info: #%ld ", block_id);
+    } else if (version < 0) {
+        LOG(INFO, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
     } else {
-        LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
+        LOG(DEBUG, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
     }
 
     MutexLock lock(&mu_);
@@ -830,7 +833,7 @@ void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int
         cur_block->recover_stat = kCheck;
         LOG(INFO, "PickRecoverBlocks for C%d #%ld %s",
                 cs_id, block_id, RecoverStat_Name(cur_block->recover_stat).c_str());
-        thread_pool_.DelayTask(FLAGS_recover_timeout * 1000,
+        thread_pool_->DelayTask(FLAGS_recover_timeout * 1000,
             boost::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
         recover_set->erase(it++);
     }

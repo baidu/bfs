@@ -45,6 +45,14 @@ void RaftImpl::Init(boost::function<void (const std::string& log)> callback) {
     return raft_node_->Init(callback);
 }
 
+std::string RaftImpl::GetStatus() {
+    if (IsLeader(NULL)) {
+        return "Raft-leader";
+    } else {
+        return "Raft-follower";
+    }
+}
+
 google::protobuf::Service* RaftImpl::GetService() {
     return raft_node_;
 }

@@ -44,6 +44,7 @@ private:
 private:
     int32_t blockmapping_bucket_num_;
     std::vector<BlockMapping*> block_mapping_;
+    ThreadPool* thread_pool_;
 };
 
 } // namespace bfs
