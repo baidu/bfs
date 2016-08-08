@@ -116,7 +116,7 @@ int32_t FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num
     request.set_path(path);
     request.set_sequence_id(0);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ListDirectory,
-            &request, &response, 15, 1);
+            &request, &response, 60, 1);
     if (!ret || response.status() != kOK) {
         LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
             path, ret, StatusCode_Name(response.status()).c_str());
@@ -140,6 +140,22 @@ int32_t FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num
     }
     return OK;
 }
+int32_t FSImpl::DiskUsage(const char* path, int64_t* du_size) {
+    DiskUsageRequest request;
+    DiskUsageResponse response;
+    request.set_sequence_id(0);
+    request.set_path(path);
+    bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DiskUsage,
+            &request, &response, 3600, 1);
+    if (!ret) {
+        LOG(WARNING, "Compute Disk Usage fail: %s\n", path);
+        return TIMEOUT;
+    } else if (response.status() != kOK) {
+        return GetErrorCode(response.status());
+    }
+    *du_size = response.du_size();
+    return OK;
+}
 int32_t FSImpl::DeleteDirectory(const char* path, bool recursive) {
     DeleteDirectoryRequest request;
     DeleteDirectoryResponse response;
@@ -147,7 +163,7 @@ int32_t FSImpl::DeleteDirectory(const char* path, bool recursive) {
     request.set_path(path);
     request.set_recursive(recursive);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DeleteDirectory,
-            &request, &response, 15, 1);
+            &request, &response, 3600, 1);
     if (!ret) {
         LOG(WARNING, "DeleteDirectory fail: %s\n", path);
         return TIMEOUT;
@@ -405,7 +421,7 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     SysStatRequest request;
     SysStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::SysStat,
-                                               &request, &response, 15, 1);
+                                               &request, &response, 60, 1);
     if (!ret) {
         LOG(WARNING, "SysStat fail %s", StatusCode_Name(response.status()).c_str());
         return TIMEOUT;
@@ -444,7 +460,7 @@ int32_t FSImpl::ShutdownChunkServer(const std::vector<std::string>& cs_addr) {
        request.add_chunkserver_address(cs_addr[i]);
    }
    bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServer,
-           &request, &response, 15, 1);
+           &request, &response, 60, 1);
    if (!ret || response.status() != kOK) {
        LOG(WARNING, "Shutdown ChunkServer fail. ret: %d, status: %s",
                ret, StatusCode_Name(response.status()).c_str());

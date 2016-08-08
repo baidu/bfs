@@ -6,6 +6,7 @@
 
 #include <gflags/gflags.h>
 
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,8 +16,9 @@
 #include <sys/stat.h>
 #include <map>
 
-#include <common/util.h>
 #include <common/timer.h>
+#include <common/string_util.h>
+#include <common/util.h>
 #include "sdk/bfs.h"
 
 DECLARE_string(flagfile);
@@ -248,13 +250,48 @@ int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
     return ret;
 }
 
+int64_t BfsDuV2(baidu::bfs::FS* fs, const std::string& path) {
+    int64_t du_size = 0;
+    if (fs->DiskUsage(path.c_str(), &du_size) != 0) {
+        fprintf(stderr, "Compute Disk Usage fail: %s\n", path.c_str());
+        return -1;
+    }
+    printf("%-9s\t%s\n",
+           baidu::common::HumanReadableString(du_size).c_str(), path.c_str());
+    return du_size;
+}
+
 int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc != 1) {
         print_usage();
         return 1;
     }
-    int64_t du = BfsDuRecursive(fs, argv[0]);
-    printf("Total:\t%ld\n", du);
+    std::string path = argv[0];
+    assert(path.size() > 0);
+    if (path[path.size() - 1] != '*') {
+        return BfsDuV2(fs, path);
+    }
+
+    // Wildcard
+    path.resize(path.size() - 1);
+    std::string ppath = path.substr(0, path.rfind('/') + 1);
+    std::string prefix = path.substr(ppath.size());
+    int64_t total_size = 0;
+    baidu::bfs::BfsFileInfo* files = NULL;
+    int num = 0;
+    int ret = fs->ListDirectory(ppath.c_str(), &files, &num);
+    if (ret != 0) {
+        fprintf(stderr, "Path not found: %s\n", ppath.c_str());
+        return -1;
+    }
+    for (int i = 0; i < num; i++) {
+        std::string name(files[i].name);
+        if (name.find(prefix) != std::string::npos) {
+            int64_t sz = BfsDuV2(fs, ppath + name);
+            if (sz > 0) total_size += sz;
+        }
+    }
+    printf("Total: %s\n", baidu::common::HumanReadableString(total_size).c_str());
     return 0;
 }
 
@@ -288,7 +325,9 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         localtime_r(&ctime, &stm);
         snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
-        printf("%s\t%s  %s%s\n", statbuf, timestr, path.c_str(), files[i].name);
+        printf("%s %-9s %s %s%s\n",
+               statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
+               timestr, path.c_str(), files[i].name);
     }
     delete[] files;
     return 0;

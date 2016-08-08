@@ -37,6 +37,7 @@ public:
     /// Remove director.
     StatusCode DeleteDirectory(const std::string& path, bool recursive,
                         std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
+    StatusCode DiskUsage(const std::string& path, uint64_t* du_size);
     /// File rename
     StatusCode Rename(const std::string& old_path,
                const std::string& new_path,
@@ -72,6 +73,7 @@ private:
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed,
                                 NameServerLog* log);
+    StatusCode InternalComputeDiskUsage(const FileInfo& info, uint64_t* du_size);
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
     void UpdateBlockIdUpbound(NameServerLog* log);
