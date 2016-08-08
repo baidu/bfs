@@ -25,8 +25,6 @@ DECLARE_double(select_chunkserver_local_factor);
 namespace baidu {
 namespace bfs {
 
-const double kChunkServerLoadMax = -1.0;
-
 ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingManager* block_mapping_manager)
     : thread_pool_(thread_pool),
       block_mapping_manager_(block_mapping_manager),
@@ -241,9 +239,9 @@ double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
     if (data_score > 0.95 || space_left < (5L << 30) || pending_score > 1.0) {
-        return kChunkServerLoadMax;
+        return 1.0;
     }
-    return data_score * data_score + pending_score;
+    return (data_score * data_score + pending_score) / 2;
 }
 
 void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads,
@@ -297,7 +295,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
                 continue;
             }
             double load = cs->load();
-            if (load != kChunkServerLoadMax) {
+            if (load <= kChunkServerLoadMax) {
                 double local_factor =
                     (cs == local_cs ? FLAGS_select_chunkserver_local_factor : 0) ;
                 loads.push_back(std::make_pair(load - local_factor, cs));
@@ -351,14 +349,14 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
                 LOG(DEBUG, "Remote zone server C%d ignore PickRecoverBlocks", cs->id());
                 continue;
             } else if (cs->status() == kCsReadonly) {
-                LOG(INFO, "C%d is in offline progress, igore", cs->id());
+                LOG(DEBUG, "C%d is in offline progress, igore", cs->id());
                 continue;
             }
             double load = cs->load();
-            if (load != kChunkServerLoadMax) {
+            if (load <= kChunkServerLoadMax) {
                 loads.push_back(std::make_pair(load, cs));
             } else {
-                LOG(INFO, "Recover alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
+                LOG(DEBUG, "Recover alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
                     cs->address().c_str(), cs->data_size(),
                     cs->disk_quota(), cs->buffers());
             }
@@ -567,7 +565,7 @@ void ChunkServerManager::LogStats() {
         r_qps += cs->r_qps();
         r_speed += cs->r_speed();
         recover_speed += cs->recover_speed();
-        if (cs->load() == kChunkServerLoadMax) {
+        if (cs->load() > kChunkServerLoadMax) {
             ++overload;
         }
     }
