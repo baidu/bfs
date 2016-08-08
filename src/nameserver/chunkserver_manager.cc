@@ -620,18 +620,24 @@ void ChunkServerManager::GetShutdownChunkServerStat(std::vector<std::string> *cs
 
 void ChunkServerManager::MarkShutdownBlocksReadonly() {
     for (size_t i = 0; i < chunkserver_to_shutdown_.size(); i++) {
-        MutexLock lock(&mu_);
-        std::map<std::string, int32_t>::iterator it =
-            address_map_.find(chunkserver_to_shutdown_[i]);
-        if (it == address_map_.end()) {
-            LOG(WARNING, "chunkserver %s not found", chunkserver_to_shutdown_[i].c_str());
+        std::map<std::string, int32_t>::iterator it;
+        ChunkServerBlockMap* cs_map = NULL;
+        int32_t cs_id = it->second;
+        {
+            MutexLock lock(&mu_);
+            it = address_map_.find(chunkserver_to_shutdown_[i]);
+            if (it == address_map_.end()) {
+                LOG(WARNING, "chunkserver %s not found", chunkserver_to_shutdown_[i].c_str());
+                continue;
+            }
+        }
+        if (!GetChunkServerBlockMapPtr(cs_id, &cs_map)) {
+            LOG(WARNING, "Can't find C%d", cs_id);
             continue;
         }
-        int32_t cs_id = it->second;
-        const std::set<int64_t>& blocks = chunkserver_block_map_[cs_id];
-        mu_.Unlock();
+        MutexLock lock(cs_map->mu);
+        const std::set<int64_t>& blocks = cs_map->blocks;
         block_mapping_manager_->MoveReplicasToReadonlySet(cs_id, blocks);
-        mu_.Lock();
     }
     boost::function<void ()> task = boost::bind(&ChunkServerManager::CheckPreRecoverFinished, this);
     thread_pool_->AddTask(task);
