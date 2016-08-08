@@ -271,12 +271,11 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (path[path.size() - 1] != '*') {
         return BfsDuV2(fs, path);
     }
+
+    // Wildcard
     path.resize(path.size() - 1);
     std::string ppath = path.substr(0, path.rfind('/') + 1);
     std::string prefix = path.substr(ppath.size());
-    // printf("ppath= %s\n", ppath.c_str());
-    // printf("prefix= %s\n", prefix.c_str());
-    // Wildcard
     int64_t total_size = 0;
     baidu::bfs::BfsFileInfo* files = NULL;
     int num = 0;
