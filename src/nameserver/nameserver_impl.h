@@ -62,6 +62,10 @@ public:
                          const DeleteDirectoryRequest* request,
                          DeleteDirectoryResponse* response,
                          ::google::protobuf::Closure* done);
+    void StartingBlock(::google::protobuf::RpcController* controller,
+                       const StartingBlockRequest* request,
+                       StartingBlockResponse* response,
+                       ::google::protobuf::Closure* done);
     void FinishBlock(::google::protobuf::RpcController* controller,
                        const FinishBlockRequest* request,
                        FinishBlockResponse* response,

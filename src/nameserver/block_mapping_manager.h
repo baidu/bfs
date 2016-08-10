@@ -17,13 +17,14 @@ public :
     BlockMappingManager(int32_t bucket_num);
     ~BlockMappingManager();
     bool GetBlock(int64_t block_id, NSBlock* block);
-    bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size);
+    bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size, bool* has_sync);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,
-                     const std::vector<int32_t>* init_replicas);
+                     const std::vector<int32_t>* init_replicas, bool has_sync);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                          int64_t block_version);
+    bool SetBlockStarted(int64_t block_id);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);

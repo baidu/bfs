@@ -38,9 +38,10 @@ bool BlockMappingManager::GetBlock(int64_t block_id, NSBlock* block) {
     return block_mapping_[bucket_offset]->GetBlock(block_id, block);
 }
 
-bool BlockMappingManager::GetLocatedBlock(int64_t block_id, std::vector<int32_t>* replica, int64_t* block_size) {
+bool BlockMappingManager::GetLocatedBlock(int64_t block_id, std::vector<int32_t>* replica,
+                                          int64_t* block_size, bool* has_sync) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    return block_mapping_[bucket_offset]->GetLocatedBlock(block_id, replica, block_size);
+    return block_mapping_[bucket_offset]->GetLocatedBlock(block_id, replica, block_size, has_sync);
 }
 
 bool BlockMappingManager::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
@@ -50,15 +51,20 @@ bool BlockMappingManager::ChangeReplicaNum(int64_t block_id, int32_t replica_num
 
 void BlockMappingManager::AddNewBlock(int64_t block_id, int32_t replica,
                  int64_t version, int64_t block_size,
-                 const std::vector<int32_t>* init_replicas) {
+                 const std::vector<int32_t>* init_replicas, bool has_sync) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    block_mapping_[bucket_offset]->AddNewBlock(block_id, replica, version, block_size, init_replicas);
+    block_mapping_[bucket_offset]->AddNewBlock(block_id, replica, version, block_size, init_replicas, has_sync);
 }
 
 bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                      int64_t block_version) {
     int32_t bucket_offset = GetBucketOffset(block_id);
     return block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id, block_size, block_version);
+}
+
+bool BlockMappingManager::SetBlockStarted(int64_t block_id) {
+    int32_t bucket_offset = GetBucketOffset(block_id);
+    return block_mapping_[bucket_offset]->SetBlockStarted(block_id);
 }
 
 void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info) {

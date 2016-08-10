@@ -28,8 +28,9 @@ struct NSBlock {
     uint32_t expect_replica_num;
     RecoverStat recover_stat;
     std::set<int32_t> incomplete_replica;
+    bool has_sync;
     NSBlock();
-    NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size);
+    NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size, bool has_sync);
     bool operator<(const NSBlock &b) const {
         return (this->replica.size() >= b.replica.size());
     }
@@ -59,13 +60,14 @@ class BlockMapping {
 public:
     BlockMapping(ThreadPool* thread_pool);
     bool GetBlock(int64_t block_id, NSBlock* block);
-    bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size);
+    bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size, bool* has_sync);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,
-                     const std::vector<int32_t>* init_replicas);
+                     const std::vector<int32_t>* init_replicas, bool has_sync);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                          int64_t block_version);
+    bool SetBlockStarted(int64_t block_id);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);

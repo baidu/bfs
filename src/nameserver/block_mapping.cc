@@ -24,13 +24,13 @@ extern common::Counter g_blocks_num;
 
 NSBlock::NSBlock()
     : id(-1), version(-1), block_size(-1),
-      expect_replica_num(0), recover_stat(kNotInRecover) {
+      expect_replica_num(0), recover_stat(kNotInRecover), has_sync(false) {
 }
 NSBlock::NSBlock(int64_t block_id, int32_t replica,
-                 int64_t block_version, int64_t block_size)
+                 int64_t block_version, int64_t block_size, bool has_sync)
     : id(block_id), version(block_version),
       block_size(block_size), expect_replica_num(replica),
-      recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover) {
+      recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover), has_sync(has_sync) {
 }
 
 BlockMapping::BlockMapping(ThreadPool* thread_pool) :
@@ -53,7 +53,7 @@ bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
     return true;
 }
 
-bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,int64_t* size) {
+bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* size, bool* has_sync) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     if (!GetBlockPtr(id, &block)) {
@@ -72,6 +72,7 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,in
         LOG(DEBUG, "Block #%ld lost all replica", id);
     }
     *size = block->block_size;
+    *has_sync = block->has_sync;
     return true;
 }
 
@@ -88,9 +89,9 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
 
 void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
                                int64_t version, int64_t size,
-                               const std::vector<int32_t>* init_replicas) {
+                               const std::vector<int32_t>* init_replicas, bool has_sync) {
     NSBlock* nsblock = NULL;
-    nsblock = new NSBlock(block_id, replica, version, size);
+    nsblock = new NSBlock(block_id, replica, version, size, has_sync);
     if (init_replicas) {
         if (nsblock->recover_stat == kNotInRecover) {
             nsblock->replica.insert(init_replicas->begin(), init_replicas->end());
@@ -99,19 +100,23 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
         }
         LOG(DEBUG, "Init block info: #%ld ", block_id);
     } else {
-        nsblock->recover_stat = kLost;
-        lost_blocks_.insert(block_id);
+        if (has_sync) {
+            nsblock->recover_stat = kLost;
+            lost_blocks_.insert(block_id);
+        } else {
+            nsblock->recover_stat = kBlockWriting;
+        }
+
         if (version < 0) {
             LOG(INFO, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
         } else {
             LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
         }
     }
-
     g_blocks_num.Inc();
     MutexLock lock(&mu_);
     std::pair<NSBlockMap::iterator, bool> ret =
-        block_map_.insert(std::make_pair(block_id,nsblock));
+        block_map_.insert(std::make_pair(block_id, nsblock));
     assert(ret.second == true);
 }
 
@@ -480,6 +485,18 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
     }
 }
 
+bool BlockMapping::SetBlockStarted(int64_t block_id) {
+    MutexLock lock(&mu_);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        LOG(DEBUG, "SetBlockStarted #%ld has been removed", block_id);
+        return false;
+    }
+    LOG(DEBUG, "SetBlockStarted #%ld", block_id);
+    block->has_sync = true;
+    return true;
+}
+
 void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
@@ -524,6 +541,7 @@ StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
             block_id, block->version, version);
         return kVersionError;
     }
+    block->has_sync = true;
     return kOK;
 }
 

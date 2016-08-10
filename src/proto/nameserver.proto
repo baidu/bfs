@@ -51,6 +51,7 @@ message LocatedBlock {
     optional int64 block_id = 1;
     optional int64 block_size = 2;
     repeated ChunkServerInfo chains = 3;
+    optional bool is_empty = 4;
 }
 
 message FileLocationRequest {
@@ -106,6 +107,17 @@ message AddBlockResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
     optional LocatedBlock block = 3;
+}
+
+message StartingBlockRequest {
+    optional int64 sequence_id = 1;
+    optional int64 block_id = 2;
+    optional string file_name = 3;
+}
+
+message StartingBlockResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
 }
 
 message FinishBlockRequest {
@@ -294,6 +306,7 @@ service NameServer {
     rpc ListDirectory(ListDirectoryRequest) returns(ListDirectoryResponse);
     rpc Stat(StatRequest) returns(StatResponse);
     rpc Rename(RenameRequest) returns(RenameResponse);
+    rpc StartingBlock(StartingBlockRequest) returns(StartingBlockResponse);
     rpc FinishBlock(FinishBlockRequest) returns(FinishBlockResponse);
     rpc Unlink(UnlinkRequest) returns(UnlinkResponse);
     rpc DeleteDirectory(DeleteDirectoryRequest) returns(DeleteDirectoryResponse);

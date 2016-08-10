@@ -12,5 +12,6 @@ message FileInfo {
     optional int64 parent_entry_id = 9;
     optional int32 owner = 10;
     repeated string cs_addrs = 11;
+    optional bool has_sync = 12 [default = false];
 }
 
