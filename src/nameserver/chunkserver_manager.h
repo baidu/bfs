@@ -11,6 +11,8 @@
 namespace baidu {
 namespace bfs {
 
+const double kChunkServerLoadMax = 0.999999;
+
 class BlockMappingManager;
 
 class ChunkServerManager {

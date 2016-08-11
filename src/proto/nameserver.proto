@@ -23,6 +23,7 @@ message ChunkServerInfo {
     optional string datacenter = 14;
     optional string rack = 15;
     // running status
+    optional double load = 20 [default = 1.0];
     optional int32 w_qps = 21;
     optional int64 w_speed = 22;
     optional int32 r_qps = 23;
