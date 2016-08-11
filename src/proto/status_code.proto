@@ -49,7 +49,6 @@ enum RecoverStat {
     kLost = 5;
     kBlockWriting = 6;
     kHiPreRecover = 7;
-    kLoPreRecover = 8;
     kAny = 20;
 }
 
@@ -62,5 +61,4 @@ enum RecoverPri {
     kHigh = 0;
     kLow = 1;
     kPreHigh = 2;
-    kPreLow = 3;
 }

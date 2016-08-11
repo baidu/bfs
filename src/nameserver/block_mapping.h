@@ -129,7 +129,6 @@ private:
     std::set<int64_t> lo_pri_recover_;
     std::set<int64_t> hi_pri_recover_;
     std::set<int64_t> hi_pre_recover_;
-    std::set<int64_t> lo_pre_recover_;
     std::set<int64_t> lost_blocks_;
 };
 
