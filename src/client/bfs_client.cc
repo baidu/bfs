@@ -413,7 +413,7 @@ int BfsShutdownChunkServer(baidu::bfs::FS* fs, int argc, char* argv[]) {
         address.push_back(addr);
     }
     int32_t ret = fs->ShutdownChunkServer(address);
-    if (!ret) {
+    if (ret != 0) {
         printf("Shutdown chunkserver fail\n");
         fclose(fp);
         return 1;

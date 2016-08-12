@@ -854,12 +854,15 @@ void BlockMapping::TryRecover(NSBlock* block) {
                 LOG(INFO, "[TryRecover] need more recover: #%ld %s->kHiPreRecover",
                         block_id, RecoverStat_Name(block->recover_stat).c_str());
                 SetState(block, kHiPreRecover);
+                lo_pri_recover_.erase(block_id);
+                hi_pri_recover_.erase(block_id);
             } else if (block->recover_stat != kLoRecover) {
                 lo_pri_recover_.insert(block_id);
                 LOG(INFO, "[TryRecover] need more recover: #%ld %s->kLoRecover",
                         block_id, RecoverStat_Name(block->recover_stat).c_str());
                 SetState(block, kLoRecover);
                 hi_pre_recover_.erase(block_id);
+                hi_pri_recover_.erase(block_id);
             }
             return;
         }
