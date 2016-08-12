@@ -138,7 +138,7 @@ private:
     const ReadOptions r_options_;
 
     bool closed_;                       ///< 是否关闭
-    bool has_sync_;                     ///< 是否调用过sync
+    bool synced_;                     ///< 是否调用过sync
     Mutex   mu_;
     CondVar sync_signal_;               ///< _sync_var
     bool bg_error_;                     ///< background write error

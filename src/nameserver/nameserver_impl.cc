@@ -458,9 +458,9 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     }
 }
 
-void NameServerImpl::StartingBlock(::google::protobuf::RpcController* controller,
-                                   const StartingBlockRequest* request,
-                                   StartingBlockResponse* response,
+void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
+                                   const SyncBlockRequest* request,
+                                   SyncBlockResponse* response,
                                    ::google::protobuf::Closure* done) {
     if (!is_leader_) {
         response->set_status(kIsFollower);
@@ -472,15 +472,15 @@ void NameServerImpl::StartingBlock(::google::protobuf::RpcController* controller
     std::string file_name = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
-        LOG(INFO, "StartingBlock file not found: #%ld %s", block_id, file_name.c_str());
+        LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
         response->set_status(kNsNotFound);
         done->Run();
         return;
     }
-    file_info.set_has_sync(true);
+    file_info.set_synced(true);
     NameServerLog log;
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
-        LOG(WARNING, "StartingBlock fail: #%ld %s", block_id, file_name.c_str());
+        LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
         response->set_status(kUpdateError);
         done->Run();
         return;
@@ -521,7 +521,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     }
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
-    file_info.set_has_sync(true);
+    file_info.set_synced(true);
     NameServerLog log;
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
         LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
@@ -568,15 +568,15 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             std::vector<int32_t> replica;
             int64_t block_size = 0;
-            bool has_sync;
-            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size, &has_sync)) {
+            bool synced;
+            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size, &synced)) {
                 LOG(WARNING, "GetFileLocation GetBlockReplica fail #%ld ", block_id);
                 break;
             }
             LocatedBlock* lcblock = response->add_blocks();
             lcblock->set_block_id(block_id);
             lcblock->set_block_size(block_size);
-            lcblock->set_is_empty(!has_sync);
+            lcblock->set_is_empty(!synced);
             for (uint32_t i = 0; i < replica.size(); i++) {
                 int32_t server_id = replica[i];
                 std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
@@ -815,7 +815,7 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
         block_mapping_manager_->AddNewBlock(block_id, file_info.replicas(),
-                                    version, file_info.size(), NULL, file_info.has_sync());
+                                    version, file_info.size(), NULL, file_info.synced());
     }
 }
 
@@ -1163,7 +1163,7 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("ListDirectory", work_thread_pool_),
         std::make_pair("Stat", work_thread_pool_),
         std::make_pair("Rename", work_thread_pool_),
-        std::make_pair("StartingBlock", work_thread_pool_),
+        std::make_pair("SyncBlock", work_thread_pool_),
         std::make_pair("FinishBlock", work_thread_pool_),
         std::make_pair("Unlink", work_thread_pool_),
         std::make_pair("DeleteDirectory", work_thread_pool_),

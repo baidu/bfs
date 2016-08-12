@@ -89,7 +89,7 @@ FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false), has_sync_(false),
+    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false), synced_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -103,7 +103,7 @@ FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), r_options_(options), closed_(false), has_sync_(false),
+    last_read_offset_(-1), r_options_(options), closed_(false), synced_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -641,13 +641,13 @@ int32_t FileImpl::Sync() {
     if (write_buf_ && write_buf_->Size()) {
         StartWrite();
     }
-    if (!has_sync_) {
-        StartingBlockRequest request;
-        StartingBlockResponse response;
+    if (block_for_write_ && !bg_error_ && !synced_) {
+        SyncBlockRequest request;
+        SyncBlockResponse response;
         request.set_sequence_id(common::timer::get_micros());
         request.set_block_id(block_for_write_->block_id());
         request.set_file_name(name_);
-        bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::StartingBlock,
+        bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::SyncBlock,
                                                             &request, &response, 15, 1);
         if (!(rpc_ret && response.status() == kOK))  {
             LOG(WARNING, "Starting file %s fail, starting report returns %d, status: %s",
@@ -658,7 +658,7 @@ int32_t FileImpl::Sync() {
                 return GetErrorCode(response.status());
             }
         }
-        has_sync_ = true;
+        synced_ = true;
     }
 
     int wait_time = 0;
