@@ -39,6 +39,7 @@
 DECLARE_string(block_store_path);
 DECLARE_string(nameserver_nodes);
 DECLARE_string(chunkserver_port);
+DECLARE_string(chunkserver_tag);
 DECLARE_int32(heartbeat_interval);
 DECLARE_int32(blockreport_interval);
 DECLARE_int32(blockreport_size);
@@ -139,6 +140,7 @@ void ChunkServerImpl::Register() {
     request.set_chunkserver_addr(data_server_addr_);
     request.set_disk_quota(block_manager_->DiskQuota());
     request.set_namespace_version(block_manager_->NameSpaceVersion());
+    request.set_tag(FLAGS_chunkserver_tag);
 
     LOG(INFO, "Send Register request with version %ld ", request.namespace_version());
     RegisterResponse response;

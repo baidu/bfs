@@ -20,6 +20,7 @@ DECLARE_int32(recover_speed);
 DECLARE_int32(recover_dest_limit);
 DECLARE_int32(heartbeat_interval);
 DECLARE_bool(select_chunkserver_by_zone);
+DECLARE_bool(select_chunkserver_by_tag);
 DECLARE_double(select_chunkserver_local_factor);
 
 namespace baidu {
@@ -152,7 +153,8 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
     MutexLock lock(&mu_, "HandleRegister", 10);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
-        cs_id = AddChunkServer(request->chunkserver_addr(), ip, request->disk_quota());
+        cs_id = AddChunkServer(request->chunkserver_addr(), ip,
+                               request->tag(), request->disk_quota());
         assert(cs_id >= 0);
         response->set_chunkserver_id(cs_id);
     } else {
@@ -385,12 +387,8 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
 int ChunkServerManager::SelectChunkServerByZone(int num,
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains) {
-    /*
-    ChunkServerInfo* local_server = NULL;
-    if (chains.size()) {
-        bool ret = GetChunkServerPtr(chains->first, &local_server);
-        assert(ret);
-    }*/
+
+    std::set<std::string> tag_set;
     int ret = 0;
     ChunkServerInfo* remote_server = NULL;
     for(uint32_t i = 0; i < loads.size(); i++) {
@@ -398,6 +396,14 @@ int ChunkServerManager::SelectChunkServerByZone(int num,
         if (cs->zone() != localzone_) {
             if (!remote_server) remote_server = cs;
         } else {
+            const std::string& tag = cs->tag();
+            if (FLAGS_select_chunkserver_by_tag && !tag.empty()) {
+                if (tag_set.find(tag) != tag_set.end()) {
+                    continue;
+                } else {
+                    tag_set.insert(cs->tag());
+                }
+            }
             LOG(DEBUG, "Local zone %s C%d ",
                 cs->zone().c_str(), cs->id());
             ++ret;
@@ -439,12 +445,14 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
 
 int32_t ChunkServerManager::AddChunkServer(const std::string& address,
                                            const std::string& ip,
+                                           const std::string& tag,
                                            int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = new ChunkServerInfo;
     int32_t id = next_chunkserver_id_++;
     info->set_id(id);
     info->set_address(address);
+    info->set_tag(tag);
     info->set_disk_quota(quota);
     if (std::find(chunkservers_to_offline_.begin(), chunkservers_to_offline_.end(),
                 address) != chunkservers_to_offline_.end()) {

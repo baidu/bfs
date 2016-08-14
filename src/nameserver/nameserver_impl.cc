@@ -952,7 +952,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         "<table class=\"table\">"
         "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
         "<td>Disk quota</td><td>Disk used</td><td>Writing buffers</td>"
-        "<td>status</td><td>last_check</td><tr>";
+        "<td>tag</td><td>status</td><td>last_check</td><tr>";
     int dead_num = 0;
     int64_t total_quota = 0;
     int64_t total_data = 0;
@@ -992,6 +992,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
                      common::NumToString(chunkserver.buffers());
+        table_str += "</td><td>";
+        table_str += chunkserver.tag();
         table_str += "</td><td>";
         if (chunkserver.is_dead()) {
             table_str += "dead";
