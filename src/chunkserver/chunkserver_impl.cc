@@ -673,6 +673,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info, int3
             block->DecRef();
             return;
         } else if (timeout) {
+            LOG(INFO, "[PushBlock] push #%ld timeout", block_id);
             block->DecRef();
             return;
         }
@@ -690,7 +691,6 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
     while (!service_stop_) {
         int32_t now_time = common::timer::now_time();
         if (now_time > cancel_time) {
-            LOG(WARNING, "[WriteRecoverBlock] push #%ld timeout", block->Id());
             delete[] buf;
             *timeout = true;
             return false;
