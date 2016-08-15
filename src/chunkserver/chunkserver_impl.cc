@@ -656,6 +656,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info, int3
     }
     ChunkServer_Stub* chunkserver = NULL;
     int attempts = new_replica_info.chunkserver_address_size();
+    bool timeout = false;
     for (int i = 0; i < attempts; ++i) {
         const std::string& cs_addr = new_replica_info.chunkserver_address(i);
         if (!rpc_client_->GetStub(cs_addr, &chunkserver)) {
@@ -663,12 +664,15 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info, int3
         }
         LOG(INFO, "[PushBlock] started push #%ld to %s, attempt %d/%d",
                 block_id, cs_addr.c_str(), i + 1, attempts);
-        if (WriteRecoverBlock(block, chunkserver, cancel_time)) {
+        if (WriteRecoverBlock(block, chunkserver, cancel_time, &timeout)) {
             LOG(INFO, "[PushBlock] success #%ld to %s", block_id, cs_addr.c_str());
             block->DecRef();
             return;
         } else if (service_stop_) {
             LOG(INFO, "[PushBlock] failed #%ld service_stop_", block_id);
+            block->DecRef();
+            return;
+        } else if (timeout) {
             block->DecRef();
             return;
         }
@@ -677,7 +681,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info, int3
     LOG(INFO, "[PushBlock] failed #%ld ", block_id);
 }
 
-bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver, int32_t cancel_time) {
+bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver, int32_t cancel_time, bool* timeout) {
     int32_t read_len = 1 << 20;
     int64_t offset = 0;
     int32_t seq = 0;
@@ -688,6 +692,7 @@ bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkser
         if (now_time > cancel_time) {
             LOG(WARNING, "[WriteRecoverBlock] push #%ld timeout", block->Id());
             delete[] buf;
+            *timeout = true;
             return false;
         }
         int64_t len = block->Read(buf, read_len, offset);
