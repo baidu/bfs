@@ -82,7 +82,7 @@ public:
     void BackgroundWrite();
     /// Callback for sliding window
     void OnWriteCommit(int32_t, int32_t);
-    void WriteChunkCallback(const WriteBlockRequest* request,
+    void WriteBlockCallback(const WriteBlockRequest* request,
                             WriteBlockResponse* response,
                             bool failed, int error,
                             int retry_times,
