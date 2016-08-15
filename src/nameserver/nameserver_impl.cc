@@ -33,6 +33,7 @@ DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
 DECLARE_int32(nameserver_heartbeat_thread_num);
 DECLARE_int32(blockmapping_bucket_num);
+DECLARE_int32(recover_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -277,6 +278,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 rep->add_chunkserver_address(*dest_it);
             }
         }
+        response->set_recover_timeout(FLAGS_recover_timeout);
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }

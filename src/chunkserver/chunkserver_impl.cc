@@ -274,10 +274,11 @@ void ChunkServerImpl::SendBlockReport() {
 
         LOG(INFO, "Block report done. %d replica blocks", response.new_replicas_size());
         g_recover_count.Add(response.new_replicas_size());
+        int32_t cancel_time = common::timer::now_time() +response.recover_timeout();
         for (int i = 0; i < response.new_replicas_size(); ++i) {
             const ReplicaInfo& rep = response.new_replicas(i);
             boost::function<void ()> new_replica_task =
-                boost::bind(&ChunkServerImpl::PushBlock, this, rep);
+                boost::bind(&ChunkServerImpl::PushBlock, this, rep, cancel_time);
             LOG(INFO, "schedule push #%ld ", rep.block_id());
             if (rep.priority()) {
                 recover_thread_pool_->AddPriorityTask(new_replica_task);
@@ -629,19 +630,24 @@ void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
     }
 }
 
-void ChunkServerImpl::PushBlock(const ReplicaInfo& new_replica_info) {
-    PushBlockReportRequest report_request;
-    report_request.set_sequence_id(0);
-    report_request.set_chunkserver_id(chunkserver_id_);
-    int64_t block_id = new_replica_info.block_id();
-    PushBlockProcess(new_replica_info);
-    report_request.add_blocks(block_id);
-    PushBlockReportResponse report_response;
-    if (!nameserver_->SendRequest(&NameServer_Stub::PushBlockReport,
-                                  &report_request, &report_response, 15)) {
-        LOG(WARNING, "Report push finish fail #%ld ", block_id);
+void ChunkServerImpl::PushBlock(const ReplicaInfo& new_replica_info, int32_t cancel_time) {
+    int32_t now = common::timer::now_time();
+    if (now < cancel_time) {
+        PushBlockReportRequest report_request;
+        report_request.set_sequence_id(0);
+        report_request.set_chunkserver_id(chunkserver_id_);
+        int64_t block_id = new_replica_info.block_id();
+        PushBlockProcess(new_replica_info);
+        report_request.add_blocks(block_id);
+        PushBlockReportResponse report_response;
+        if (!nameserver_->SendRequest(&NameServer_Stub::PushBlockReport,
+                    &report_request, &report_response, 15)) {
+            LOG(WARNING, "Report push finish fail #%ld ", block_id);
+        } else {
+            LOG(INFO, "Report push finish done #%ld ", block_id);
+        }
     } else {
-        LOG(INFO, "Report push finish done #%ld ", block_id);
+        LOG(WARNING, "[PushBlock] Push block #%ld timeout", new_replica_info.block_id());
     }
     g_recover_count.Dec();
 }

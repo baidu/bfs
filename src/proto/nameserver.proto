@@ -211,6 +211,7 @@ message BlockReportResponse {
     repeated int64 obsolete_blocks = 3;
     repeated int64 close_blocks = 4;
     repeated ReplicaInfo new_replicas = 5;
+    optional int32 recover_timeout = 6;
 }
 
 message BlockReceivedRequest {
