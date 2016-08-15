@@ -274,9 +274,9 @@ void ChunkServerImpl::SendBlockReport() {
 
         LOG(INFO, "Block report done. %d replica blocks", response.new_replicas_size());
         g_recover_count.Add(response.new_replicas_size());
-        int32_t cancel_time = common::timer::now_time() + response.recover_timeout();
         for (int i = 0; i < response.new_replicas_size(); ++i) {
             const ReplicaInfo& rep = response.new_replicas(i);
+            int32_t cancel_time = common::timer::now_time() + rep.recover_timeout();
             boost::function<void ()> new_replica_task =
                 boost::bind(&ChunkServerImpl::PushBlock, this, rep, cancel_time);
             LOG(INFO, "schedule push #%ld ", rep.block_id());
@@ -631,28 +631,23 @@ void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
 }
 
 void ChunkServerImpl::PushBlock(const ReplicaInfo& new_replica_info, int32_t cancel_time) {
-    int32_t now = common::timer::now_time();
-    if (now < cancel_time) {
-        PushBlockReportRequest report_request;
-        report_request.set_sequence_id(0);
-        report_request.set_chunkserver_id(chunkserver_id_);
-        int64_t block_id = new_replica_info.block_id();
-        PushBlockProcess(new_replica_info);
-        report_request.add_blocks(block_id);
-        PushBlockReportResponse report_response;
-        if (!nameserver_->SendRequest(&NameServer_Stub::PushBlockReport,
-                    &report_request, &report_response, 15)) {
-            LOG(WARNING, "Report push finish fail #%ld ", block_id);
-        } else {
-            LOG(INFO, "Report push finish done #%ld ", block_id);
-        }
+    PushBlockReportRequest report_request;
+    report_request.set_sequence_id(0);
+    report_request.set_chunkserver_id(chunkserver_id_);
+    int64_t block_id = new_replica_info.block_id();
+    PushBlockProcess(new_replica_info, cancel_time);
+    report_request.add_blocks(block_id);
+    PushBlockReportResponse report_response;
+    if (!nameserver_->SendRequest(&NameServer_Stub::PushBlockReport,
+                &report_request, &report_response, 15)) {
+        LOG(WARNING, "Report push finish fail #%ld ", block_id);
     } else {
-        LOG(WARNING, "[PushBlock] Push block #%ld timeout", new_replica_info.block_id());
+        LOG(INFO, "Report push finish done #%ld ", block_id);
     }
     g_recover_count.Dec();
 }
 
-void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
+void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info, int32_t cancel_time) {
     int64_t block_id = new_replica_info.block_id();
     Block* block = block_manager_->FindBlock(block_id);
     if (!block) {
@@ -668,7 +663,7 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
         }
         LOG(INFO, "[PushBlock] started push #%ld to %s, attempt %d/%d",
                 block_id, cs_addr.c_str(), i + 1, attempts);
-        if (WriteRecoverBlock(block, chunkserver)) {
+        if (WriteRecoverBlock(block, chunkserver, cancel_time)) {
             LOG(INFO, "[PushBlock] success #%ld to %s", block_id, cs_addr.c_str());
             block->DecRef();
             return;
@@ -682,13 +677,19 @@ void ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info) {
     LOG(INFO, "[PushBlock] failed #%ld ", block_id);
 }
 
-bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver) {
+bool ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver, int32_t cancel_time) {
     int32_t read_len = 1 << 20;
     int64_t offset = 0;
     int32_t seq = 0;
     char* buf = new char[read_len];
     int64_t start_recover = common::timer::get_micros();
     while (!service_stop_) {
+        int32_t now_time = common::timer::now_time();
+        if (now_time > cancel_time) {
+            LOG(WARNING, "[WriteRecoverBlock] push #%ld timeout", block->Id());
+            delete[] buf;
+            return false;
+        }
         int64_t len = block->Read(buf, read_len, offset);
         g_read_bytes.Add(len);
         g_read_ops.Inc();

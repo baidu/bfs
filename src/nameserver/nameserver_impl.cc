@@ -277,8 +277,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                  dest_it != (*it).second.end(); ++dest_it) {
                 rep->add_chunkserver_address(*dest_it);
             }
+            rep->set_recover_timeout(FLAGS_recover_timeout);
         }
-        response->set_recover_timeout(FLAGS_recover_timeout);
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
