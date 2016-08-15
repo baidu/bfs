@@ -274,7 +274,7 @@ void ChunkServerImpl::SendBlockReport() {
 
         LOG(INFO, "Block report done. %d replica blocks", response.new_replicas_size());
         g_recover_count.Add(response.new_replicas_size());
-        int32_t cancel_time = common::timer::now_time() +response.recover_timeout();
+        int32_t cancel_time = common::timer::now_time() + response.recover_timeout();
         for (int i = 0; i < response.new_replicas_size(); ++i) {
             const ReplicaInfo& rep = response.new_replicas(i);
             boost::function<void ()> new_replica_task =
