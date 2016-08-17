@@ -165,7 +165,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
         if (located_blocks_.blocks_.empty()) {
             return 0;
         } else if (located_blocks_.blocks_[0].chains_size() == 0) {
-            if (located_blocks_.blocks_[0].is_empty()) {
+            if (located_blocks_.blocks_[0].block_size() == 0) {
                 return 0;
             } else {
                 LOG(WARNING, "No located chunkserver of block #%ld",
@@ -641,12 +641,13 @@ int32_t FileImpl::Sync() {
     if (write_buf_ && write_buf_->Size()) {
         StartWrite();
     }
-    if (block_for_write_ && !bg_error_ && !synced_) {
+    if (block_for_write_ && !bg_error_ && write_offset_ && !synced_) {
         SyncBlockRequest request;
         SyncBlockResponse response;
         request.set_sequence_id(common::timer::get_micros());
         request.set_block_id(block_for_write_->block_id());
         request.set_file_name(name_);
+        request.set_size(write_offset_);
         bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::SyncBlock,
                                                             &request, &response, 15, 1);
         if (!(rpc_ret && response.status() == kOK))  {

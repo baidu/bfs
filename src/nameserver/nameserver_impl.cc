@@ -205,7 +205,6 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
                                             block_version)) {
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id);
-            block_mapping_manager_->SetBlockStarted(block_id);
         } else {
             LOG(INFO, "BlockReceived drop C%d #%ld V%ld %ld",
                 cs_id, block_id, block_version, block_size);
@@ -445,7 +444,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
         }
-        block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas, false);
+        block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         block->set_block_id(new_block_id);
         response->set_status(kOK);
         LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
@@ -477,7 +476,7 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    file_info.set_synced(true);
+    file_info.set_size(request->size());
     NameServerLog log;
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
         LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
@@ -486,7 +485,7 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
         return;
     }
     response->set_status(kOK);
-    block_mapping_manager_->SetBlockStarted(block_id);
+    block_mapping_manager_->SetBlockSize(block_id, request->size());
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
                                (std::vector<FileInfo>*)NULL, _1));
@@ -521,7 +520,6 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     }
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
-    file_info.set_synced(true);
     NameServerLog log;
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
         LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
@@ -568,15 +566,15 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             std::vector<int32_t> replica;
             int64_t block_size = 0;
-            bool synced;
-            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size, &synced)) {
+            RecoverStat rs;
+            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size, &rs)) {
                 LOG(WARNING, "GetFileLocation GetBlockReplica fail #%ld ", block_id);
                 break;
             }
             LocatedBlock* lcblock = response->add_blocks();
             lcblock->set_block_id(block_id);
             lcblock->set_block_size(block_size);
-            lcblock->set_is_empty(!synced);
+            lcblock->set_status(rs);
             for (uint32_t i = 0; i < replica.size(); i++) {
                 int32_t server_id = replica[i];
                 std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
@@ -815,7 +813,7 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
         block_mapping_manager_->AddNewBlock(block_id, file_info.replicas(),
-                                    version, file_info.size(), NULL, file_info.synced());
+                                    version, file_info.size(), NULL);
     }
 }
 

@@ -51,7 +51,7 @@ message LocatedBlock {
     optional int64 block_id = 1;
     optional int64 block_size = 2;
     repeated ChunkServerInfo chains = 3;
-    optional bool is_empty = 4;
+    optional int32 status = 4;
 }
 
 message FileLocationRequest {
@@ -113,6 +113,7 @@ message SyncBlockRequest {
     optional int64 sequence_id = 1;
     optional int64 block_id = 2;
     optional string file_name = 3;
+    optional int64 size = 4;
 }
 
 message SyncBlockResponse {

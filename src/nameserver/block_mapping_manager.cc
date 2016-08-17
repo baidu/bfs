@@ -4,8 +4,6 @@
 
 #include "block_mapping_manager.h"
 
-#include "proto/status_code.pb.h"
-
 #include <common/counter.h>
 #include <common/string_util.h>
 
@@ -39,9 +37,9 @@ bool BlockMappingManager::GetBlock(int64_t block_id, NSBlock* block) {
 }
 
 bool BlockMappingManager::GetLocatedBlock(int64_t block_id, std::vector<int32_t>* replica,
-                                          int64_t* block_size, bool* has_sync) {
+                                          int64_t* block_size, RecoverStat* stauts) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    return block_mapping_[bucket_offset]->GetLocatedBlock(block_id, replica, block_size, has_sync);
+    return block_mapping_[bucket_offset]->GetLocatedBlock(block_id, replica, block_size, stauts);
 }
 
 bool BlockMappingManager::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
@@ -51,9 +49,9 @@ bool BlockMappingManager::ChangeReplicaNum(int64_t block_id, int32_t replica_num
 
 void BlockMappingManager::AddNewBlock(int64_t block_id, int32_t replica,
                  int64_t version, int64_t block_size,
-                 const std::vector<int32_t>* init_replicas, bool has_sync) {
+                 const std::vector<int32_t>* init_replicas) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    block_mapping_[bucket_offset]->AddNewBlock(block_id, replica, version, block_size, init_replicas, has_sync);
+    block_mapping_[bucket_offset]->AddNewBlock(block_id, replica, version, block_size, init_replicas);
 }
 
 bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
@@ -62,9 +60,9 @@ bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, i
     return block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id, block_size, block_version);
 }
 
-bool BlockMappingManager::SetBlockStarted(int64_t block_id) {
+bool BlockMappingManager::SetBlockSize(int64_t block_id, int64_t size) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    return block_mapping_[bucket_offset]->SetBlockStarted(block_id);
+    return block_mapping_[bucket_offset]->SetBlockSize(block_id, size);
 }
 
 void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info) {
