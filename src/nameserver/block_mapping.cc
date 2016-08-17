@@ -24,10 +24,12 @@ NSBlock::NSBlock()
       expect_replica_num(0), recover_stat(kNotInRecover) {
 }
 NSBlock::NSBlock(int64_t block_id, int32_t replica,
-                 int64_t block_version, int64_t block_size)
+                 int64_t block_version, int64_t block_size, const std::string name)
     : id(block_id), version(block_version),
       block_size(block_size), expect_replica_num(replica),
-      recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover) {
+      recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover),
+      file_name(name)
+{
 }
 
 BlockMapping::BlockMapping(ThreadPool* thread_pool) :
@@ -85,9 +87,10 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
 
 void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
                                int64_t version, int64_t size,
-                               const std::vector<int32_t>* init_replicas) {
+                               const std::vector<int32_t>* init_replicas,
+                               const std::string& file_name) {
     NSBlock* nsblock = NULL;
-    nsblock = new NSBlock(block_id, replica, version, size);
+    nsblock = new NSBlock(block_id, replica, version, size, file_name);
     if (init_replicas) {
         if (nsblock->recover_stat == kNotInRecover) {
             nsblock->replica.insert(init_replicas->begin(), init_replicas->end());
@@ -288,6 +291,7 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
             block_version, block_size);
         nsblock->version = block_version;
         nsblock->block_size = block_size;
+        //TODO update namespace
     } else if (block_version < nsblock->version) {
         replica.erase(cs_id);
         LOG(INFO, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld R%lu IR%lu",

@@ -28,8 +28,9 @@ struct NSBlock {
     uint32_t expect_replica_num;
     RecoverStat recover_stat;
     std::set<int32_t> incomplete_replica;
+    std::string file_name;
     NSBlock();
-    NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size);
+    NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size, const std::string name);
     bool operator<(const NSBlock &b) const {
         return (this->replica.size() >= b.replica.size());
     }
@@ -63,7 +64,8 @@ public:
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,
-                     const std::vector<int32_t>* init_replicas);
+                     const std::vector<int32_t>* init_replicas,
+                     const std::string& file_name);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                          int64_t block_version);
     void RemoveBlocksForFile(const FileInfo& file_info);

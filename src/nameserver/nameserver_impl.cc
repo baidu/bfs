@@ -423,6 +423,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             path.c_str(), new_block_id, replica_num, request->client_address().c_str());
         file_info.add_blocks(new_block_id);
         file_info.set_version(-1);
+        file_info.set_name(path);
         ///TODO: Lost update? Get&Update not atomic.
         for (int i = 0; i < replica_num; i++) {
             file_info.add_cs_addrs(chunkserver_manager_->GetChunkServerAddr(chains[i].first));
@@ -443,7 +444,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
         }
-        block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
+        block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas, path);
         block->set_block_id(new_block_id);
         response->set_status(kOK);
         LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
@@ -776,7 +777,7 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
         block_mapping_manager_->AddNewBlock(block_id, file_info.replicas(),
-                                    version, file_info.size(), NULL);
+                                    version, file_info.size(), NULL, file_info.name());
     }
 }
 

@@ -21,7 +21,8 @@ public :
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,
-                     const std::vector<int32_t>* init_replicas);
+                     const std::vector<int32_t>* init_replicas,
+                     const std::string& path);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                          int64_t block_version);
     void RemoveBlocksForFile(const FileInfo& file_info);
