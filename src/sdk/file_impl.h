@@ -135,6 +135,8 @@ private:
     int64_t reada_base_;                ///< Read ahead base offset
     int32_t sequential_ratio_;          ///< Sequential read ratio
     int64_t last_read_offset_;
+    int32_t last_success_write_seq_;
+    int64_t last_success_write_size_;
     const ReadOptions r_options_;
 
     bool closed_;                       ///< 是否关闭

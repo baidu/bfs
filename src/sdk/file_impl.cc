@@ -4,6 +4,8 @@
 //
 #include "file_impl.h"
 
+#include <algorithm>
+
 #include <gflags/gflags.h>
 
 #include <boost/bind.hpp>
@@ -89,7 +91,9 @@ FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false),
+    last_read_offset_(-1),
+    last_success_write_seq_(-1), last_success_write_size_(0),
+    r_options_(ReadOptions()), closed_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -600,6 +604,11 @@ void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         }
         int r = write_windows_[cs_addr]->Add(buffer->Sequence(), 0);
         assert(r == 0);
+        {
+            MutexLock lock(&mu_);
+            last_success_write_seq_ = std::max(buffer->Sequence(), last_success_write_seq_);
+            last_success_write_size_ = std::max(buffer->offset() + buffer->Size(), last_success_write_size_);
+        }
         buffer->DecRef();
         delete request;
     }
@@ -695,8 +704,8 @@ int32_t FileImpl::Close() {
         request.set_sequence_id(0);
         request.set_file_name(name_);
         request.set_block_id(block_id);
-        request.set_block_version(last_seq_);
-        request.set_block_size(write_offset_);
+        request.set_block_version(last_success_write_seq_);
+        request.set_block_size(last_success_write_size_);
         request.set_close_with_error(bg_error_);
         bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::FinishBlock,
                                                    &request, &response, 15, 1);
