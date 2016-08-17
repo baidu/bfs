@@ -199,11 +199,20 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
             cs_id, block_id, block_version, block_size);
         // update block -> cs;
+        bool need_sync_meta = false;
+        std::string file_name;
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id,
                                             block_size,
-                                            block_version)) {
+                                            block_version, &need_sync_meta,
+                                            &file_name)) {
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id);
+
+            if (need_sync_meta) {
+                boost::function<void ()> task =
+                    boost::bind(&NameServerImpl::UpdateFileMeta, this, file_name, block_size, block_version);
+                work_thread_pool_->AddTask(task);
+            }
         } else {
             LOG(INFO, "BlockReceived drop C%d #%ld V%ld %ld",
                 cs_id, block_id, block_version, block_size);
@@ -246,17 +255,24 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
         // update block -> cs
         int64_t block_version = block.version();
+        bool need_sync_meta = false;
+        std::string file_name;
         if (!block_mapping_manager_->UpdateBlockInfo(cur_block_id, cs_id,
                                              cur_block_size,
-                                             block_version)) {
+                                             block_version, &need_sync_meta, &file_name)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
             continue;
         }
-
-        // update cs -> block
+        if (need_sync_meta) {
+            boost::function<void ()> task =
+                boost::bind(&NameServerImpl::UpdateFileMeta, this,
+                            file_name, cur_block_size, block_version);
+            work_thread_pool_->AddTask(task);
+        }
     }
+    // update cs -> block
     int64_t before_add_block = common::timer::get_micros();
     chunkserver_manager_->AddBlock(cs_id, blocks);
     int64_t after_add_block = common::timer::get_micros();
@@ -1152,6 +1168,9 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     } else {
         NameServer::CallMethod(method, controller, request, response, done);
     }
+}
+
+void NameServerImpl::UpdateFileMeta(std::string file_name, int64_t block_size, int64_t block_version) {
 }
 
 } // namespace bfs

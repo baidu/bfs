@@ -265,7 +265,8 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
 
 bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
                                          int32_t cs_id, int64_t block_size,
-                                         int64_t block_version) {
+                                         int64_t block_version, bool* need_sync_meta,
+                                         std::string* file_name) {
     int64_t block_id = nsblock->id;
     std::set<int32_t>& inc_replica = nsblock->incomplete_replica;
     std::set<int32_t>& replica = nsblock->replica;
@@ -292,6 +293,8 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
         nsblock->version = block_version;
         nsblock->block_size = block_size;
         //TODO update namespace
+        *need_sync_meta = true;
+        file_name->append(nsblock->file_name);
     } else if (block_version < nsblock->version) {
         replica.erase(cs_id);
         LOG(INFO, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld R%lu IR%lu",
@@ -445,8 +448,9 @@ bool BlockMapping::UpdateBlockInfoMerge(NSBlock* nsblock,
     return true;
 }
 */
-bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
-                                   int64_t block_version) {
+bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id,
+                                   int64_t block_size, int64_t block_version,
+                                   bool* need_sync_meta, std::string* file_name) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
@@ -457,7 +461,8 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
       case kBlockWriting:
         return UpdateWritingBlock(block, server_id, block_size, block_version);
       case kIncomplete:
-        return UpdateIncompleteBlock(block, server_id, block_size, block_version);
+        return UpdateIncompleteBlock(block, server_id, block_size, block_version,
+                                     need_sync_meta, file_name);
       default:  // kNotInRecover kLow kHi kLost kCheck
         return UpdateNormalBlock(block, server_id, block_size, block_version);
     }

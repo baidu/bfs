@@ -67,7 +67,7 @@ public:
                      const std::vector<int32_t>* init_replicas,
                      const std::string& file_name);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
-                         int64_t block_version);
+                         int64_t block_version, bool* need_sync_meta, std::string* file_name);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
@@ -103,7 +103,8 @@ private:
     bool UpdateNormalBlock(NSBlock* nsblock, int32_t cs_id, int64_t block_size,
                            int64_t block_version);
     bool UpdateIncompleteBlock(NSBlock* nsblock,int32_t cs_id, int64_t block_size,
-                               int64_t block_version);
+                               int64_t block_version,
+                               bool* need_sync_meta, std::string* file_name);
 private:
     Mutex mu_;
     ThreadPool* thread_pool_;
