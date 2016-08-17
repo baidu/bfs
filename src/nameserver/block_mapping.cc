@@ -292,7 +292,6 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
             block_version, block_size);
         nsblock->version = block_version;
         nsblock->block_size = block_size;
-        //TODO update namespace
         *need_sync_meta = true;
         file_name->append(nsblock->file_name);
     } else if (block_version < nsblock->version) {
@@ -307,6 +306,7 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
                 nsblock->version, nsblock->block_size);
             nsblock->version = block_version;
             nsblock->block_size = block_size;
+            //TODO update meta here?
         } else {
             if (inc_replica.empty()) {
                 SetState(nsblock, kNotInRecover);
