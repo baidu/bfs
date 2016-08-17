@@ -177,8 +177,10 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     file_info_for_ldb.CopyFrom(file_info);
     file_info_for_ldb.clear_cs_addrs();
 
+    size_t pos = file_info_for_ldb.name().find_last_of("/");
+    std::string name = file_info_for_ldb.name().substr(pos + 1);
     std::string file_key;
-    EncodingStoreKey(file_info_for_ldb.parent_entry_id(), file_info_for_ldb.name(), &file_key);
+    EncodingStoreKey(file_info_for_ldb.parent_entry_id(), name, &file_key);
     std::string infobuf_for_ldb, infobuf_for_sync;
     file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
     file_info.SerializeToString(&infobuf_for_sync);
