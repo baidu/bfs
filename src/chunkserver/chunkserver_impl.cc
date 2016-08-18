@@ -478,6 +478,10 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
             done->Run();
             return;
         }
+        if (request->has_recover_version()) {
+            LOG(INFO, "Start receive recover block #%ld", block_id);
+            block->SetRecover();
+        }
     } else {
         block = block_manager_->FindBlock(block_id);
         if (!block) {
@@ -487,9 +491,6 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
             done->Run();
             return;
         }
-    }
-    if (request->has_recover_version()) {
-        block->SetRecover();
     }
     LOG(DEBUG, "[WriteBlock] local write #%ld %d recover=%d",
         block_id, packet_seq, block->IsRecover());
