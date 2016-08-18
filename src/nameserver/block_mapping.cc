@@ -61,7 +61,9 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,in
         replica->assign(block->replica.begin(), block->replica.end());
     }
     if (!block->pre_recover_replica.empty()) {
-        replica->assign(block->pre_recover_replica.begin(), block->pre_recover_replica.end());
+        replica->insert(replica->end(),
+                         block->pre_recover_replica.begin(),
+                         block->pre_recover_replica.end());
     }
     if (block->recover_stat == kBlockWriting
         || block->recover_stat == kIncomplete) {

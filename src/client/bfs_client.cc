@@ -508,8 +508,6 @@ int main(int argc, char* argv[]) {
         ret = BfsStat(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "location") == 0) {
         ret = BfsLocation(fs, argc - 2, argv + 2);
-    } else if(strcmp(argv[1], "shutdownstat") == 0) {
-        ret = BfsShutdownStat(fs);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }
