@@ -453,6 +453,7 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     result->append(tp.ToString());
     return OK;
 }
+/*
 int32_t FSImpl::ShutdownChunkServer(const std::vector<std::string>& cs_addr) {
    ShutdownChunkServerRequest request;
    ShutdownChunkServerResponse response;
@@ -486,6 +487,7 @@ int32_t FSImpl::ShutdownChunkServerStat(std::vector<std::string> *cs) {
     }
     return 0;
 }
+*/
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
     FSImpl* impl = new FSImpl;
