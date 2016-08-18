@@ -474,6 +474,8 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
                 lost_blocks_.erase(block_id);
                 if (block->version < 0) {
                     block->recover_stat = kBlockWriting;
+                } else {
+                    LOG(WARNING, "Update lost block #%ld V%ld ", block_id, block->version);
                 }
             }
             return ret;
