@@ -485,18 +485,6 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
     }
 }
 
-bool BlockMapping::SetBlockSize(int64_t block_id, int64_t size) {
-    MutexLock lock(&mu_);
-    NSBlock* block = NULL;
-    if (!GetBlockPtr(block_id, &block)) {
-        LOG(DEBUG, "SetBlockSize #%ld has been removed", block_id);
-        return false;
-    }
-    LOG(DEBUG, "SetBlockSize #%ld to %ld", block_id, size);
-    block->block_size = size;
-    return true;
-}
-
 void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);

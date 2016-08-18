@@ -66,7 +66,6 @@ public:
                      const std::vector<int32_t>* init_replicas);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                          int64_t block_version);
-    bool SetBlockSize(int64_t block_id, int64_t size);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);

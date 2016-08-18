@@ -227,7 +227,7 @@ int32_t FSImpl::GetFileSize(const char* path, int64_t* file_size) {
     *file_size = 0;
     for (int i = 0; i < response.blocks_size(); i++) {
         const LocatedBlock& block = response.blocks(i);
-        if (block.status() == kBlockWriting) {
+        if (block.status() != kBlockWriting) {
             *file_size += block.block_size();
             continue;
         }

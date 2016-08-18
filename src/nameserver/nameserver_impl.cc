@@ -485,7 +485,6 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
         return;
     }
     response->set_status(kOK);
-    block_mapping_manager_->SetBlockSize(block_id, request->size());
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
                                (std::vector<FileInfo>*)NULL, _1));

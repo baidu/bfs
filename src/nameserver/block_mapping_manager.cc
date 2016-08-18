@@ -60,11 +60,6 @@ bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, i
     return block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id, block_size, block_version);
 }
 
-bool BlockMappingManager::SetBlockSize(int64_t block_id, int64_t size) {
-    int32_t bucket_offset = GetBucketOffset(block_id);
-    return block_mapping_[bucket_offset]->SetBlockSize(block_id, size);
-}
-
 void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int32_t bucket_offset = GetBucketOffset(file_info.blocks(i));
