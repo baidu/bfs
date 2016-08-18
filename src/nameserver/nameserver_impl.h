@@ -132,7 +132,7 @@ private:
                     const ::google::protobuf::Message* request,
                     ::google::protobuf::Message* response,
                     ::google::protobuf::Closure* done);
-    void UpdateFileMeta(std::string file_name, int64_t block_size, int64_t block_version);
+    void UpdateFileMeta(int64_t block_id);
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;

@@ -200,17 +200,15 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
             cs_id, block_id, block_version, block_size);
         // update block -> cs;
         bool need_sync_meta = false;
-        std::string file_name;
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id,
                                             block_size,
-                                            block_version, &need_sync_meta,
-                                            &file_name)) {
+                                            block_version, &need_sync_meta)) {
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id);
 
             if (need_sync_meta) {
                 boost::function<void ()> task =
-                    boost::bind(&NameServerImpl::UpdateFileMeta, this, file_name, block_size, block_version);
+                    boost::bind(&NameServerImpl::UpdateFileMeta, this, block_id);
                 work_thread_pool_->AddTask(task);
             }
         } else {
@@ -256,10 +254,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         // update block -> cs
         int64_t block_version = block.version();
         bool need_sync_meta = false;
-        std::string file_name;
         if (!block_mapping_manager_->UpdateBlockInfo(cur_block_id, cs_id,
-                                             cur_block_size,
-                                             block_version, &need_sync_meta, &file_name)) {
+                                             cur_block_size, block_version, &need_sync_meta)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
@@ -267,8 +263,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         }
         if (need_sync_meta) {
             boost::function<void ()> task =
-                boost::bind(&NameServerImpl::UpdateFileMeta, this,
-                            file_name, cur_block_size, block_version);
+                boost::bind(&NameServerImpl::UpdateFileMeta, this, cur_block_id);
             work_thread_pool_->AddTask(task);
         }
     }
@@ -439,7 +434,6 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             path.c_str(), new_block_id, replica_num, request->client_address().c_str());
         file_info.add_blocks(new_block_id);
         file_info.set_version(-1);
-        file_info.set_name(path);
         ///TODO: Lost update? Get&Update not atomic.
         for (int i = 0; i < replica_num; i++) {
             file_info.add_cs_addrs(chunkserver_manager_->GetChunkServerAddr(chains[i].first));
@@ -460,7 +454,9 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
         }
-        block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas, path);
+        block_mapping_manager_->AddNewBlock(new_block_id, replica_num,
+                                             -1, 0, &replicas, file_info.name(),
+                                             file_info.parent_entry_id());
         block->set_block_id(new_block_id);
         response->set_status(kOK);
         LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
@@ -793,7 +789,8 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
         block_mapping_manager_->AddNewBlock(block_id, file_info.replicas(),
-                                    version, file_info.size(), NULL, file_info.name());
+                                    version, file_info.size(), NULL,
+                                    file_info.name(), file_info.parent_entry_id());
     }
 }
 
@@ -1170,7 +1167,21 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     }
 }
 
-void NameServerImpl::UpdateFileMeta(std::string file_name, int64_t block_size, int64_t block_version) {
+void NameServerImpl::UpdateFileMeta(int64_t block_id) {
+    NSBlock block;
+    if (!block_mapping_manager_->GetBlock(block_id, &block)) {
+        LOG(WARNING, "Get block #%ld fail", block_id);
+        return;
+    }
+    NameServerLog log;
+    if (!namespace_->UpdateFileInfo(block.parent_entry_id, block.file_name,
+                                block.version, block.block_size, &log)) {
+        LOG(WARNING, "Update file %s block #%ld fail", block.file_name.c_str(), block.id);
+        return;
+    }
+    LOG(INFO, "Update block #%ld meta to version V%ld size %ld",
+                 block_id, block.version, block.block_size);
+    LogRemote(log, NULL);
 }
 
 } // namespace bfs

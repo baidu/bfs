@@ -29,8 +29,10 @@ struct NSBlock {
     RecoverStat recover_stat;
     std::set<int32_t> incomplete_replica;
     std::string file_name;
+    int64_t parent_entry_id;
     NSBlock();
-    NSBlock(int64_t block_id, int32_t replica, int64_t version, int64_t size, const std::string name);
+    NSBlock(int64_t block_id, int32_t replica, int64_t version,
+            int64_t size, const std::string name, int64_t eid);
     bool operator<(const NSBlock &b) const {
         return (this->replica.size() >= b.replica.size());
     }
@@ -65,9 +67,9 @@ public:
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,
                      const std::vector<int32_t>* init_replicas,
-                     const std::string& file_name);
+                     const std::string& file_name, int64_t entry_id);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
-                         int64_t block_version, bool* need_sync_meta, std::string* file_name);
+                         int64_t block_version, bool* need_sync_meta);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
@@ -103,8 +105,7 @@ private:
     bool UpdateNormalBlock(NSBlock* nsblock, int32_t cs_id, int64_t block_size,
                            int64_t block_version);
     bool UpdateIncompleteBlock(NSBlock* nsblock,int32_t cs_id, int64_t block_size,
-                               int64_t block_version,
-                               bool* need_sync_meta, std::string* file_name);
+                               int64_t block_version, bool* need_sync_meta);
 private:
     Mutex mu_;
     ThreadPool* thread_pool_;

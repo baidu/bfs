@@ -48,17 +48,18 @@ bool BlockMappingManager::ChangeReplicaNum(int64_t block_id, int32_t replica_num
 void BlockMappingManager::AddNewBlock(int64_t block_id, int32_t replica,
                  int64_t version, int64_t block_size,
                  const std::vector<int32_t>* init_replicas,
-                 const std::string& file_name) {
+                 const std::string& file_name, int64_t entry_id) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    block_mapping_[bucket_offset]->AddNewBlock(block_id, replica, version, block_size, init_replicas, file_name);
+    block_mapping_[bucket_offset]->AddNewBlock(block_id, replica, version,
+                                               block_size, init_replicas, file_name, entry_id);
 }
 
 bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
-                     int64_t block_version, bool* need_sync_meta, std::string* file_name) {
+                                          int64_t block_version, bool* need_sync_meta) {
     int32_t bucket_offset = GetBucketOffset(block_id);
     return block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id,
                                                           block_size, block_version,
-                                                          need_sync_meta, file_name);
+                                                          need_sync_meta);
 }
 
 void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info) {

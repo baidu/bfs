@@ -48,6 +48,8 @@ public:
     bool GetFileInfo(const std::string& path, FileInfo* file_info);
     /// Update file
     bool UpdateFileInfo(const FileInfo& file_info, NameServerLog* log = NULL);
+    bool UpdateFileInfo(int64_t parent_entry_id, const std::string& file_name,
+                        int64_t block_version, int64_t block_size, NameServerLog* log = NULL);
     /// Delete file
     bool DeleteFileInfo(const std::string file_key, NameServerLog* log = NULL);
     /// Namespace version

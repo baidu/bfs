@@ -24,11 +24,12 @@ NSBlock::NSBlock()
       expect_replica_num(0), recover_stat(kNotInRecover) {
 }
 NSBlock::NSBlock(int64_t block_id, int32_t replica,
-                 int64_t block_version, int64_t block_size, const std::string name)
+                 int64_t block_version, int64_t block_size,
+                 const std::string name, int64_t eid)
     : id(block_id), version(block_version),
       block_size(block_size), expect_replica_num(replica),
       recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover),
-      file_name(name)
+      file_name(name), parent_entry_id(eid)
 {
 }
 
@@ -88,9 +89,9 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
 void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
                                int64_t version, int64_t size,
                                const std::vector<int32_t>* init_replicas,
-                               const std::string& file_name) {
+                               const std::string& file_name, int64_t entry_id) {
     NSBlock* nsblock = NULL;
-    nsblock = new NSBlock(block_id, replica, version, size, file_name);
+    nsblock = new NSBlock(block_id, replica, version, size, file_name, entry_id);
     if (init_replicas) {
         if (nsblock->recover_stat == kNotInRecover) {
             nsblock->replica.insert(init_replicas->begin(), init_replicas->end());
@@ -106,7 +107,7 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
 
     MutexLock lock(&mu_);
     std::pair<NSBlockMap::iterator, bool> ret =
-        block_map_.insert(std::make_pair(block_id,nsblock));
+        block_map_.insert(std::make_pair(block_id, nsblock));
     assert(ret.second == true);
 }
 
@@ -265,8 +266,7 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
 
 bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
                                          int32_t cs_id, int64_t block_size,
-                                         int64_t block_version, bool* need_sync_meta,
-                                         std::string* file_name) {
+                                         int64_t block_version, bool* need_sync_meta) {
     int64_t block_id = nsblock->id;
     std::set<int32_t>& inc_replica = nsblock->incomplete_replica;
     std::set<int32_t>& replica = nsblock->replica;
@@ -293,7 +293,6 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
         nsblock->version = block_version;
         nsblock->block_size = block_size;
         *need_sync_meta = true;
-        file_name->append(nsblock->file_name);
     } else if (block_version < nsblock->version) {
         replica.erase(cs_id);
         LOG(INFO, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld R%lu IR%lu",
@@ -450,7 +449,7 @@ bool BlockMapping::UpdateBlockInfoMerge(NSBlock* nsblock,
 */
 bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id,
                                    int64_t block_size, int64_t block_version,
-                                   bool* need_sync_meta, std::string* file_name) {
+                                   bool* need_sync_meta) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
@@ -461,8 +460,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id,
       case kBlockWriting:
         return UpdateWritingBlock(block, server_id, block_size, block_version);
       case kIncomplete:
-        return UpdateIncompleteBlock(block, server_id, block_size, block_version,
-                                     need_sync_meta, file_name);
+        return UpdateIncompleteBlock(block, server_id, block_size, block_version, need_sync_meta);
       default:  // kNotInRecover kLow kHi kLost kCheck
         return UpdateNormalBlock(block, server_id, block_size, block_version);
     }

@@ -177,10 +177,8 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     file_info_for_ldb.CopyFrom(file_info);
     file_info_for_ldb.clear_cs_addrs();
 
-    size_t pos = file_info_for_ldb.name().find_last_of("/");
-    std::string name = file_info_for_ldb.name().substr(pos + 1);
     std::string file_key;
-    EncodingStoreKey(file_info_for_ldb.parent_entry_id(), name, &file_key);
+    EncodingStoreKey(file_info_for_ldb.parent_entry_id(), file_info_for_ldb.name(), &file_key);
     std::string infobuf_for_ldb, infobuf_for_sync;
     file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
     file_info.SerializeToString(&infobuf_for_sync);
@@ -192,7 +190,31 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     }
     EncodeLog(log, kSyncWrite, file_key, infobuf_for_ldb);
     return true;
-};
+}
+bool NameSpace::UpdateFileInfo(int64_t parent_entry_id, const std::string& file_name,
+                    int64_t block_version, int64_t block_size, NameServerLog* log) {
+    std::string file_key;
+    EncodingStoreKey(parent_entry_id, file_name, &file_key);
+    FileInfo file_info;
+    std::string info_buf;
+    leveldb::Status s = db_->Get(leveldb::ReadOptions(), file_key, &info_buf);
+    if (!s.ok()) {
+        LOG(WARNING, "NameSpace read from db fail: %s", s.ToString().c_str());
+        return false;
+    }
+    file_info.ParseFromArray(info_buf.data(), info_buf.size());
+    file_info.set_version(block_version);
+    file_info.set_size(block_size);
+    file_info.SerializeToString(&info_buf);
+    // TDOD Get adn Put not atmoic
+    s = db_->Put(leveldb::WriteOptions(), file_key, info_buf);
+    if (!s.ok()) {
+        LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
+        return false;
+    }
+    EncodeLog(log, kSyncWrite, file_key, info_buf);
+    return true;
+}
 
 bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return LookUp(path, file_info);
@@ -249,6 +271,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
+    file_info.set_name(fname);
     //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
     std::string file_key;

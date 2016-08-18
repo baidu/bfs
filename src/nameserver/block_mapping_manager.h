@@ -22,9 +22,9 @@ public :
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,
                      const std::vector<int32_t>* init_replicas,
-                     const std::string& path);
+                     const std::string& path, int64_t entry_id);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
-                         int64_t block_version, bool* need_sync_meta, std::string* file_name);
+                         int64_t block_version, bool* need_sync_meta);
     void RemoveBlocksForFile(const FileInfo& file_info);
     void RemoveBlock(int64_t block_id);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
