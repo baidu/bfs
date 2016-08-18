@@ -435,7 +435,7 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         done->Run();
         return;
     } else {
-        LOG(INFO, "[Writeblock] write next chunkserver %s #%ld seq:%d done",
+        LOG(DEBUG, "[Writeblock] write next chunkserver %s #%ld seq:%d done",
                 next_server.c_str(), block_id, packet_seq);
         delete next_response;
     }
@@ -466,7 +466,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
         StatusCode s;
         block = block_manager_->CreateBlock(block_id, &sync_time, &s);
         if (s != kOK) {
-            LOG(INFO, "[LocalWriteBlock] #%ld created failed, reason %s",
+            LOG(WARNING, "[LocalWriteBlock] #%ld created failed, reason %s",
                     block_id, StatusCode_Name(s).c_str());
             if (s == kBlockExist) {
                 response->set_current_size(block->Size());
@@ -491,7 +491,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     if (request->has_recover_version()) {
         block->SetRecover();
     }
-    LOG(INFO, "[WriteBlock] local write #%ld %d recover=%d",
+    LOG(DEBUG, "[WriteBlock] local write #%ld %d recover=%d",
         block_id, packet_seq, block->IsRecover());
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
