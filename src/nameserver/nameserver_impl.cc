@@ -457,6 +457,39 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     }
 }
 
+void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
+                                   const SyncBlockRequest* request,
+                                   SyncBlockResponse* response,
+                                   ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    int64_t block_id = request->block_id();
+    response->set_sequence_id(request->sequence_id());
+    std::string file_name = NameSpace::NormalizePath(request->file_name());
+    FileInfo file_info;
+    if (!namespace_->GetFileInfo(file_name, &file_info)) {
+        LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
+        response->set_status(kNsNotFound);
+        done->Run();
+        return;
+    }
+    file_info.set_size(request->size());
+    NameServerLog log;
+    if (!namespace_->UpdateFileInfo(file_info, &log)) {
+        LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
+        response->set_status(kUpdateError);
+        done->Run();
+        return;
+    }
+    response->set_status(kOK);
+    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done,
+                               (std::vector<FileInfo>*)NULL, _1));
+}
+
 void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          const FinishBlockRequest* request,
                          FinishBlockResponse* response,
@@ -532,13 +565,15 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             std::vector<int32_t> replica;
             int64_t block_size = 0;
-            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size)) {
+            RecoverStat rs;
+            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size, &rs)) {
                 LOG(WARNING, "GetFileLocation GetBlockReplica fail #%ld ", block_id);
                 break;
             }
             LocatedBlock* lcblock = response->add_blocks();
             lcblock->set_block_id(block_id);
             lcblock->set_block_size(block_size);
+            lcblock->set_status(rs);
             for (uint32_t i = 0; i < replica.size(); i++) {
                 int32_t server_id = replica[i];
                 std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
@@ -1127,6 +1162,7 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("ListDirectory", work_thread_pool_),
         std::make_pair("Stat", work_thread_pool_),
         std::make_pair("Rename", work_thread_pool_),
+        std::make_pair("SyncBlock", work_thread_pool_),
         std::make_pair("FinishBlock", work_thread_pool_),
         std::make_pair("Unlink", work_thread_pool_),
         std::make_pair("DeleteDirectory", work_thread_pool_),
