@@ -167,7 +167,7 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d, internal cleaning",
                 cs_id, address.c_str(), chunkserver_num_);
         } else {
-            UpdateChunkServer(cs_id, request->disk_quota());
+            UpdateChunkServer(cs_id, request->tag(), request->disk_quota());
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d",
                 cs_id, address.c_str(), chunkserver_num_);
         }
@@ -422,13 +422,14 @@ int ChunkServerManager::SelectChunkServerByZone(int num,
     return ret;
 }
 
-bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
+bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = NULL;
     if (!GetChunkServerPtr(cs_id, &info)) {
         return false;
     }
     info->set_disk_quota(quota);
+    info->set_tag(tag);
     if (info->status() != kCsReadonly) {
         info->set_status(kCsActive);
     }
