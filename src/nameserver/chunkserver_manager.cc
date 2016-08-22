@@ -529,7 +529,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         if (GetRecoverChains((*it).second, &(recover_blocks->back().second))) {
             //
         } else {
-            block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first, kOK);
+            block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first, kGetChunkServerError);
             recover_blocks->pop_back();
         }
     }
