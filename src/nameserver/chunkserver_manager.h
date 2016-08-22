@@ -36,7 +36,7 @@ public:
     int32_t AddChunkServer(const std::string& address, const std::string& ip,
                            const std::string& tag, int64_t quota);
     bool KickChunkServer(int cs_id);
-    bool UpdateChunkServer(int cs_id, int64_t quota);
+    bool UpdateChunkServer(int cs_id, const std::string& tag, int64_t quota);
     bool RemoveChunkServer(const std::string& address);
     std::string GetChunkServerAddr(int32_t id);
     int32_t GetChunkServerId(const std::string& address);
