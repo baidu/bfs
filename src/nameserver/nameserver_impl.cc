@@ -283,10 +283,15 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     }
     block_mapping_manager_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     int64_t end_report = common::timer::get_micros();
-    if (end_report - start_report > 100 * 1000) {
-        LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors",
+    static int last_warning = 0;
+    if (end_report - start_report > 1000 * 1000) {
+        int64_t now_time = common::timer::get_micros();
+        if (now_time > last_warning + 10 * 1000000) {
+            last_warning = now_time;
+            LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors",
                 cs_id, end_report - start_report,
                 before_add_block - before_update, after_add_block - before_add_block);
+        }
     }
     response->set_status(kOK);
     done->Run();
