@@ -50,6 +50,7 @@ DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int64(chunkserver_max_unfinished_bytes);
 DECLARE_bool(chunkserver_auto_clean);
+DECLARE_int32(keepalive_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -205,7 +206,8 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_r_speed(counters.read_bytes);
     request.set_recover_speed(counters.recover_bytes);
     HeartBeatResponse response;
-    if (!nameserver_->SendRequest(&NameServer_Stub::HeartBeat, &request, &response, 15)) {
+    if (!nameserver_->SendRequest(&NameServer_Stub::HeartBeat,
+                &request, &response, FLAGS_keepalive_timeout / 2)) {
         LOG(WARNING, "Heart beat fail\n");
     } else if (response.status() != kOK) {
         if (block_manager_->NameSpaceVersion() != response.namespace_version()) {
