@@ -626,13 +626,16 @@ bool BlockMapping::RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id) {
     }
     return true;
 }
-void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id) {
+void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, StatusCode status) {
     MutexLock lock(&mu_);
     bool ret = RemoveFromRecoverCheckList(cs_id, block_id);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
         LOG(DEBUG, "ProcessRecoveredBlock for C%d can't find block: #%ld ", cs_id, block_id);
         return;
+    }
+    if (status == kCsNotFound) {
+        block->replica.erase(cs_id);
     }
     if (ret) {
         SetState(block, kNotInRecover);
