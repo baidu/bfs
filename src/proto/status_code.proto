@@ -16,6 +16,7 @@ enum StatusCode {
     kReadOnly = 106;
     kNsNotFound = 107;
     kCsNotFound = 108;
+    kOversize = 109;
     kNoPermission = 200;
     kNoEnoughQuota = 300;
     kNetworkUnavailable = 400;
