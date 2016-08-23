@@ -80,9 +80,7 @@ bool ChunkServerManager::KickChunkServer(int32_t cs_id) {
     if (!GetChunkServerPtr(cs_id, &cs)) {
         return false;
     }
-    if (!cs->kick()) {
-        cs->set_kick(true);
-    }
+    cs->set_kick(true);
     return true;
 }
 bool ChunkServerManager::RemoveChunkServer(const std::string& addr) {
