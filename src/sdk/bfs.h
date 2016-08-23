@@ -111,8 +111,8 @@ public:
     /// GetFileLocation: get file locate, return chunkserver address and port
     virtual int32_t GetFileLocation(const std::string& path,
                                  std::map<int64_t, std::vector<std::string> >* locations) = 0;
-    //virtual int32_t ShutdownChunkServer(const std::vector<std::string>& cs_address) = 0;
-    //virtual int32_t ShutdownChunkServerStat(std::vector<std::string>* cs) = 0;
+    virtual int32_t ShutdownChunkServer(const std::vector<std::string>& cs_address) = 0;
+    virtual int32_t ShutdownChunkServerStat(std::vector<std::string>* cs) = 0;
 private:
     // No copying allowed
     FS(const FS&);
