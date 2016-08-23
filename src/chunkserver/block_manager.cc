@@ -374,7 +374,7 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
         LOG(WARNING, "Remove #%ld disk file %s %ld bytes fails: %d (%s)",
             block_id, file_path.c_str(), du, errno, strerror(errno));
     } else {
-        LOG(INFO, "Remove #%ld disk file done: %s\n", block_id, file_path.c_str());
+        LOG(INFO, "Remove #%ld disk file done: %s", block_id, file_path.c_str());
     }
 
     if (meta_removed) {
