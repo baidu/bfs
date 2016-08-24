@@ -398,10 +398,10 @@ int ChunkServerManager::SelectChunkServerByZone(int num,
         } else {
             const std::string& tag = cs->tag();
             if (FLAGS_select_chunkserver_by_tag && !tag.empty()) {
-                if (tag_set.find(tag) != tag_set.end()) {
+                if (!tag_set.insert(tag).second) {
+                    LOG(DEBUG, "Ignore by tag: %s %s",
+                        tag.c_str(), cs->address().c_str());
                     continue;
-                } else {
-                    tag_set.insert(cs->tag());
                 }
             }
             LOG(DEBUG, "Local zone %s C%d ",
