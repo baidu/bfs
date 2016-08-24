@@ -29,6 +29,7 @@ enum StatusCode {
     kUpdateError = 800;
     kSyncMetaFailed = 801;
     kSafeMode = 802;
+    kServiceStop = 803;
 }
 
 enum ChunkServerStatus {

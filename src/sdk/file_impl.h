@@ -82,7 +82,7 @@ public:
     void BackgroundWrite();
     /// Callback for sliding window
     void OnWriteCommit(int32_t, int32_t);
-    void WriteChunkCallback(const WriteBlockRequest* request,
+    void WriteBlockCallback(const WriteBlockRequest* request,
                             WriteBlockResponse* response,
                             bool failed, int error,
                             int retry_times,
@@ -138,6 +138,7 @@ private:
     const ReadOptions r_options_;
 
     bool closed_;                       ///< 是否关闭
+    bool synced_;                     ///< 是否调用过sync
     Mutex   mu_;
     CondVar sync_signal_;               ///< _sync_var
     bool bg_error_;                     ///< background write error
