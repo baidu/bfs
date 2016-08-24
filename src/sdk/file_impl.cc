@@ -497,7 +497,7 @@ void FileImpl::BackgroundWrite() {
             const int max_retry_times = 5;
             ChunkServer_Stub* stub = chunkservers_[cs_addr];
             boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-                = boost::bind(&FileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+                = boost::bind(&FileImpl::WriteBlockCallback, this, _1, _2, _3, _4,
                         max_retry_times, buffer, cs_addr);
 
             LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
@@ -526,7 +526,7 @@ void FileImpl::DelayWriteChunk(WriteBuffer* buffer,
                                   int retry_times, std::string cs_addr) {
     WriteBlockResponse* response = new WriteBlockResponse;
     boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-        = boost::bind(&FileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+        = boost::bind(&FileImpl::WriteBlockCallback, this, _1, _2, _3, _4,
                       retry_times, buffer, cs_addr);
     common::atomic_inc(&back_writing_);
     ChunkServer_Stub* stub = chunkservers_[cs_addr];
@@ -539,7 +539,7 @@ void FileImpl::DelayWriteChunk(WriteBuffer* buffer,
     }
 }
 
-void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
+void FileImpl::WriteBlockCallback(const WriteBlockRequest* request,
                                      WriteBlockResponse* response,
                                      bool failed, int error,
                                      int retry_times,
@@ -610,7 +610,7 @@ void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
     delete response;
 
     {
-        MutexLock lock(&mu_, "WriteChunkCallback", 1000);
+        MutexLock lock(&mu_, "WriteBlockCallback", 1000);
         if (write_queue_.empty() || bg_error_) {
             common::atomic_dec(&back_writing_);    // for AsyncRequest
             if (back_writing_ == 0) {
