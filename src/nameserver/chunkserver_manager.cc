@@ -337,16 +337,17 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
     std::vector<std::pair<double, ChunkServerInfo*> > loads;
 
     std::set<std::string> tag_set;
-    for (std::set<int32_t>::const_iterator it = replica.begin();
-         it != replica.end(); ++it) {
-        ChunkServerInfo* rep_cs = NULL;
-        if (!GetChunkServerPtr(*it, &rep_cs) || rep_cs->tag().empty()) {
-            continue;
+    if (FLAGS_select_chunkserver_by_tag) {
+        for (std::set<int32_t>::const_iterator it = replica.begin();
+             it != replica.end(); ++it) {
+            ChunkServerInfo* rep_cs = NULL;
+            if (!GetChunkServerPtr(*it, &rep_cs) || rep_cs->tag().empty()) {
+                continue;
+            }
+            tag_set.insert(rep_cs->tag());
+            ///TODO: has_remote?
         }
-        tag_set.insert(rep_cs->tag());
-        ///TODO: has_remote?
     }
-
     ChunkServerInfo* remote_cs = NULL;
     for (; it != heartbeat_list_.end(); ++it) {
         std::set<ChunkServerInfo*>& set = it->second;
@@ -355,7 +356,9 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
             if (replica.find(cs->id()) != replica.end()) {
                 LOG(INFO, "GetRecoverChains has C%d ", cs->id());
                 continue;
-            } else if (!cs->tag().empty() && !tag_set.insert(cs->tag()).second) {
+            } else if (FLAGS_select_chunkserver_by_tag
+                       && !cs->tag().empty()
+                       && !tag_set.insert(cs->tag()).second) {
                 continue;
             } else if (cs->zone() != localzone_) {
                 if (!remote_cs) {
