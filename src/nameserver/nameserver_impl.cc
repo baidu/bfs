@@ -307,7 +307,7 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_manager_->ProcessRecoveredBlock(cs_id, request->blocks(i));
+        block_mapping_manager_->ProcessRecoveredBlock(cs_id, request->blocks(i), request->status(i));
     }
     done->Run();
 }

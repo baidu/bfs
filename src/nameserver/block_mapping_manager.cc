@@ -101,9 +101,9 @@ void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     }
 }
 
-void BlockMappingManager::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id) {
+void BlockMappingManager::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, StatusCode status) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    block_mapping_[bucket_offset]->ProcessRecoveredBlock(cs_id, block_id);
+    block_mapping_[bucket_offset]->ProcessRecoveredBlock(cs_id, block_id, status);
 }
 
 void BlockMappingManager::GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks) {
