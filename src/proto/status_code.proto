@@ -49,6 +49,7 @@ enum RecoverStat {
     kIncomplete = 4;
     kLost = 5;
     kBlockWriting = 6;
+    kHiPreRecover = 7;
     kAny = 20;
 }
 
@@ -60,4 +61,5 @@ enum SyncStatus {
 enum RecoverPri {
     kHigh = 0;
     kLow = 1;
+    kPreHigh = 2;
 }

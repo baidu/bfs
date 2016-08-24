@@ -4,6 +4,9 @@
 
 #include "block_mapping_manager.h"
 
+#include "proto/status_code.pb.h"
+
+#include <common/logging.h>
 #include <common/counter.h>
 #include <common/string_util.h>
 
@@ -57,7 +60,9 @@ void BlockMappingManager::AddNewBlock(int64_t block_id, int32_t replica,
 bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                      int64_t block_version) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    return block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id, block_size, block_version);
+    bool ret = block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id,
+                                                              block_size, block_version);
+    return ret;
 }
 
 void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info) {
@@ -95,6 +100,9 @@ void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, kHigh);
     }
+    for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
+        block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, kPreHigh);
+    }
     *(hi_num) += recover_blocks->size();
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, kLow);
@@ -118,8 +126,12 @@ void BlockMappingManager::GetStat(int32_t cs_id, RecoverBlockNum* recover_num) {
         block_mapping_[i]->GetStat(cs_id, &cur_num);
         recover_num->lo_recover_num += cur_num.lo_recover_num;
         recover_num->hi_recover_num += cur_num.hi_recover_num;
+        recover_num->lo_pre_recover_num += cur_num.lo_pre_recover_num;
+        recover_num->hi_pre_recover_num += cur_num.hi_pre_recover_num;
         recover_num->lo_pending += cur_num.lo_pending;
         recover_num->hi_pending += cur_num.hi_pending;
+        recover_num->lo_pre_pending += cur_num.lo_pre_pending;
+        recover_num->hi_pre_pending += cur_num.hi_pre_pending;
         recover_num->lost_num += cur_num.lost_num;
         recover_num->incomplete_num += cur_num.incomplete_num;
     }
@@ -140,6 +152,25 @@ void BlockMappingManager::SetSafeMode(bool safe_mode) {
 void BlockMappingManager::MarkIncomplete(int64_t block_id) {
     int32_t bucket_offset = GetBucketOffset(block_id);
     block_mapping_[bucket_offset]->MarkIncomplete(block_id);
+}
+
+void BlockMappingManager::MoveReplicasToReadonlySet(int32_t cs_id, const std::set<int64_t>& blocks) {
+    for(std::set<int64_t>::const_iterator it = blocks.begin(); it != blocks.end(); ++it) {
+        int32_t bucket_offset = GetBucketOffset(*it);
+        block_mapping_[bucket_offset]->MoveReplicaToReadonlySet(cs_id, *it);
+    }
+}
+
+size_t BlockMappingManager::GetHiPreRecoverSetSize() {
+    RecoverBlockNum recover_block_num;
+    for (int i = 0; i < blockmapping_bucket_num_; i++) {
+        RecoverBlockNum cur_num;
+        block_mapping_[i]->GetStat(-1, &cur_num);
+        recover_block_num.hi_pre_recover_num += cur_num.hi_pre_recover_num;
+        recover_block_num.hi_pre_pending += cur_num.hi_pre_pending;
+    }
+    return recover_block_num.hi_pre_recover_num +
+            recover_block_num.hi_pre_pending;
 }
 
 } //namespace bfs

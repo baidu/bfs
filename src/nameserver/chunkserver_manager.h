@@ -49,7 +49,7 @@ public:
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
-    bool GetShutdownChunkServerStat();
+    void GetShutdownChunkServerStat(std::vector<std::string> *cs);
     void AddBlock(int32_t id, const::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks);
 private:
     struct ChunkServerBlockMap {
@@ -71,6 +71,10 @@ private:
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains);
     void MarkChunkServerReadonly(const std::string& chunkserver_address);
+    void ShutdownOneChunkServer();
+    void FillPreRecoverSet(const std::set<int64_t>& blocks);
+    void MarkShutdownBlocksReadonly();
+    void CheckPreRecoverFinished();
     bool GetChunkServerBlockMapPtr(int32_t cs_id, ChunkServerBlockMap** cs_block_map);
 private:
     ThreadPool* thread_pool_;
@@ -88,7 +92,8 @@ private:
     std::string localhostname_;
     std::string localzone_;
 
-    std::vector<std::string> chunkservers_to_offline_;
+    std::vector<std::string> chunkserver_to_shutdown_;
+    size_t next_shutdown_offset_;
 };
 
 

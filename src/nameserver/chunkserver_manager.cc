@@ -30,7 +30,8 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingMana
     : thread_pool_(thread_pool),
       block_mapping_manager_(block_mapping_manager),
       chunkserver_num_(0),
-      next_chunkserver_id_(1) {
+      next_chunkserver_id_(1),
+      next_shutdown_offset_(0) {
     memset(&stats_, 0, sizeof(stats_));
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::LogStats, this));
@@ -61,9 +62,9 @@ void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string
     cs->set_r_qps(0);
     cs->set_r_speed(0);
     cs->set_recover_speed(0);
-    if (std::find(chunkservers_to_offline_.begin(),
-                  chunkservers_to_offline_.end(),
-                  cs->address()) == chunkservers_to_offline_.end()) {
+    if (std::find(chunkserver_to_shutdown_.begin(),
+                  chunkserver_to_shutdown_.end(),
+                  cs->address()) == chunkserver_to_shutdown_.end()) {
         if (cs->is_dead()) {
             cs->set_status(kCsOffLine);
         } else {
@@ -467,8 +468,8 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     info->set_address(address);
     info->set_tag(tag);
     info->set_disk_quota(quota);
-    if (std::find(chunkservers_to_offline_.begin(), chunkservers_to_offline_.end(),
-                address) != chunkservers_to_offline_.end()) {
+    if (std::find(chunkserver_to_shutdown_.begin(), chunkserver_to_shutdown_.end(),
+                address) != chunkserver_to_shutdown_.end()) {
         info->set_status(kCsReadonly);
     } else {
         info->set_status(kCsActive);
@@ -621,20 +622,72 @@ void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_
 StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>&
                                                   chunkserver_address) {
     MutexLock lock(&mu_);
-    if (!chunkservers_to_offline_.empty()) {
+    if (!chunkserver_to_shutdown_.empty()) {
         return kInShutdownProgress;
     }
     for (int i = 0; i < chunkserver_address.size(); i++) {
-        chunkservers_to_offline_.push_back(chunkserver_address.Get(i));
-        MarkChunkServerReadonly(chunkservers_to_offline_.back());
+        chunkserver_to_shutdown_.push_back(chunkserver_address.Get(i));
+        MarkChunkServerReadonly(chunkserver_to_shutdown_.back());
     }
-    //TODO: Add kick chunkserver task
+    boost::function<void ()> task = boost::bind(&ChunkServerManager::MarkShutdownBlocksReadonly, this);
+    thread_pool_->AddTask(task);
     return kOK;
 }
 
-bool ChunkServerManager::GetShutdownChunkServerStat() {
+void ChunkServerManager::GetShutdownChunkServerStat(std::vector<std::string> *cs) {
     MutexLock lock(&mu_);
-    return !chunkservers_to_offline_.empty();
+    for (size_t i = next_shutdown_offset_; i < chunkserver_to_shutdown_.size(); i++) {
+        cs->push_back(chunkserver_to_shutdown_[i]);
+    }
+}
+
+void ChunkServerManager::MarkShutdownBlocksReadonly() {
+    for (size_t i = 0; i < chunkserver_to_shutdown_.size(); i++) {
+        std::map<std::string, int32_t>::iterator it;
+        {
+            MutexLock lock(&mu_);
+            it = address_map_.find(chunkserver_to_shutdown_[i]);
+            if (it == address_map_.end()) {
+                LOG(WARNING, "chunkserver %s not found", chunkserver_to_shutdown_[i].c_str());
+                continue;
+            }
+        }
+        int32_t cs_id = it->second;
+        ChunkServerBlockMap* cs_map = NULL;
+        if (!GetChunkServerBlockMapPtr(cs_id, &cs_map)) {
+            LOG(WARNING, "Can't find C%d", cs_id);
+            continue;
+        }
+        MutexLock lock(cs_map->mu);
+        const std::set<int64_t>& blocks = cs_map->blocks;
+        block_mapping_manager_->MoveReplicasToReadonlySet(cs_id, blocks);
+    }
+    boost::function<void ()> task = boost::bind(&ChunkServerManager::CheckPreRecoverFinished, this);
+    thread_pool_->AddTask(task);
+}
+
+void ChunkServerManager::CheckPreRecoverFinished() {
+    if (block_mapping_manager_->GetHiPreRecoverSetSize() != 0) {
+        boost::function<void ()> task = boost::bind(&ChunkServerManager::CheckPreRecoverFinished, this);
+        thread_pool_->DelayTask(20 * 1000, task);
+        return;
+    }
+    for (size_t i = 0; i < chunkserver_to_shutdown_.size(); i++) {
+        int32_t cs_id;
+        {
+            MutexLock lock(&mu_);
+            std::map<std::string, int32_t>::iterator it =
+                address_map_.find(chunkserver_to_shutdown_[i]);
+            if (it == address_map_.end()) {
+                LOG(WARNING, "chunkserver %s not found",
+                        chunkserver_to_shutdown_[i].c_str());
+                continue;
+            }
+            cs_id = it->second;
+        }
+        KickChunkServer(cs_id);
+        LOG(INFO, "Shutdown chunkserver C%d", cs_id);
+    }
 }
 
 bool ChunkServerManager::GetChunkServerBlockMapPtr(int32_t cs_id, ChunkServerBlockMap** cs_block_map)

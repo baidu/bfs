@@ -862,9 +862,12 @@ void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* 
         done->Run();
         return;
     }
-    bool in_progress = chunkserver_manager_->GetShutdownChunkServerStat();
+    std::vector<std::string> cs;
+    chunkserver_manager_->GetShutdownChunkServerStat(&cs);
+    for (size_t i = 0; i < cs.size(); i++) {
+        response->add_unfinished_chunkservers(cs[i]);
+    }
     response->set_status(kOK);
-    response->set_in_offline_progress(in_progress);
     done->Run();
 }
 
@@ -896,11 +899,14 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     RecoverBlockSet recover_blocks;
     block_mapping_manager_->ListRecover(&recover_blocks);
     std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
+    std::string hi_pre_recover, hi_pre_check;
     TransToString(recover_blocks.hi_recover, &hi_recover);
     TransToString(recover_blocks.lo_recover, &lo_recover);
+    TransToString(recover_blocks.hi_pre_pending, &hi_pre_recover);
     TransToString(recover_blocks.lost, &lost);
     TransToString(recover_blocks.hi_check, &hi_check);
     TransToString(recover_blocks.lo_check, &lo_check);
+    TransToString(recover_blocks.hi_pre_check, &hi_pre_check);
     TransToString(recover_blocks.incomplete, &incomplete);
     std::string str =
             "<html><head><title>Recover Details</title>\n"
@@ -920,11 +926,14 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     str += "<tr><td>" + hi_check + "</td></tr>";
     str += "<tr><td>lo_check</td></tr>";
     str += "<tr><td>" + lo_check + "</td></tr>";
+    str += "<tr><td>hi_pre_check</td></tr>";
+    str += "<tr><td>" + hi_pre_check + "</td></tr>";
     str += "<tr><td>hi_recover</td></tr>";
     str += "<tr><td>" + hi_recover + "</td></tr>";
     str += "<tr><td>lo_recover</td></tr>";
-    str += "<tr><td>" + lo_recover + "</td></tr></table>";
-
+    str += "<tr><td>" + lo_recover + "</td></tr>";
+    str += "<tr><td>hi_pre_recover</td></tr>";
+    str += "<tr><td>" + hi_pre_recover + "</td></tr>";
     str += "</div></body><html>";
     response->content->Append(str);
     return;
@@ -1102,8 +1111,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Blocks: " + common::NumToString(g_blocks_num.Get()) + "</br>";
-    str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "</br>";
+    str += "Recover(hi/lo/hi_pre): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "/" + common::NumToString(recover_num.hi_pre_recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "/" + common::NumToString(recover_num.hi_pre_pending) + "</br>";
     str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(recover_num.incomplete_num) + "</br>";
     str += "<a href=\"/dfs/details\">Details</a>";

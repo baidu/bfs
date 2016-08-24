@@ -472,7 +472,7 @@ int32_t FSImpl::ShutdownChunkServer(const std::vector<std::string>& cs_addr) {
    }
    return OK;
 }
-int32_t FSImpl::ShutdownChunkServerStat() {
+int32_t FSImpl::ShutdownChunkServerStat(std::vector<std::string> *cs) {
     ShutdownChunkServerStatRequest request;
     ShutdownChunkServerStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServerStat,
@@ -481,7 +481,10 @@ int32_t FSImpl::ShutdownChunkServerStat() {
         LOG(WARNING, "Get shutdown chunnkserver stat fail");
         return TIMEOUT;
     }
-    return response.in_offline_progress();
+    for (int i = 0; i < response.unfinished_chunkservers_size(); i++) {
+        cs->push_back(response.unfinished_chunkservers(i));
+    }
+    return 0;
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {

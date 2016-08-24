@@ -50,7 +50,7 @@ public:
     int32_t ChangeReplicaNum(const char* file_name, int32_t replica_num);
     int32_t SysStat(const std::string& stat_name, std::string* result);
     int32_t ShutdownChunkServer(const std::vector<std::string>& cs_addr);
-    int32_t ShutdownChunkServerStat();
+    int32_t ShutdownChunkServerStat(std::vector<std::string>* cs);
 private:
     RpcClient* rpc_client_;
     NameServerClient* nameserver_client_;
