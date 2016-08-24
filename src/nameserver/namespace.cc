@@ -505,7 +505,7 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
                 break;
             }
         } else {
-            if (log->ByteSize() + static_cast<int>(key.size()) > FLAGS_synclog_limit) {
+            if (log && log->ByteSize() + static_cast<int>(key.size()) > FLAGS_synclog_limit) {
                 LOG(INFO, "NameSpce log oversize %d + %lu", log->ByteSize(), key.size());
                 ret_status = kOversize;
                 break;

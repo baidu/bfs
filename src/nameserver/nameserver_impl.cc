@@ -729,7 +729,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
             done->Run();
             return;
         }
-        finished = (ret_status != kOversize)?done:NULL;
+        finished = (ret_status != kOversize) ? done : NULL;
         LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, finished, removed, _1));
     }
