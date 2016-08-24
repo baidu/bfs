@@ -73,7 +73,7 @@ public:
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                            RecoverPri pri);
-    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
+    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, StatusCode status);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
     void ListRecover(RecoverBlockSet* blocks, int32_t upbound_size);

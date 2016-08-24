@@ -73,8 +73,8 @@ private:
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
     void PushBlock(const ReplicaInfo& new_replica_info);
-    void PushBlockProcess(const ReplicaInfo& new_replica_info);
-    bool WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver);
+    StatusCode PushBlockProcess(const ReplicaInfo& new_replica_info);
+    StatusCode WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver);
     void CloseIncompleteBlock(int64_t block_id);
     void StopBlockReport();
 private:
