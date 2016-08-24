@@ -534,8 +534,10 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     }
     if (ret_status == kOK) {
         LOG(INFO, "Delete directory done: %s", dir_info.name().c_str());
+    } else if(ret_status == kOversize) {
+        LOG(DEBUG, "Delete directory oversize: %s", dir_info.name().c_str());
     } else {
-        LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
+        LOG(INFO, "Delete directory fail: %s", dir_info.name().c_str());
     }
     return ret_status;
 }
