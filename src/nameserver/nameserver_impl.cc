@@ -285,10 +285,15 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     }
     block_mapping_manager_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     int64_t end_report = common::timer::get_micros();
-    if (end_report - start_report > 100 * 1000) {
-        LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors",
+    static int64_t last_warning = 0;
+    if (end_report - start_report > 1000 * 1000) {
+        int64_t now_time = common::timer::get_micros();
+        if (now_time > last_warning + 10 * 1000000) {
+            last_warning = now_time;
+            LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors",
                 cs_id, end_report - start_report,
                 before_add_block - before_update, after_add_block - before_add_block);
+        }
     }
     response->set_status(kOK);
     done->Run();
@@ -990,7 +995,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         "<table class=\"table\">"
         "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
         "<td>Disk quota</td><td>Disk used</td><td>Writing buffers</td>"
-        "<td>status</td><td>last_check</td><tr>";
+        "<td>tag</td><td>status</td><td>last_check</td><tr>";
     int dead_num = 0;
     int64_t total_quota = 0;
     int64_t total_data = 0;
@@ -1030,6 +1035,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
                      common::NumToString(chunkserver.buffers());
+        table_str += "</td><td>";
+        table_str += chunkserver.tag();
         table_str += "</td><td>";
         if (chunkserver.is_dead()) {
             table_str += "dead";

@@ -885,6 +885,8 @@ void BlockMapping::RemoveFromIncomplete(int64_t block_id, int32_t cs_id) {
     if (error) {
         LOG(WARNING, "RemoveFromIncomplete not find C%d #%ld ", cs_id, block_id);
         abort();
+    } else {
+        LOG(INFO, "RemoveFromIncomplete C%d #%ld ", cs_id, block_id);
     }
 }
 

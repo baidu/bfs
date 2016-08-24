@@ -22,6 +22,7 @@ message ChunkServerInfo {
     optional string zone = 13;
     optional string datacenter = 14;
     optional string rack = 15;
+    optional string tag = 16;
     // running status
     optional double load = 20 [default = 1.0];
     optional int32 w_qps = 21;
@@ -204,6 +205,7 @@ message RegisterRequest {
     optional int64 sequence_id = 1;
     optional string chunkserver_addr = 3;
     optional int64 namespace_version = 4;
+    optional string tag = 5;
     optional int64 disk_quota = 7;
 }
 message RegisterResponse {
