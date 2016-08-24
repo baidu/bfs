@@ -24,6 +24,7 @@ DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(block_id_allocation_size);
+DECLARE_int32(synclog_limit);
 
 const int64_t kRootEntryid = 1;
 
@@ -504,6 +505,11 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
                 break;
             }
         } else {
+            if (log && log->ByteSize() + static_cast<int>(key.size()) > FLAGS_synclog_limit) {
+                LOG(INFO, "NameSpce log oversize %d + %lu", log->ByteSize(), key.size());
+                ret_status = kOversize;
+                break;
+            }
             EncodeLog(log, kSyncDelete, std::string(key.data(), key.size()), "");
             batch.Delete(key);
             child_info.set_parent_entry_id(entry_id);
@@ -515,19 +521,23 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     }
     delete it;
 
-    std::string store_key;
-    EncodingStoreKey(dir_info.parent_entry_id(), dir_info.name(), &store_key);
-    batch.Delete(store_key);
-    EncodeLog(log, kSyncDelete, store_key, "");
-
+    if (ret_status == kOK) {
+        std::string store_key;
+        EncodingStoreKey(dir_info.parent_entry_id(), dir_info.name(), &store_key);
+        batch.Delete(store_key);
+        EncodeLog(log, kSyncDelete, store_key, "");
+    }
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
-    if (s.ok()) {
-        LOG(INFO, "Delete directory done: %s[%s]",
-            dir_info.name().c_str(), common::DebugString(store_key).c_str());
-    } else {
-        LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
-        LOG(FATAL, "Namespace write to storage fail!");
+    if (!s.ok()) {
         ret_status = kUpdateError;
+        LOG(FATAL, "Namespace write to storage fail!");
+    }
+    if (ret_status == kOK) {
+        LOG(INFO, "Delete directory done: %s", dir_info.name().c_str());
+    } else if(ret_status == kOversize) {
+        LOG(DEBUG, "Delete directory oversize: %s", dir_info.name().c_str());
+    } else {
+        LOG(INFO, "Delete directory fail: %s", dir_info.name().c_str());
     }
     return ret_status;
 }

@@ -384,7 +384,9 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
         }
         delete removed;
     }
-    done->Run();
+    if (done) {
+        done->Run();
+    }
     if (!ret) {
         LOG(FATAL, "SyncLog fail");
     }
@@ -760,16 +762,20 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
         done->Run();
         return;
     }
-    std::vector<FileInfo>* removed = new std::vector<FileInfo>;
-    NameServerLog log;
-    StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed, &log);
-    response->set_status(ret_status);
-    if (ret_status != kOK) {
-        done->Run();
-        return;
+    ::google::protobuf::Closure* finished = NULL;
+    while(!finished) {
+        std::vector<FileInfo>* removed = new std::vector<FileInfo>;
+        NameServerLog log;
+        StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed, &log);
+        response->set_status(ret_status);
+        if (ret_status != kOK && ret_status != kOversize) {
+            done->Run();
+            return;
+        }
+        finished = (ret_status != kOversize) ? done : NULL;
+        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, finished, removed, _1));
     }
-    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
-                               controller, request, response, done, removed, _1));
 }
 
 void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,

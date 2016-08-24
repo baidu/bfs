@@ -39,6 +39,7 @@ DEFINE_int32(block_id_allocation_size, 10000, "Block id allocatoin size");
 DEFINE_string(ha_strategy, "master_slave", "[master_slave, raft, none]");
 DEFINE_string(nameserver_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 DEFINE_int32(node_index, 0, "Nameserver node index");
+DEFINE_int32(synclog_limit, 30*1024*1024, "Log size limit for Sync");
 // ha - master_slave
 DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
 // ha - raft
