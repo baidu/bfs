@@ -389,7 +389,6 @@ int ChunkServerManager::SelectChunkServerByZone(int num,
         std::vector<std::pair<int32_t,std::string> >* chains) {
 
     std::set<std::string> tag_set;
-    int ret = 0;
     ChunkServerInfo* remote_server = NULL;
     for(uint32_t i = 0; i < loads.size(); i++) {
         ChunkServerInfo* cs = loads[i].second;
@@ -406,20 +405,18 @@ int ChunkServerManager::SelectChunkServerByZone(int num,
             }
             LOG(DEBUG, "Local zone %s C%d ",
                 cs->zone().c_str(), cs->id());
-            ++ret;
             chains->push_back(std::make_pair(cs->id(), cs->address()));
-            if (ret + (remote_server ? 1 : 0) >= num) {
+            if (chains->size() + (remote_server ? 1 : 0) >= num) {
                 break;
             }
         }
     }
     if (remote_server) {
-        ++ret;
         chains->push_back(std::make_pair(remote_server->id(), remote_server->address()));
         LOG(INFO, "Remote zone %s C%d ",
             remote_server->zone().c_str(), remote_server->id());
     }
-    return ret;
+    return chains->size();
 }
 
 bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, int64_t quota) {
