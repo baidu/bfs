@@ -197,6 +197,7 @@ message ReplicaInfo {
     //optional int64 block_size = 3;
     //optional int64 block_version = 4;
     optional bool priority = 5;
+    optional int32 recover_timeout = 6;
 }
 
 message RegisterRequest {
