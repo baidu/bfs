@@ -4,8 +4,7 @@
 
 #include "block_mapping_manager.h"
 
-#include "proto/status_code.pb.h"
-
+#include <common/counter.h>
 #include <common/string_util.h>
 
 DECLARE_int32(web_recover_list_size);
@@ -13,6 +12,8 @@ DECLARE_int32(blockmapping_working_thread_num);
 
 namespace baidu {
 namespace bfs {
+
+common::Counter g_blocks_num;
 
 BlockMappingManager::BlockMappingManager(int32_t bucket_num) :
     blockmapping_bucket_num_(bucket_num) {
@@ -35,9 +36,10 @@ bool BlockMappingManager::GetBlock(int64_t block_id, NSBlock* block) {
     return block_mapping_[bucket_offset]->GetBlock(block_id, block);
 }
 
-bool BlockMappingManager::GetLocatedBlock(int64_t block_id, std::vector<int32_t>* replica, int64_t* block_size) {
+bool BlockMappingManager::GetLocatedBlock(int64_t block_id, std::vector<int32_t>* replica,
+                                          int64_t* block_size, RecoverStat* stauts) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    return block_mapping_[bucket_offset]->GetLocatedBlock(block_id, replica, block_size);
+    return block_mapping_[bucket_offset]->GetLocatedBlock(block_id, replica, block_size, stauts);
 }
 
 bool BlockMappingManager::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {

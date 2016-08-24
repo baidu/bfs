@@ -8,6 +8,7 @@
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
+#include <common/counter.h>
 #include <common/logging.h>
 #include <common/string_util.h>
 
@@ -18,6 +19,8 @@ DECLARE_bool(clean_redundancy);
 
 namespace baidu {
 namespace bfs {
+
+extern common::Counter g_blocks_num;
 
 NSBlock::NSBlock()
     : id(-1), version(-1), block_size(-1),
@@ -50,7 +53,7 @@ bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
     return true;
 }
 
-bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,int64_t* size) {
+bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* size, RecoverStat* status) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     if (!GetBlockPtr(id, &block)) {
@@ -69,6 +72,7 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica ,in
         LOG(DEBUG, "Block #%ld lost all replica", id);
     }
     *size = block->block_size;
+    *status = block->recover_stat;
     return true;
 }
 
@@ -95,15 +99,24 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
             nsblock->incomplete_replica.insert(init_replicas->begin(), init_replicas->end());
         }
         LOG(DEBUG, "Init block info: #%ld ", block_id);
-    } else if (version < 0) {
-        LOG(INFO, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
     } else {
-        LOG(DEBUG, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
-    }
+        if (size) {
+            nsblock->recover_stat = kLost;
+            lost_blocks_.insert(block_id);
+        } else {
+            nsblock->recover_stat = kBlockWriting;
+        }
 
+        if (version < 0) {
+            LOG(INFO, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
+        } else {
+            LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
+        }
+    }
+    g_blocks_num.Inc();
     MutexLock lock(&mu_);
     std::pair<NSBlockMap::iterator, bool> ret =
-        block_map_.insert(std::make_pair(block_id,nsblock));
+        block_map_.insert(std::make_pair(block_id, nsblock));
     assert(ret.second == true);
 }
 
@@ -454,6 +467,21 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
         return UpdateWritingBlock(block, server_id, block_size, block_version);
       case kIncomplete:
         return UpdateIncompleteBlock(block, server_id, block_size, block_version);
+      case kLost:
+        if (block->version < 0) {
+            bool ret = UpdateWritingBlock(block, server_id, block_size, block_version);
+            if (block->recover_stat == kLost) {
+                lost_blocks_.erase(block_id);
+                if (block->version < 0) {
+                    block->recover_stat = kBlockWriting;
+                } else {
+                    LOG(WARNING, "Update lost block #%ld V%ld ", block_id, block->version);
+                }
+            }
+            return ret;
+        } else {
+            return UpdateNormalBlock(block, server_id, block_size, block_version);
+        }
       default:  // kNotInRecover kLow kHi kLost kCheck
         return UpdateNormalBlock(block, server_id, block_size, block_version);
     }
@@ -488,6 +516,7 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
     }
     delete block;
     block_map_.erase(block_id);
+    g_blocks_num.Dec();
 }
 
 StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {

@@ -89,7 +89,7 @@ FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false),
+    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false), synced_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -103,7 +103,7 @@ FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), r_options_(options), closed_(false),
+    last_read_offset_(-1), r_options_(options), closed_(false), synced_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -165,9 +165,13 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
         if (located_blocks_.blocks_.empty()) {
             return 0;
         } else if (located_blocks_.blocks_[0].chains_size() == 0) {
-            LOG(WARNING, "No located chunkserver of block #%ld",
-                located_blocks_.blocks_[0].block_id());
-            return TIMEOUT;
+            if (located_blocks_.blocks_[0].block_size() == 0) {
+                return 0;
+            } else {
+                LOG(WARNING, "No located chunkserver of block #%ld",
+                    located_blocks_.blocks_[0].block_id());
+                return TIMEOUT;
+            }
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
         if (last_chunkserver_index_ == -1 || !chunkserver_) {
@@ -637,6 +641,27 @@ int32_t FileImpl::Sync() {
     if (write_buf_ && write_buf_->Size()) {
         StartWrite();
     }
+    if (block_for_write_ && !bg_error_ && write_offset_ && !synced_) {
+        SyncBlockRequest request;
+        SyncBlockResponse response;
+        request.set_sequence_id(common::timer::get_micros());
+        request.set_block_id(block_for_write_->block_id());
+        request.set_file_name(name_);
+        request.set_size(write_offset_);
+        bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::SyncBlock,
+                                                            &request, &response, 15, 1);
+        if (!(rpc_ret && response.status() == kOK))  {
+            LOG(WARNING, "Starting file %s fail, starting report returns %d, status: %s",
+                    name_.c_str(), rpc_ret, StatusCode_Name(response.status()).c_str());
+            if (!rpc_ret) {
+                return TIMEOUT;
+            } else {
+                return GetErrorCode(response.status());
+            }
+        }
+        synced_ = true;
+    }
+
     int wait_time = 0;
     while (back_writing_ && !bg_error_ &&
            (w_options_.sync_timeout < 0 || wait_time < w_options_.sync_timeout)) {
@@ -702,7 +727,7 @@ int32_t FileImpl::Close() {
                                                    &request, &response, 15, 1);
         if (!(rpc_ret && response.status() == kOK))  {
             LOG(WARNING, "Close file %s fail, finish report returns %d, status: %s",
-                    name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
+                    name_.c_str(), rpc_ret, StatusCode_Name(response.status()).c_str());
             if (!rpc_ret) {
                 return TIMEOUT;
             } else {
