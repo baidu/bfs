@@ -387,7 +387,6 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
 int ChunkServerManager::SelectChunkServerByZone(int num,
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains) {
-
     std::set<std::string> tag_set;
     ChunkServerInfo* remote_server = NULL;
     for(uint32_t i = 0; i < loads.size(); i++) {
@@ -406,7 +405,7 @@ int ChunkServerManager::SelectChunkServerByZone(int num,
             LOG(DEBUG, "Local zone %s C%d ",
                 cs->zone().c_str(), cs->id());
             chains->push_back(std::make_pair(cs->id(), cs->address()));
-            if (chains->size() + (remote_server ? 1 : 0) >= num) {
+            if (static_cast<int>(chains->size()) + (remote_server ? 1 : 0) >= num) {
                 break;
             }
         }
