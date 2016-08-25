@@ -16,8 +16,8 @@
 #include <sys/stat.h>
 #include <map>
 
-#include <common/timer.h>
 #include <common/string_util.h>
+#include <common/timer.h>
 #include <common/util.h>
 #include "sdk/bfs.h"
 

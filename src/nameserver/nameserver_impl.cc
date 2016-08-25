@@ -33,6 +33,7 @@ DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
 DECLARE_int32(nameserver_heartbeat_thread_num);
 DECLARE_int32(blockmapping_bucket_num);
+DECLARE_int32(recover_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -45,6 +46,7 @@ common::Counter g_unlink;
 common::Counter g_create_file;
 common::Counter g_list_dir;
 common::Counter g_report_blocks;
+extern common::Counter g_blocks_num;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time),
     start_recover_(1), sync_(sync) {
@@ -276,16 +278,22 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                  dest_it != (*it).second.end(); ++dest_it) {
                 rep->add_chunkserver_address(*dest_it);
             }
+            rep->set_recover_timeout(FLAGS_recover_timeout);
         }
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
     }
     block_mapping_manager_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     int64_t end_report = common::timer::get_micros();
-    if (end_report - start_report > 100 * 1000) {
-        LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors",
+    static int64_t last_warning = 0;
+    if (end_report - start_report > 1000 * 1000) {
+        int64_t now_time = common::timer::get_micros();
+        if (now_time > last_warning + 10 * 1000000) {
+            last_warning = now_time;
+            LOG(WARNING, "C%d report use %d micors, update use %d micors, add block use %d micors",
                 cs_id, end_report - start_report,
                 before_add_block - before_update, after_add_block - before_add_block);
+        }
     }
     response->set_status(kOK);
     done->Run();
@@ -304,7 +312,7 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_manager_->ProcessRecoveredBlock(cs_id, request->blocks(i));
+        block_mapping_manager_->ProcessRecoveredBlock(cs_id, request->blocks(i), request->status(i));
     }
     done->Run();
 }
@@ -456,6 +464,39 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     }
 }
 
+void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
+                                   const SyncBlockRequest* request,
+                                   SyncBlockResponse* response,
+                                   ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    int64_t block_id = request->block_id();
+    response->set_sequence_id(request->sequence_id());
+    std::string file_name = NameSpace::NormalizePath(request->file_name());
+    FileInfo file_info;
+    if (!namespace_->GetFileInfo(file_name, &file_info)) {
+        LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
+        response->set_status(kNsNotFound);
+        done->Run();
+        return;
+    }
+    file_info.set_size(request->size());
+    NameServerLog log;
+    if (!namespace_->UpdateFileInfo(file_info, &log)) {
+        LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
+        response->set_status(kUpdateError);
+        done->Run();
+        return;
+    }
+    response->set_status(kOK);
+    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done,
+                               (std::vector<FileInfo>*)NULL, _1));
+}
+
 void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          const FinishBlockRequest* request,
                          FinishBlockResponse* response,
@@ -531,13 +572,15 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
             int64_t block_id = info.blocks(i);
             std::vector<int32_t> replica;
             int64_t block_size = 0;
-            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size)) {
+            RecoverStat rs;
+            if (!block_mapping_manager_->GetLocatedBlock(block_id, &replica, &block_size, &rs)) {
                 LOG(WARNING, "GetFileLocation GetBlockReplica fail #%ld ", block_id);
                 break;
             }
             LocatedBlock* lcblock = response->add_blocks();
             lcblock->set_block_id(block_id);
             lcblock->set_block_size(block_size);
+            lcblock->set_status(rs);
             for (uint32_t i = 0; i < replica.size(); i++) {
                 int32_t server_id = replica[i];
                 std::string addr = chunkserver_manager_->GetChunkServerAddr(server_id);
@@ -952,7 +995,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         "<table class=\"table\">"
         "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
         "<td>Disk quota</td><td>Disk used</td><td>Writing buffers</td>"
-        "<td>status</td><td>last_check</td><tr>";
+        "<td>tag</td><td>status</td><td>last_check</td><tr>";
     int dead_num = 0;
     int64_t total_quota = 0;
     int64_t total_data = 0;
@@ -992,6 +1035,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
                      common::NumToString(chunkserver.buffers());
+        table_str += "</td><td>";
+        table_str += chunkserver.tag();
         table_str += "</td><td>";
         if (chunkserver.is_dead()) {
             table_str += "dead";
@@ -1056,6 +1101,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "Blocks: " + common::NumToString(g_blocks_num.Get()) + "</br>";
     str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "</br>";
     str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "</br>";
     str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
@@ -1123,6 +1169,7 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("ListDirectory", work_thread_pool_),
         std::make_pair("Stat", work_thread_pool_),
         std::make_pair("Rename", work_thread_pool_),
+        std::make_pair("SyncBlock", work_thread_pool_),
         std::make_pair("FinishBlock", work_thread_pool_),
         std::make_pair("Unlink", work_thread_pool_),
         std::make_pair("DeleteDirectory", work_thread_pool_),

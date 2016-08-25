@@ -22,6 +22,7 @@ message ChunkServerInfo {
     optional string zone = 13;
     optional string datacenter = 14;
     optional string rack = 15;
+    optional string tag = 16;
     // running status
     optional double load = 20 [default = 1.0];
     optional int32 w_qps = 21;
@@ -51,6 +52,7 @@ message LocatedBlock {
     optional int64 block_id = 1;
     optional int64 block_size = 2;
     repeated ChunkServerInfo chains = 3;
+    optional int32 status = 4;
 }
 
 message FileLocationRequest {
@@ -106,6 +108,18 @@ message AddBlockResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
     optional LocatedBlock block = 3;
+}
+
+message SyncBlockRequest {
+    optional int64 sequence_id = 1;
+    optional int64 block_id = 2;
+    optional string file_name = 3;
+    optional int64 size = 4;
+}
+
+message SyncBlockResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
 }
 
 message FinishBlockRequest {
@@ -184,12 +198,14 @@ message ReplicaInfo {
     //optional int64 block_size = 3;
     //optional int64 block_version = 4;
     optional bool priority = 5;
+    optional int32 recover_timeout = 6;
 }
 
 message RegisterRequest {
     optional int64 sequence_id = 1;
     optional string chunkserver_addr = 3;
     optional int64 namespace_version = 4;
+    optional string tag = 5;
     optional int64 disk_quota = 7;
 }
 message RegisterResponse {
@@ -229,6 +245,7 @@ message PushBlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     repeated int64 blocks = 3;
+    repeated StatusCode status = 4;
 }
 message PushBlockReportResponse {
     optional int64 sequence_id = 1;
@@ -294,6 +311,7 @@ service NameServer {
     rpc ListDirectory(ListDirectoryRequest) returns(ListDirectoryResponse);
     rpc Stat(StatRequest) returns(StatResponse);
     rpc Rename(RenameRequest) returns(RenameResponse);
+    rpc SyncBlock(SyncBlockRequest) returns(SyncBlockResponse);
     rpc FinishBlock(FinishBlockRequest) returns(FinishBlockResponse);
     rpc Unlink(UnlinkRequest) returns(UnlinkResponse);
     rpc DeleteDirectory(DeleteDirectoryRequest) returns(DeleteDirectoryResponse);

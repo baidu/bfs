@@ -533,6 +533,8 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
 }
 
 bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
+    int64_t block_num = 0;
+    int64_t file_num = 0;
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;
@@ -548,14 +550,17 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
                     next_block_id_ = file_info.blocks(i) + 1;
                     block_id_upbound_ = next_block_id_;
                 }
+                ++block_num;
             }
+            ++file_num;
             if (!callback.empty()) {
                 callback(file_info);
             }
         }
     }
     delete it;
-    LOG(INFO, "RebuildBlockMap done. last_entry_id= E%ld", last_entry_id_);
+    LOG(INFO, "RebuildBlockMap done. %ld files, %ld blocks, last_entry_id= E%ld",
+        file_num, block_num, last_entry_id_);
     return true;
 }
 

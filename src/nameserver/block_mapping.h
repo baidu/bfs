@@ -59,7 +59,7 @@ class BlockMapping {
 public:
     BlockMapping(ThreadPool* thread_pool);
     bool GetBlock(int64_t block_id, NSBlock* block);
-    bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size);
+    bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size, RecoverStat* status);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,
@@ -73,7 +73,7 @@ public:
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                            RecoverPri pri);
-    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
+    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, StatusCode status);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
     void ListRecover(RecoverBlockSet* blocks, int32_t upbound_size);

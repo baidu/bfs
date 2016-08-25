@@ -29,6 +29,7 @@ DEFINE_int32(nameserver_report_thread_num, 20, "Threads to handle block report")
 DEFINE_int32(nameserver_work_thread_num, 20, "Work threads num");
 DEFINE_int32(nameserver_heartbeat_thread_num, 5, "Heartbeat handle threads num");
 DEFINE_bool(select_chunkserver_by_zone, false, "Select chunkserver by zone");
+DEFINE_bool(select_chunkserver_by_tag, true, "Only choose one of each tag");
 DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locality");
 DEFINE_int32(blockmapping_bucket_num, 19, "Partation num of blockmapping");
 DEFINE_int32(blockmapping_working_thread_num, 5, "Working thread num of blockmapping");
@@ -46,6 +47,7 @@ DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
 DEFINE_string(chunkserver_port, "8825", "Chunkserver port");
+DEFINE_string(chunkserver_tag, "", "Chunkserver tag");
 DEFINE_int32(heartbeat_interval, 1, "Heartbeat interval");
 DEFINE_int32(blockreport_interval, 10, "blockreport_interval");
 DEFINE_int32(blockreport_size, 2000, "blockreport_size");

@@ -20,6 +20,7 @@ DECLARE_int32(recover_speed);
 DECLARE_int32(recover_dest_limit);
 DECLARE_int32(heartbeat_interval);
 DECLARE_bool(select_chunkserver_by_zone);
+DECLARE_bool(select_chunkserver_by_tag);
 DECLARE_double(select_chunkserver_local_factor);
 
 namespace baidu {
@@ -152,7 +153,8 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
     MutexLock lock(&mu_, "HandleRegister", 10);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
-        cs_id = AddChunkServer(request->chunkserver_addr(), ip, request->disk_quota());
+        cs_id = AddChunkServer(request->chunkserver_addr(), ip,
+                               request->tag(), request->disk_quota());
         assert(cs_id >= 0);
         response->set_chunkserver_id(cs_id);
     } else {
@@ -165,7 +167,7 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d, internal cleaning",
                 cs_id, address.c_str(), chunkserver_num_);
         } else {
-            UpdateChunkServer(cs_id, request->disk_quota());
+            UpdateChunkServer(cs_id, request->tag(), request->disk_quota());
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d",
                 cs_id, address.c_str(), chunkserver_num_);
         }
@@ -334,6 +336,18 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<double, ChunkServerInfo*> > loads;
 
+    std::set<std::string> tag_set;
+    if (FLAGS_select_chunkserver_by_tag) {
+        for (std::set<int32_t>::const_iterator it = replica.begin();
+             it != replica.end(); ++it) {
+            ChunkServerInfo* rep_cs = NULL;
+            if (!GetChunkServerPtr(*it, &rep_cs) || rep_cs->tag().empty()) {
+                continue;
+            }
+            tag_set.insert(rep_cs->tag());
+            ///TODO: has_remote?
+        }
+    }
     ChunkServerInfo* remote_cs = NULL;
     for (; it != heartbeat_list_.end(); ++it) {
         std::set<ChunkServerInfo*>& set = it->second;
@@ -341,6 +355,10 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
             ChunkServerInfo* cs = *sit;
             if (replica.find(cs->id()) != replica.end()) {
                 LOG(INFO, "GetRecoverChains has C%d ", cs->id());
+                continue;
+            } else if (FLAGS_select_chunkserver_by_tag
+                       && !cs->tag().empty()
+                       && !tag_set.insert(cs->tag()).second) {
                 continue;
             } else if (cs->zone() != localzone_) {
                 if (!remote_cs) {
@@ -385,44 +403,45 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
 int ChunkServerManager::SelectChunkServerByZone(int num,
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains) {
-    /*
-    ChunkServerInfo* local_server = NULL;
-    if (chains.size()) {
-        bool ret = GetChunkServerPtr(chains->first, &local_server);
-        assert(ret);
-    }*/
-    int ret = 0;
+    std::set<std::string> tag_set;
     ChunkServerInfo* remote_server = NULL;
     for(uint32_t i = 0; i < loads.size(); i++) {
         ChunkServerInfo* cs = loads[i].second;
         if (cs->zone() != localzone_) {
             if (!remote_server) remote_server = cs;
         } else {
-            LOG(DEBUG, "Local zone %s C%d ",
-                cs->zone().c_str(), cs->id());
-            ++ret;
+            const std::string& tag = cs->tag();
+            if (FLAGS_select_chunkserver_by_tag && !tag.empty()) {
+                if (!tag_set.insert(tag).second) {
+                    LOG(DEBUG, "Ignore by tag: %s %s",
+                        tag.c_str(), cs->address().c_str());
+                    continue;
+                }
+            }
+            LOG(DEBUG, "Local zone %s tag %s C%d ",
+                cs->zone().c_str(), cs->tag().empty() ? "null" : cs->tag().c_str(), cs->id());
             chains->push_back(std::make_pair(cs->id(), cs->address()));
-            if (ret + (remote_server ? 1 : 0) >= num) {
+            if (static_cast<int>(chains->size()) + (remote_server ? 1 : 0) >= num) {
                 break;
             }
         }
     }
     if (remote_server) {
-        ++ret;
         chains->push_back(std::make_pair(remote_server->id(), remote_server->address()));
         LOG(INFO, "Remote zone %s C%d ",
             remote_server->zone().c_str(), remote_server->id());
     }
-    return ret;
+    return chains->size();
 }
 
-bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
+bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = NULL;
     if (!GetChunkServerPtr(cs_id, &info)) {
         return false;
     }
     info->set_disk_quota(quota);
+    info->set_tag(tag);
     if (info->status() != kCsReadonly) {
         info->set_status(kCsActive);
     }
@@ -439,12 +458,14 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
 
 int32_t ChunkServerManager::AddChunkServer(const std::string& address,
                                            const std::string& ip,
+                                           const std::string& tag,
                                            int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = new ChunkServerInfo;
     int32_t id = next_chunkserver_id_++;
     info->set_id(id);
     info->set_address(address);
+    info->set_tag(tag);
     info->set_disk_quota(quota);
     if (std::find(chunkservers_to_offline_.begin(), chunkservers_to_offline_.end(),
                 address) != chunkservers_to_offline_.end()) {
@@ -529,7 +550,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         if (GetRecoverChains((*it).second, &(recover_blocks->back().second))) {
             //
         } else {
-            block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first);
+            block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first, kGetChunkServerError);
             recover_blocks->pop_back();
         }
     }
