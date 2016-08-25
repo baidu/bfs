@@ -490,6 +490,9 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
         response->set_status(kUpdateError);
         done->Run();
         return;
+    } else {
+        LOG(INFO, "SyncBlock #%ld for file %s, V%ld, size: %ld",
+                block_id, file_name.c_str(), file_info.version(), file_info.size());
     }
     response->set_status(kOK);
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
