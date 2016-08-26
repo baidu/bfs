@@ -23,9 +23,8 @@ install:
     - ( cd gflags-2.1.2 && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
     - git clone -b dev https://github.com/baidu/common
     - ( cd common && make -j4 && make install)
-    - wget --no-check-certificate https://googletest.googlecode.com/files/gtest-1.7.0.zip
-    - unzip gtest-1.7.0.zip
-    - ( cd gtest-1.7.0 && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
+    - git clone https://github.com/yvxiang/gtest.git
+    - ( cd gtest && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
 
     - wget http://download.savannah.gnu.org/releases/libunwind/libunwind-0.99-beta.tar.gz
     - tar zxvf libunwind-0.99-beta.tar.gz
