@@ -527,6 +527,19 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    bool find = false;
+    for (int i = 0; i < file_info.blocks_size(); i++) {
+        if (file_info.blocks(i) == block_id) {
+            find = true;
+            break;
+        }
+    }
+    if (!find) {
+        LOG(WARNING, "Block #%ld don't belog to file %s, ignore it", block_id, file_name.c_str());
+        response->set_status(kNotOK);
+        done->Run();
+        return;
+    }
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
     NameServerLog log;
