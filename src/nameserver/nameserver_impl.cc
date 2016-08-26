@@ -535,7 +535,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         }
     }
     if (!find) {
-        LOG(WARNING, "Block #%ld don't belog to file %s, ignore it", block_id, file_name.c_str());
+        LOG(WARNING, "Block #%ld doesn't belog to file %s, ignore it", block_id, file_name.c_str());
         response->set_status(kNotOK);
         done->Run();
         return;
