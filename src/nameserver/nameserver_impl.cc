@@ -343,6 +343,9 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
     }
     response->set_status(status);
+    sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    LOG(INFO, "Sdk %s create file %s returns %s",
+            ctl->RemoteAddress().c_str(), path.c_str(), StatusCode_Name(status).c_str());
     if (status != kOK) {
         done->Run();
         return;
@@ -491,6 +494,9 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
         response->set_status(kUpdateError);
         done->Run();
         return;
+    } else {
+        LOG(INFO, "SyncBlock #%ld for file %s, V%ld, size: %ld",
+                block_id, file_name.c_str(), file_info.version(), file_info.size());
     }
     response->set_status(kOK);
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
@@ -511,6 +517,9 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
+    sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    LOG(INFO, "Sdk %s finish file %s block #%ld",
+            ctl->RemoteAddress().c_str(), file_name.c_str(), block_id);
     if (request->close_with_error()) {
         LOG(INFO, "Sdk close %s with error", file_name.c_str());
         block_mapping_manager_->MarkIncomplete(block_id);
@@ -522,6 +531,19 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(INFO, "FinishBlock file not found: #%ld %s", block_id, file_name.c_str());
         response->set_status(kNsNotFound);
+        done->Run();
+        return;
+    }
+    bool find = false;
+    for (int i = 0; i < file_info.blocks_size(); i++) {
+        if (file_info.blocks(i) == block_id) {
+            find = true;
+            break;
+        }
+    }
+    if (!find) {
+        LOG(WARNING, "Block #%ld doesn't belog to file %s, ignore it", block_id, file_name.c_str());
+        response->set_status(kNotOK);
         done->Run();
         return;
     }
@@ -707,7 +729,9 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     NameServerLog log;
     StatusCode status = namespace_->RemoveFile(path, &file_info, &log);
-    LOG(INFO, "Unlink: %s return %s", path.c_str(), StatusCode_Name(status).c_str());
+    sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    LOG(INFO, "Sdk %s unlink file %s returns %s",
+            ctl->RemoteAddress().c_str(), path.c_str(), StatusCode_Name(status).c_str());
     response->set_status(status);
     if (status != kOK) {
         done->Run();
@@ -764,6 +788,9 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     std::vector<FileInfo>* removed = new std::vector<FileInfo>;
     NameServerLog log;
     StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed, &log);
+    sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    LOG(INFO, "Sdk %s delete directory %s returns %s",
+            ctl->RemoteAddress().c_str(), path.c_str(), StatusCode_Name(ret_status).c_str());
     response->set_status(ret_status);
     if (ret_status != kOK) {
         done->Run();
@@ -1130,10 +1157,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="row">
 
-    str += "<script> var int = setInterval('window.location.reload()', 1000);"
+    str += "<script> var int = setInterval('window.location.reload()', 5000);"
            "function check(box) {"
            "if(box.checked) {"
-           "    int = setInterval('window.location.reload()', 1000);"
+           "    int = setInterval('window.location.reload()', 5000);"
            "} else {"
            "    clearInterval(int);"
            "}"

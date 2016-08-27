@@ -203,6 +203,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
         LOG(INFO, "Dead chunkserver revival C%d %s", cs_id, address.c_str());
         assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
         info->set_is_dead(false);
+        chunkserver_num_++;
     }
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
