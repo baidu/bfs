@@ -960,6 +960,7 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
+    int display_mode = 0; // 0 -> display all; 1 -> alive only; 2 -> dead only
     if (path == "/dfs/switchtoleader") {
         if (sync_) {
             sync_->SwitchToLeader();
@@ -999,6 +1000,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             return true;
         }
         return false;
+    } else if (path == "/dfs/alive_only") {
+        display_mode = 1;
+    } else if (path == "/dfs/dead_only") {
+        display_mode = 2;
     }
 
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
@@ -1037,6 +1042,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             if (chunkserver.load() >= kChunkServerLoadMax) {
                 overladen_num++;
             }
+        }
+        if (chunkservers->Get(i).is_dead() && display_mode == 1) {
+            continue;
+        } else if (!chunkservers->Get(i).is_dead() && display_mode == 2) {
+            continue;
         }
 
         table_str += "</td><td>";
@@ -1143,7 +1153,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
     str += "Dead: " + common::NumToString(dead_num)+"</br>";
-    str += "Overload: " + common::NumToString(overladen_num)+"</p>";
+    str += "Overload: " + common::NumToString(overladen_num)+"</br>";
+    str += "<a href=\"/dfs/alive_only\">AliveOnly</a>";
+    str += "<a href=\"/dfs/dead_only\"> DeadOnly</a>";
+    str += "<a href=\"/dfs/\"> All</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
