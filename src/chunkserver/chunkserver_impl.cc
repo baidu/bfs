@@ -672,7 +672,7 @@ StatusCode ChunkServerImpl::PushBlockProcess(const ReplicaInfo& new_replica_info
         if (status == kOK) {
             LOG(INFO, "[PushBlock] success #%ld to %s", block_id, cs_addr.c_str());
             break;
-        } else if (status = kServiceStop) {
+        } else if (status == kServiceStop) {
             break;
         } else if (timeout) {
             break;
