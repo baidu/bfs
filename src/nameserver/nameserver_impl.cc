@@ -1170,10 +1170,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="row">
 
-    str += "<script> var int = setInterval('window.location.reload()', 5000);"
+    str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"
-           "    int = setInterval('window.location.reload()', 5000);"
+           "    int = setInterval('window.location.reload()', 1000);"
            "} else {"
            "    clearInterval(int);"
            "}"
