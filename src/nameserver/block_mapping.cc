@@ -16,6 +16,7 @@ DECLARE_int32(recover_speed);
 DECLARE_int32(recover_timeout);
 DECLARE_bool(bfs_bug_tolerant);
 DECLARE_bool(clean_redundancy);
+DECLARE_int32(web_recover_list_size);
 
 namespace baidu {
 namespace bfs {
@@ -727,29 +728,30 @@ void BlockMapping::ListCheckList(const CheckList& check_list, std::map<int32_t, 
     }
 }
 
-void BlockMapping::ListRecover(RecoverBlockSet* recover_blocks, int32_t upbound_size) {
+void BlockMapping::ListRecoverList(const std::set<int64_t>& recover_set, std::set<int64_t>* result) {
+    uint32_t half = FLAGS_web_recover_list_size / 2;
+    std::set<int64_t>::iterator it = recover_set.begin();
+    for (; it != recover_set.end(); ++it) {
+        if (result->size() == half) {
+            break;
+        }
+        result->insert(*it);
+    }
+    if (it != recover_set.end()) {
+        for (std::set<int64_t>::reverse_iterator rit = recover_set.rbegin(); rit != recover_set.rend(); ++rit) {
+            if (result->size() == (size_t)FLAGS_web_recover_list_size) {
+                break;
+            }
+            result->insert(*rit);
+        }
+    }
+}
+
+void BlockMapping::ListRecover(RecoverBlockSet* recover_blocks) {
     MutexLock lock(&mu_);
-    for (std::set<int64_t>::iterator it = lo_pri_recover_.begin();
-            it != lo_pri_recover_.end(); ++it) {
-        if (recover_blocks->lo_recover.size() == (size_t)upbound_size) {
-            break;
-        }
-        recover_blocks->lo_recover.insert(*it);
-    }
-    for (std::set<int64_t>::iterator it = hi_pri_recover_.begin();
-            it != hi_pri_recover_.end(); ++it) {
-        if (recover_blocks->hi_recover.size() == (size_t)upbound_size) {
-            break;
-        }
-        recover_blocks->hi_recover.insert(*it);
-    }
-    for (std::set<int64_t>::iterator it = lost_blocks_.begin();
-            it != lost_blocks_.end(); ++it) {
-        if (recover_blocks->lost.size() == (size_t)upbound_size) {
-            break;
-        }
-        recover_blocks->lost.insert(*it);
-    }
+    ListRecoverList(lo_pri_recover_, &(recover_blocks->lo_recover));
+    ListRecoverList(hi_pri_recover_, &(recover_blocks->hi_recover));
+    ListRecoverList(lost_blocks_, &(recover_blocks->lost));
 
     ListCheckList(hi_recover_check_, &(recover_blocks->hi_check));
     ListCheckList(lo_recover_check_, &(recover_blocks->lo_check));
@@ -871,6 +873,7 @@ void BlockMapping::InsertToIncomplete(int64_t block_id, const std::set<int32_t>&
         LOG(INFO, "Insert C%d #%ld to incomplete_", *cs_it, block_id);
     }
 }
+
 void BlockMapping::RemoveFromIncomplete(int64_t block_id, int32_t cs_id) {
     mu_.AssertHeld();
     bool error = false;

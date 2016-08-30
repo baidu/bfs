@@ -35,7 +35,7 @@ public :
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, StatusCode status);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
-    void ListRecover(RecoverBlockSet* recover_blocks);
+    void ListRecover(RecoverBlockSet* recover_blocks, int bucket_id);
     void SetSafeMode(bool safe_mode);
     void MarkIncomplete(int64_t block_id);
 private:

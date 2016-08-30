@@ -121,6 +121,7 @@ private:
     void CheckSafemode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
+    void ListRecover(sofa::pbrpc::HTTPResponse* response, int bucket_id);
     bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,

@@ -76,7 +76,7 @@ public:
     void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, StatusCode status);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
-    void ListRecover(RecoverBlockSet* blocks, int32_t upbound_size);
+    void ListRecover(RecoverBlockSet* blocks);
     void SetSafeMode(bool safe_mode);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);
@@ -84,6 +84,7 @@ private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     void ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result);
+    void ListRecoverList(const std::set<int64_t>& recover_set, std::set<int64_t>* result);
     void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
                             std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                             std::set<int64_t>* check_set);
