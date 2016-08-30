@@ -15,8 +15,7 @@
 #include "dfs.h"
 
 const char* so_path = "./bfs_wrapper.so";
-//const char* dfs_conf = "yq01-tera60.yq01:8828";
-const char* dfs_conf = "127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829";
+const char* dfs_conf = "./bfs.flag";
 
 const std::string test_path("/test");
 
@@ -31,7 +30,7 @@ TEST(TERA_SO_TEST, TERA_SO) {
     ASSERT_TRUE(err == NULL);
 
     leveldb::Dfs* dfs = (*creator)(dfs_conf);
-    
+
     /// Create dir
     ASSERT_TRUE(dfs != NULL);
     ASSERT_TRUE(0 == dfs->CreateDirectory(test_path));
@@ -47,7 +46,7 @@ TEST(TERA_SO_TEST, TERA_SO) {
 
     leveldb::DfsFile* fp = dfs->OpenFile(file1, leveldb::WRONLY);
     ASSERT_TRUE(fp != NULL);
-    
+
     /// Write&Sync
     char content1[] = "File1 content";
     char content2[] = "Content for read";
@@ -101,7 +100,7 @@ TEST(TERA_SO_TEST, TERA_SO) {
     ASSERT_TRUE(0 == fp->CloseFile());
     delete fp;
     fp = NULL;
-    
+
     /// Sync
     dfs->Delete(file3);
     fp = dfs->OpenFile(file3, leveldb::WRONLY);
@@ -113,7 +112,7 @@ TEST(TERA_SO_TEST, TERA_SO) {
     ASSERT_TRUE(0 == dfs->GetFileSize(file3, &file_size));
     ASSERT_TRUE(file_size == (uint64_t)c1len);
     ASSERT_TRUE(c2len == fp->Write(content2, c2len));
-    
+
     leveldb::DfsFile* nfp = dfs->OpenFile(file3, leveldb::RDONLY);
     ASSERT_TRUE(nfp != NULL);
     ASSERT_TRUE(c1len == nfp->Read(buf, c1len));

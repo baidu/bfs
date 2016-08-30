@@ -12,12 +12,13 @@
 #include <string>
 #include <vector>
 
-#include <leveldb/db.h>
 #include <common/mutex.h>
 #include <common/thread.h>
 #include <common/thread_pool.h>
 
 #include "proto/raft.pb.h"
+
+#include "logdb.h"
 
 namespace baidu {
 namespace bfs {
@@ -50,8 +51,6 @@ public:
 private:
     bool StoreContext(const std::string& context, int64_t value);
     bool StoreContext(const std::string& context, const std::string& value);
-    bool GetContext(const std::string& context, int64_t* value);
-    bool GetContext(const std::string& context, std::string* value);
 
     std::string Index2Logkey(int64_t index);
     void LoadStorage(const std::string& db_path);
@@ -81,7 +80,7 @@ private:
 
     int64_t current_term_;      /// 当前term
     std::string voted_for_;     /// 当前term下投的票
-    leveldb::DB* log_db_;       /// log持久存储
+    LogDB* log_db_;             /// log持久存储
     int64_t log_index_;         /// 上一条log的index
     int64_t log_term_;          /// 上一条log的term
 

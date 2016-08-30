@@ -21,11 +21,10 @@ install:
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz
     - ( cd gflags-2.1.2 && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
-    - git clone https://github.com/baidu/common
+    - git clone -b dev https://github.com/baidu/common
     - ( cd common && make -j4 && make install)
-    - wget --no-check-certificate https://googletest.googlecode.com/files/gtest-1.7.0.zip
-    - unzip gtest-1.7.0.zip
-    - ( cd gtest-1.7.0 && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
+    - git clone https://github.com/yvxiang/gtest.git
+    - ( cd gtest && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
 
     - wget http://download.savannah.gnu.org/releases/libunwind/libunwind-0.99-beta.tar.gz
     - tar zxvf libunwind-0.99-beta.tar.gz
@@ -35,6 +34,8 @@ install:
     - tar zxvf gperftools-2.2.1.tar.gz
     - ( cd gperftools-2.2.1 && ./configure --with-pic && make -j4 && sudo make install && sudo ldconfig )
 
+    - git clone --depth=1 https://github.com/lylei/leveldb.git leveldb
+    - ( cd leveldb && echo "PREFIX=../thirdparty" > config.mk && make -j4 && make install)
 
 
 before_script:
@@ -44,6 +45,7 @@ before_script:
     - echo 'PBRPC_PATH=./thirdparty/sofa-pbrpc/output' >> depends.mk
     - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
     - echo 'COMMON_PATH=./common/output' >> depends.mk
+    - echo 'LEVELDB_PATH=./thirdparty' >> depends.mk
 
 script: make -j4 && make test
 

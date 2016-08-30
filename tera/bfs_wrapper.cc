@@ -9,9 +9,15 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <gflags/gflags.h>
 #include <bfs.h>
 #include "common/logging.h"
 #include "common/timer.h"
+
+DECLARE_string(nameserver_nodes);
+DECLARE_string(bfs_log);
+DECLARE_int32(bfs_log_size);
+DECLARE_int32(bfs_log_limit);
 
 namespace baidu {
 namespace bfs {
@@ -30,23 +36,17 @@ int32_t BfsFile::Write(const char* buf, int32_t len) {
 
 int32_t BfsFile::Flush() {
     common::timer::AutoTimer ac;
-    int ret = -1;
-    if (_file->Flush()) {
-        ret = 0;
-    }
+    int ret = _file->Flush();
     LOG(INFO, "Flush(%s) return %d use %.3f ms",
-        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
+            _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Sync() {
     LOG(INFO, "Sync(%s) start", _name.c_str());
     common::timer::AutoTimer ac;
-    int ret = -1;
-    if (_file->Sync()) {
-        ret = 0;
-    }
+    int ret = _file->Sync();
     LOG(INFO, "Sync(%s) return %d usd %.3f ms",
-        _name.c_str(), ret, ac.TimeUsed() / 1000.0);
+            _name.c_str(), ret, ac.TimeUsed() / 1000.0);
     return ret;
 }
 int32_t BfsFile::Read(char* buf, int32_t len) {
@@ -87,10 +87,10 @@ int32_t BfsFile::Seek(int64_t offset) {
 int32_t BfsFile::CloseFile() {
     LOG(INFO, "CloseFile(%s)", _name.c_str());
     common::timer::AutoTimer ac;
-    bool ret = _file->Close();
+    int32_t ret = _file->Close();
     delete _file;
     _file = NULL;
-    if (!ret) {
+    if (ret != 0) {
         LOG(INFO, "CloseFile(%s) fail", _name.c_str());
         return -1;
     }
@@ -100,7 +100,7 @@ int32_t BfsFile::CloseFile() {
 }
 
 BfsImpl::BfsImpl(const std::string& conf) {
-    if (!FS::OpenFileSystem(conf.c_str(), &_fs)) {
+    if (!FS::OpenFileSystem(conf.c_str(), &_fs, FSOptions())) {
         assert(0);
     }
 }
@@ -115,7 +115,7 @@ int32_t BfsImpl::CreateDirectory(const std::string& path) {
 int32_t BfsImpl::DeleteDirectory(const std::string& path) {
     common::timer::AutoTimer ac;
     LOG(INFO, "DeleteDirectory(%s)", path.c_str());
-    if (!_fs->DeleteDirectory(path.c_str(), true)) {
+    if (_fs->DeleteDirectory(path.c_str(), true) != 0) {
         LOG(INFO, "DeleteDirectory(%s) fail", path.c_str());
         return -1;
     }
@@ -126,7 +126,7 @@ int32_t BfsImpl::DeleteDirectory(const std::string& path) {
 int32_t BfsImpl::Exists(const std::string& filename) {
     common::timer::AutoTimer ac;
     LOG(INFO, "Exists(%s)", filename.c_str());
-    if (!_fs->Access(filename.c_str(), 0)) {
+    if (_fs->Access(filename.c_str(), 0) != 0) {
         LOG(INFO, "Exists(%s) return false", filename.c_str());
         return -1;
     }
@@ -136,7 +136,7 @@ int32_t BfsImpl::Exists(const std::string& filename) {
 }
 int32_t BfsImpl::Delete(const std::string& filename) {
     common::timer::AutoTimer ac;
-    if (!_fs->DeleteFile(filename.c_str())) {
+    if (_fs->DeleteFile(filename.c_str()) != 0) {
         LOG(INFO, "Delete(%s) fail", filename.c_str());
         return -1;
     }
@@ -147,7 +147,7 @@ int32_t BfsImpl::Delete(const std::string& filename) {
 int32_t BfsImpl::GetFileSize(const std::string& filename, uint64_t* size) {
     common::timer::AutoTimer ac;
     int64_t file_size = 0;
-    if (!_fs->GetFileSize(filename.c_str(), &file_size)) {
+    if (_fs->GetFileSize(filename.c_str(), &file_size) != 0) {
         LOG(INFO, "GetFileSize(%s) fail", filename.c_str());
         return -1;
     }
@@ -159,7 +159,7 @@ int32_t BfsImpl::GetFileSize(const std::string& filename, uint64_t* size) {
 int32_t BfsImpl::Rename(const std::string& from, const std::string& to) {
     common::timer::AutoTimer ac;
     Delete(to);
-    if (!_fs->Rename(from.c_str(), to.c_str())) {
+    if (_fs->Rename(from.c_str(), to.c_str()) != 0) {
         LOG(INFO, "Rename(%s, %s) fail", from.c_str(), to.c_str());
         return -1;
     }
@@ -181,7 +181,7 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
     }
     bfs::BfsFileInfo* files = NULL;
     int num = 0;
-    if (!_fs->ListDirectory(path.c_str(), &files, &num)) {
+    if (_fs->ListDirectory(path.c_str(), &files, &num) != 0) {
         return -1;
     }
     for (int i = 0; i < num; i++) {
@@ -203,13 +203,15 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
 leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) {
     common::timer::AutoTimer ac;
     LOG(INFO, "OpenFile(%s,%d)", filename.c_str(), flags);
-    int openflag = O_WRONLY;
-    if (leveldb::WRONLY != flags) {
-        openflag = O_RDONLY;
-    }
     bfs::File* file = NULL;
-    if (!_fs->OpenFile(filename.c_str(), openflag, &file)) {
-        LOG(WARNING, "OpenFile(%s,%d) fail", filename.c_str(), flags);
+    int ret = -1;
+    if (leveldb::WRONLY == flags) {
+        ret = _fs->OpenFile(filename.c_str(), O_WRONLY, &file, WriteOptions());
+    } else {
+        ret = _fs->OpenFile(filename.c_str(), O_RDONLY, &file, ReadOptions());
+    }
+    if (ret != 0) {
+        LOG(WARNING, "OpenFile(%s,%d) fail, ret = %d", filename.c_str(), flags, ret);
         return NULL;
     }
     LOG(INFO, "OpenFile(%s,%d) succeed use %.3f ms",
@@ -223,9 +225,35 @@ leveldb::DfsFile* BfsImpl::OpenFile(const std::string& filename, int32_t flags) 
 extern "C" {
 
 leveldb::Dfs* NewDfs(const char* conf) {
-    baidu::common::SetLogFile("./bfslog");
-    baidu::common::SetWarningFile("./bfswf");
-    return new baidu::bfs::BfsImpl(conf);
+    const char* internal_conf;
+    bool set_log = false;
+    if (access(conf, R_OK) == 0) {
+        int argc = 2;
+        std::string flag = "--flagfile=" + std::string(conf);
+        char** argv = new char*[3];
+        argv[0] = const_cast<char*>("dummy");
+        argv[1] = const_cast<char*>(flag.c_str());
+        argv[2] = NULL;
+        ::google::ParseCommandLineFlags(&argc, &argv, false);
+        delete[] argv;
+        internal_conf = FLAGS_nameserver_nodes.c_str();
+        if (FLAGS_bfs_log != "") {
+            set_log = true;
+        }
+    } else {
+        internal_conf = conf;
+    }
+
+    if (set_log) {
+        baidu::common::SetLogFile((FLAGS_bfs_log).c_str());
+        baidu::common::SetLogSize(FLAGS_bfs_log_size);
+        baidu::common::SetLogSizeLimit(FLAGS_bfs_log_limit);
+        baidu::common::SetWarningFile("./bfswf");
+    } else {
+        baidu::common::SetLogFile("./bfslog");
+        baidu::common::SetWarningFile("./bfswf");
+    }
+    return new baidu::bfs::BfsImpl(internal_conf);
 }
 
 }

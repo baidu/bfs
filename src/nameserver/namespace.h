@@ -23,19 +23,21 @@ namespace bfs {
 class NameSpace {
 public:
     NameSpace(bool standalone = true);
-    void Activate(NameServerLog* log);
+    void Activate(boost::function<void (const FileInfo&)> rebuild_callback, NameServerLog* log);
     ~NameSpace();
     /// List a directory
     StatusCode ListDirectory(const std::string& path,
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
     StatusCode CreateFile(const std::string& file_name, int flags, int mode,
-                          int replica_num, NameServerLog* log = NULL);
+                          int replica_num, std::vector<int64_t>* blocks_to_remove,
+                          NameServerLog* log = NULL);
     /// Remove file by name
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
     StatusCode DeleteDirectory(const std::string& path, bool recursive,
                         std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
+    StatusCode DiskUsage(const std::string& path, uint64_t* du_size);
     /// File rename
     StatusCode Rename(const std::string& old_path,
                const std::string& new_path,
@@ -56,6 +58,8 @@ public:
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
+    int64_t GetNewBlockId(NameServerLog* log);
+    void InitBlockIdUpbound(NameServerLog* log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
@@ -69,14 +73,18 @@ private:
                                 bool recursive,
                                 std::vector<FileInfo>* files_removed,
                                 NameServerLog* log);
+    StatusCode InternalComputeDiskUsage(const FileInfo& info, uint64_t* du_size);
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
-    //bool RecoverLog();
+    void UpdateBlockIdUpbound(NameServerLog* log);
 private:
     leveldb::DB* db_;   /// NameSpace storage
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;
+    int64_t block_id_upbound_;
+    int64_t next_block_id_;
+    Mutex mu_;
 
     /// HA module
     //Sync* sync_;

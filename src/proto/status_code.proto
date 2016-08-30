@@ -5,23 +5,31 @@ enum StatusCode {
     kNotOK = 1;
     kUnknownCs = 2;
     kVersionError = 3;
-    kNotFound = 4;
-    kBlockExist = 14;
-    kSyncMetaFailed = 15;
-    kWriteError = 5;
-    kBlockClosed = 13;
-    kReadError = 6;
-    kBadParameter = 7;
-    kUpdateError = 8;
-    kGetChunkserverError = 9;
-    kNsCreateError = 10;
-    kCsCreateError = 11;
-    kCsTooMuchPendingBuffer = 12;
-    kReadOnly = 16;
-    kLogNotOpen = 17;
-    kCsTooMuchUnfinishedWrite = 18;
-    kSafeMode = 20;
-    kIsFollower = 21;
+    kIsFollower = 4;
+    kInShutdownProgress = 5;
+    kBadParameter = 100;
+    kDirNotEmpty = 101;
+    kTargetDirExists = 102;
+    kFileExists = 103;
+    kBlockClosed = 104;
+    kBlockExist = 105;
+    kReadOnly = 106;
+    kNsNotFound = 107;
+    kCsNotFound = 108;
+    kNoPermission = 200;
+    kNoEnoughQuota = 300;
+    kNetworkUnavailable = 400;
+    kTimeout = 500;
+    kWriteError = 501;
+    kReadError = 502;
+    kNoEnoughSpace = 600;
+    kCsTooMuchUnfinishedWrite = 700;
+    kCsTooMuchPendingBuffer = 701;
+    kGetChunkServerError = 702;
+    kUpdateError = 800;
+    kSyncMetaFailed = 801;
+    kSafeMode = 802;
+    kServiceStop = 803;
 }
 
 enum ChunkServerStatus {
@@ -30,6 +38,7 @@ enum ChunkServerStatus {
     kCsCleaning = 103;
     kCsOffLine = 104;
     kCsStandby = 105;
+    kCsReadonly = 106;
 }
 
 enum RecoverStat {
@@ -46,4 +55,9 @@ enum RecoverStat {
 enum SyncStatus {
     kSyncWrite = 0;
     kSyncDelete = 1;
+}
+
+enum RecoverPri {
+    kHigh = 0;
+    kLow = 1;
 }

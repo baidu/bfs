@@ -1,6 +1,6 @@
 
 # OPT ?= -O2 -DNDEBUG # (A) Production use (optimized mode)
-OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
+OPT ?= -g2 -Werror # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 
 include depends.mk
@@ -8,7 +8,7 @@ include depends.mk
 
 INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
-               -I./thirdparty/leveldb/include \
+               -I$(LEVELDB_PATH)/include \
                -I$(SNAPPY_PATH)/include \
                -I$(BOOST_PATH) \
                -I$(GFLAG_PATH)/include \
@@ -16,7 +16,7 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
 
 LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(PROTOBUF_PATH)/lib -lprotobuf \
-          -L./thirdparty/leveldb -lleveldb \
+          -L$(LEVELDB_PATH)/lib -lleveldb \
           -L$(SNAPPY_PATH)/lib -lsnappy \
           -L$(GFLAG_PATH)/lib -lgflags \
           -L$(GTEST_PATH)/lib -lgtest \
@@ -53,8 +53,6 @@ FUSE_HEADER = $(wildcard fuse/*.h)
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
 
-LEVELDB = ./thirdparty/leveldb/libleveldb.a
-
 FLAGS_OBJ = src/flags.o
 VERSION_OBJ = src/version.o
 OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
@@ -66,8 +64,8 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test
-TEST_OBJS = src/nameserver/test/namespace_test.o \
+TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test logdb_test
+TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
 UNITTEST_OUTPUT = test/
@@ -106,7 +104,10 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
 	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
 
-raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o $(OBJS)
+logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
+	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
+
+raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o src/nameserver/logdb.o $(OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
 file_cache_test: src/chunkserver/test/file_cache_test.o
@@ -120,25 +121,29 @@ chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
-nameserver: $(NAMESERVER_OBJ) $(OBJS) $(LEVELDB)
+nameserver: $(NAMESERVER_OBJ) $(OBJS)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
-chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) $(LEVELDB)
+chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
 	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)
 
-bfs_client: $(CLIENT_OBJ) $(LIBS) $(LEVELDB)
+bfs_client: $(CLIENT_OBJ) $(LIBS)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
-mark: $(MARK_OBJ) $(LIBS) $(LEVELDB)
+mark: $(MARK_OBJ) $(LIBS)
 	$(CXX) $(MARK_OBJ) $(LIBS) -o $@ $(LDFLAGS)
+
+logdb_dump: src/nameserver/logdb.o src/utils/logdb_dump.o
+	$(CXX) src/nameserver/logdb.o src/utils/logdb_dump.o $(OBJS) -o $@ $(LDFLAGS)
+
+ns_dump: src/utils/ns_dump.o
+	$(CXX) src/utils/ns_dump.o $(OBJS) -o $@ $(LDFLAGS)
 
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
-$(LEVELDB):
-	cd thirdparty/leveldb; make -j4
 
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
@@ -158,6 +163,7 @@ clean:
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
+	rm -rf $(LIBS)
 
 install:
 	rm -rf output
@@ -171,4 +177,4 @@ install:
 
 .PHONY: test
 test:
-	cd sandbox; ./small_test.sh; ./small_test.sh raft
+	cd sandbox; ./small_test.sh; ./small_test.sh raft; ./small_test.sh master_slave

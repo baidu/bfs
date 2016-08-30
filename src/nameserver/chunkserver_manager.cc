@@ -11,7 +11,7 @@
 #include <common/string_util.h>
 #include <common/util.h>
 #include "proto/status_code.pb.h"
-#include "nameserver/block_mapping.h"
+#include "nameserver/block_mapping_manager.h"
 #include "nameserver/location_provider.h"
 
 DECLARE_int32(keepalive_timeout);
@@ -20,16 +20,15 @@ DECLARE_int32(recover_speed);
 DECLARE_int32(recover_dest_limit);
 DECLARE_int32(heartbeat_interval);
 DECLARE_bool(select_chunkserver_by_zone);
+DECLARE_bool(select_chunkserver_by_tag);
 DECLARE_double(select_chunkserver_local_factor);
 
 namespace baidu {
 namespace bfs {
 
-const int kChunkserverLoadMax = -1;
-
-ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* block_mapping)
+ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingManager* block_mapping_manager)
     : thread_pool_(thread_pool),
-      block_mapping_(block_mapping),
+      block_mapping_manager_(block_mapping_manager),
       chunkserver_num_(0),
       next_chunkserver_id_(1) {
     memset(&stats_, 0, sizeof(stats_));
@@ -41,33 +40,42 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMapping* bl
         localhostname_.c_str(), localzone_.c_str());
 }
 
-void ChunkServerManager::CleanChunkserver(ChunkServerInfo* cs, const std::string& reason) {
-    MutexLock lock(&mu_, "CleanChunkserver", 10);
-    chunkserver_num_--;
-    LOG(INFO, "Remove Chunkserver C%d %s %s, cs_num=%d",
-        cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
-    int32_t id = cs->id();
+void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string& reason) {
     std::set<int64_t> blocks;
-    std::swap(blocks, chunkserver_block_map_[id]);
-    chunkserver_block_map_.erase(id);
+    int32_t id = cs->id();
+    MutexLock lock(&mu_, "CleanChunkServer", 10);
+    chunkserver_num_--;
+    std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(id);
+    assert(it != chunkserver_block_map_.end());
+    ChunkServerBlockMap* cs_block_map = it->second;
+    MutexLock cs_block_map_lock(cs_block_map->mu);
+    std::swap(blocks, cs_block_map->blocks);
+    LOG(INFO, "Remove ChunkServer C%d %s %s, cs_num=%d",
+            cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
-    block_mapping_->DealWithDeadNode(id, blocks);
-    mu_.Lock("CleanChunkserverRelock", 10);
+    block_mapping_manager_->DealWithDeadNode(id, blocks);
+    mu_.Lock("CleanChunkServerRelock", 10);
     cs->set_w_qps(0);
     cs->set_w_speed(0);
     cs->set_r_qps(0);
     cs->set_r_speed(0);
     cs->set_recover_speed(0);
-    if (cs->is_dead()) {
-        cs->set_status(kCsOffLine);
+    if (std::find(chunkservers_to_offline_.begin(),
+                  chunkservers_to_offline_.end(),
+                  cs->address()) == chunkservers_to_offline_.end()) {
+        if (cs->is_dead()) {
+            cs->set_status(kCsOffLine);
+        } else {
+            cs->set_status(kCsStandby);
+        }
     } else {
-        cs->set_status(kCsStandby);
+        cs->set_status(kCsReadonly);
     }
 }
 
-bool ChunkServerManager::KickChunkserver(int32_t cs_id) {
-    MutexLock lock(&mu_, "KickChunkserver", 10);
+bool ChunkServerManager::KickChunkServer(int32_t cs_id) {
+    MutexLock lock(&mu_, "KickChunkServer", 10);
     ChunkServerInfo* cs = NULL;
     if (!GetChunkServerPtr(cs_id, &cs)) {
         return false;
@@ -87,7 +95,7 @@ bool ChunkServerManager::RemoveChunkServer(const std::string& addr) {
     if (cs_info->status() == kCsActive) {
         cs_info->set_status(kCsWaitClean);
         boost::function<void ()> task =
-            boost::bind(&ChunkServerManager::CleanChunkserver,
+            boost::bind(&ChunkServerManager::CleanChunkServer,
                         this, cs_info, std::string("Dead"));
         thread_pool_->AddTask(task);
     }
@@ -106,17 +114,17 @@ void ChunkServerManager::DeadCheck() {
         while (node != it->second.end()) {
             ChunkServerInfo* cs = *node;
             it->second.erase(node++);
-            LOG(INFO, "[DeadCheck] Chunkserver dead C%d %s, cs_num=%d",
+            LOG(INFO, "[DeadCheck] ChunkServer dead C%d %s, cs_num=%d",
                 cs->id(), cs->address().c_str(), chunkserver_num_);
             cs->set_is_dead(true);
-            if (cs->status() == kCsActive) {
+            if (cs->status() == kCsActive || cs->status() == kCsReadonly) {
                 cs->set_status(kCsWaitClean);
                 boost::function<void ()> task =
-                    boost::bind(&ChunkServerManager::CleanChunkserver,
+                    boost::bind(&ChunkServerManager::CleanChunkServer,
                                 this, cs, std::string("Dead"));
                 thread_pool_->AddTask(task);
             } else {
-                LOG(INFO, "[DeadCheck] Chunkserver C%d %s is being clean",
+                LOG(INFO, "[DeadCheck] ChunkServer C%d %s is being clean",
                     cs->id(), cs->address().c_str());
             }
         }
@@ -145,7 +153,8 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
     MutexLock lock(&mu_, "HandleRegister", 10);
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
-        cs_id = AddChunkServer(request->chunkserver_addr(), ip, request->disk_quota());
+        cs_id = AddChunkServer(request->chunkserver_addr(), ip,
+                               request->tag(), request->disk_quota());
         assert(cs_id >= 0);
         response->set_chunkserver_id(cs_id);
     } else {
@@ -158,7 +167,7 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d, internal cleaning",
                 cs_id, address.c_str(), chunkserver_num_);
         } else {
-            UpdateChunkServer(cs_id, request->disk_quota());
+            UpdateChunkServer(cs_id, request->tag(), request->disk_quota());
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d",
                 cs_id, address.c_str(), chunkserver_num_);
         }
@@ -170,7 +179,7 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
 void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {
     int32_t id = request->chunkserver_id();
     const std::string& address = request->chunkserver_addr();
-    int cs_id = GetChunkserverId(address);
+    int cs_id = GetChunkServerId(address);
     if (id == -1 || cs_id != id) {
         //reconnect after DeadCheck()
         LOG(INFO, "HandleHeartBeat unknown chunkserver %s with namespace version %ld",
@@ -194,11 +203,13 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
         LOG(INFO, "Dead chunkserver revival C%d %s", cs_id, address.c_str());
         assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
         info->set_is_dead(false);
+        chunkserver_num_++;
     }
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
     info->set_pending_writes(request->pending_writes());
+    info->set_pending_recover(request->pending_recover());
     info->set_w_qps(request->w_qps());
     info->set_w_speed(request->w_speed());
     info->set_r_qps(request->r_qps());
@@ -209,6 +220,8 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_last_heartbeat(now_time);
     if (info->kick()) {
         response->set_kick(true);
+    } else {
+        info->set_load(GetChunkServerLoad(info));
     }
 }
 
@@ -222,16 +235,16 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
     }
 }
 
-double ChunkServerManager::GetChunkserverLoad(ChunkServerInfo* cs) {
+double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
     double max_pending = FLAGS_chunkserver_max_pending_buffers * 0.8;
-    double pending_socre = cs->buffers() / max_pending;
-    double data_socre = cs->data_size() * 1.0 / cs->disk_quota();
+    double pending_score = cs->buffers() / max_pending;
+    double data_score = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
-    if (data_socre > 0.95 || space_left < (5L << 30) || pending_socre > 1.0) {
-        return kChunkserverLoadMax;
+    if (data_score > 0.95 || space_left < (5L << 30) || pending_score > 1.0) {
+        return 1.0;
     }
-    return data_socre * data_socre + pending_socre;
+    return (data_score * data_score + pending_score) / 2;
 }
 
 void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads,
@@ -265,8 +278,9 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         std::string tmp_address(client_it->first, 0, client_it->first.find_last_of(':'));
         if (tmp_address == client_address) {
             ChunkServerInfo* cs = NULL;
-            if (GetChunkServerPtr(client_it->second, &cs)
-                && !cs->is_dead()) {
+            if (GetChunkServerPtr(client_it->second, &cs) &&
+                !cs->is_dead() &&
+                !(cs->status() == kCsReadonly)) {
                 local_cs = cs;
             }
         }
@@ -279,29 +293,33 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin();
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
-            double load = GetChunkserverLoad(cs);
-            if (load != kChunkserverLoadMax) {
+            if (cs->status() == kCsReadonly) {
+                LOG(INFO, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
+                continue;
+            }
+            double load = cs->load();
+            if (load <= kChunkServerLoadMax) {
                 double local_factor =
                     (cs == local_cs ? FLAGS_select_chunkserver_local_factor : 0) ;
                 loads.push_back(std::make_pair(load - local_factor, cs));
             } else {
-                LOG(INFO, "Alloc ignore: Chunkserver %s data %ld/%ld buffer %d",
+                LOG(DEBUG, "Alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
                     cs->address().c_str(), cs->data_size(),
                     cs->disk_quota(), cs->buffers());
             }
         }
     }
     if ((int)loads.size() < num) {
-        LOG(WARNING, "Only %ld chunkserver of %d is not over overladen, GetChunkServerChains(%d) return false",
+        LOG(DEBUG, "Only %ld chunkserver of %d is not over overladen, GetChunkServerChains(%d) return false",
             loads.size(), chunkserver_num_, num);
         return false;
     }
     RandomSelect(&loads, num);
 
     if (FLAGS_select_chunkserver_by_zone) {
-        int count = SelectChunkserverByZone(num, loads, chains);
+        int count = SelectChunkServerByZone(num, loads, chains);
         if (count < num) {
-            LOG(WARNING, "SelectChunkserverByZone(%d) return %d", num, count);
+            LOG(WARNING, "SelectChunkServerByZone(%d) return %d", num, count);
             return false;
         }
     } else {
@@ -319,6 +337,19 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<double, ChunkServerInfo*> > loads;
 
+    std::set<std::string> tag_set;
+    if (FLAGS_select_chunkserver_by_tag) {
+        for (std::set<int32_t>::const_iterator it = replica.begin();
+             it != replica.end(); ++it) {
+            ChunkServerInfo* rep_cs = NULL;
+            if (!GetChunkServerPtr(*it, &rep_cs) || rep_cs->tag().empty()) {
+                continue;
+            }
+            tag_set.insert(rep_cs->tag());
+            ///TODO: has_remote?
+        }
+    }
+    ChunkServerInfo* remote_cs = NULL;
     for (; it != heartbeat_list_.end(); ++it) {
         std::set<ChunkServerInfo*>& set = it->second;
         for (std::set<ChunkServerInfo*>::iterator sit = set.begin(); sit != set.end(); ++sit) {
@@ -326,23 +357,42 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
             if (replica.find(cs->id()) != replica.end()) {
                 LOG(INFO, "GetRecoverChains has C%d ", cs->id());
                 continue;
+            } else if (FLAGS_select_chunkserver_by_tag
+                       && !cs->tag().empty()
+                       && !tag_set.insert(cs->tag()).second) {
+                continue;
             } else if (cs->zone() != localzone_) {
+                if (!remote_cs) {
+                    remote_cs = cs;
+                }
                 LOG(DEBUG, "Remote zone server C%d ignore PickRecoverBlocks", cs->id());
                 continue;
+            } else if (cs->status() == kCsReadonly) {
+                LOG(DEBUG, "C%d is in offline progress, igore", cs->id());
+                continue;
             }
-            double load = GetChunkserverLoad(cs);
-            if (load != kChunkserverLoadMax) {
+            double load = cs->load();
+            if (load <= kChunkServerLoadMax) {
                 loads.push_back(std::make_pair(load, cs));
             } else {
-                LOG(INFO, "Recover alloc ignore: Chunkserver %s data %ld/%ld buffer %d",
+                LOG(DEBUG, "Recover alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
                     cs->address().c_str(), cs->data_size(),
                     cs->disk_quota(), cs->buffers());
             }
         }
     }
     if (loads.empty()) {
-        LOG(INFO, "Recover chain failed");
-        return false;
+        if (remote_cs) {
+            double load = GetChunkServerLoad(remote_cs);
+            if (load != kChunkServerLoadMax) {
+                LOG(INFO, "Recover to remote zone C%d ", remote_cs->id());
+                loads.push_back(std::make_pair(load, remote_cs));
+            }
+        }
+        if (loads.empty()) {
+            LOG(INFO, "Recover chain failed");
+            return false;
+        }
     }
     RandomSelect(&loads, FLAGS_recover_dest_limit);
     for (int i = 0; i < static_cast<int>(loads.size()) && i < FLAGS_recover_dest_limit; ++i) {
@@ -351,48 +401,51 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
     }
     return true;
 }
-int ChunkServerManager::SelectChunkserverByZone(int num,
+int ChunkServerManager::SelectChunkServerByZone(int num,
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains) {
-    /*
-    ChunkServerInfo* local_server = NULL;
-    if (chains.size()) {
-        bool ret = GetChunkServerPtr(chains->first, &local_server);
-        assert(ret);
-    }*/
-    int ret = 0;
+    std::set<std::string> tag_set;
     ChunkServerInfo* remote_server = NULL;
     for(uint32_t i = 0; i < loads.size(); i++) {
         ChunkServerInfo* cs = loads[i].second;
         if (cs->zone() != localzone_) {
             if (!remote_server) remote_server = cs;
         } else {
-            LOG(DEBUG, "Local zone %s C%d ",
-                cs->zone().c_str(), cs->id());
-            ++ret;
+            const std::string& tag = cs->tag();
+            if (FLAGS_select_chunkserver_by_tag && !tag.empty()) {
+                if (!tag_set.insert(tag).second) {
+                    LOG(DEBUG, "Ignore by tag: %s %s",
+                        tag.c_str(), cs->address().c_str());
+                    continue;
+                }
+            }
+            LOG(DEBUG, "Local zone %s tag %s C%d ",
+                cs->zone().c_str(), cs->tag().empty() ? "null" : cs->tag().c_str(), cs->id());
             chains->push_back(std::make_pair(cs->id(), cs->address()));
-            if (ret + (remote_server ? 1 : 0) >= num) {
+            if (static_cast<int>(chains->size()) + (remote_server ? 1 : 0) >= num) {
                 break;
             }
         }
     }
     if (remote_server) {
-        ++ret;
         chains->push_back(std::make_pair(remote_server->id(), remote_server->address()));
         LOG(INFO, "Remote zone %s C%d ",
             remote_server->zone().c_str(), remote_server->id());
     }
-    return ret;
+    return chains->size();
 }
 
-bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
+bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = NULL;
     if (!GetChunkServerPtr(cs_id, &info)) {
         return false;
     }
     info->set_disk_quota(quota);
-    info->set_status(kCsActive);
+    info->set_tag(tag);
+    if (info->status() != kCsReadonly) {
+        info->set_status(kCsActive);
+    }
     info->set_kick(false);
     if (info->is_dead()) {
         int32_t now_time = common::timer::now_time();
@@ -406,14 +459,21 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, int64_t quota) {
 
 int32_t ChunkServerManager::AddChunkServer(const std::string& address,
                                            const std::string& ip,
+                                           const std::string& tag,
                                            int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = new ChunkServerInfo;
     int32_t id = next_chunkserver_id_++;
     info->set_id(id);
     info->set_address(address);
+    info->set_tag(tag);
     info->set_disk_quota(quota);
-    info->set_status(kCsActive);
+    if (std::find(chunkservers_to_offline_.begin(), chunkservers_to_offline_.end(),
+                address) != chunkservers_to_offline_.end()) {
+        info->set_status(kCsReadonly);
+    } else {
+        info->set_status(kCsActive);
+    }
     info->set_kick(false);
     std::string host = address.substr(0, address.find(':'));
     LocationProvider loc(host, ip);
@@ -429,6 +489,8 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     heartbeat_list_[now_time].insert(info);
     info->set_last_heartbeat(now_time);
     ++chunkserver_num_;
+    ChunkServerBlockMap* cs_block_map = new ChunkServerBlockMap;
+    chunkserver_block_map_.insert(std::make_pair(id, cs_block_map));
     return id;
 }
 
@@ -441,8 +503,8 @@ std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
     return "";
 }
 
-int32_t ChunkServerManager::GetChunkserverId(const std::string& addr) {
-    MutexLock lock(&mu_, "GetChunkserverId", 10);
+int32_t ChunkServerManager::GetChunkServerId(const std::string& addr) {
+    MutexLock lock(&mu_, "GetChunkServerId", 10);
     std::map<std::string, int32_t>::iterator it = address_map_.find(addr);
     if (it != address_map_.end()) {
         return it->second;
@@ -451,37 +513,46 @@ int32_t ChunkServerManager::GetChunkserverId(const std::string& addr) {
 }
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
-    MutexLock lock(&mu_, "AddBlock", 10);
-    chunkserver_block_map_[id].insert(block_id);
+    ChunkServerBlockMap* cs_block_map = NULL;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
+    }
+    MutexLock lock(cs_block_map->mu);
+    cs_block_map->blocks.insert(block_id);
 }
 
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
-    MutexLock lock(&mu_, "RemoveBlock", 10);
-    chunkserver_block_map_[id].erase(block_id);
+    ChunkServerBlockMap* cs_block_map = NULL;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
+    }
+    MutexLock lock(cs_block_map->mu);
+    cs_block_map->blocks.erase(block_id);
 }
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
-                                           std::map<int64_t, std::vector<std::string> >* recover_blocks,
+                                           std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
                                            int* hi_num) {
+    ChunkServerInfo* cs = NULL;
     {
         MutexLock lock(&mu_, "PickRecoverBlocks 1", 10);
-        ChunkServerInfo* cs = NULL;
         if (!GetChunkServerPtr(cs_id, &cs)) {
             return;
         }
     }
-    std::map<int64_t, std::set<int32_t> > blocks;
-    block_mapping_->PickRecoverBlocks(cs_id, FLAGS_recover_speed, &blocks, hi_num);
-    for (std::map<int64_t, std::set<int32_t> >::iterator it = blocks.begin();
+    std::vector<std::pair<int64_t, std::set<int32_t> > > blocks;
+    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed - cs->pending_recover(), &blocks, hi_num);
+    for (std::vector<std::pair<int64_t, std::set<int32_t> > >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
-        std::map<int64_t, std::vector<std::string> >::iterator recover_it =
-            recover_blocks->insert(std::make_pair(it->first, std::vector<std::string>())).first;
-        if (GetRecoverChains(it->second, &(recover_it->second))) {
+        recover_blocks->push_back(std::make_pair((*it).first, std::vector<std::string>()));
+        if (GetRecoverChains((*it).second, &(recover_blocks->back().second))) {
             //
         } else {
-            block_mapping_->ProcessRecoveredBlock(cs_id, it->first);
-            recover_blocks->erase(recover_it);
+            block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first, kGetChunkServerError);
+            recover_blocks->pop_back();
         }
     }
 }
@@ -508,6 +579,7 @@ bool ChunkServerManager::GetChunkServerPtr(int32_t cs_id, ChunkServerInfo** cs) 
 void ChunkServerManager::LogStats() {
     int32_t w_qps = 0, r_qps = 0;
     int64_t w_speed = 0, r_speed = 0, recover_speed = 0;
+    int32_t overload = 0;
     for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
         ChunkServerInfo* cs = it->second;
         w_qps += cs->w_qps();
@@ -515,18 +587,79 @@ void ChunkServerManager::LogStats() {
         r_qps += cs->r_qps();
         r_speed += cs->r_speed();
         recover_speed += cs->recover_speed();
+        if (cs->load() > kChunkServerLoadMax) {
+            ++overload;
+        }
     }
     stats_.w_qps = w_qps;
     stats_.w_speed = w_speed;
     stats_.r_qps = r_qps;
     stats_.r_speed = r_speed;
     stats_.recover_speed = recover_speed;
-    LOG(INFO, "[LogStats] w_qps=%d w_speed=%s r_qps=%d r_speed=%s recover_speed=%s",
+    LOG(INFO, "[LogStats] w_qps=%d w_speed=%s r_qps=%d r_speed=%s recover_speed=%s overload=%d",
                w_qps, common::HumanReadableString(w_speed).c_str(), r_qps,
                common::HumanReadableString(r_speed).c_str(),
-               common::HumanReadableString(recover_speed).c_str());
+               common::HumanReadableString(recover_speed).c_str(), overload);
     thread_pool_->DelayTask(FLAGS_heartbeat_interval * 1000,
                            boost::bind(&ChunkServerManager::LogStats, this));
+}
+
+void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_address) {
+    mu_.AssertHeld();
+    std::map<std::string, int32_t>::iterator it = address_map_.find(chunkserver_address);
+    if (it == address_map_.end()) {
+        LOG(WARNING, "chunkserver %s not found", chunkserver_address.c_str());
+        return;
+    }
+    int32_t cs_id = it->second;
+    ChunkServerInfo* cs_info = chunkservers_[cs_id];
+    if (cs_info->status() == kCsActive) {
+        cs_info->set_status(kCsReadonly);
+        LOG(INFO, "Mark C%d readonly", cs_id);
+    }
+}
+
+StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>&
+                                                  chunkserver_address) {
+    MutexLock lock(&mu_);
+    if (!chunkservers_to_offline_.empty()) {
+        return kInShutdownProgress;
+    }
+    for (int i = 0; i < chunkserver_address.size(); i++) {
+        chunkservers_to_offline_.push_back(chunkserver_address.Get(i));
+        MarkChunkServerReadonly(chunkservers_to_offline_.back());
+    }
+    //TODO: Add kick chunkserver task
+    return kOK;
+}
+
+bool ChunkServerManager::GetShutdownChunkServerStat() {
+    MutexLock lock(&mu_);
+    return !chunkservers_to_offline_.empty();
+}
+
+bool ChunkServerManager::GetChunkServerBlockMapPtr(int32_t cs_id, ChunkServerBlockMap** cs_block_map)
+{
+    MutexLock lock(&mu_);
+    std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(cs_id);
+    if (it == chunkserver_block_map_.end()) {
+        *cs_block_map = NULL;
+        return false;
+    }
+    *cs_block_map = it->second;
+    return true;
+}
+
+void ChunkServerManager::AddBlock(int32_t id, const::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks) {
+    ChunkServerBlockMap* cs_block_map = NULL;
+    if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
+        LOG(WARNING, "Can't find chunkserver C%d", id);
+        return;
+    }
+    MutexLock lock(cs_block_map->mu);
+    for (int i = 0; i < blocks.size(); i++) {
+        cs_block_map->blocks.insert(blocks.Get(i).block_id());
+    }
 }
 
 } // namespace bfs

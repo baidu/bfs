@@ -23,7 +23,7 @@ namespace bfs {
 
 class NameSpace;
 class ChunkServerManager;
-class BlockMapping;
+class BlockMappingManager;
 class Sync;
 
 class NameServerImpl : public NameServer {
@@ -62,6 +62,10 @@ public:
                          const DeleteDirectoryRequest* request,
                          DeleteDirectoryResponse* response,
                          ::google::protobuf::Closure* done);
+    void SyncBlock(::google::protobuf::RpcController* controller,
+                       const SyncBlockRequest* request,
+                       SyncBlockResponse* response,
+                       ::google::protobuf::Closure* done);
     void FinishBlock(::google::protobuf::RpcController* controller,
                        const FinishBlockRequest* request,
                        FinishBlockResponse* response,
@@ -94,6 +98,18 @@ public:
                        const SysStatRequest* request,
                        SysStatResponse* response,
                        ::google::protobuf::Closure* done);
+    void ShutdownChunkServer(::google::protobuf::RpcController* controller,
+            const ShutdownChunkServerRequest* request,
+            ShutdownChunkServerResponse* response,
+            ::google::protobuf::Closure* done);
+    void ShutdownChunkServerStat(::google::protobuf::RpcController* controller,
+            const ShutdownChunkServerStatRequest* request,
+            ShutdownChunkServerStatResponse* response,
+            ::google::protobuf::Closure* done);
+    void DiskUsage(::google::protobuf::RpcController* controller,
+            const DiskUsageRequest* request,
+            DiskUsageResponse* response,
+            ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
@@ -112,16 +128,26 @@ private:
                          ::google::protobuf::Closure* done,
                          std::vector<FileInfo>* removed,
                          bool ret);
+    void TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
+                       std::string* output);
+    void TransToString(const std::set<int64_t>& block_set, std::string* output);
+    void CallMethod(const ::google::protobuf::MethodDescriptor* method,
+                    ::google::protobuf::RpcController* controller,
+                    const ::google::protobuf::Message* request,
+                    ::google::protobuf::Message* response,
+                    ::google::protobuf::Closure* done);
 private:
     /// Global thread pool
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
-    /// Chunkserver map
+    ThreadPool* heartbeat_thread_pool_;
+    /// ChunkServer map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
-    BlockMapping* block_mapping_;
+    BlockMappingManager* block_mapping_manager_;
     /// Safemode
     volatile int safe_mode_;
+    volatile int start_recover_;
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;
