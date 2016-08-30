@@ -563,7 +563,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
         done->Run();
     } else {
-        LOG(DEBUG, "FinishBlock #%ld %s", block_id, file_name.c_str());
+        LOG(INFO, "FinishBlock #%ld %s", block_id, file_name.c_str());
         LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
                                    (std::vector<FileInfo>*)NULL, _1));

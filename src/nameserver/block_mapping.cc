@@ -161,7 +161,7 @@ bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
                 SetState(nsblock, kNotInRecover);
                 TryRecover(nsblock);
                 if (replica.size() >= 2) {
-                    LOG(DEBUG, "Drop replica #%ld C%d V%ld R%lu IR%lu",
+                    LOG(INFO, "Drop replica #%ld C%d V%ld R%lu IR%lu",
                         block_id, cs_id, block_version ,
                         replica.size(), inc_replica.size());
                     return false;
@@ -319,7 +319,7 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
                 SetState(nsblock, kNotInRecover);
                 TryRecover(nsblock);
                 if (replica.size() >= 2) {
-                    LOG(DEBUG, "Drop replica #%ld C%d V%ld R%lu IR%lu",
+                    LOG(INFO, "Drop replica #%ld C%d V%ld R%lu IR%lu",
                         block_id, cs_id, block_version ,
                         replica.size(), inc_replica.size());
                     return false;
