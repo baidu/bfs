@@ -312,7 +312,8 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
     for (int i = 0; i < request->blocks_size(); i++) {
-        block_mapping_manager_->ProcessRecoveredBlock(cs_id, request->blocks(i), request->status(i));
+        block_mapping_manager_->ProcessRecoveredBlock(cs_id, request->blocks(i),
+            request->status_size() > i ? request->status(i) : kOK);
     }
     done->Run();
 }
@@ -1169,10 +1170,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="row">
 
-    str += "<script> var int = setInterval('window.location.reload()', 5000);"
+    str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"
-           "    int = setInterval('window.location.reload()', 5000);"
+           "    int = setInterval('window.location.reload()', 1000);"
            "} else {"
            "    clearInterval(int);"
            "}"
