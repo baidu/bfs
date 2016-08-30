@@ -961,7 +961,7 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
-    int display_mode = 0; // 0 -> display all; 1 -> alive only; 2 -> dead only
+    int display_mode = 0; // 0 -> display all; 1 -> alive only; 2 -> dead only; 3 -> overload
     if (path == "/dfs/switchtoleader") {
         if (sync_) {
             sync_->SwitchToLeader();
@@ -1001,10 +1001,12 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             return true;
         }
         return false;
-    } else if (path == "/dfs/alive_only") {
+    } else if (path == "/dfs/alive") {
         display_mode = 1;
-    } else if (path == "/dfs/dead_only") {
+    } else if (path == "/dfs/dead") {
         display_mode = 2;
+    } else if (path == "/dfs/overload") {
+        display_mode = 3;
     }
 
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
@@ -1044,9 +1046,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                 overladen_num++;
             }
         }
-        if (chunkservers->Get(i).is_dead() && display_mode == 1) {
+        if (display_mode == 1 && chunkservers->Get(i).is_dead()) {
             continue;
-        } else if (!chunkservers->Get(i).is_dead() && display_mode == 2) {
+        } else if ( display_mode == 2 && !chunkservers->Get(i).is_dead()) {
+            continue;
+        } else if (display_mode == 3 && chunkserver.load() < kChunkServerLoadMax) {
             continue;
         }
 
@@ -1155,8 +1159,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
     str += "Dead: " + common::NumToString(dead_num)+"</br>";
     str += "Overload: " + common::NumToString(overladen_num)+"</br>";
-    str += "<a href=\"/dfs/alive_only\">AliveOnly</a>";
-    str += "<a href=\"/dfs/dead_only\"> DeadOnly</a>";
+    str += "<a href=\"/dfs/alive\">Alive</a>";
+    str += "<a href=\"/dfs/dead\"> Dead</a>";
+    str += "<a href=\"/dfs/overload\"> Overload</a>";
     str += "<a href=\"/dfs/\"> All</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
