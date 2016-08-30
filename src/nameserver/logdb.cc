@@ -306,7 +306,7 @@ bool LogDB::BuildFileCache() {
         return false;
     }
     bool error = false;
-    while (entry = readdir(dir_ptr)) {
+    while ((entry = readdir(dir_ptr) != NULL) {
         size_t idx = std::string(entry->d_name).find(".idx");
         if (idx != std::string::npos) {
             std::string file_name = std::string(entry->d_name);
