@@ -558,7 +558,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         }
     }
     int64_t after_get_recover_chain = common::timer::get_micros();
-    static int64_t last_warning = 0;
+    static __thread int64_t last_warning = 0;
     if (after_get_recover_chain - before_pick > 1000 * 1000) {
         int64_t now_time = common::timer::get_micros();
         if (now_time > last_warning + 10 * 1000000) {

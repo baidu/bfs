@@ -284,7 +284,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     }
     block_mapping_manager_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     int64_t end_report = common::timer::get_micros();
-    static int64_t last_warning = 0;
+    static __thread int64_t last_warning = 0;
     if (end_report - start_report > 1000 * 1000) {
         int64_t now_time = common::timer::get_micros();
         if (now_time > last_warning + 10 * 1000000) {
