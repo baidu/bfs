@@ -543,7 +543,9 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         }
     }
     std::vector<std::pair<int64_t, std::set<int32_t> > > blocks;
+    int64_t before_pick = common::timer::get_micros();
     block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed - cs->pending_recover(), &blocks, hi_num);
+    int64_t before_get_recover_chain = common::timer::get_micros();
     for (std::vector<std::pair<int64_t, std::set<int32_t> > >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
@@ -553,6 +555,18 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
         } else {
             block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first, kGetChunkServerError);
             recover_blocks->pop_back();
+        }
+    }
+    int64_t after_get_recover_chain = common::timer::get_micros();
+    static int64_t last_warning = 0;
+    if (after_get_recover_chain - before_pick > 1000 * 1000) {
+        int64_t now_time = common::timer::get_micros();
+        if (now_time > last_warning + 10 * 1000000) {
+            last_warning = now_time;
+            LOG(WARNING, "C%ld pick %d recover block use %ld micros, pick use %ld micros,"
+                "get cs chains use %ld micros", cs_id, recover_blocks->size(),
+                after_get_recover_chain - before_pick, before_get_recover_chain - before_pick,
+                after_get_recover_chain - before_get_recover_chain);
         }
     }
 }
