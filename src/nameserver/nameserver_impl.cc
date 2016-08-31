@@ -112,10 +112,11 @@ void NameServerImpl::LeaveSafemode() {
 
 void NameServerImpl::LogStatus() {
     LOG(INFO, "[Status] create %ld list %ld get_loc %ld add_block %ld "
-              "unlink %ld report %ld %ld heartbeat %ld",
+              "unlink %ld report %ld %ld heartbeat %ld work_pending %ld report_pending %ld",
         g_create_file.Clear(), g_list_dir.Clear(), g_get_location.Clear(),
         g_add_block.Clear(), g_unlink.Clear(), g_block_report.Clear(),
-        g_report_blocks.Clear(), g_heart_beat.Clear());
+        g_report_blocks.Clear(), g_heart_beat.Clear(),
+        work_thread_pool_->PendingNum(), report_thread_pool_->PendingNum());
     work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
 }
 
@@ -202,9 +203,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
             cs_id, block_id, block_version, block_size);
         // update block -> cs;
-        if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id,
-                                            block_size,
-                                            block_version)) {
+        if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id, block_size, block_version)) {
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id);
         } else {
@@ -249,9 +248,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
         // update block -> cs
         int64_t block_version = block.version();
-        if (!block_mapping_manager_->UpdateBlockInfo(cur_block_id, cs_id,
-                                             cur_block_size,
-                                             block_version)) {
+        if (!block_mapping_manager_->UpdateBlockInfo(cur_block_id, cs_id, cur_block_size,
+                                                     block_version)) {
             response->add_obsolete_blocks(cur_block_id);
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
@@ -1048,7 +1046,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             continue;
         } else if ( display_mode == 2 && !chunkservers->Get(i).is_dead()) {
             continue;
-        } else if (display_mode == 3 && chunkserver.load() < kChunkServerLoadMax) {
+        } else if (display_mode == 3 &&
+                   chunkserver.load() < kChunkServerLoadMax &&
+                   chunkservers->Get(i).is_dead()) {
             continue;
         }
 
