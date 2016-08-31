@@ -253,7 +253,7 @@ void ChunkServerImpl::SendBlockReport() {
     }
 
     BlockReportResponse response;
-    if (!nameserver_->SendRequest(&NameServer_Stub::BlockReport, &request, &response, 20)) {
+    if (!nameserver_->SendRequest(&NameServer_Stub::BlockReport, &request, &response, 600)) {
         LOG(WARNING, "Block reprot fail\n");
     } else {
         if (response.status() != kOK) {
