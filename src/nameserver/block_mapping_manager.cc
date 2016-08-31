@@ -124,8 +124,10 @@ void BlockMappingManager::GetStat(int32_t cs_id, RecoverBlockNum* recover_num) {
     }
 }
 
-void BlockMappingManager::ListRecover(RecoverBlockSet* recover_blocks, int bucket_id) {
-    block_mapping_[bucket_id]->ListRecover(recover_blocks);
+void BlockMappingManager::ListRecover(RecoverBlockSet* recover_blocks) {
+    for (size_t i = 0; i < block_mapping_.size(); i++) {
+        block_mapping_[i]->ListRecover(recover_blocks);
+    }
 }
 
 void BlockMappingManager::SetSafeMode(bool safe_mode) {

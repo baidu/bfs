@@ -914,16 +914,13 @@ void NameServerImpl::TransToString(const std::set<int64_t>& block_set, std::stri
     for (std::set<int64_t>::const_iterator it = block_set.begin();
             it != block_set.end(); ++it) {
         output->append(common::NumToString(*it) + " ");
-        if (output->size() > 1024) {
-            output->append("...");
-            break;
-        }
     }
 }
 
-void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response, int bucket_id) {
+
+void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     RecoverBlockSet recover_blocks;
-    block_mapping_manager_->ListRecover(&recover_blocks, bucket_id);
+    block_mapping_manager_->ListRecover(&recover_blocks);
     std::string hi_recover, lo_recover, lost, hi_check, lo_check, incomplete;
     TransToString(recover_blocks.hi_recover, &hi_recover);
     TransToString(recover_blocks.lo_recover, &lo_recover);
@@ -959,25 +956,6 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response, int bucket
     return;
 }
 
-void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
-    std::string str =
-            "<html><head><title>Recover Details</title>\n"
-            "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
-            "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
-            "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" rel=\"stylesheet\">\n"
-            "</head>\n";
-    str += "<body><div class=\"col-sm-12  col-md-12\">";
-    str += "<h1>分布式文件系统控制台 - RecoverDetails</h1>";
-
-    for (int i = 0; i < FLAGS_blockmapping_bucket_num; ++i) {
-        str += "<a href=\"/dfs/details?bucket=" + common::NumToString(i) + "\">" + common::NumToString(i) + " </a>";
-    }
-
-    str += "</div></body><html>";
-    response->content->Append(str);
-    return;
-}
-
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
@@ -988,12 +966,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         }
         return true;
     } else if (path == "/dfs/details") {
-        std::map<const std::string, std::string>::const_iterator it = request.query_params->find("bucket");
-        if (it == request.query_params->end()) {
-            ListRecover(&response);
-        } else {
-            ListRecover(&response, boost::lexical_cast<int>(it->second));
-        }
+        ListRecover(&response);
         return true;
     } else if (path == "/dfs/start_recover") {
         start_recover_ = 1;
