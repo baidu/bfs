@@ -1047,8 +1047,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         } else if ( display_mode == 2 && !chunkservers->Get(i).is_dead()) {
             continue;
         } else if (display_mode == 3 &&
-                   chunkserver.load() < kChunkServerLoadMax &&
-                   chunkservers->Get(i).is_dead()) {
+                   (chunkserver.load() < kChunkServerLoadMax ||
+                   chunkservers->Get(i).is_dead())) {
             continue;
         }
 
