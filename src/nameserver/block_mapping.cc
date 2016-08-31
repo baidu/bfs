@@ -729,20 +729,18 @@ void BlockMapping::ListCheckList(const CheckList& check_list, std::map<int32_t, 
 }
 
 void BlockMapping::ListRecoverList(const std::set<int64_t>& recover_set, std::set<int64_t>* result) {
-    uint32_t half = FLAGS_web_recover_list_size / 2;
+    int half = FLAGS_web_recover_list_size / 2;
     std::set<int64_t>::iterator it = recover_set.begin();
-    for (; it != recover_set.end(); ++it) {
-        if (result->size() == half) {
-            break;
-        }
+    int count = 0;
+    for (; it != recover_set.end() && count != half; ++it) {
         result->insert(*it);
+        ++count;
     }
     if (it != recover_set.end()) {
-        for (std::set<int64_t>::reverse_iterator rit = recover_set.rbegin(); rit != recover_set.rend(); ++rit) {
-            if (result->size() == (size_t)FLAGS_web_recover_list_size) {
-                break;
-            }
+        for (std::set<int64_t>::reverse_iterator rit = recover_set.rbegin();
+                rit != recover_set.rend() && count != FLAGS_web_recover_list_size; ++rit) {
             result->insert(*rit);
+            ++count;
         }
     }
 }
