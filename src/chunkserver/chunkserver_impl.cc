@@ -253,7 +253,13 @@ void ChunkServerImpl::SendBlockReport() {
     }
 
     BlockReportResponse response;
-    if (!nameserver_->SendRequest(&NameServer_Stub::BlockReport, &request, &response, 20)) {
+    int64_t before_report = common::timer::get_micros();
+    bool ret = nameserver_->SendRequest(&NameServer_Stub::BlockReport, &request, &response, 600);
+    int64_t after_report = common::timer::get_micros();
+    if (after_report - before_report > 20 * 1000 * 1000) {
+        LOG(WARNING, "Block report use %ld ms", (after_report - before_report) / 1000);
+    }
+    if (!ret) {
         LOG(WARNING, "Block reprot fail\n");
     } else {
         if (response.status() != kOK) {
