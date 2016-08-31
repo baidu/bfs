@@ -104,8 +104,8 @@ ChunkServerImpl::~ChunkServerImpl() {
     read_thread_pool_->Stop(true);
     write_thread_pool_->Stop(true);
     heartbeat_thread_->Stop(true);
-    delete rpc_client_;
     delete block_manager_;
+    delete rpc_client_;
     LogStatus(false);
     delete counter_manager_;
     delete recover_thread_pool_;
