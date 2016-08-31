@@ -4,6 +4,9 @@
 
 #include "block_mapping_manager.h"
 
+#include <stdlib.h>
+#include <time.h>
+
 #include <common/counter.h>
 #include <common/string_util.h>
 
@@ -21,6 +24,7 @@ BlockMappingManager::BlockMappingManager(int32_t bucket_num) :
     for (size_t i = 0; i < block_mapping_.size(); i++) {
         block_mapping_[i] = new BlockMapping(thread_pool_);
     }
+    srand(time(NULL));
 }
 
 BlockMappingManager::~BlockMappingManager() {
@@ -91,12 +95,18 @@ StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t vers
 void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                        std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                        int32_t* hi_num) {
+    int start_bucket = rand() % blockmapping_bucket_num_;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
-        block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, kHigh);
+        block_mapping_[start_bucket % blockmapping_bucket_num_]->
+            PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, kHigh);
+        ++start_bucket;
     }
     *(hi_num) += recover_blocks->size();
+    start_bucket = rand() % blockmapping_bucket_num_;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
-        block_mapping_[i]->PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, kLow);
+        block_mapping_[start_bucket % blockmapping_bucket_num_]->
+            PickRecoverBlocks(cs_id, block_num - recover_blocks->size(), recover_blocks, kLow);
+        ++start_bucket;
     }
 }
 
