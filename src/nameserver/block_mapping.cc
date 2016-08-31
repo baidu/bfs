@@ -628,7 +628,13 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         target_set = &lo_pri_recover_;
         check_set = &lo_check_set;
     }
+    int64_t before_pick = common::timer::get_micros();
     PickRecoverFromSet(cs_id, block_num, target_set, recover_blocks, check_set);
+    int64_t after_pick = common::timer::get_micros();
+    if (after_pick - before_pick > 100 * 1000) {
+        LOG(WARNING, "C%d pick %lu block use %ld micors",
+                cs_id, recover_blocks->size(), after_pick - before_pick);
+    }
     LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
