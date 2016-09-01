@@ -188,7 +188,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
 
     common::timer::TimeChecker blockreceived_timer;
     int old_id = chunkserver_manager_->GetChunkServerId(request->chunkserver_addr());
-    blockreceived_timer.Check(100 * 1000, "GetChunkServerId");
+    blockreceived_timer.Check(50 * 1000, "GetChunkServerId");
     if (cs_id != old_id) {
         LOG(INFO, "ChunkServer %s id mismatch, old: C%d new: C%d",
             request->chunkserver_addr().c_str(), old_id, cs_id);
@@ -207,10 +207,10 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         // update block -> cs;
         blockreceived_timer.Reset();
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id, block_size, block_version)) {
-            blockreceived_timer.Check(100 * 1000, "UpdateBlockInfo");
+            blockreceived_timer.Check(50 * 1000, "UpdateBlockInfo");
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id);
-            blockreceived_timer.Check(100 * 1000, "AddBlock");
+            blockreceived_timer.Check(50 * 1000, "AddBlock");
         } else {
             LOG(INFO, "BlockReceived drop C%d #%ld V%ld %ld",
                 cs_id, block_id, block_version, block_size);
@@ -434,7 +434,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     std::vector<std::pair<int32_t, std::string> > chains;
     common::timer::TimeChecker add_block_timer;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
-        add_block_timer.Check(100 * 1000, "GetChunkServerChains");
+        add_block_timer.Check(50 * 1000, "GetChunkServerChains");
         NameServerLog log;
         int64_t new_block_id = namespace_->GetNewBlockId(&log);
         LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
@@ -461,10 +461,10 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             // update cs -> block
             add_block_timer.Reset();
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
-            add_block_timer.Check(100 * 1000, "AddBlock");
+            add_block_timer.Check(50 * 1000, "AddBlock");
         }
         block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
-        add_block_timer.Check(100 * 1000, "AddNewBlock");
+        add_block_timer.Check(50 * 1000, "AddNewBlock");
         block->set_block_id(new_block_id);
         response->set_status(kOK);
         LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
