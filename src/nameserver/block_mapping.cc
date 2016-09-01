@@ -116,9 +116,11 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
     }
     g_blocks_num.Inc();
     MutexLock lock(&mu_);
+    common::timer::TimeChecker insert_time;
     std::pair<NSBlockMap::iterator, bool> ret =
         block_map_.insert(std::make_pair(block_id, nsblock));
     assert(ret.second == true);
+    insert_time.Check(10 * 1000, "[AddNewBlock] InsertToBlockMapping");
 }
 
 bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
@@ -458,16 +460,23 @@ bool BlockMapping::UpdateBlockInfoMerge(NSBlock* nsblock,
 bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                                    int64_t block_version) {
     MutexLock lock(&mu_);
+    common::timer::TimeChecker update_block_timer;
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
         LOG(DEBUG, "UpdateBlockInfo C%d #%ld has been removed", server_id, block_id);
         return false;
     }
+    update_block_timer.Check(10 * 1000, "[UpdateBlockInfo] GetBlockPtr");
+    bool ret = true;;
     switch (block->recover_stat) {
       case kBlockWriting:
-        return UpdateWritingBlock(block, server_id, block_size, block_version);
+        ret = UpdateWritingBlock(block, server_id, block_size, block_version);
+        update_block_timer.Check(10 * 1000, "[UpdateBlockInfo] UpdateWritingBlock");
+        return ret;
       case kIncomplete:
-        return UpdateIncompleteBlock(block, server_id, block_size, block_version);
+        ret = UpdateIncompleteBlock(block, server_id, block_size, block_version);
+        update_block_timer.Check(10 * 1000, "[UpdateBlockInfo] UpdateIncomleteBlock");
+        return ret;
       case kLost:
         if (block->version < 0) {
             bool ret = UpdateWritingBlock(block, server_id, block_size, block_version);
@@ -481,10 +490,14 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
             }
             return ret;
         } else {
-            return UpdateNormalBlock(block, server_id, block_size, block_version);
+            ret = UpdateNormalBlock(block, server_id, block_size, block_version);
+            update_block_timer.Check(10 * 1000, "[UpdateBlockInfo] UpdateNormalBlock");
+            return ret;
         }
       default:  // kNotInRecover kLow kHi kLost kCheck
-        return UpdateNormalBlock(block, server_id, block_size, block_version);
+        ret = UpdateNormalBlock(block, server_id, block_size, block_version);
+        update_block_timer.Check(10 * 1000, "[UpdateBlockInfo] UpdateNormalBlock");
+        return ret;
     }
 }
 
