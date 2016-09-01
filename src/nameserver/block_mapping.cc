@@ -467,7 +467,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
         return false;
     }
     update_block_timer.Check(10 * 1000, "[UpdateBlockInfo] GetBlockPtr");
-    bool ret;
+    bool ret = true;;
     switch (block->recover_stat) {
       case kBlockWriting:
         ret = UpdateWritingBlock(block, server_id, block_size, block_version);
