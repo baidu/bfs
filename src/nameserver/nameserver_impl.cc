@@ -53,6 +53,7 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     start_recover_(1), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
+    read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     heartbeat_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_heartbeat_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
@@ -62,7 +63,7 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
-    work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
+    read_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
 }
 
 NameServerImpl::~NameServerImpl() {
@@ -80,11 +81,11 @@ void NameServerImpl::CheckLeader() {
         }
         safe_mode_ = FLAGS_nameserver_safemode_time;
         start_time_ = common::timer::get_micros();
-        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+        read_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
     } else {
         is_leader_ = false;
-        work_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
+        read_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
         //LOG(INFO, "Delay CheckLeader");
     }
 }
@@ -102,7 +103,7 @@ void NameServerImpl::CheckSafemode() {
         return;
     }
     common::atomic_comp_swap(&safe_mode_, new_safe_mode, safe_mode);
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+    read_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 void NameServerImpl::LeaveSafemode() {
     LOG(INFO, "Nameserver leave safemode");
@@ -112,12 +113,14 @@ void NameServerImpl::LeaveSafemode() {
 
 void NameServerImpl::LogStatus() {
     LOG(INFO, "[Status] create %ld list %ld get_loc %ld add_block %ld "
-              "unlink %ld report %ld %ld heartbeat %ld work_pending %ld report_pending %ld",
+              "unlink %ld report %ld %ld heartbeat %ld read_pending %ld "
+              "work_pending %ld report_pending %ld",
         g_create_file.Clear(), g_list_dir.Clear(), g_get_location.Clear(),
         g_add_block.Clear(), g_unlink.Clear(), g_block_report.Clear(),
         g_report_blocks.Clear(), g_heart_beat.Clear(),
+        read_thread_pool_->PendingNum(),
         work_thread_pool_->PendingNum(), report_thread_pool_->PendingNum());
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
+    read_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
 }
 
 void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
@@ -1133,8 +1136,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     str += "</br>";
     str += "Pending tasks: "
+        + common::NumToString(read_thread_pool_->PendingNum()) + " "
         + common::NumToString(work_thread_pool_->PendingNum()) + " "
-        + common::NumToString(report_thread_pool_->PendingNum()) + "</br>";
+        + common::NumToString(report_thread_pool_->PendingNum()) + " "
+        + common::NumToString(heartbeat_thread_pool_->PendingNum()) + "</br>";
     std::string ha_status = sync_ ? sync_->GetStatus() : "none";
     str += "HA status: " + ha_status + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
@@ -1221,9 +1226,9 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     static std::pair<std::string, ThreadPool*> ThreadPoolOfMethod[] = {
         std::make_pair("CreateFile", work_thread_pool_),
         std::make_pair("AddBlock", work_thread_pool_),
-        std::make_pair("GetFileLocation", work_thread_pool_),
-        std::make_pair("ListDirectory", work_thread_pool_),
-        std::make_pair("Stat", work_thread_pool_),
+        std::make_pair("GetFileLocation", read_thread_pool_),
+        std::make_pair("ListDirectory", read_thread_pool_),
+        std::make_pair("Stat", read_thread_pool_),
         std::make_pair("Rename", work_thread_pool_),
         std::make_pair("SyncBlock", work_thread_pool_),
         std::make_pair("FinishBlock", work_thread_pool_),
@@ -1232,13 +1237,13 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("ChangeReplicaNum", work_thread_pool_),
         std::make_pair("ShutdownChunkServer", work_thread_pool_),
         std::make_pair("ShutdownChunkServerStat", work_thread_pool_),
-        std::make_pair("DiskUsage", work_thread_pool_),
+        std::make_pair("DiskUsage", read_thread_pool_),
         std::make_pair("Register", work_thread_pool_),
         std::make_pair("HeartBeat", heartbeat_thread_pool_),
         std::make_pair("BlockReport", report_thread_pool_),
         std::make_pair("BlockReceived", work_thread_pool_),
         std::make_pair("PushBlockReport", work_thread_pool_),
-        std::make_pair("SysStat", work_thread_pool_)
+        std::make_pair("SysStat", read_thread_pool_)
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /
                             sizeof(std::pair<std::string, ThreadPool*>);

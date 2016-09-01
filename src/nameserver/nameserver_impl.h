@@ -138,6 +138,7 @@ private:
                     ::google::protobuf::Closure* done);
 private:
     /// Global thread pool
+    ThreadPool* read_thread_pool_;
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
     ThreadPool* heartbeat_thread_pool_;
