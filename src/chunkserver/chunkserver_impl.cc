@@ -81,6 +81,8 @@ ChunkServerImpl::ChunkServerImpl()
      last_report_blockid_(-1),
      service_stop_(false) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
+    params_.set_report_interval(FLAGS_blockreport_interval);
+    params_.set_report_size(FLAGS_blockreport_size);
     work_thread_pool_ = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     read_thread_pool_ = new ThreadPool(FLAGS_chunkserver_read_thread_num);
     write_thread_pool_ = new ThreadPool(FLAGS_chunkserver_write_thread_num);
@@ -153,8 +155,12 @@ void ChunkServerImpl::Register() {
         work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
         return;
     }
-    params_.set_report_interval(response.report_interval());
-    params_.set_report_size(response.report_size());
+    if (response.report_interval() != -1) {
+        params_.set_report_interval(response.report_interval());
+    }
+    if (response.report_size() != -1) {
+        params_.set_report_size(response.report_size());
+    }
     int64_t new_version = response.namespace_version();
     if (block_manager_->NameSpaceVersion() != new_version) {
         // NameSpace change
