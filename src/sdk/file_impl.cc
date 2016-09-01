@@ -638,30 +638,10 @@ int32_t FileImpl::Sync() {
         return BAD_PARAMETER;
     }
     MutexLock lock(&mu_, "Sync", 1000);
+    int64_t sync_offset = write_offset_;
     if (write_buf_ && write_buf_->Size()) {
         StartWrite();
     }
-    if (block_for_write_ && !bg_error_ && write_offset_ && !synced_) {
-        SyncBlockRequest request;
-        SyncBlockResponse response;
-        request.set_sequence_id(common::timer::get_micros());
-        request.set_block_id(block_for_write_->block_id());
-        request.set_file_name(name_);
-        request.set_size(write_offset_);
-        bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::SyncBlock,
-                                                            &request, &response, 15, 1);
-        if (!(rpc_ret && response.status() == kOK))  {
-            LOG(WARNING, "Starting file %s fail, starting report returns %d, status: %s",
-                    name_.c_str(), rpc_ret, StatusCode_Name(response.status()).c_str());
-            if (!rpc_ret) {
-                return TIMEOUT;
-            } else {
-                return GetErrorCode(response.status());
-            }
-        }
-        synced_ = true;
-    }
-
     int wait_time = 0;
     while (back_writing_ && !bg_error_ &&
            (w_options_.sync_timeout < 0 || wait_time < w_options_.sync_timeout)) {
@@ -674,6 +654,26 @@ int32_t FileImpl::Sync() {
     }
     if (bg_error_ || back_writing_) {
         return TIMEOUT;
+    }
+    if (block_for_write_ && !bg_error_ && sync_offset && !synced_) {
+        SyncBlockRequest request;
+        SyncBlockResponse response;
+        request.set_sequence_id(common::timer::get_micros());
+        request.set_block_id(block_for_write_->block_id());
+        request.set_file_name(name_);
+        request.set_size(sync_offset);
+        bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::SyncBlock,
+                                                            &request, &response, 15, 1);
+        if (!(rpc_ret && response.status() == kOK))  {
+            LOG(WARNING, "Starting file %s fail, starting report returns %d, status: %s",
+                    name_.c_str(), rpc_ret, StatusCode_Name(response.status()).c_str());
+            if (!rpc_ret) {
+                return TIMEOUT;
+            } else {
+                return GetErrorCode(response.status());
+            }
+        }
+        synced_ = true;
     }
     return OK;
 }
