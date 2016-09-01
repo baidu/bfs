@@ -613,7 +613,7 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
     std::set<int64_t>* recover_set = NULL;
     std::set<int64_t>* check_set = NULL;
     MutexLock lock(&mu_);
-    if (pri = kHigh) {
+    if (pri == kHigh) {
         recover_set = &hi_pri_recover_[cs_id];
         check_set = &hi_recover_check_[cs_id];
     } else {
