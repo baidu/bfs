@@ -26,7 +26,6 @@
 #include <common/sliding_window.h>
 #include <common/string_util.h>
 #include "proto/nameserver.pb.h"
-#include "proto/status_code.pb.h"
 #include "rpc/nameserver_client.h"
 
 #include "chunkserver/counter_manager.h"
@@ -82,6 +81,8 @@ ChunkServerImpl::ChunkServerImpl()
      last_report_blockid_(-1),
      service_stop_(false) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
+    params_.set_report_interval(FLAGS_blockreport_interval);
+    params_.set_report_size(FLAGS_blockreport_size);
     work_thread_pool_ = new ThreadPool(FLAGS_chunkserver_work_thread_num);
     read_thread_pool_ = new ThreadPool(FLAGS_chunkserver_read_thread_num);
     write_thread_pool_ = new ThreadPool(FLAGS_chunkserver_write_thread_num);
@@ -154,6 +155,12 @@ void ChunkServerImpl::Register() {
         work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
         return;
     }
+    if (response.report_interval() != -1) {
+        params_.set_report_interval(response.report_interval());
+    }
+    if (response.report_size() != -1) {
+        params_.set_report_size(response.report_size());
+    }
     int64_t new_version = response.namespace_version();
     if (block_manager_->NameSpaceVersion() != new_version) {
         // NameSpace change
@@ -174,8 +181,9 @@ void ChunkServerImpl::Register() {
     }
     assert (response.chunkserver_id() != -1);
     chunkserver_id_ = response.chunkserver_id();
-    LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d ",
-        block_manager_->NameSpaceVersion(), chunkserver_id_);
+    LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d report_size = %d",
+        block_manager_->NameSpaceVersion(), chunkserver_id_,
+        params_.report_interval(), params_.report_size());
 
     work_thread_pool_->DelayTask(1, boost::bind(&ChunkServerImpl::SendBlockReport, this));
     heartbeat_thread_->DelayTask(1, boost::bind(&ChunkServerImpl::SendHeartbeat, this));
@@ -224,6 +232,12 @@ void ChunkServerImpl::SendHeartbeat() {
         kill(getpid(), SIGTERM);
         return;
     }
+    if (response.report_interval() != -1) {
+        params_.set_report_interval(response.report_interval());
+    }
+    if (response.report_size() != -1) {
+        params_.set_report_size(response.report_size());
+    }
     heartbeat_task_id_ = heartbeat_thread_->DelayTask(FLAGS_heartbeat_interval * 1000,
         boost::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
@@ -234,7 +248,7 @@ void ChunkServerImpl::SendBlockReport() {
     request.set_chunkserver_addr(data_server_addr_);
 
     std::vector<BlockMeta> blocks;
-    block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, FLAGS_blockreport_size);
+    block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, params_.report_size());
 
     int64_t blocks_num = blocks.size();
     for (int64_t i = 0; i < blocks_num; i++) {
@@ -244,7 +258,7 @@ void ChunkServerImpl::SendBlockReport() {
         info->set_version(blocks[i].version());
     }
 
-    if (blocks_num < FLAGS_blockreport_size) {
+    if (blocks_num < params_.report_size()) {
         last_report_blockid_ = -1;
     } else {
         if (blocks_num) {
@@ -301,7 +315,7 @@ void ChunkServerImpl::SendBlockReport() {
             write_thread_pool_->AddTask(close_block_task);
         }
     }
-    blockreport_task_id_ = work_thread_pool_->DelayTask(FLAGS_blockreport_interval* 1000,
+    blockreport_task_id_ = work_thread_pool_->DelayTask(params_.report_interval() * 1000,
         boost::bind(&ChunkServerImpl::SendBlockReport, this));
 }
 

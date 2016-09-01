@@ -7,6 +7,7 @@
 
 #include <common/thread_pool.h>
 #include "proto/nameserver.pb.h"
+#include "proto/status_code.pb.h"
 
 namespace baidu {
 namespace bfs {
@@ -51,6 +52,7 @@ public:
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
     bool GetShutdownChunkServerStat();
     void AddBlock(int32_t id, const::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks);
+    void SetParam(const Params& p);
 private:
     struct ChunkServerBlockMap {
         Mutex* mu;
@@ -89,6 +91,9 @@ private:
     std::string localzone_;
 
     std::vector<std::string> chunkservers_to_offline_;
+
+    // for chunkserver
+    Params params_;
 };
 
 

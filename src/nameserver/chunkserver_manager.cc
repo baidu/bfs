@@ -10,7 +10,6 @@
 #include <common/logging.h>
 #include <common/string_util.h>
 #include <common/util.h>
-#include "proto/status_code.pb.h"
 #include "nameserver/block_mapping_manager.h"
 #include "nameserver/location_provider.h"
 
@@ -22,6 +21,8 @@ DECLARE_int32(heartbeat_interval);
 DECLARE_bool(select_chunkserver_by_zone);
 DECLARE_bool(select_chunkserver_by_tag);
 DECLARE_double(select_chunkserver_local_factor);
+DECLARE_int32(blockreport_interval);
+DECLARE_int32(blockreport_size);
 
 namespace baidu {
 namespace bfs {
@@ -36,6 +37,9 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingMana
     thread_pool_->AddTask(boost::bind(&ChunkServerManager::LogStats, this));
     localhostname_ = common::util::GetLocalHostName();
     localzone_ = LocationProvider(localhostname_, "").GetZone();
+    params_.set_report_interval(FLAGS_blockreport_interval);
+    params_.set_report_size(FLAGS_blockreport_size);
+    params_.set_recover_size(FLAGS_recover_speed);
     LOG(INFO, "Localhost: %s, localzone: %s",
         localhostname_.c_str(), localzone_.c_str());
 }
@@ -173,6 +177,8 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
         }
     }
     response->set_chunkserver_id(cs_id);
+    response->set_report_interval(FLAGS_blockreport_interval);
+    response->set_report_size(FLAGS_blockreport_size);
     response->set_status(status);
 }
 
@@ -223,6 +229,8 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     } else {
         info->set_load(GetChunkServerLoad(info));
     }
+    response->set_report_interval(params_.report_interval());
+    response->set_report_size(params_.report_size());
 }
 
 void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers) {
@@ -522,6 +530,21 @@ void ChunkServerManager::AddBlock(int32_t id, int64_t block_id) {
     cs_block_map->blocks.insert(block_id);
 }
 
+void ChunkServerManager::SetParam(const Params& p) {
+    MutexLock lock(&mu_);
+    if (p.report_interval() != -1) {
+        params_.set_report_interval(p.report_interval());
+    }
+    if (p.report_size() != -1) {
+        params_.set_report_size(p.recover_size());
+    }
+    if (p.recover_size() != -1) {
+        params_.set_recover_size(p.recover_size());
+    }
+    LOG(INFO, "SetParam to report_interval = %d report_size = %d recover_size = %d",
+            params_.report_interval(), params_.report_size(), params_.recover_size());
+}
+
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     ChunkServerBlockMap* cs_block_map = NULL;
     if (!GetChunkServerBlockMapPtr(id, &cs_block_map)) {
@@ -544,7 +567,7 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
     }
     std::vector<std::pair<int64_t, std::set<int32_t> > > blocks;
     int64_t before_pick = common::timer::get_micros();
-    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed - cs->pending_recover(),
+    block_mapping_manager_->PickRecoverBlocks(cs_id, params_.recover_size() - cs->pending_recover(),
                                               &blocks, hi_num, hi_only);
     int64_t before_get_recover_chain = common::timer::get_micros();
     for (std::vector<std::pair<int64_t, std::set<int32_t> > >::iterator it = blocks.begin();
