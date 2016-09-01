@@ -208,7 +208,6 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         blockreceived_timer.Reset();
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id, block_size, block_version)) {
             blockreceived_timer.Check(100 * 1000, "UpdateBlockInfo");
-            blockreceived_timer.Reset();
             // update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id);
             blockreceived_timer.Check(100 * 1000, "AddBlock");
@@ -464,7 +463,6 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
             add_block_timer.Check(100 * 1000, "AddBlock");
         }
-        add_block_timer.Reset();
         block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
         add_block_timer.Check(100 * 1000, "AddNewBlock");
         block->set_block_id(new_block_id);
