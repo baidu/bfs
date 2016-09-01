@@ -185,6 +185,8 @@ message HeartBeatResponse {
     optional StatusCode status = 2;
     optional int64 namespace_version = 3;
     optional bool kick = 4;
+    optional int32 report_interval = 5 [default = -1];
+    optional int32 report_size = 6 [default = -1];
 }
 
 message ReportBlockInfo {
@@ -213,6 +215,8 @@ message RegisterResponse {
     optional StatusCode status = 2;
     optional int32 chunkserver_id = 5;
     optional int64 namespace_version = 6;
+    optional int32 report_interval = 7;
+    optional int32 report_size = 8;
 }
 
 message BlockReportRequest {
