@@ -1195,7 +1195,19 @@ static void CallMethodHelper(NameServerImpl* impl,
                              ::google::protobuf::RpcController* controller,
                              const ::google::protobuf::Message* request,
                              ::google::protobuf::Message* response,
-                             ::google::protobuf::Closure* done) {
+                             ::google::protobuf::Closure* done,
+                             int64_t recv_time) {
+    if (method->index() == 16) {
+        int64_t delay = common::timer::get_micros() - recv_time;
+        if (delay > 10*1000*1000) {
+            const BlockReportRequest* report = 
+                static_cast<const BlockReportRequest*>(request);
+            LOG(WARNING, "BlockReport from %s, delay %ld ms",
+                report->chunkserver_addr().c_str(), delay / 1000);
+            done->Run();
+            return;
+        }
+    }
     impl->NameServer::CallMethod(method, controller, request, response, done);
 }
 
@@ -1236,8 +1248,10 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
 
     ThreadPool* thread_pool = ThreadPoolOfMethod[id].second;
     if (thread_pool != NULL) {
+        int64_t recv_time = common::timer::get_micros();
         boost::function<void ()> task =
-            boost::bind(&CallMethodHelper, this, method, controller, request, response, done);
+            boost::bind(&CallMethodHelper, this, method, controller,
+                        request, response, done, recv_time);
         thread_pool->AddTask(task);
     } else {
         NameServer::CallMethod(method, controller, request, response, done);
