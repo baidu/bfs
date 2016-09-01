@@ -50,7 +50,7 @@ common::Counter g_report_blocks;
 extern common::Counter g_blocks_num;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time),
-    start_recover_(1), sync_(sync) {
+    start_recover_(2), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
@@ -269,7 +269,8 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     if (!safe_mode_ && start_recover_) {
         std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
-        chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks, &hi_num);
+        chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
+                                                &hi_num, start_recover_ < 2);
         int32_t priority = 0;
         for (std::vector<std::pair<int64_t, std::vector<std::string> > >::iterator it =
                 recover_blocks.begin(); it != recover_blocks.end(); ++it) {
@@ -969,8 +970,12 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     } else if (path == "/dfs/details") {
         ListRecover(&response);
         return true;
-    } else if (path == "/dfs/start_recover") {
+    } else if (path == "/dfs/hi_recover") {
         start_recover_ = 1;
+        response.content->Append("<body onload=\"history.back()\"></body>");
+        return true;
+    } else if (path == "/dfs/low_recover") {
+        start_recover_ = 2;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/stop_recover") {
@@ -1125,14 +1130,19 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
     str += "Safemode: " + common::NumToString(safe_mode_);
     if (safe_mode_) {
-        str += " <a href=\"/dfs/leave_safemode\">Leave</a>";
+        str += " <a href=\"/dfs/leave_safemode\">LeaveSafeMode</a>";
     } else {
-        str += " <a href=\"/dfs/enter_safemode\">Enter</a>";
+        str += " <a href=\"/dfs/enter_safemode\">SafeMode</a>";
     }
-    if (!start_recover_) {
-        str += "   <a href=\"/dfs/start_recover\">StartRecover</a>";
-    } else {
+    if (start_recover_ == 2) {
         str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
+        str += "   <a href=\"/dfs/hi_recover\">OnlyHigh</a>";
+    } else if (start_recover_ == 1) {
+        str += "   <a href=\"/dfs/low_recover\">RecoverAll</a>";
+        str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
+    } else {
+        str += "   <a href=\"/dfs/hi_recover\">OnlyHigh</a>";
+        str += "   <a href=\"/dfs/low_recover\">RecoverAll</a>";
     }
     str += "</br>";
     str += "Pending tasks: "

@@ -534,7 +534,7 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
                                            std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
-                                           int* hi_num) {
+                                           int* hi_num, bool only_hi) {
     ChunkServerInfo* cs = NULL;
     {
         MutexLock lock(&mu_, "PickRecoverBlocks 1", 10);
@@ -544,7 +544,8 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
     }
     std::vector<std::pair<int64_t, std::set<int32_t> > > blocks;
     int64_t before_pick = common::timer::get_micros();
-    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed - cs->pending_recover(), &blocks, hi_num);
+    block_mapping_manager_->PickRecoverBlocks(cs_id, FLAGS_recover_speed - cs->pending_recover(),
+                                              &blocks, hi_num, only_hi);
     int64_t before_get_recover_chain = common::timer::get_micros();
     for (std::vector<std::pair<int64_t, std::set<int32_t> > >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {
