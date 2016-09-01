@@ -1003,6 +1003,21 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         display_mode = 2;
     } else if (path == "/dfs/overload") {
         display_mode = 3;
+    } else if (path == "/dfs/set") {
+        std::map<const std::string, std::string>::const_iterator it = request.query_params->begin();
+        Params p;
+        if (it != request.query_params->end()) {
+            if (it->first == "report_interval") {
+                p.set_report_interval(boost::lexical_cast<int32_t>(it->second));
+            } else if (it->first == "report_size") {
+                p.set_report_size(boost::lexical_cast<int32_t>(it->second));
+            } else if (it->first == "recover_size") {
+                p.set_recover_size(boost::lexical_cast<int32_t>(it->second));
+            }
+            chunkserver_manager_->SetParam(p);
+            response.content->Append("<body onload=\"history.back()\"></body>");
+            return true;
+        }
     }
 
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers

@@ -61,3 +61,9 @@ enum RecoverPri {
     kHigh = 0;
     kLow = 1;
 }
+
+message Params {
+    optional int32 report_interval = 1 [default = -1];
+    optional int32 report_size = 2 [default = -1];
+    optional int32 recover_size = 3 [default = -1];
+}
