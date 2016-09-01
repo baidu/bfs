@@ -45,7 +45,7 @@ public:
     void CleanChunkServer(ChunkServerInfo* cs, const std::string& reason);
     void PickRecoverBlocks(int cs_id,
                            std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
-                           int* hi_num, bool only_hi);
+                           int* hi_num, bool hi_only);
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);

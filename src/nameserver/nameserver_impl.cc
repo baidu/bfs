@@ -361,7 +361,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
 bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (bool)> callback) {
     if (sync_ == NULL) {
         if (!callback.empty()) {
-            work_thread_pool_->AddTask(boost::bind(callback, true));
+            read_thread_pool_->AddTask(boost::bind(callback, true));
         }
         return true;
     }
@@ -387,7 +387,9 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
         controller->SetFailed("SyncLogFail");
     } else if (removed) {
         for (uint32_t i = 0; i < removed->size(); i++) {
-            block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
+            work_thread_pool_->AddTask(
+                boost::bind(&BlockMappingManager::RemoveBlocksForFile,
+                            block_mapping_manager_, (*removed)[i]));
         }
         delete removed;
     }
@@ -970,11 +972,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     } else if (path == "/dfs/details") {
         ListRecover(&response);
         return true;
-    } else if (path == "/dfs/hi_recover") {
+    } else if (path == "/dfs/hi_only") {
         start_recover_ = 1;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/low_recover") {
+    } else if (path == "/dfs/recover_all") {
         start_recover_ = 2;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
@@ -1128,7 +1130,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Safemode: " + common::NumToString(safe_mode_);
+    str += "Safemode: ";
+    if (safe_mode_ > 1) {
+        str += common::NumToString(safe_mode_);
+    };
     if (safe_mode_) {
         str += " <a href=\"/dfs/leave_safemode\">LeaveSafeMode</a>";
     } else {
@@ -1136,13 +1141,13 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     }
     if (start_recover_ == 2) {
         str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
-        str += "   <a href=\"/dfs/hi_recover\">OnlyHigh</a>";
+        str += "   <a href=\"/dfs/hi_only\">HighOnly</a>";
     } else if (start_recover_ == 1) {
-        str += "   <a href=\"/dfs/low_recover\">RecoverAll</a>";
+        str += "   <a href=\"/dfs/recover_all\">RecoverAll</a>";
         str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
     } else {
-        str += "   <a href=\"/dfs/hi_recover\">OnlyHigh</a>";
-        str += "   <a href=\"/dfs/low_recover\">RecoverAll</a>";
+        str += "   <a href=\"/dfs/hi_only\">HighOnly</a>";
+        str += "   <a href=\"/dfs/recover_all\">RecoverAll</a>";
     }
     str += "</br>";
     str += "Pending tasks: "
@@ -1234,15 +1239,15 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     // the sequence of following list must correspond to the sequence of rpc in
     // 'service NameServer { ... }' at nameserver.proto file
     static std::pair<std::string, ThreadPool*> ThreadPoolOfMethod[] = {
-        std::make_pair("CreateFile", work_thread_pool_),
+        std::make_pair("CreateFile", read_thread_pool_),
         std::make_pair("AddBlock", work_thread_pool_),
         std::make_pair("GetFileLocation", read_thread_pool_),
         std::make_pair("ListDirectory", read_thread_pool_),
         std::make_pair("Stat", read_thread_pool_),
-        std::make_pair("Rename", work_thread_pool_),
+        std::make_pair("Rename", read_thread_pool_),
         std::make_pair("SyncBlock", work_thread_pool_),
         std::make_pair("FinishBlock", work_thread_pool_),
-        std::make_pair("Unlink", work_thread_pool_),
+        std::make_pair("Unlink", read_thread_pool_),
         std::make_pair("DeleteDirectory", work_thread_pool_),
         std::make_pair("ChangeReplicaNum", work_thread_pool_),
         std::make_pair("ShutdownChunkServer", work_thread_pool_),

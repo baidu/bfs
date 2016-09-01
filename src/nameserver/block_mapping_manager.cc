@@ -94,7 +94,7 @@ StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t vers
 
 void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                        std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
-                       int32_t* hi_num, bool only_hi) {
+                       int32_t* hi_num, bool hi_only) {
     int start_bucket = rand() % blockmapping_bucket_num_;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         block_mapping_[start_bucket % blockmapping_bucket_num_]->
@@ -102,7 +102,7 @@ void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         ++start_bucket;
     }
     *(hi_num) += recover_blocks->size();
-    if (only_hi) {
+    if (hi_only) {
         return;
     }
     start_bucket = rand() % blockmapping_bucket_num_;
