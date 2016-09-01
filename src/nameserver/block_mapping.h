@@ -83,8 +83,10 @@ public:
 private:
     void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
+    typedef std::map<int32_t, std::set<int64_t> > RecoverSet;
     void ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result);
-    void ListRecoverList(const std::set<int64_t>& recover_set, std::set<int64_t>* result);
+    void ListRecoverList(const RecoverSet& recover_set, std::set<int64_t>* result);
+    void ListLostList(const std::set<int64_t>& recover_set, std::set<int64_t>* result);
     void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
                             std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                             std::set<int64_t>* check_set);
@@ -113,8 +115,8 @@ private:
     CheckList hi_recover_check_;
     CheckList lo_recover_check_;
     CheckList incomplete_;
-    std::set<int64_t> lo_pri_recover_;
-    std::set<int64_t> hi_pri_recover_;
+    RecoverSet lo_pri_recover_;
+    RecoverSet hi_pri_recover_;
     std::set<int64_t> lost_blocks_;
 };
 
