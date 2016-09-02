@@ -1,14 +1,12 @@
 [The Baidu File System](http://github.com/baidu/bfs)
 ======
 
-## Overview
+Travis [![Build Status](https://travis-ci.org/baidu/bfs.svg?branch=master)](https://travis-ci.org/baidu/bfs) Coverity [![Build Status](https://scan.coverity.com/projects/8135/badge.svg)](https://scan.coverity.com/projects/myawan-bfs-1/) 
+
 The Baidu File System (BFS) is a distributed file system designed to support real-time applications. Like many other distributed file systems, BFS is highly fault-tolerant. But different from others, BFS provides low read/write latency while maintains high throughout rates. Together with [Galaxy](https://github.com/baidu/galaxy) and [Tera](http://github.com/baidu/tera), BFS supports many real-time products in Baidu, including Baidu webpage database, Baidu incremental indexing system, Baidu user behavior analysis system, etc.
 
 ## Contact Us
 dist-lab aT baidu dOt com
-
-## Build status
-Travis [![Build Status](https://travis-ci.org/baidu/bfs.svg?branch=master)](https://travis-ci.org/baidu/bfs) Jenkins [![Build Status](http://220.181.7.231/buildStatus/icon?job=bfs_master)](http://220.181.7.231/view/bfs/job/bfs_master/) Coverity [![Build Status](https://scan.coverity.com/projects/8135/badge.svg)](https://scan.coverity.com/projects/myawan-bfs-1/) 
 
 ##背景
 百度的核心数据库[Tera](http://github.com/baidu/tera)将数据持久化在分布式文件系统上，分布式文件系统的性能、可用性和扩展性对整个上层搜索业务的稳定性与效果有着至关重要的影响。现有的分布式文件系统无法很好地满足这几方面的要求，所以我们从Tera需求出发，开发了百度自己的分布式文件系统Baidu File System (BFS)。
