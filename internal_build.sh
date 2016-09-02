@@ -15,6 +15,8 @@ FLAG_DIR=`pwd`/.build
 export PATH=${DEPS_PREFIX}/bin:$PATH
 mkdir -p ${DEPS_SOURCE} ${DEPS_PREFIX} ${FLAG_DIR}
 
+rm .build/common
+
 if [ ! -f "${FLAG_DIR}/dl_third" ] || [ ! -d "${DEPS_SOURCE}/.git" ]; then
     rm -rf ${DEPS_SOURCE}
     git clone --depth=1 http://gitlab.baidu.com/baidups/third.git ${DEPS_SOURCE}
@@ -159,7 +161,7 @@ fi
 if [ ! -f "${FLAG_DIR}/common" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libcommon.a" ]; then
     rm -rf common
-    git clone -b dev https://github.com/baidu/common
+    git clone https://github.com/baidu/common
     cd common
     sed -i 's/^PREFIX=.*/PREFIX=..\/..\/thirdparty/' config.mk
     sed -i '/^INCLUDE_PATH=*/s/$/ -I..\/..\/thirdparty\/boost_1_57_0/g' Makefile
