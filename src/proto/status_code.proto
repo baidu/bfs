@@ -37,8 +37,8 @@ enum ChunkServerStatus {
     kCsWaitClean = 102;
     kCsCleaning = 103;
     kCsOffline = 104;
-    kCsStandby = 105;
     kCsReadonly = 106;
+    kCsUpdating = 107;
 }
 
 enum RecoverStat {
