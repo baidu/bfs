@@ -277,6 +277,17 @@ void Mark::RandomString(std::string* out, int size, int rand_index) {
     }
 }
 
+void Mark::Once() {
+    File* file;
+    if (OK != fs_->OpenFile("hi", O_WRONLY | O_TRUNC, 664, &file, WriteOptions())) {
+        std::cerr << "[open Failed] " << std::endl;
+    }
+    file->Write("hello", 5);
+    file->Sync();
+    //file->Close();
+    delete file;
+}
+
 } // namespace bfs
 } // namespace baidu
 
@@ -284,6 +295,6 @@ int main(int argc, char* argv[]) {
     FLAGS_flagfile = "bfs.flag";
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     baidu::bfs::Mark mark;
-    mark.Run();
+    mark.Once();
     return 0;
 }
