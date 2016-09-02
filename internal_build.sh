@@ -15,6 +15,8 @@ FLAG_DIR=`pwd`/.build
 export PATH=${DEPS_PREFIX}/bin:$PATH
 mkdir -p ${DEPS_SOURCE} ${DEPS_PREFIX} ${FLAG_DIR}
 
+rm .build/common
+
 if [ ! -f "${FLAG_DIR}/dl_third" ] || [ ! -d "${DEPS_SOURCE}/.git" ]; then
     rm -rf ${DEPS_SOURCE}
     git clone --depth=1 http://gitlab.baidu.com/baidups/third.git ${DEPS_SOURCE}
