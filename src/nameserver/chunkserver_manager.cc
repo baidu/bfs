@@ -205,11 +205,14 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
         if (heartbeat_list_[info->last_heartbeat()].empty()) {
             heartbeat_list_.erase(info->last_heartbeat());
         }
-    } else {
+    } else if (info->status() == kCsOffLine) {
         LOG(INFO, "Dead chunkserver revival C%d %s", cs_id, address.c_str());
         assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
         info->set_is_dead(false);
+        info->set_status(kCsActive);
         chunkserver_num_++;
+    } else {
+        return;
     }
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
