@@ -288,9 +288,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         std::string tmp_address(client_it->first, 0, client_it->first.find_last_of(':'));
         if (tmp_address == client_address) {
             ChunkServerInfo* cs = NULL;
-            if (GetChunkServerPtr(client_it->second, &cs) &&
-                !(cs->status() == kCsOffline) &&
-                !(cs->status() == kCsReadonly)) {
+            if (GetChunkServerPtr(client_it->second, &cs) && cs->status() == kCsActive) {
                 local_cs = cs;
             }
         }
