@@ -21,7 +21,7 @@ install:
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz
     - ( cd gflags-2.1.2 && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
-    - git clone -b dev https://github.com/baidu/common
+    - git clone https://github.com/baidu/common
     - ( cd common && make -j4 && make install)
     - git clone https://github.com/yvxiang/gtest.git
     - ( cd gtest && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
