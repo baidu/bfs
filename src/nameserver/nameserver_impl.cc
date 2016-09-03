@@ -1071,7 +1071,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     int overladen_num = 0;
     for (int i = 0; i < chunkservers->size(); i++) {
         const ChunkServerInfo& chunkserver = chunkservers->Get(i);
-        if (chunkservers->Get(i).status() == kCsOffline) {
+        if (chunkserver.status() == kCsOffline ||
+                chunkserver.status() == kCsWaitClean ||
+                chunkserver.status() == kCsCleaning) {
             dead_num++;
         } else {
             total_quota += chunkserver.disk_quota();
@@ -1080,13 +1082,18 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                 overladen_num++;
             }
         }
-        if (display_mode == 1 && chunkservers->Get(i).status() == kCsOffline) {
+        if (display_mode == 1 &&
+                !(chunkserver.status() == kCsActive ||
+                    chunkserver.status() == kCsReadonly)) {
             continue;
-        } else if ( display_mode == 2 && !chunkservers->Get(i).status() == kCsOffline) {
+        } else if (display_mode == 2 &&
+                    !(chunkserver.status() == kCsOffline ||
+                    chunkserver.status() == kCsWaitClean ||
+                    chunkserver.status() == kCsCleaning)) {
             continue;
         } else if (display_mode == 3 &&
                    chunkserver.load() < kChunkServerLoadMax &&
-                   chunkservers->Get(i).status() == kCsOffline) {
+                   chunkserver.status() != kCsActive) {
             continue;
         }
 
