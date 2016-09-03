@@ -451,9 +451,9 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, in
     }
     info->set_disk_quota(quota);
     info->set_tag(tag);
-    if (info->status() != kCsReadonly) {
-        info->set_status(kCsActive);
-    }
+    //if (info->status() != kCsReadonly) {
+    //    info->set_status(kCsActive);
+    //}
     info->set_kick(false);
     if (info->status() == kCsOffline) {
         int32_t now_time = common::timer::now_time();
