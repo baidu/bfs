@@ -459,6 +459,7 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, in
         int32_t now_time = common::timer::now_time();
         heartbeat_list_[now_time].insert(info);
         info->set_last_heartbeat(now_time);
+        info->set_status(kCsActive);
         chunkserver_num_ ++;
     }
     return true;
