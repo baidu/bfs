@@ -536,7 +536,7 @@ void ChunkServerManager::SetParam(const Params& p) {
         params_.set_report_interval(p.report_interval());
     }
     if (p.report_size() != -1) {
-        params_.set_report_size(p.recover_size());
+        params_.set_report_size(p.report_size());
     }
     if (p.recover_size() != -1) {
         params_.set_recover_size(p.recover_size());
