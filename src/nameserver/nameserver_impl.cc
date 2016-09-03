@@ -1082,18 +1082,15 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                 overladen_num++;
             }
         }
-        if (display_mode == 1 &&
-                !(chunkserver.status() == kCsActive ||
-                    chunkserver.status() == kCsReadonly)) {
+        bool is_dead = chunkserver.status() == KCsOffline ||
+                        chunkserver.status() == kCsWaitClean ||
+                        chunkserver.status() == kCsCleaning;
+        if (display_mode == 1 && is_dead) {
             continue;
-        } else if (display_mode == 2 &&
-                    !(chunkserver.status() == kCsOffline ||
-                    chunkserver.status() == kCsWaitClean ||
-                    chunkserver.status() == kCsCleaning)) {
+        } else if (display_mode == 2 && !is_dead) {
             continue;
         } else if (display_mode == 3 &&
-                   chunkserver.load() < kChunkServerLoadMax &&
-                   chunkserver.status() != kCsActive) {
+                (chunkserver.load() < kChunkServerLoadMax || is_dead)) {
             continue;
         }
 
