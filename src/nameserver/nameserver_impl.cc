@@ -1071,7 +1071,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     int overladen_num = 0;
     for (int i = 0; i < chunkservers->size(); i++) {
         const ChunkServerInfo& chunkserver = chunkservers->Get(i);
-        if (chunkservers->Get(i).is_dead()) {
+        if (chunkservers->Get(i).status() == kCsOffline) {
             dead_num++;
         } else {
             total_quota += chunkserver.disk_quota();
@@ -1080,13 +1080,13 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                 overladen_num++;
             }
         }
-        if (display_mode == 1 && chunkservers->Get(i).is_dead()) {
+        if (display_mode == 1 && chunkservers->Get(i).status() == kCsOffline) {
             continue;
-        } else if ( display_mode == 2 && !chunkservers->Get(i).is_dead()) {
+        } else if ( display_mode == 2 && !chunkservers->Get(i).status() == kCsOffline) {
             continue;
         } else if (display_mode == 3 &&
                    chunkserver.load() < kChunkServerLoadMax &&
-                   chunkservers->Get(i).is_dead()) {
+                   chunkservers->Get(i).status() == kCsOffline) {
             continue;
         }
 
@@ -1103,7 +1103,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += common::HumanReadableString(chunkserver.disk_quota()) + "B";
         std::string ratio = common::NumToString(
             chunkserver.data_size() * 100 / chunkserver.disk_quota());
-        std::string bg_color = chunkserver.is_dead() ? "background-color:#CCC;" : "";
+        std::string bg_color = chunkserver.status() == kCsOffline ? "background-color:#CCC;" : "";
         table_str += "</td><td><div class=\"progress\" style=\"margin-bottom:0\">"
                "<div class=\"progress-bar\" "
                     "role=\"progressbar\" aria-valuenow=\"60\" aria-valuemin=\"0\" "
@@ -1116,7 +1116,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += chunkserver.tag();
         table_str += "</td><td>";
-        if (chunkserver.is_dead()) {
+        if (chunkserver.status() == kCsOffline) {
             table_str += "dead";
         } else if (chunkserver.kick()) {
             table_str += "kicked";
