@@ -586,7 +586,7 @@ void FileImpl::WriteBlockCallback(const WriteBlockRequest* request,
         }
         if (!bg_error_ && retry_times > 0) {
             common::atomic_inc(&back_writing_);
-            thread_pool_->DelayTask(5,
+            thread_pool_->DelayTask(5000,
                 boost::bind(&FileImpl::DelayWriteChunk, this, buffer,
                             request, retry_times, cs_addr));
         } else {
