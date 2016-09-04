@@ -1046,6 +1046,16 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     return true;
                 }
                 p.set_recover_size(v);
+            } else if (it->first == "keepalive_timeout") {
+                if (v < 2 || v > 3600) {
+                    response.content->Append("<h1>Bad Parameter : 2 <= keepalive_timeout <= 3600 </h1>");
+                    return true;
+                }
+                p.set_keepalive_timeout(v);
+            } else {
+                response.content->Append("<h1>Bad Parameter :");
+                response.content->Append(it->first);
+                return true;
             }
             chunkserver_manager_->SetParam(p);
             response.content->Append("<body onload=\"history.back()\"></body>");

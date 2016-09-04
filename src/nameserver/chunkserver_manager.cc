@@ -40,6 +40,7 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingMana
     params_.set_report_interval(FLAGS_blockreport_interval);
     params_.set_report_size(FLAGS_blockreport_size);
     params_.set_recover_size(FLAGS_recover_speed);
+    params_.set_keepalive_timeout(FLAGS_keepalive_timeout);
     LOG(INFO, "Localhost: %s, localzone: %s",
         localhostname_.c_str(), localzone_.c_str());
 }
@@ -113,7 +114,7 @@ void ChunkServerManager::DeadCheck() {
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
 
     while (it != heartbeat_list_.end()
-           && it->first + FLAGS_keepalive_timeout <= now_time) {
+           && it->first + params_.keepalive_timeout() <= now_time) {
         std::set<ChunkServerInfo*>::iterator node = it->second.begin();
         while (node != it->second.end()) {
             ChunkServerInfo* cs = *node;
@@ -138,7 +139,7 @@ void ChunkServerManager::DeadCheck() {
     }
     int idle_time = 5;
     if (it != heartbeat_list_.end()) {
-        idle_time = it->first + FLAGS_keepalive_timeout - now_time;
+        idle_time = it->first + params_.keepalive_timeout() - now_time;
         // LOG(INFO, "it->first= %d, now_time= %d\n", it->first, now_time);
         if (idle_time > 5) {
             idle_time = 5;
@@ -544,8 +545,13 @@ void ChunkServerManager::SetParam(const Params& p) {
     if (p.recover_size() != -1) {
         params_.set_recover_size(p.recover_size());
     }
-    LOG(INFO, "SetParam to report_interval = %d report_size = %d recover_size = %d",
-            params_.report_interval(), params_.report_size(), params_.recover_size());
+    if (p.keepalive_timeout() != -1) {
+        params_.set_keepalive_timeout(p.keepalive_timeout());
+    }
+    LOG(INFO, "SetParam to report_interval = %d report_size = %d "
+              "recover_size = %d keepalive_timeout = %d",
+            params_.report_interval(), params_.report_size(),
+            params_.recover_size(), params_.keepalive_timeout());
 }
 
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
