@@ -19,6 +19,8 @@
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
 DECLARE_int32(sdk_createblock_retry);
+DECLARE_int32(sdk_write_retry_times);
+
 
 namespace baidu {
 namespace bfs {
@@ -494,7 +496,7 @@ void FileImpl::BackgroundWrite() {
                     request->add_chunkservers(addr);
                 }
             }
-            const int max_retry_times = 5;
+            const int max_retry_times = FLAGS_sdk_write_retry_times;
             ChunkServer_Stub* stub = chunkservers_[cs_addr];
             boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
                 = boost::bind(&FileImpl::WriteBlockCallback, this, _1, _2, _3, _4,
@@ -548,7 +550,7 @@ void FileImpl::WriteBlockCallback(const WriteBlockRequest* request,
     if (failed || response->status() != kOK) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
                 && response->status() != kCsTooMuchPendingBuffer) {
-            if (retry_times < 5) {
+            if (retry_times < FLAGS_sdk_write_retry_times) {
                 LOG(INFO, "BackgroundWrite failed %s"
                     " #%ld seq:%d, offset:%ld, len:%d"
                     " status: %s, retry_times: %d",
