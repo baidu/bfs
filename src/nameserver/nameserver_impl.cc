@@ -496,6 +496,11 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    if (!CheckFileHasBlock(file_info, file_name, block_id)) {
+        response->set_status(kNoPermission);
+        done->Run();
+        return;
+    }
     file_info.set_size(request->size());
     NameServerLog log;
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
@@ -511,6 +516,20 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
                                (std::vector<FileInfo>*)NULL, _1));
+}
+
+bool NameServerImpl::CheckFileHasBlock(const FileInfo& file_info,
+                                       const std::string& file_name,
+                                       int64_t block_id) {
+    bool find = false;
+    for (int i = 0; i < file_info.blocks_size(); i++) {
+        if (file_info.blocks(i) == block_id) {
+            return true;
+        }
+    }
+    LOG(WARNING, "Block #%ld doesn't belog to file %s, ignore it",
+        block_id, file_name.c_str());
+    return false;
 }
 
 void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
@@ -543,16 +562,9 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    bool find = false;
-    for (int i = 0; i < file_info.blocks_size(); i++) {
-        if (file_info.blocks(i) == block_id) {
-            find = true;
-            break;
-        }
-    }
-    if (!find) {
-        LOG(WARNING, "Block #%ld doesn't belog to file %s, ignore it", block_id, file_name.c_str());
-        response->set_status(kNotOK);
+
+    if (!CheckFileHasBlock(file_info, file_name, block_id)) {
+        response->set_status(kNoPermission);
         done->Run();
         return;
     }
