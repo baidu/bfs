@@ -68,11 +68,12 @@ void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string
     if (std::find(chunkservers_to_offline_.begin(),
                   chunkservers_to_offline_.end(),
                   cs->address()) == chunkservers_to_offline_.end()) {
-        if (cs->is_dead()) {
-            cs->set_status(kCsOffLine);
-        } else {
-            cs->set_status(kCsStandby);
-        }
+        //if (cs->is_dead()) {
+        //    cs->set_status(kCsOffline);
+        //} else {
+        //    cs->set_status(kCsStandby);
+        //}
+        cs->set_status(kCsOffline);
     } else {
         cs->set_status(kCsReadonly);
     }
@@ -120,7 +121,6 @@ void ChunkServerManager::DeadCheck() {
             it->second.erase(node++);
             LOG(INFO, "[DeadCheck] ChunkServer dead C%d %s, cs_num=%d",
                 cs->id(), cs->address().c_str(), chunkserver_num_);
-            cs->set_is_dead(true);
             if (cs->status() == kCsActive || cs->status() == kCsReadonly) {
                 cs->set_status(kCsWaitClean);
                 boost::function<void ()> task =
@@ -199,17 +199,19 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     ChunkServerInfo* info = NULL;
     bool ret = GetChunkServerPtr(id, &info);
     assert(ret && info);
-    if (!info->is_dead()) {
+    if (info->status() == kCsActive || info->status() == kCsReadonly) {
         assert(heartbeat_list_.find(info->last_heartbeat()) != heartbeat_list_.end());
         heartbeat_list_[info->last_heartbeat()].erase(info);
         if (heartbeat_list_[info->last_heartbeat()].empty()) {
             heartbeat_list_.erase(info->last_heartbeat());
         }
-    } else {
+    } else if (info->status() == kCsOffline) {
         LOG(INFO, "Dead chunkserver revival C%d %s", cs_id, address.c_str());
         assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
-        info->set_is_dead(false);
+        info->set_status(kCsActive);
         chunkserver_num_++;
+    } else if (info->status() == kCsWaitClean || info->status() == kCsCleaning) {
+        //TODO ignore heartbeat
     }
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
@@ -286,9 +288,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
         std::string tmp_address(client_it->first, 0, client_it->first.find_last_of(':'));
         if (tmp_address == client_address) {
             ChunkServerInfo* cs = NULL;
-            if (GetChunkServerPtr(client_it->second, &cs) &&
-                !cs->is_dead() &&
-                !(cs->status() == kCsReadonly)) {
+            if (GetChunkServerPtr(client_it->second, &cs) && cs->status() == kCsActive) {
                 local_cs = cs;
             }
         }
@@ -451,15 +451,15 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, in
     }
     info->set_disk_quota(quota);
     info->set_tag(tag);
-    if (info->status() != kCsReadonly) {
-        info->set_status(kCsActive);
-    }
+    //if (info->status() != kCsReadonly) {
+    //    info->set_status(kCsActive);
+    //}
     info->set_kick(false);
-    if (info->is_dead()) {
+    if (info->status() == kCsOffline) {
         int32_t now_time = common::timer::now_time();
         heartbeat_list_[now_time].insert(info);
         info->set_last_heartbeat(now_time);
-        info->set_is_dead(false);
+        info->set_status(kCsActive);
         chunkserver_num_ ++;
     }
     return true;
@@ -505,7 +505,9 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
 std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
     MutexLock lock(&mu_, "GetChunkServerAddr", 10);
     ChunkServerInfo* cs = NULL;
-    if (GetChunkServerPtr(id, &cs) && !cs->is_dead()) {
+    if (GetChunkServerPtr(id, &cs) &&
+            (cs->status() == kCsActive ||
+             cs->status() == kCsReadonly)) {
         return cs->address();
     }
     return "";

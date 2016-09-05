@@ -431,7 +431,10 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     tp.AddRow(7, "", "id", "address", "data_size", "blocks", "alive", "last_check");
     for (int i = 0; i < response.chunkservers_size(); i++) {
         const ChunkServerInfo& chunkserver = response.chunkservers(i);
-        if (!stat_all && chunkserver.is_dead()) {
+        bool is_dead = chunkserver.status() == kCsOffline ||
+                        chunkserver.status() == kCsWaitClean ||
+                        chunkserver.status() == kCsWaitClean;
+        if (!stat_all && is_dead) {
             continue;
         }
         std::vector<std::string> vs;
@@ -440,7 +443,7 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
         vs.push_back(chunkserver.address());
         vs.push_back(common::HumanReadableString(chunkserver.data_size()) + "B");
         vs.push_back(common::NumToString(chunkserver.block_num()));
-        vs.push_back(chunkserver.is_dead() ? "dead" : "alive");
+        vs.push_back(is_dead ? "dead" : "alive");
         vs.push_back(common::NumToString(
                         common::timer::now_time() - chunkserver.last_heartbeat()));
         tp.AddRow(vs);
