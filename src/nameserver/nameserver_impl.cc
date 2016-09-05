@@ -521,7 +521,6 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
 bool NameServerImpl::CheckFileHasBlock(const FileInfo& file_info,
                                        const std::string& file_name,
                                        int64_t block_id) {
-    bool find = false;
     for (int i = 0; i < file_info.blocks_size(); i++) {
         if (file_info.blocks(i) == block_id) {
             return true;
