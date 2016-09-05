@@ -35,6 +35,7 @@ DECLARE_int32(nameserver_work_thread_num);
 DECLARE_int32(nameserver_heartbeat_thread_num);
 DECLARE_int32(blockmapping_bucket_num);
 DECLARE_int32(recover_timeout);
+DECLARE_int32(block_report_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -1063,6 +1064,12 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     return true;
                 }
                 p.set_keepalive_timeout(v);
+            } else if (it->first == "block_report_timeout") {
+                if (v < 2 || v > 3600) {
+                    response.content->Append("<h1>Bad Parameter : 2 <= block_report_timeout <= 3600 </h1>");
+                    return true;
+                }
+                FLAGS_block_report_timeout = v;
             } else {
                 response.content->Append("<h1>Bad Parameter :");
                 response.content->Append(it->first);
@@ -1278,7 +1285,7 @@ static void CallMethodHelper(NameServerImpl* impl,
                              int64_t recv_time) {
     if (method->index() == 16) {
         int64_t delay = common::timer::get_micros() - recv_time;
-        if (delay > 500*1000*1000) {
+        if (delay > FLAGS_block_report_timeout *1000L * 1000L) {
             const BlockReportRequest* report = 
                 static_cast<const BlockReportRequest*>(request);
             LOG(WARNING, "BlockReport from %s, delay %ld ms",
