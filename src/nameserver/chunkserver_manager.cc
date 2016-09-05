@@ -199,7 +199,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     ChunkServerInfo* info = NULL;
     bool ret = GetChunkServerPtr(id, &info);
     assert(ret && info);
-    if (info->status() == kCsActive) {
+    if (info->status() == kCsActive || info->status() == kCsReadonly) {
         assert(heartbeat_list_.find(info->last_heartbeat()) != heartbeat_list_.end());
         heartbeat_list_[info->last_heartbeat()].erase(info);
         if (heartbeat_list_[info->last_heartbeat()].empty()) {
