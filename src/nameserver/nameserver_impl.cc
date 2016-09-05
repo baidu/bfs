@@ -1278,7 +1278,7 @@ static void CallMethodHelper(NameServerImpl* impl,
                              int64_t recv_time) {
     if (method->index() == 16) {
         int64_t delay = common::timer::get_micros() - recv_time;
-        if (delay > 10*1000*1000) {
+        if (delay > 500*1000*1000) {
             const BlockReportRequest* report = 
                 static_cast<const BlockReportRequest*>(request);
             LOG(WARNING, "BlockReport from %s, delay %ld ms",
