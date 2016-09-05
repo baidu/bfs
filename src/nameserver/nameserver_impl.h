@@ -136,6 +136,9 @@ private:
                     const ::google::protobuf::Message* request,
                     ::google::protobuf::Message* response,
                     ::google::protobuf::Closure* done);
+    bool CheckFileHasBlock(const FileInfo& file_info,
+                           const std::string& file_name,
+                           int64_t block_id);
 private:
     /// Global thread pool
     ThreadPool* read_thread_pool_;
