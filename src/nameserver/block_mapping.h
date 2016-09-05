@@ -105,6 +105,7 @@ private:
                            int64_t block_version);
     bool UpdateIncompleteBlock(NSBlock* nsblock,int32_t cs_id, int64_t block_size,
                                int64_t block_version);
+    void ListHelper(const std::set<int64_t>& src_set, std::set<int64_t>* dest_set);
 private:
     Mutex mu_;
     ThreadPool* thread_pool_;

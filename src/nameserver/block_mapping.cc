@@ -602,7 +602,7 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
         }
     }
     lo_recover_check_.erase(cs_id);
-    //recover blocks have dealed in DealWithDeadBlocks
+    //recover blocks have dealt in DealWithDeadBlocks
     hi_pri_recover_.erase(cs_id);
     lo_pri_recover_.erase(cs_id);
 }
@@ -730,43 +730,37 @@ void BlockMapping::ListCheckList(const CheckList& check_list, std::map<int32_t, 
     }
 }
 
-void BlockMapping::ListRecoverList(const RecoverSet& recover_set, std::set<int64_t>* result) {
-    //TODO deal with different cs
+void BlockMapping::ListHelper(const std::set<int64_t>& src_set, std::set<int64_t>* dest_set) {
     int half = FLAGS_web_recover_list_size / 2;
+    std::set<int64_t>::iterator it = src_set.begin();
     int count = 0;
-    for (RecoverSet::const_iterator recover_it = recover_set.begin();
-            recover_it != recover_set.end(); ++recover_it) {
-        std::set<int64_t> rset =recover_it->second;
-        std::set<int64_t>::iterator it = recover_it->second.begin();
-        for (; it != rset.end() && count != half; ++it) {
-            result->insert(*it);
+    for (; it != src_set.end() && count != half; ++it) {
+        dest_set->insert(*it);
+        ++count;
+    }
+    if (it != src_set.end()) {
+        for (std::set<int64_t>::reverse_iterator rit = src_set.rbegin();
+                rit != src_set.rend() && count != FLAGS_web_recover_list_size; ++rit) {
+            dest_set->insert(*rit);
             ++count;
         }
-        if (it != rset.end()) {
-            for (std::set<int64_t>::reverse_iterator rit = rset.rbegin();
-                    rit != rset.rend() && count != FLAGS_web_recover_list_size; ++rit) {
-                result->insert(*rit);
-                ++count;
-            }
+    }
+}
+
+void BlockMapping::ListRecoverList(const RecoverSet& recover_set, std::set<int64_t>* result) {
+    //TODO deal with different cs
+    for (RecoverSet::const_iterator recover_it = recover_set.begin();
+            recover_it != recover_set.end(); ++recover_it) {
+        const std::set<int64_t>& rset = recover_it->second;
+        ListHelper(rset, result);
+        if ((int32_t)result->size() >= FLAGS_web_recover_list_size) {
+            break;
         }
     }
 }
 
 void BlockMapping::ListLostList(const std::set<int64_t>& lost_set, std::set<int64_t>* result) {
-    int half = FLAGS_web_recover_list_size / 2;
-    std::set<int64_t>::iterator it = lost_set.begin();
-    int count = 0;
-    for (; it != lost_set.end() && count != half; ++it) {
-        result->insert(*it);
-        ++count;
-    }
-    if (it != lost_set.end()) {
-        for (std::set<int64_t>::reverse_iterator rit = lost_set.rbegin();
-                rit != lost_set.rend() && count != FLAGS_web_recover_list_size; ++rit) {
-            result->insert(*rit);
-            ++count;
-        }
-    }
+    ListHelper(lost_set, result);
 }
 
 void BlockMapping::ListRecover(RecoverBlockSet* recover_blocks) {
