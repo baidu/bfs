@@ -95,6 +95,18 @@ void NameSpace::EncodingStoreKey(int64_t entry_id,
     key_str->append(path);
 }
 
+void NameSpace::DecodingStoreKey(const std::string& key_str,
+                                 int64_t* entry_id,
+                                 std::string* path) {
+    assert(key_str.size() >= 8UL);
+    if (entry_id) {
+        *entry_id = common::util::DecodeBigEndian(key_str.c_str());
+    }
+    if (path) {
+        path->assign(key_str, 8, std::string::npos);
+    }
+}
+
 bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
     std::string value;
     leveldb::Status s = db_->Get(leveldb::ReadOptions(), key, &value);
@@ -535,14 +547,25 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
 bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
     int64_t block_num = 0;
     int64_t file_num = 0;
+    std::set<int64_t> entry_id_set;
+    entry_id_set.insert(root_path_.entry_id());
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
+        assert(ret);
         if (last_entry_id_ < file_info.entry_id()) {
             last_entry_id_ = file_info.entry_id();
         }
-        assert(ret);
+        int64_t parent_entry_id = 0;
+        std::string filename;
+        DecodingStoreKey(it->key().ToString(), &parent_entry_id, &filename);
+        if (entry_id_set.find(parent_entry_id) == entry_id_set.end()) {
+            LOG(WARNING, "Orphan file PE%ld E%ld %s",
+                parent_entry_id, file_info.entry_id(), filename.c_str());
+            //DeleteFileInfo(it->key(), NULL);
+            continue;
+        }
         if (!IsDir(file_info.type())) {
             //a file
             for (int i = 0; i < file_info.blocks_size(); i++) {
@@ -556,11 +579,14 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
             if (!callback.empty()) {
                 callback(file_info);
             }
+        } else {
+            entry_id_set.insert(file_info.entry_id());
         }
     }
     delete it;
-    LOG(INFO, "RebuildBlockMap done. %ld files, %ld blocks, last_entry_id= E%ld",
-        file_num, block_num, last_entry_id_);
+    LOG(INFO, "RebuildBlockMap done. %ld directories, %ld files, "
+              "%lu blocks, last_entry_id= E%ld",
+        entry_id_set.size(), file_num, block_num, last_entry_id_);
     return true;
 }
 

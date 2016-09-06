@@ -65,6 +65,9 @@ private:
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,
                           std::string* key_str);
+    static void DecodingStoreKey(const std::string& key_str,
+                                 int64_t* entry_id,
+                                 std::string* path);
     bool GetFromStore(const std::string& key, FileInfo* info);
     void SetupRoot();
     bool LookUp(const std::string& path, FileInfo* info);
