@@ -120,10 +120,11 @@ void ChunkServerImpl::LogStatus(bool routine) {
     counter_manager_->GatherCounters();
     CounterManager::Counters counters = counter_manager_->GetCounters();
 
-    LOG(INFO, "[Status] blocks %ld %ld buffers %ld pending %ld data %sB, "
+    LOG(INFO, "[Status] blocks %ld %ld writing bytes %ld buffers %ld pending %ld data %sB, "
               "find %ld read %ld write %ld %ld %.2f MB, rpc %ld %ld %ld, "
               "unfinished: %ld recovering %ld",
-        g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(), g_pending_writes.Get(),
+        g_writing_blocks.Get() ,g_blocks.Get(), g_writing_bytes.Get(),
+        g_block_buffers.Get(), g_pending_writes.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
         counters.find_ops, counters.read_ops,
         counters.write_ops, counters.refuse_ops,
@@ -361,10 +362,13 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         /// Flow control
-        if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
+        if ((g_block_buffers.Get() * FLAGS_write_buf_size >> 20) +
+                (g_writing_bytes.Get() >> 20) > FLAGS_chunkserver_max_pending_buffers) {
             response->set_status(kCsTooMuchPendingBuffer);
-            LOG(WARNING, "[WriteBlock] pending buf[%ld] req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
-                g_block_buffers.Get(), work_thread_pool_->PendingNum(),
+            LOG(WARNING, "[WriteBlock] pending buf[%ld] writing bytes[%ld],"
+                    "req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
+                g_block_buffers.Get() * FLAGS_write_buf_size,
+                g_writing_bytes.Get(), work_thread_pool_->PendingNum(),
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
             g_unfinished_bytes.Sub(databuf.size());
             done->Run();

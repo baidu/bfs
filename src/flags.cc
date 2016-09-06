@@ -54,7 +54,7 @@ DEFINE_int32(blockreport_size, 2000, "blockreport_size");
 DEFINE_int32(chunkserver_log_level, 4, "Chunkserver log level");
 DEFINE_string(chunkserver_warninglog, "./wflog", "Warning log file");
 DEFINE_int32(write_buf_size, 1024*1024, "Block write buffer size, bytes");
-DEFINE_int32(chunkserver_max_pending_buffers, 10240, "Max buffer num wait flush to disk");
+DEFINE_int32(chunkserver_max_pending_buffers, 10240, "Max buffer size(MB) wait flush to disk");
 DEFINE_int64(chunkserver_max_unfinished_bytes, 2147483648, "Max unfinished write bytes");
 DEFINE_int32(chunkserver_work_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_read_thread_num, 20, "Chunkserver work thread num");
