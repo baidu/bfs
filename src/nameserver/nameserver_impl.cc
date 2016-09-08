@@ -995,23 +995,27 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         ListRecover(&response);
         return true;
     } else if (path == "/dfs/hi_only") {
+        LOG(INFO, "ChangeRecoverMode hi_only");
         start_recover_ = 1;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/recover_all") {
+        LOG(INFO, "ChangeRecoverMode recover_all");
         start_recover_ = 2;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/stop_recover") {
+        LOG(INFO, "ChangeRecoverMode stop_recover");
         start_recover_ = 0;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/leave_safemode") {
+        LOG(INFO, "ChangeRecoverMode leave_safemode");
         LeaveSafemode();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/enter_safemode") {
-        LOG(INFO, "Nameserver enter safemode");
+        LOG(INFO, "ChangeRecoverMode enter_safemode");
         block_mapping_manager_->SetSafeMode(true);
         safe_mode_ = 1;
         response.content->Append("<body onload=\"history.back()\"></body>");
