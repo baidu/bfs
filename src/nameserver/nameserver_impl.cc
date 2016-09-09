@@ -209,7 +209,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id, block_size, block_version)) {
             blockreceived_timer.Check(50 * 1000, "UpdateBlockInfo");
             // update cs -> block
-            chunkserver_manager_->AddBlock(cs_id, block_id);
+            chunkserver_manager_->AddBlock(cs_id, block_id, block.is_recover());
             blockreceived_timer.Check(50 * 1000, "AddBlock");
         } else {
             LOG(INFO, "BlockReceived drop C%d #%ld V%ld %ld",
@@ -245,6 +245,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         return;
     }
     int64_t before_update = common::timer::get_micros();
+    std::set<int64_t> insert_blocks;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -259,12 +260,21 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
             continue;
+        } else {
+            insert_blocks.insert(cur_block_id);
         }
 
         // update cs -> block
     }
     int64_t before_add_block = common::timer::get_micros();
-    chunkserver_manager_->AddBlock(cs_id, blocks);
+    std::vector<int64_t> lost;
+    LOG(INFO, "LL: check C%d start %ld end %ld", cs_id, request->start(), request->end());
+    chunkserver_manager_->AddBlock(cs_id, insert_blocks, request->start(), request->end(), &lost);
+    if (lost.size() != 0)
+        LOG(INFO, "LL: lost size %u", lost.size());
+    for (uint32_t i = 0; i < lost.size(); ++i) {
+        block_mapping_manager_->DealWithDeadBlock(cs_id, lost[i]);
+    }
     int64_t after_add_block = common::timer::get_micros();
 
     // recover replica
@@ -460,7 +470,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             replicas.push_back(cs_id);
             // update cs -> block
             add_block_timer.Reset();
-            chunkserver_manager_->AddBlock(cs_id, new_block_id);
+            chunkserver_manager_->AddBlock(cs_id, new_block_id, false);
             add_block_timer.Check(50 * 1000, "AddBlock");
         }
         block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);

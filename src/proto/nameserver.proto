@@ -193,6 +193,7 @@ message ReportBlockInfo {
     optional int64 block_id = 1;
     optional int64 version = 2;
     optional int64 block_size = 3;
+    optional bool is_recover = 4;
 }
 message ReplicaInfo {
     optional int64 block_id = 1;
@@ -223,6 +224,8 @@ message BlockReportRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
     optional string chunkserver_addr = 3;
+    optional int64 start = 4;
+    optional int64 end = 5;
     repeated ReportBlockInfo blocks = 6;
 }
 message BlockReportResponse {

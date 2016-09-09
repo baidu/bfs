@@ -246,6 +246,7 @@ void ChunkServerImpl::SendBlockReport() {
     BlockReportRequest request;
     request.set_chunkserver_id(chunkserver_id_);
     request.set_chunkserver_addr(data_server_addr_);
+    request.set_start(last_report_blockid_ + 1);
 
     std::vector<BlockMeta> blocks;
     block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, params_.report_size());
@@ -264,6 +265,11 @@ void ChunkServerImpl::SendBlockReport() {
         if (blocks_num) {
             last_report_blockid_ = blocks[blocks_num - 1].block_id();
         }
+    }
+    if (blocks_num == 0) {
+        request.set_end(0);
+    } else {
+        request.set_end(blocks[blocks_num - 1].block_id());
     }
 
     BlockReportResponse response;
@@ -328,6 +334,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     info->set_block_id(block->Id());
     info->set_block_size(block->Size());
     info->set_version(block->GetVersion());
+    info->set_is_recover(block->IsRecover());
     BlockReceivedResponse response;
     if (!nameserver_->SendRequest(&NameServer_Stub::BlockReceived, &request, &response, 20)) {
         LOG(WARNING, "Reprot finish fail: #%ld ", block->Id());

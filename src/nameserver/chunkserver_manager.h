@@ -41,7 +41,7 @@ public:
     bool RemoveChunkServer(const std::string& address);
     std::string GetChunkServerAddr(int32_t id);
     int32_t GetChunkServerId(const std::string& address);
-    void AddBlock(int32_t id, int64_t block_id);
+    void AddBlock(int32_t id, int64_t block_id, bool is_recover);
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkServer(ChunkServerInfo* cs, const std::string& reason);
     void PickRecoverBlocks(int cs_id,
@@ -51,7 +51,8 @@ public:
                  int64_t* r_speed, int64_t* recover_speed);
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
     bool GetShutdownChunkServerStat();
-    void AddBlock(int32_t id, const::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks);
+    void AddBlock(int32_t id, const std::set<int64_t>& blocks,
+                  int64_t start, int64_t end, std::vector<int64_t>* lost);
     void SetParam(const Params& p);
 private:
     struct ChunkServerBlockMap {
@@ -73,7 +74,8 @@ private:
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains);
     void MarkChunkServerReadonly(const std::string& chunkserver_address);
-    bool GetChunkServerBlockMapPtr(int32_t cs_id, ChunkServerBlockMap** cs_block_map);
+    bool GetChunkServerBlockMapPtr(std::map<int32_t, ChunkServerBlockMap*>& src_map,
+                                   int32_t cs_id, ChunkServerBlockMap** cs_block_map);
 private:
     ThreadPool* thread_pool_;
     BlockMappingManager* block_mapping_manager_;
@@ -84,6 +86,7 @@ private:
     std::map<std::string, int32_t> address_map_;
     std::map<int32_t, std::set<ChunkServerInfo*> > heartbeat_list_;
     std::map<int32_t, ChunkServerBlockMap*> chunkserver_block_map_;
+    std::map<int32_t, ChunkServerBlockMap*> chunkserver_block_delta_;
     int32_t chunkserver_num_;
     int32_t next_chunkserver_id_;
 
