@@ -36,6 +36,7 @@ DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locali
 DEFINE_int32(blockmapping_bucket_num, 19, "Partation num of blockmapping");
 DEFINE_int32(blockmapping_working_thread_num, 5, "Working thread num of blockmapping");
 DEFINE_int32(block_id_allocation_size, 10000, "Block id allocatoin size");
+DEFINE_bool(check_orphan, false, "Check orphan entry in RebuildBlockMap");
 
 // ha
 DEFINE_string(ha_strategy, "master_slave", "[master_slave, raft, none]");

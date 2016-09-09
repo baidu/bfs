@@ -24,6 +24,7 @@ DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(block_id_allocation_size);
+DECLARE_bool(check_orphan);
 
 const int64_t kRootEntryid = 1;
 
@@ -577,35 +578,40 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
     LOG(INFO, "RebuildBlockMap done. %ld directories, %ld files, "
               "%lu blocks, last_entry_id= E%ld",
         entry_id_set.size(), file_num, block_num, last_entry_id_);
-    std::vector<std::pair<std::string, std::string> > orphan_entrys;
-    for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
-        FileInfo file_info;
-        bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
-        assert(ret);
-        int64_t parent_entry_id = 0;
-        std::string filename;
-        DecodingStoreKey(it->key().ToString(), &parent_entry_id, &filename);
-        if (entry_id_set.find(parent_entry_id) == entry_id_set.end()) {
-            LOG(WARNING, "Orphan entry PE%ld E%ld %s",
-                parent_entry_id, file_info.entry_id(), filename.c_str());
-            orphan_entrys.push_back(std::make_pair(it->key().ToString(), it->value().ToString()));
+    if (FLAGS_check_orphan) {
+        std::vector<std::pair<std::string, std::string> > orphan_entrys;
+        for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
+            FileInfo file_info;
+            bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
+            assert(ret);
+            int64_t parent_entry_id = 0;
+            std::string filename;
+            DecodingStoreKey(it->key().ToString(), &parent_entry_id, &filename);
+            if (entry_id_set.find(parent_entry_id) == entry_id_set.end()) {
+                LOG(WARNING, "Orphan entry PE%ld E%ld %s",
+                    parent_entry_id, file_info.entry_id(), filename.c_str());
+                orphan_entrys.push_back(std::make_pair(it->key().ToString(),
+                                                       it->value().ToString()));
+            }
         }
+        /*
+        if (orphan_entrys.size()) {
+            leveldb::WriteBatch batch;
+            for (uint32_t i = 0; i < orphan_entrys.size(); i++) {
+                std::string& key = orphan_entrys[i].first;
+                batch.Delete(key);
+                std::string new_key;
+                EncodingStoreKey(1141613612UL, key.substr(8), &new_key);
+                batch.Put(new_key, orphan_entrys[i].second);
+            }
+            leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
+            if (!s.ok()) {
+                return false;
+            }
+        }*/
+        LOG(INFO, "Check orphan done, %lu entries", orphan_entrys.size());
     }
     delete it;
-    if (orphan_entrys.size()) {
-        leveldb::WriteBatch batch;
-        for (uint32_t i = 0; i < orphan_entrys.size(); i++) {
-            std::string& key = orphan_entrys[i].first;
-            batch.Delete(key);
-            std::string new_key;
-            EncodingStoreKey(1141613612UL, key.substr(8), &new_key);
-            batch.Put(new_key, orphan_entrys[i].second);
-        }
-        leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
-        if (!s.ok()) {
-            return false;
-        }
-    }
     return true;
 }
 
