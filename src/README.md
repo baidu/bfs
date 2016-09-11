@@ -12,7 +12,5 @@ dfs的api和管理工具。
 # 辅助
 ## rpc
 rpc的简单包装
-## common
-锁与线程池等通用组件实现。
 ## proto
 protocol buffer 通信协议定义
