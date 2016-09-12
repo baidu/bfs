@@ -25,6 +25,7 @@ enum StatusCode {
     kNoEnoughSpace = 600;
     kCsTooMuchUnfinishedWrite = 700;
     kCsTooMuchPendingBuffer = 701;
+    kCsTooMuchSlidingWindow = 703;
     kGetChunkServerError = 702;
     kUpdateError = 800;
     kSyncMetaFailed = 801;

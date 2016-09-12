@@ -48,6 +48,7 @@ DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_int32(chunkserver_max_sliding_window_size);
 DECLARE_int64(chunkserver_max_unfinished_bytes);
 DECLARE_bool(chunkserver_auto_clean);
 
@@ -362,13 +363,18 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         /// Flow control
-        if ((g_block_buffers.Get() * FLAGS_write_buf_size >> 20) +
-                (g_writing_bytes.Get() >> 20) > FLAGS_chunkserver_max_pending_buffers) {
-            response->set_status(kCsTooMuchPendingBuffer);
-            LOG(WARNING, "[WriteBlock] pending buf[%ld] writing bytes[%ld],"
-                    "req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
-                g_block_buffers.Get() * FLAGS_write_buf_size,
-                g_writing_bytes.Get(), work_thread_pool_->PendingNum(),
+        if ((g_block_buffers.Get() * FLAGS_write_buf_size >> 20) > FLAGS_chunkserver_max_pending_buffers ||
+                (packet_seq == 0 &&
+                 (g_writing_bytes.Get() >> 20) > FLAGS_chunkserver_max_sliding_window_size)) {
+            if ((g_write_bytes.Get() >> 20) > FLAGS_chunkserver_max_sliding_window_size) {
+                response->set_status(kCsTooMuchSlidingWindow);
+            } else {
+                response->set_status(kCsTooMuchPendingBuffer);
+            }
+            LOG(WARNING, "[WriteBlock] pending buf %ld MB sliding window size %ld MB,"
+                    "req %ld reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu",
+                (g_block_buffers.Get() * FLAGS_write_buf_size) >> 20,
+                g_writing_bytes.Get() >> 20, work_thread_pool_->PendingNum(),
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
             g_unfinished_bytes.Sub(databuf.size());
             done->Run();
