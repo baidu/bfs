@@ -363,10 +363,11 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         /// Flow control
-        if ((g_block_buffers.Get() * FLAGS_write_buf_size >> 20) > FLAGS_chunkserver_max_pending_buffers ||
-                (packet_seq == 0 &&
-                 (g_writing_bytes.Get() >> 20) > FLAGS_chunkserver_max_sliding_window_size)) {
-            if ((g_write_bytes.Get() >> 20) > FLAGS_chunkserver_max_sliding_window_size) {
+        bool too_much_pending_buffer = (g_block_buffers.Get() * FLAGS_write_buf_size >> 20) >
+                                        FLAGS_chunkserver_max_pending_buffers;
+        bool too_much_sliding_window = (g_write_bytes.Get() >> 20) > FLAGS_chunkserver_max_sliding_window_size;
+        if (too_much_pending_buffer || too_much_sliding_window) {
+            if (too_much_sliding_window) {
                 response->set_status(kCsTooMuchSlidingWindow);
             } else {
                 response->set_status(kCsTooMuchPendingBuffer);
