@@ -374,8 +374,8 @@ void Block::DiskWrite() {
                     std::vector<std::pair<int32_t,Buffer> > frags;
                     recv_window_->GetFragments(&frags);
                     for (uint32_t i = 0; i < frags.size(); i++) {
-                        g_writing_bytes.Sub(frags[i].second.len_);
                         delete[] frags[i].second.data_;
+                        g_writing_bytes.Sub(frags[i].second.len_);
                     }
                     delete recv_window_;
                     recv_window_ = NULL;
