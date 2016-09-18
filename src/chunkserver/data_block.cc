@@ -420,6 +420,10 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
     return kOK;
 }
 
+int32_t Block::MaxPacketOffsetReceived() {
+    return recv_window_->GetMaxOffset();
+}
+
 } // namespace bfs
 } // namespace baidu
 
