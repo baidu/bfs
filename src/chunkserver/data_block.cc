@@ -367,8 +367,20 @@ void Block::DiskWrite() {
                 LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
                 assert(ret == 0);
                 g_writing_blocks.Dec();
+                file_desc_ = -1;
+                if (recv_window_ && recv_window_->Size()) {
+                    LOG(INFO, "#%ld recv_window fragments: %d\n",
+                            meta_.block_id(), recv_window_->Size());
+                    std::vector<std::pair<int32_t,Buffer> > frags;
+                    recv_window_->GetFragments(&frags);
+                    for (uint32_t i = 0; i < frags.size(); i++) {
+                        delete[] frags[i].second.data_;
+                        g_writing_bytes.Sub(frags[i].second.len_);
+                    }
+                    delete recv_window_;
+                    recv_window_ = NULL;
+                }
             }
-            file_desc_ = -1;
             close_cv_.Signal();
         }
     }
