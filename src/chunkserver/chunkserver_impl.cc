@@ -454,7 +454,11 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
                      "status= %s, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
             StatusCode_Name(next_response->status()).c_str(), error);
-        response->set_status(kWriteError);
+        if (failed) {
+            response->set_status(kNetworkUnavailable);
+        } else {
+            response->set_status(next_response->status());
+        }
         delete next_response;
         g_unfinished_bytes.Sub(databuf.size());
         done->Run();

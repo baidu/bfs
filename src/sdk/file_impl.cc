@@ -549,7 +549,8 @@ void FileImpl::WriteBlockCallback(const WriteBlockRequest* request,
                                      std::string cs_addr) {
     if (failed || response->status() != kOK) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
-                && response->status() != kCsTooMuchPendingBuffer) {
+                && response->status() != kCsTooMuchPendingBuffer
+                && response->status() != kCsTooMuchUnfinishedWrite) {
             if (retry_times < FLAGS_sdk_write_retry_times) {
                 LOG(INFO, "BackgroundWrite failed %s"
                     " #%ld seq:%d, offset:%ld, len:%d"
