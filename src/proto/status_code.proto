@@ -23,6 +23,7 @@ enum StatusCode {
     kWriteError = 501;
     kReadError = 502;
     kNoEnoughSpace = 600;
+    kNoEnoughMemory = 601;
     kCsTooMuchUnfinishedWrite = 700;
     kCsTooMuchPendingBuffer = 701;
     kCsTooMuchSlidingWindow = 703;

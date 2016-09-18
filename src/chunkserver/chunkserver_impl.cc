@@ -50,6 +50,7 @@ DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(chunkserver_max_sliding_window_size);
 DECLARE_int64(chunkserver_max_unfinished_bytes);
+DECLARE_int32(chunkserver_max_writing_blocks);
 DECLARE_bool(chunkserver_auto_clean);
 
 namespace baidu {
@@ -811,6 +812,7 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
 }
 
 StatusCode ChunkServerImpl::CheckMemoryStat(int64_t block_id, int32_t packet_seq) {
+    /*
     bool too_much_sliding_window = (g_write_bytes.Get() >> 20) > FLAGS_chunkserver_max_sliding_window_size;
     bool too_much_pending_buffer= (g_block_buffers.Get() * FLAGS_write_buf_size >> 20) >
                                                       FLAGS_chunkserver_max_pending_buffers;
@@ -828,6 +830,16 @@ StatusCode ChunkServerImpl::CheckMemoryStat(int64_t block_id, int32_t packet_seq
         }
         return kOK;
     }
+    */
+    bool too_much_pending_buffer= (g_block_buffers.Get() * FLAGS_write_buf_size >> 20) >
+                                                      FLAGS_chunkserver_max_pending_buffers;
+    int32_t writing_blocks = g_writing_blocks.Get();
+    if (too_much_pending_buffer) {
+        return kCsTooMuchPendingBuffer;
+    } else if (writing_blocks > FLAGS_chunkserver_max_writing_blocks) {
+        return kCsTooMuchSlidingWindow;
+    }
+    return kOK;
 }
 
 bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
