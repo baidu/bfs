@@ -594,21 +594,6 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
                                                        it->value().ToString()));
             }
         }
-        /*
-        if (orphan_entrys.size()) {
-            leveldb::WriteBatch batch;
-            for (uint32_t i = 0; i < orphan_entrys.size(); i++) {
-                std::string& key = orphan_entrys[i].first;
-                batch.Delete(key);
-                std::string new_key;
-                EncodingStoreKey(1141613612UL, key.substr(8), &new_key);
-                batch.Put(new_key, orphan_entrys[i].second);
-            }
-            leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
-            if (!s.ok()) {
-                return false;
-            }
-        }*/
         LOG(INFO, "Check orphan done, %lu entries", orphan_entrys.size());
     }
     delete it;

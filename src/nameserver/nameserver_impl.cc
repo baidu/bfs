@@ -32,6 +32,7 @@ DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
+DECLARE_int32(nameserver_read_thread_num);
 DECLARE_int32(nameserver_heartbeat_thread_num);
 DECLARE_int32(blockmapping_bucket_num);
 DECLARE_int32(recover_timeout);
@@ -54,7 +55,7 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     recover_mode_(kRecoverAll), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
-    read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
+    read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_read_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     heartbeat_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_heartbeat_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
@@ -82,11 +83,11 @@ void NameServerImpl::CheckLeader() {
         }
         safe_mode_ = FLAGS_nameserver_safemode_time;
         start_time_ = common::timer::get_micros();
-        read_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
         is_leader_ = true;
     } else {
         is_leader_ = false;
-        read_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
+        work_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
         //LOG(INFO, "Delay CheckLeader");
     }
 }
@@ -104,7 +105,7 @@ void NameServerImpl::CheckSafemode() {
         return;
     }
     common::atomic_comp_swap(&safe_mode_, new_safe_mode, safe_mode);
-    read_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
 }
 void NameServerImpl::LeaveSafemode() {
     LOG(INFO, "Nameserver leave safemode");
@@ -121,7 +122,7 @@ void NameServerImpl::LogStatus() {
         g_report_blocks.Clear(), g_heart_beat.Clear(),
         read_thread_pool_->PendingNum(),
         work_thread_pool_->PendingNum(), report_thread_pool_->PendingNum());
-    read_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
+    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
 }
 
 void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
@@ -367,7 +368,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
 bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (bool)> callback) {
     if (sync_ == NULL) {
         if (!callback.empty()) {
-            read_thread_pool_->AddTask(boost::bind(callback, true));
+            work_thread_pool_->AddTask(boost::bind(callback, true));
         }
         return true;
     }
@@ -393,9 +394,7 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
         controller->SetFailed("SyncLogFail");
     } else if (removed) {
         for (uint32_t i = 0; i < removed->size(); i++) {
-            work_thread_pool_->AddTask(
-                boost::bind(&BlockMappingManager::RemoveBlocksForFile,
-                            block_mapping_manager_, (*removed)[i]));
+            block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
         }
         delete removed;
     }
@@ -1309,15 +1308,15 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     // the sequence of following list must correspond to the sequence of rpc in
     // 'service NameServer { ... }' at nameserver.proto file
     static std::pair<std::string, ThreadPool*> ThreadPoolOfMethod[] = {
-        std::make_pair("CreateFile", read_thread_pool_),
+        std::make_pair("CreateFile", work_thread_pool_),
         std::make_pair("AddBlock", work_thread_pool_),
         std::make_pair("GetFileLocation", read_thread_pool_),
         std::make_pair("ListDirectory", read_thread_pool_),
         std::make_pair("Stat", read_thread_pool_),
-        std::make_pair("Rename", read_thread_pool_),
+        std::make_pair("Rename", work_thread_pool_),
         std::make_pair("SyncBlock", work_thread_pool_),
         std::make_pair("FinishBlock", work_thread_pool_),
-        std::make_pair("Unlink", read_thread_pool_),
+        std::make_pair("Unlink", work_thread_pool_),
         std::make_pair("DeleteDirectory", work_thread_pool_),
         std::make_pair("ChangeReplicaNum", work_thread_pool_),
         std::make_pair("ShutdownChunkServer", work_thread_pool_),
