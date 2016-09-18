@@ -837,6 +837,7 @@ StatusCode ChunkServerImpl::CheckMemoryStat(int64_t block_id, int32_t packet_seq
     if (too_much_pending_buffer) {
         return kCsTooMuchPendingBuffer;
     } else if (writing_blocks > FLAGS_chunkserver_max_writing_blocks) {
+        LOG(WARNING, "Cs too much sliding window");
         return kCsTooMuchSlidingWindow;
     }
     return kOK;

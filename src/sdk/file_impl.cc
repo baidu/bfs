@@ -385,7 +385,9 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
         common::atomic_inc(&back_writing_);
     }
     if ((g_writing_buffer_size.Get() >> 20) > FLAGS_sdk_max_writing_buffer_size) {
-        usleep(1000);
+        LOG(WARNING, "SDK too much memory(%ld), sleep 10ms", g_writing_buffer_size.Get());
+        /* usleep(10000); */
+        sleep(1);
     }
     if (open_flags_ & O_WRONLY) {
         // Add block

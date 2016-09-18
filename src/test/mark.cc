@@ -46,7 +46,7 @@ public:
     uint32_t Uniform(int n) { return Next() % n; }
 };
 
-Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10), exit_(false) {
+Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size), exit_(false) {
     if (!FS::OpenFileSystem(FLAGS_nameserver_nodes.c_str(), &fs_, FSOptions())) {
         std::cerr << "Open filesytem failed " << FLAGS_nameserver_nodes << std::endl;
         exit(EXIT_FAILURE);
@@ -211,9 +211,15 @@ void Mark::PutWrapper(int thread_id) {
     int name_id = 0;
     int64_t count = 0;
     std::string base;
-    RandomString(&base, 1<<20, thread_id);
+    RandomString(&base, 1<<10, thread_id);
+    char host_name[256];
+    gethostname(host_name, 200);
+    int32_t now_time = common::timer::now_time();
+    std::string pod_name = std::string(host_name, strlen(host_name)) +
+                                common::NumToString(now_time);
     while (FLAGS_count == 0 || count != FLAGS_count) {
-        std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" + common::NumToString(name_id);
+        std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" +
+            pod_name + "/" + common::NumToString(name_id);
         Put(filename, base, thread_id);
         ++name_id;
         ++count;
