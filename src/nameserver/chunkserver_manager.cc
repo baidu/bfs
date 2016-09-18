@@ -532,6 +532,9 @@ void ChunkServerManager::AddBlock(int32_t id, int64_t block_id, bool is_recover)
         LOG(WARNING, "Can't find chunkserver C%d in chunkserver_block_map_", id);
         return;
     }
+    if (is_recover && id == 1) {
+        //sleep(1);
+    }
     MutexLock lock(cs_block_map->mu);
     cs_block_map->blocks.insert(block_id);
 }
@@ -558,7 +561,8 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
         return;
     }
     MutexLock lock(cs_block_map->mu);
-    cs_block_map->blocks.erase(block_id);
+    size_t c = cs_block_map->blocks.erase(block_id);
+    LOG(INFO, "LL: remove C%d #%ld c %u", id, block_id, c);
 }
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
@@ -698,55 +702,68 @@ void ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks,
                                   int64_t start, int64_t end, std::vector<int64_t>* lost) {
     ChunkServerBlockMap* cs_block_map = NULL;
     if (!GetChunkServerBlockMapPtr(chunkserver_block_map_, id, &cs_block_map)) {
-        LOG(WARNING, "LL: Can't find chunkserver C%d", id);
+        if (id == 1)
+            LOG(WARNING, "LL: Can't find chunkserver C%d", id);
         return;
     }
     MutexLock lock(cs_block_map->mu);
-    std::set<int64_t>* cs_blocks = &cs_block_map->blocks;
+    std::set<int64_t>* ns_blocks = &cs_block_map->blocks;
     bool pass_check = true;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         pass_check &= cs_block_map->blocks.insert(*it).second;
     }
     if (pass_check) {
-        LOG(DEBUG, "LL: C%d pass block check", id);
+        if (id == 1)
+            LOG(DEBUG, "LL: C%d pass block check", id);
         return;
     }
 
-    std::set<int64_t>::iterator ns_it = cs_blocks->lower_bound(start);
+    std::set<int64_t>::iterator ns_it = ns_blocks->lower_bound(start);
     std::set<int64_t>::iterator cs_it = blocks.begin();
     int count = 0;
-    for (; ns_it != cs_blocks->end() && *ns_it <= end;) {
+    // cs_blocks is a subset of ns_blocks, cause all cs_blocks have been inserted into ns_blocks
+    while (cs_it != blocks.end() && ns_it != ns_blocks->end() && *ns_it <= end) {
         ++count;
-        while (cs_it != blocks.end() && *cs_it > *ns_it) {
-            LOG(WARNING, "LL: Check Block for C%d missing %ld ", id, *ns_it);
+        while (ns_it != ns_blocks->end() && *cs_it > *ns_it) {
+            if (id == 1)
+                LOG(WARNING, "LL: Check Block for C%d missing %ld ", id, *ns_it);
             lost->push_back(*ns_it);
             ++ns_it;
         }
-        if (cs_it == blocks.end()) {
-            LOG(INFO, "LL: check C%d break", id);
+        if (ns_it == ns_blocks->end()) {
+            if (id == 1)
+                LOG(INFO, "LL: check C%d break", id);
             break;
         }
         if (*cs_it != *ns_it) {
-            LOG(WARNING, "LL: Check failed for C%d, mismatch ns = %ld cs = %ld", id, *ns_it, *cs_it);
+            if (id == 1)
+                LOG(WARNING, "LL: Check failed for C%d, mismatch ns = %ld cs = %ld", id, *ns_it, *cs_it);
             return;
         }
         ++ns_it;
         ++cs_it;
     }
-    LOG(INFO, "LL: Check %d blocks", count);
-    while (ns_it != cs_blocks->end() && *ns_it <= end) {
+    if (id == 1)
+        LOG(INFO, "LL: Check %d blocks", count);
+    while (*ns_it <= end && ns_it != ns_blocks->end()) {
         lost->push_back(*ns_it);
         ++ns_it;
     }
     ChunkServerBlockMap* delta_block_map = NULL;
     if (!GetChunkServerBlockMapPtr(chunkserver_block_delta_, id, &delta_block_map)) {
-        LOG(WARNING, "LL: Can't find chunkserver C%d", id);
+        if (id == 1)
+            LOG(WARNING, "LL: Can't find chunkserver C%d", id);
         return;
     }
-    MutexLock l(delta_block_map->mu);
-    std::set<int64_t>* delta_blocks = &delta_block_map->blocks;
-    for (std::set<int64_t>::iterator it = delta_blocks->begin(); it != delta_blocks->end(); ++it) {
-        cs_blocks->insert(*it);
+    delta_block_map->mu->Lock();
+    std::set<int64_t> delta_blocks;
+    std::swap(delta_blocks, delta_block_map->blocks);
+    delta_block_map->mu->Unlock();
+    for (std::set<int64_t>::iterator it = delta_blocks.begin(); it != delta_blocks.end(); ++it) {
+        if (id == 1) {
+            LOG(INFO, "LL: C%d merge delta %ld ", id, *it);
+        }
+        ns_blocks->insert(*it);
     }
 }
 

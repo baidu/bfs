@@ -24,7 +24,6 @@ public:
     void ReadWrapper(int thread_id);
     void PrintStat();
     void Run();
-    void Once();
 private:
     void RandomString(std::string* out, int size, int rand_index);
 private:

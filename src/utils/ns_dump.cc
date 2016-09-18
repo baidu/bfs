@@ -39,9 +39,8 @@ void ScanNamespace(const std::string db_path) {
             std::cerr << "Parse failed " << entry_id << "-" << key.substr(8) << std::endl;
             return;
         }
-        std::cout << entry_id << " - " << key.substr(8) << "\n"
-                  << info.DebugString() << std::endl;
-        std::cout << std::endl;
+        std::cout << entry_id << "-" << key.substr(8) << " "
+                  << info.entry_id() << " " << info.name() << std::endl;
     }
 }
 

@@ -119,6 +119,7 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
     common::timer::TimeChecker insert_time;
     std::pair<NSBlockMap::iterator, bool> ret =
         block_map_.insert(std::make_pair(block_id, nsblock));
+    LOG(INFO, "LL: insert #%ld ", block_id);
     assert(ret.second == true);
     insert_time.Check(10 * 1000, "[AddNewBlock] InsertToBlockMapping");
 }
@@ -466,6 +467,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
         LOG(DEBUG, "UpdateBlockInfo C%d #%ld has been removed", server_id, block_id);
         return false;
     }
+    LOG(DEBUG, "UpdateBlockInfo C%d #%ld", server_id, block_id);
     update_block_timer.Check(10 * 1000, "[UpdateBlockInfo] GetBlockPtr");
     bool ret = true;;
     switch (block->recover_stat) {
@@ -529,7 +531,8 @@ void BlockMapping::RemoveBlock(int64_t block_id) {
         lo_pri_recover_.erase(block_id);
     }
     delete block;
-    block_map_.erase(block_id);
+    size_t c = block_map_.erase(block_id);
+    LOG(INFO, "LL: remove #%ld c = %u", block_id, c);
     g_blocks_num.Dec();
 }
 
