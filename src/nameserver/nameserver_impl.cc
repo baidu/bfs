@@ -51,7 +51,7 @@ common::Counter g_report_blocks;
 extern common::Counter g_blocks_num;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time),
-    start_recover_(2), sync_(sync) {
+    recover_mode_(kRecoverAll), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
@@ -272,11 +272,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     int64_t after_add_block = common::timer::get_micros();
 
     // recover replica
-    if (!safe_mode_ && start_recover_) {
+    if (!safe_mode_ && recover_mode_ != kStopRecover) {
         std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
-                                                &hi_num, start_recover_ < 2);
+                                                &hi_num, recover_mode_ == kHiOnly);
         int32_t priority = 0;
         for (std::vector<std::pair<int64_t, std::vector<std::string> > >::iterator it =
                 recover_blocks.begin(); it != recover_blocks.end(); ++it) {
@@ -996,17 +996,17 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         return true;
     } else if (path == "/dfs/hi_only") {
         LOG(INFO, "ChangeRecoverMode hi_only");
-        start_recover_ = 1;
+        recover_mode_ = kHiOnly;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/recover_all") {
         LOG(INFO, "ChangeRecoverMode recover_all");
-        start_recover_ = 2;
+        recover_mode_ = kRecoverAll;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/stop_recover") {
         LOG(INFO, "ChangeRecoverMode stop_recover");
-        start_recover_ = 0;
+        recover_mode_ = kStopRecover;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/leave_safemode") {
@@ -1209,10 +1209,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     } else {
         str += " <a href=\"/dfs/enter_safemode\">SafeMode</a>";
     }
-    if (start_recover_ == 2) {
+    if (recover_mode_ == kRecoverAll) {
         str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
         str += "   <a href=\"/dfs/hi_only\">HighOnly</a>";
-    } else if (start_recover_ == 1) {
+    } else if (recover_mode_ == kHiOnly) {
         str += "   <a href=\"/dfs/recover_all\">RecoverAll</a>";
         str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
     } else {

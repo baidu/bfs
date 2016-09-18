@@ -26,6 +26,12 @@ class ChunkServerManager;
 class BlockMappingManager;
 class Sync;
 
+enum RecoverMode {
+    kStopRecover = 0,
+    kHiOnly = 1,
+    kRecoverAll = 2,
+};
+
 class NameServerImpl : public NameServer {
 public:
     NameServerImpl(Sync* sync);
@@ -151,7 +157,7 @@ private:
     BlockMappingManager* block_mapping_manager_;
     /// Safemode
     volatile int safe_mode_;
-    volatile int start_recover_;
+    RecoverMode recover_mode_;
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;
