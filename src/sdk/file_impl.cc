@@ -325,7 +325,7 @@ int32_t FileImpl::AddBlock() {
     for (int i = 0; i < cs_size; i++) {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);
-        write_windows_[addr] = new common::SlidingWindow<int>(4,
+        write_windows_[addr] = new common::SlidingWindow<int>(10,
                                boost::bind(&FileImpl::OnWriteCommit, this, _1, _2));
         cs_errors_[addr] = false;
         WriteBlockRequest create_request;
@@ -411,10 +411,10 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
     while (w < len) {
         MutexLock lock(&mu_, "WriteInternal", 1000);
         if (write_buf_ == NULL) {
-            write_buf_ = new WriteBuffer(++last_seq_, 256*1024,
+            write_buf_ = new WriteBuffer(++last_seq_, 128 * 1024,
                                          block_for_write_->block_id(),
                                          block_for_write_->block_size());
-            g_writing_buffer_size.Add(256 * 1024);
+            g_writing_buffer_size.Add(128 * 1024);
         }
         if ( (len - w) < write_buf_->Available()) {
             write_buf_->Append(buf+w, len-w);
@@ -526,6 +526,12 @@ void FileImpl::BackgroundWrite() {
         }
         mu_.Lock("BackgroundWriteRelock", 1000);
     }
+    /*
+    if (!write_queue_.empty()) {
+        thread_pool_->AddTask();
+        return;
+    }
+    */
     common::atomic_dec(&back_writing_);    // for AddTask
     if (back_writing_ == 0) {
         sync_signal_.Broadcast();
