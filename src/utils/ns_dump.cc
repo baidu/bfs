@@ -4,6 +4,7 @@
 //
 
 #include <leveldb/db.h>
+#include <common/util.h>
 #include <iostream>
 #include <string>
 
@@ -11,14 +12,6 @@
 
 namespace baidu {
 namespace bfs {
-
-uint64_t DecodeBigEndian(const char* buf) {
-    uint64_t r = 0;
-    for (int i = 0 ;i < 8; ++i) {
-        r += buf[i] << ((7 - i) * 8);
-    }
-    return r;
-}
 
 void ScanNamespace(const std::string db_path) {
     leveldb::DB* db;
@@ -32,7 +25,7 @@ void ScanNamespace(const std::string db_path) {
     leveldb::Iterator* it = db->NewIterator(leveldb::ReadOptions());
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         std::string key = it->key().ToString();
-        uint64_t entry_id = DecodeBigEndian(key.c_str());
+        uint64_t entry_id = common::util::DecodeBigEndian(key.c_str());
         FileInfo info;
         bool ret = info.ParseFromArray(it->value().data(), it->value().size());
         if (!ret) {

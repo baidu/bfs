@@ -13,6 +13,8 @@ DEFINE_int32(web_recover_list_size, 10, "Max recover list size displayed in webs
 DEFINE_string(bfs_log, "", "BFS log");
 DEFINE_int32(bfs_log_size, 1024, "BFS log size");
 DEFINE_int32(bfs_log_limit, 102400, "BFS log total size limit");
+DEFINE_int32(block_report_timeout, 600, "BlockReport rpc timeout");
+
 // nameserver
 DEFINE_string(namedb_path, "./db", "Namespace database");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
@@ -27,6 +29,7 @@ DEFINE_int32(recover_timeout, 180, "Recover timeout for one chunkserver");
 DEFINE_bool(clean_redundancy, false, "Clean redundant replica");
 DEFINE_int32(nameserver_report_thread_num, 20, "Threads to handle block report");
 DEFINE_int32(nameserver_work_thread_num, 20, "Work threads num");
+DEFINE_int32(nameserver_read_thread_num, 5, "Read threads num");
 DEFINE_int32(nameserver_heartbeat_thread_num, 5, "Heartbeat handle threads num");
 DEFINE_bool(select_chunkserver_by_zone, false, "Select chunkserver by zone");
 DEFINE_bool(select_chunkserver_by_tag, true, "Only choose one of each tag");
@@ -34,6 +37,7 @@ DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locali
 DEFINE_int32(blockmapping_bucket_num, 19, "Partation num of blockmapping");
 DEFINE_int32(blockmapping_working_thread_num, 5, "Working thread num of blockmapping");
 DEFINE_int32(block_id_allocation_size, 10000, "Block id allocatoin size");
+DEFINE_bool(check_orphan, false, "Check orphan entry in RebuildBlockMap");
 
 // ha
 DEFINE_string(ha_strategy, "master_slave", "[master_slave, raft, none]");
@@ -69,5 +73,7 @@ DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
 DEFINE_string(sdk_write_mode, "chains", "Sdk write mode: chains/fan-out");
 DEFINE_int32(sdk_createblock_retry, 5, "Create block retry times before fail");
+DEFINE_int32(sdk_write_retry_times, 5, "Write retry times before fail");
+
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
