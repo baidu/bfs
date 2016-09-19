@@ -394,7 +394,7 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
         controller->SetFailed("SyncLogFail");
     } else if (removed) {
         for (uint32_t i = 0; i < removed->size(); i++) {
-            block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
+            block_mapping_manager_->RemoveBlocksForFile((*removed)[i], NULL);
         }
         delete removed;
     }
@@ -431,7 +431,15 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     }
 
     if (file_info.blocks_size() > 0) {
-        block_mapping_manager_->RemoveBlocksForFile(file_info);
+        std::map<int64_t, std::set<int32_t> > block_cs;
+        block_mapping_manager_->RemoveBlocksForFile(file_info, &block_cs);
+        for (std::map<int64_t, std::set<int32_t> >::iterator it = block_cs.begin();
+                it != block_cs.end(); ++it) {
+            const std::set<int32_t>& cs = it->second;
+            for (std::set<int32_t>::iterator cs_it = cs.begin(); cs_it != cs.end(); ++cs_it) {
+                chunkserver_manager_->RemoveBlock(*cs_it, it->first);
+            }
+        }
         file_info.clear_blocks();
     }
     /// replica num
@@ -1289,7 +1297,7 @@ static void CallMethodHelper(NameServerImpl* impl,
     if (method->index() == 16) {
         int64_t delay = common::timer::get_micros() - recv_time;
         if (delay > FLAGS_block_report_timeout *1000L * 1000L) {
-            const BlockReportRequest* report = 
+            const BlockReportRequest* report =
                 static_cast<const BlockReportRequest*>(request);
             LOG(WARNING, "BlockReport from %s, delay %ld ms",
                 report->chunkserver_addr().c_str(), delay / 1000);
