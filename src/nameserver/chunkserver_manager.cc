@@ -161,7 +161,6 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
         cs_id = AddChunkServer(request->chunkserver_addr(), ip,
                                request->tag(), request->disk_quota());
         assert(cs_id >= 0);
-        response->set_chunkserver_id(cs_id);
     } else {
         cs_id = it->second;
         ChunkServerInfo* cs_info;
@@ -173,8 +172,11 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
                 cs_id, address.c_str(), chunkserver_num_);
         } else {
             UpdateChunkServer(cs_id, request->tag(), request->disk_quota());
-            LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d",
-                cs_id, address.c_str(), chunkserver_num_);
+            std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(cs_id);
+            assert(it != chunkserver_block_map_.end());
+            response->set_report_id(it->second->report_id);
+            LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d, report_id=%ld",
+                cs_id, address.c_str(), chunkserver_num_, it->second->report_id);
         }
     }
     response->set_chunkserver_id(cs_id);
@@ -536,9 +538,6 @@ void ChunkServerManager::AddBlock(int32_t id, int64_t block_id, bool is_recover)
         LOG(WARNING, "Can't find chunkserver C%d in chunkserver_block_map_", id);
         return;
     }
-    if (is_recover && id == 1) {
-        //sleep(1);
-    }
     MutexLock lock(cs_block_map->mu);
     cs_block_map->blocks.insert(block_id);
 }
@@ -708,13 +707,13 @@ bool ChunkServerManager::GetChunkServerBlockMapPtr(std::map<int32_t, ChunkServer
     return true;
 }
 
-void ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks,
-                                  int64_t start, int64_t end, std::vector<int64_t>* lost) {
+int64_t ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks,
+                                  int64_t start, int64_t end, std::vector<int64_t>* lost,
+                                  int64_t report_id) {
     ChunkServerBlockMap* cs_block_map = NULL;
     if (!GetChunkServerBlockMapPtr(chunkserver_block_map_, id, &cs_block_map)) {
-        if (id == 1)
-            LOG(WARNING, "LL: Can't find chunkserver C%d", id);
-        return;
+        LOG(WARNING, "LL: Can't find chunkserver C%d", id);
+        return report_id;
     }
     MutexLock lock(cs_block_map->mu);
     std::set<int64_t>* ns_blocks = &cs_block_map->blocks;
@@ -723,10 +722,15 @@ void ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks,
         pass_check &= cs_block_map->blocks.insert(*it).second;
     }
     if (pass_check) {
-        if (id == 1)
-            LOG(DEBUG, "LL: C%d pass block check", id);
-        return;
+        LOG(DEBUG, "LL: C%d pass block check", id);
+        return report_id;
     }
+    if (report_id != -1 && report_id <= cs_block_map->report_id) {
+        LOG(INFO, "LL: Report out-date C%d current_id %ld report_id %ld",
+                id, cs_block_map->report_id, report_id);
+        return cs_block_map->report_id;
+    }
+    cs_block_map->report_id = report_id;
 
     std::set<int64_t>::iterator ns_it = ns_blocks->lower_bound(start);
     std::set<int64_t>::iterator cs_it = blocks.begin();
@@ -735,46 +739,40 @@ void ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks,
     while (cs_it != blocks.end() && ns_it != ns_blocks->end() && *ns_it <= end) {
         ++count;
         while (ns_it != ns_blocks->end() && *cs_it > *ns_it) {
-            if (id == 1)
-                LOG(WARNING, "LL: Check Block for C%d missing %ld ", id, *ns_it);
+            LOG(WARNING, "LL: Check Block for C%d missing %ld ", id, *ns_it);
             lost->push_back(*ns_it);
             ++ns_it;
         }
         if (ns_it == ns_blocks->end()) {
-            if (id == 1)
-                LOG(INFO, "LL: check C%d break", id);
+            LOG(INFO, "LL: check C%d break", id);
             break;
         }
         if (*cs_it != *ns_it) {
-            if (id == 1)
-                LOG(WARNING, "LL: Check failed for C%d, mismatch ns = %ld cs = %ld", id, *ns_it, *cs_it);
-            return;
+            LOG(WARNING, "LL: Check failed for C%d, mismatch ns = %ld cs = %ld", id, *ns_it, *cs_it);
+            return report_id;
         }
         ++ns_it;
         ++cs_it;
     }
-    if (id == 1)
-        LOG(INFO, "LL: Check %d blocks", count);
+    LOG(INFO, "LL: Check %d blocks", count);
     while (*ns_it <= end && ns_it != ns_blocks->end()) {
         lost->push_back(*ns_it);
         ++ns_it;
     }
     ChunkServerBlockMap* delta_block_map = NULL;
     if (!GetChunkServerBlockMapPtr(chunkserver_block_delta_, id, &delta_block_map)) {
-        if (id == 1)
-            LOG(WARNING, "LL: Can't find chunkserver C%d", id);
-        return;
+        LOG(WARNING, "LL: Can't find chunkserver C%d", id);
+        return report_id;
     }
     delta_block_map->mu->Lock();
     std::set<int64_t> delta_blocks;
     std::swap(delta_blocks, delta_block_map->blocks);
     delta_block_map->mu->Unlock();
     for (std::set<int64_t>::iterator it = delta_blocks.begin(); it != delta_blocks.end(); ++it) {
-        if (id == 1) {
-            LOG(INFO, "LL: C%d merge delta %ld ", id, *it);
-        }
+        LOG(INFO, "LL: C%d merge delta %ld ", id, *it);
         ns_blocks->insert(*it);
     }
+    return report_id;
 }
 
 } // namespace bfs

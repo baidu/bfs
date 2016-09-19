@@ -9,6 +9,8 @@
 #include <set>
 #include <map>
 #include <sstream>
+#include <stdlib.h>
+#include <time.h>
 
 #include <boost/bind.hpp>
 #include <boost/lexical_cast.hpp>
@@ -53,6 +55,7 @@ extern common::Counter g_blocks_num;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time),
     recover_mode_(kRecoverAll), sync_(sync) {
+    srand(time(NULL));
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_read_thread_num);
@@ -167,7 +170,7 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
             address.c_str(), version, namespace_->Version());
         chunkserver_manager_->RemoveChunkServer(address);
     } else {
-        LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
+        LOG(INFO, "LL: Register from %s, version= %ld", address.c_str(), version);
         chunkserver_manager_->HandleRegister(cs_ip, request, response);
     }
     response->set_namespace_version(namespace_->Version());
@@ -234,10 +237,13 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    //sleep(rand() % 5);
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
-    LOG(INFO, "Report from C%d %s %d blocks\n",
-        cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
+    int64_t report_id = request->report_id();
+    LOG(INFO, "LL: Report from C%d (%lu) %s %d blocks id %ld\n",
+        cs_id, request->sequence_id(), request->chunkserver_addr().c_str(),
+        request->blocks_size(), report_id);
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
     int64_t start_report = common::timer::get_micros();
@@ -274,13 +280,15 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     int64_t before_add_block = common::timer::get_micros();
     std::vector<int64_t> lost;
     LOG(INFO, "LL: check C%d start %ld end %ld", cs_id, request->start(), request->end());
-    chunkserver_manager_->AddBlock(cs_id, insert_blocks, request->start(), request->end(), &lost);
+    chunkserver_manager_->AddBlock(cs_id, insert_blocks, request->start(),
+                                   request->end(), &lost, report_id);
     if (lost.size() != 0)
         LOG(INFO, "LL: lost size %u", lost.size());
     for (uint32_t i = 0; i < lost.size(); ++i) {
         block_mapping_manager_->DealWithDeadBlock(cs_id, lost[i]);
     }
     int64_t after_add_block = common::timer::get_micros();
+    response->set_report_id(report_id);
 
     // recover replica
     if (!safe_mode_ && recover_mode_ != kStopRecover) {

@@ -215,6 +215,7 @@ void Mark::PutWrapper(int thread_id) {
     while (FLAGS_count == 0 || count != FLAGS_count) {
         std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" + common::NumToString(name_id);
         Put(filename, base, thread_id);
+        usleep(500);
         ++name_id;
         ++count;
     }
