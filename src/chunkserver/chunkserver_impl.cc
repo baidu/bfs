@@ -182,6 +182,7 @@ void ChunkServerImpl::Register() {
     }
     assert (response.chunkserver_id() != -1);
     chunkserver_id_ = response.chunkserver_id();
+    report_id_ = response.report_id();
     LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d report_size = %d",
         block_manager_->NameSpaceVersion(), chunkserver_id_,
         params_.report_interval(), params_.report_size());
@@ -248,6 +249,7 @@ void ChunkServerImpl::SendBlockReport() {
     request.set_chunkserver_id(chunkserver_id_);
     request.set_chunkserver_addr(data_server_addr_);
     request.set_start(last_report_blockid_ + 1);
+    request.set_report_id(report_id_);
 
     std::vector<BlockMeta> blocks;
     block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, params_.report_size());
