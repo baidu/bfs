@@ -431,15 +431,14 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     }
 
     if (file_info.blocks_size() > 0) {
-        std::map<int64_t, std::set<int32_t>* > block_cs;
+        std::map<int64_t, std::set<int32_t> > block_cs;
         block_mapping_manager_->RemoveBlocksForFile(file_info, &block_cs);
-        for (std::map<int64_t, std::set<int32_t>* >::iterator it = block_cs.begin();
+        for (std::map<int64_t, std::set<int32_t> >::iterator it = block_cs.begin();
                 it != block_cs.end(); ++it) {
-            std::set<int32_t>* cs = it->second;
-            for (std::set<int32_t>::iterator cs_it = cs->begin(); cs_it != cs->end(); ++cs_it) {
+            const std::set<int32_t>& cs = it->second;
+            for (std::set<int32_t>::iterator cs_it = cs.begin(); cs_it != cs.end(); ++cs_it) {
                 chunkserver_manager_->RemoveBlock(*cs_it, it->first);
             }
-            delete cs;
         }
         file_info.clear_blocks();
     }

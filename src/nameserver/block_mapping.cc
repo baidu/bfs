@@ -509,7 +509,7 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
 }
 
 void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info,
-                                       std::map<int64_t, std::set<int32_t>* >* blocks) {
+                                       std::map<int64_t, std::set<int32_t> >* blocks) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         RemoveBlock(block_id, blocks);
@@ -517,7 +517,7 @@ void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info,
     }
 }
 
-void BlockMapping::RemoveBlock(int64_t block_id, std::map<int64_t, std::set<int32_t>* >* blocks) {
+void BlockMapping::RemoveBlock(int64_t block_id, std::map<int64_t, std::set<int32_t> >* blocks) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
@@ -525,10 +525,9 @@ void BlockMapping::RemoveBlock(int64_t block_id, std::map<int64_t, std::set<int3
         return;
     }
     if (blocks) {
-        std::set<int32_t>* block_cs = new std::set<int32_t>;
-        blocks->insert(std::make_pair(block_id, block_cs));
-        block_cs->insert(block->incomplete_replica.begin(), block->incomplete_replica.end());
-        block_cs->insert(block->replica.begin(), block->replica.end());
+        std::set<int32_t>& block_cs = (*blocks)[block_id];
+        block_cs.insert(block->incomplete_replica.begin(), block->incomplete_replica.end());
+        block_cs.insert(block->replica.begin(), block->replica.end());
     }
     if (block->recover_stat == kIncomplete) {
         for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();

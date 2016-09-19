@@ -64,7 +64,7 @@ bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, i
 }
 
 void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info,
-                                              std::map<int64_t, std::set<int32_t>* >* blocks) {
+                                              std::map<int64_t, std::set<int32_t> >* blocks) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int32_t bucket_offset = GetBucketOffset(file_info.blocks(i));
         block_mapping_[bucket_offset]->RemoveBlocksForFile(file_info, blocks);
