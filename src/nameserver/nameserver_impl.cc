@@ -32,9 +32,11 @@ DECLARE_int32(nameserver_safemode_time);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
+DECLARE_int32(nameserver_read_thread_num);
 DECLARE_int32(nameserver_heartbeat_thread_num);
 DECLARE_int32(blockmapping_bucket_num);
 DECLARE_int32(recover_timeout);
+DECLARE_int32(block_report_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -50,9 +52,10 @@ common::Counter g_report_blocks;
 extern common::Counter g_blocks_num;
 
 NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time),
-    start_recover_(1), sync_(sync) {
+    recover_mode_(kRecoverAll), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
+    read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_read_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     heartbeat_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_heartbeat_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
@@ -62,7 +65,7 @@ NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemod
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
-    work_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
+    read_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
 }
 
 NameServerImpl::~NameServerImpl() {
@@ -112,10 +115,12 @@ void NameServerImpl::LeaveSafemode() {
 
 void NameServerImpl::LogStatus() {
     LOG(INFO, "[Status] create %ld list %ld get_loc %ld add_block %ld "
-              "unlink %ld report %ld %ld heartbeat %ld work_pending %ld report_pending %ld",
+              "unlink %ld report %ld %ld heartbeat %ld read_pending %ld "
+              "work_pending %ld report_pending %ld",
         g_create_file.Clear(), g_list_dir.Clear(), g_get_location.Clear(),
         g_add_block.Clear(), g_unlink.Clear(), g_block_report.Clear(),
         g_report_blocks.Clear(), g_heart_beat.Clear(),
+        read_thread_pool_->PendingNum(),
         work_thread_pool_->PendingNum(), report_thread_pool_->PendingNum());
     work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
 }
@@ -278,10 +283,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     int64_t after_add_block = common::timer::get_micros();
 
     // recover replica
-    if (!safe_mode_ && start_recover_) {
+    if (!safe_mode_ && recover_mode_ != kStopRecover) {
         std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
-        chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks, &hi_num);
+        chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
+                                                &hi_num, recover_mode_ == kHiOnly);
         int32_t priority = 0;
         for (std::vector<std::pair<int64_t, std::vector<std::string> > >::iterator it =
                 recover_blocks.begin(); it != recover_blocks.end(); ++it) {
@@ -398,7 +404,7 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
         controller->SetFailed("SyncLogFail");
     } else if (removed) {
         for (uint32_t i = 0; i < removed->size(); i++) {
-            block_mapping_manager_->RemoveBlocksForFile((*removed)[i]);
+            block_mapping_manager_->RemoveBlocksForFile((*removed)[i], NULL);
         }
         delete removed;
     }
@@ -435,7 +441,15 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     }
 
     if (file_info.blocks_size() > 0) {
-        block_mapping_manager_->RemoveBlocksForFile(file_info);
+        std::map<int64_t, std::set<int32_t> > block_cs;
+        block_mapping_manager_->RemoveBlocksForFile(file_info, &block_cs);
+        for (std::map<int64_t, std::set<int32_t> >::iterator it = block_cs.begin();
+                it != block_cs.end(); ++it) {
+            const std::set<int32_t>& cs = it->second;
+            for (std::set<int32_t>::iterator cs_it = cs.begin(); cs_it != cs.end(); ++cs_it) {
+                chunkserver_manager_->RemoveBlock(*cs_it, it->first);
+            }
+        }
         file_info.clear_blocks();
     }
     /// replica num
@@ -506,6 +520,11 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    if (!CheckFileHasBlock(file_info, file_name, block_id)) {
+        response->set_status(kNoPermission);
+        done->Run();
+        return;
+    }
     file_info.set_size(request->size());
     NameServerLog log;
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
@@ -521,6 +540,19 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
                                (std::vector<FileInfo>*)NULL, _1));
+}
+
+bool NameServerImpl::CheckFileHasBlock(const FileInfo& file_info,
+                                       const std::string& file_name,
+                                       int64_t block_id) {
+    for (int i = 0; i < file_info.blocks_size(); i++) {
+        if (file_info.blocks(i) == block_id) {
+            return true;
+        }
+    }
+    LOG(WARNING, "Block #%ld doesn't belog to file %s, ignore it",
+        block_id, file_name.c_str());
+    return false;
 }
 
 void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
@@ -553,16 +585,9 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    bool find = false;
-    for (int i = 0; i < file_info.blocks_size(); i++) {
-        if (file_info.blocks(i) == block_id) {
-            find = true;
-            break;
-        }
-    }
-    if (!find) {
-        LOG(WARNING, "Block #%ld doesn't belog to file %s, ignore it", block_id, file_name.c_str());
-        response->set_status(kNotOK);
+
+    if (!CheckFileHasBlock(file_info, file_name, block_id)) {
+        response->set_status(kNoPermission);
         done->Run();
         return;
     }
@@ -986,20 +1011,28 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     } else if (path == "/dfs/details") {
         ListRecover(&response);
         return true;
-    } else if (path == "/dfs/start_recover") {
-        start_recover_ = 1;
+    } else if (path == "/dfs/hi_only") {
+        LOG(INFO, "ChangeRecoverMode hi_only");
+        recover_mode_ = kHiOnly;
+        response.content->Append("<body onload=\"history.back()\"></body>");
+        return true;
+    } else if (path == "/dfs/recover_all") {
+        LOG(INFO, "ChangeRecoverMode recover_all");
+        recover_mode_ = kRecoverAll;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/stop_recover") {
-        start_recover_ = 0;
+        LOG(INFO, "ChangeRecoverMode stop_recover");
+        recover_mode_ = kStopRecover;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/leave_safemode") {
+        LOG(INFO, "ChangeRecoverMode leave_safemode");
         LeaveSafemode();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/enter_safemode") {
-        LOG(INFO, "Nameserver enter safemode");
+        LOG(INFO, "ChangeRecoverMode enter_safemode");
         block_mapping_manager_->SetSafeMode(true);
         safe_mode_ = 1;
         response.content->Append("<body onload=\"history.back()\"></body>");
@@ -1046,6 +1079,22 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     return true;
                 }
                 p.set_recover_size(v);
+            } else if (it->first == "keepalive_timeout") {
+                if (v < 2 || v > 3600) {
+                    response.content->Append("<h1>Bad Parameter : 2 <= keepalive_timeout <= 3600 </h1>");
+                    return true;
+                }
+                p.set_keepalive_timeout(v);
+            } else if (it->first == "block_report_timeout") {
+                if (v < 2 || v > 3600) {
+                    response.content->Append("<h1>Bad Parameter : 2 <= block_report_timeout <= 3600 </h1>");
+                    return true;
+                }
+                FLAGS_block_report_timeout = v;
+            } else {
+                response.content->Append("<h1>Bad Parameter :");
+                response.content->Append(it->first);
+                return true;
             }
             chunkserver_manager_->SetParam(p);
             response.content->Append("<body onload=\"history.back()\"></body>");
@@ -1095,8 +1144,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         } else if ( display_mode == 2 && !chunkservers->Get(i).is_dead()) {
             continue;
         } else if (display_mode == 3 &&
-                   chunkserver.load() < kChunkServerLoadMax &&
-                   chunkservers->Get(i).is_dead()) {
+                   (chunkserver.load() < kChunkServerLoadMax ||
+                   chunkservers->Get(i).is_dead())) {
             continue;
         }
 
@@ -1168,21 +1217,31 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Safemode: " + common::NumToString(safe_mode_);
+    str += "Safemode: ";
+    if (safe_mode_ > 1) {
+        str += common::NumToString(safe_mode_);
+    };
     if (safe_mode_) {
-        str += " <a href=\"/dfs/leave_safemode\">Leave</a>";
+        str += " <a href=\"/dfs/leave_safemode\">LeaveSafeMode</a>";
     } else {
-        str += " <a href=\"/dfs/enter_safemode\">Enter</a>";
+        str += " <a href=\"/dfs/enter_safemode\">SafeMode</a>";
     }
-    if (!start_recover_) {
-        str += "   <a href=\"/dfs/start_recover\">StartRecover</a>";
-    } else {
+    if (recover_mode_ == kRecoverAll) {
         str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
+        str += "   <a href=\"/dfs/hi_only\">HighOnly</a>";
+    } else if (recover_mode_ == kHiOnly) {
+        str += "   <a href=\"/dfs/recover_all\">RecoverAll</a>";
+        str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
+    } else {
+        str += "   <a href=\"/dfs/hi_only\">HighOnly</a>";
+        str += "   <a href=\"/dfs/recover_all\">RecoverAll</a>";
     }
     str += "</br>";
     str += "Pending tasks: "
+        + common::NumToString(read_thread_pool_->PendingNum()) + " "
         + common::NumToString(work_thread_pool_->PendingNum()) + " "
-        + common::NumToString(report_thread_pool_->PendingNum()) + "</br>";
+        + common::NumToString(report_thread_pool_->PendingNum()) + " "
+        + common::NumToString(heartbeat_thread_pool_->PendingNum()) + "</br>";
     std::string ha_status = sync_ ? sync_->GetStatus() : "none";
     str += "HA status: " + ha_status + "</br>";
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
@@ -1243,7 +1302,19 @@ static void CallMethodHelper(NameServerImpl* impl,
                              ::google::protobuf::RpcController* controller,
                              const ::google::protobuf::Message* request,
                              ::google::protobuf::Message* response,
-                             ::google::protobuf::Closure* done) {
+                             ::google::protobuf::Closure* done,
+                             int64_t recv_time) {
+    if (method->index() == 16) {
+        int64_t delay = common::timer::get_micros() - recv_time;
+        if (delay > FLAGS_block_report_timeout *1000L * 1000L) {
+            const BlockReportRequest* report =
+                static_cast<const BlockReportRequest*>(request);
+            LOG(WARNING, "BlockReport from %s, delay %ld ms",
+                report->chunkserver_addr().c_str(), delay / 1000);
+            done->Run();
+            return;
+        }
+    }
     impl->NameServer::CallMethod(method, controller, request, response, done);
 }
 
@@ -1257,9 +1328,9 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     static std::pair<std::string, ThreadPool*> ThreadPoolOfMethod[] = {
         std::make_pair("CreateFile", work_thread_pool_),
         std::make_pair("AddBlock", work_thread_pool_),
-        std::make_pair("GetFileLocation", work_thread_pool_),
-        std::make_pair("ListDirectory", work_thread_pool_),
-        std::make_pair("Stat", work_thread_pool_),
+        std::make_pair("GetFileLocation", read_thread_pool_),
+        std::make_pair("ListDirectory", read_thread_pool_),
+        std::make_pair("Stat", read_thread_pool_),
         std::make_pair("Rename", work_thread_pool_),
         std::make_pair("SyncBlock", work_thread_pool_),
         std::make_pair("FinishBlock", work_thread_pool_),
@@ -1268,13 +1339,13 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("ChangeReplicaNum", work_thread_pool_),
         std::make_pair("ShutdownChunkServer", work_thread_pool_),
         std::make_pair("ShutdownChunkServerStat", work_thread_pool_),
-        std::make_pair("DiskUsage", work_thread_pool_),
+        std::make_pair("DiskUsage", read_thread_pool_),
         std::make_pair("Register", work_thread_pool_),
         std::make_pair("HeartBeat", heartbeat_thread_pool_),
         std::make_pair("BlockReport", report_thread_pool_),
         std::make_pair("BlockReceived", work_thread_pool_),
         std::make_pair("PushBlockReport", work_thread_pool_),
-        std::make_pair("SysStat", work_thread_pool_)
+        std::make_pair("SysStat", read_thread_pool_)
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /
                             sizeof(std::pair<std::string, ThreadPool*>);
@@ -1284,8 +1355,10 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
 
     ThreadPool* thread_pool = ThreadPoolOfMethod[id].second;
     if (thread_pool != NULL) {
+        int64_t recv_time = common::timer::get_micros();
         boost::function<void ()> task =
-            boost::bind(&CallMethodHelper, this, method, controller, request, response, done);
+            boost::bind(&CallMethodHelper, this, method, controller,
+                        request, response, done, recv_time);
         thread_pool->AddTask(task);
     } else {
         NameServer::CallMethod(method, controller, request, response, done);

@@ -40,6 +40,7 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingMana
     params_.set_report_interval(FLAGS_blockreport_interval);
     params_.set_report_size(FLAGS_blockreport_size);
     params_.set_recover_size(FLAGS_recover_speed);
+    params_.set_keepalive_timeout(FLAGS_keepalive_timeout);
     LOG(INFO, "Localhost: %s, localzone: %s",
         localhostname_.c_str(), localzone_.c_str());
 }
@@ -113,7 +114,7 @@ void ChunkServerManager::DeadCheck() {
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
 
     while (it != heartbeat_list_.end()
-           && it->first + FLAGS_keepalive_timeout <= now_time) {
+           && it->first + params_.keepalive_timeout() <= now_time) {
         std::set<ChunkServerInfo*>::iterator node = it->second.begin();
         while (node != it->second.end()) {
             ChunkServerInfo* cs = *node;
@@ -138,7 +139,7 @@ void ChunkServerManager::DeadCheck() {
     }
     int idle_time = 5;
     if (it != heartbeat_list_.end()) {
-        idle_time = it->first + FLAGS_keepalive_timeout - now_time;
+        idle_time = it->first + params_.keepalive_timeout() - now_time;
         // LOG(INFO, "it->first= %d, now_time= %d\n", it->first, now_time);
         if (idle_time > 5) {
             idle_time = 5;
@@ -205,11 +206,14 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
         if (heartbeat_list_[info->last_heartbeat()].empty()) {
             heartbeat_list_.erase(info->last_heartbeat());
         }
-    } else {
+    } else if (info->status() == kCsOffLine) {
         LOG(INFO, "Dead chunkserver revival C%d %s", cs_id, address.c_str());
         assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
         info->set_is_dead(false);
+        info->set_status(kCsActive);
         chunkserver_num_++;
+    } else {
+        return;
     }
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
@@ -550,8 +554,13 @@ void ChunkServerManager::SetParam(const Params& p) {
     if (p.recover_size() != -1) {
         params_.set_recover_size(p.recover_size());
     }
-    LOG(INFO, "SetParam to report_interval = %d report_size = %d recover_size = %d",
-            params_.report_interval(), params_.report_size(), params_.recover_size());
+    if (p.keepalive_timeout() != -1) {
+        params_.set_keepalive_timeout(p.keepalive_timeout());
+    }
+    LOG(INFO, "SetParam to report_interval = %d report_size = %d "
+              "recover_size = %d keepalive_timeout = %d",
+            params_.report_interval(), params_.report_size(),
+            params_.recover_size(), params_.keepalive_timeout());
 }
 
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
@@ -567,7 +576,7 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
 
 void ChunkServerManager::PickRecoverBlocks(int cs_id,
                                            std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
-                                           int* hi_num) {
+                                           int* hi_num, bool hi_only) {
     ChunkServerInfo* cs = NULL;
     {
         MutexLock lock(&mu_, "PickRecoverBlocks 1", 10);
@@ -577,7 +586,8 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id,
     }
     std::vector<std::pair<int64_t, std::set<int32_t> > > blocks;
     int64_t before_pick = common::timer::get_micros();
-    block_mapping_manager_->PickRecoverBlocks(cs_id, params_.recover_size() - cs->pending_recover(), &blocks, hi_num);
+    block_mapping_manager_->PickRecoverBlocks(cs_id, params_.recover_size() - cs->pending_recover(),
+                                              &blocks, hi_num, hi_only);
     int64_t before_get_recover_chain = common::timer::get_micros();
     for (std::vector<std::pair<int64_t, std::set<int32_t> > >::iterator it = blocks.begin();
          it != blocks.end(); ++it) {

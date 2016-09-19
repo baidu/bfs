@@ -38,7 +38,10 @@ int main(int argc, char* argv[])
             return 0;
         }
     }
-    FLAGS_flagfile = "./bfs.flag";
+    if (FLAGS_flagfile == "") {
+        FLAGS_flagfile = "./bfs.flag";
+    }
+
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     if (FLAGS_bfs_log != "") {
         baidu::common::SetLogFile(FLAGS_bfs_log.c_str());

@@ -214,9 +214,16 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
             if (replica.find(cs_id) != replica.end()) {
                 return true;
             }
-            LOG(WARNING, "Incomplete block #%ld from C%d drop it, now V%ld %ld R%lu",
-                block_id, cs_id, nsblock->version, nsblock->block_size, replica.size());
-            return false;
+            if (replica.size() >= nsblock->expect_replica_num) {
+                LOG(INFO, "Drop incomplete block #%ld from C%d, now V%ld %ld R%lu",
+                    block_id, cs_id, nsblock->version, nsblock->block_size, replica.size());
+                return false;
+            } else {
+                LOG(INFO, "Keep incomplete block #%ld from C%d, now V%ld %ld R%lu IR%lu",
+                    block_id, cs_id, nsblock->version, nsblock->block_size,
+                    replica.size(), inc_replica.size());
+                return true;
+            }
         }
     }
     /// Then block_version >= 0
@@ -503,20 +510,26 @@ bool BlockMapping::UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t 
     }
 }
 
-void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info) {
+void BlockMapping::RemoveBlocksForFile(const FileInfo& file_info,
+                                       std::map<int64_t, std::set<int32_t> >* blocks) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
-        RemoveBlock(block_id);
+        RemoveBlock(block_id, blocks);
         LOG(INFO, "Remove block #%ld for %s", block_id, file_info.name().c_str());
     }
 }
 
-void BlockMapping::RemoveBlock(int64_t block_id) {
+void BlockMapping::RemoveBlock(int64_t block_id, std::map<int64_t, std::set<int32_t> >* blocks) {
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
         LOG(WARNING, "RemoveBlock #%ld not found", block_id);
         return;
+    }
+    if (blocks) {
+        std::set<int32_t>& block_cs = (*blocks)[block_id];
+        block_cs.insert(block->incomplete_replica.begin(), block->incomplete_replica.end());
+        block_cs.insert(block->replica.begin(), block->replica.end());
     }
     if (block->recover_stat == kIncomplete) {
         for (std::set<int32_t>::iterator it = block->incomplete_replica.begin();

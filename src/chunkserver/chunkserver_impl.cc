@@ -50,6 +50,7 @@ DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int64(chunkserver_max_unfinished_bytes);
 DECLARE_bool(chunkserver_auto_clean);
+DECLARE_int32(block_report_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -277,7 +278,8 @@ void ChunkServerImpl::SendBlockReport() {
 
     BlockReportResponse response;
     int64_t before_report = common::timer::get_micros();
-    bool ret = nameserver_->SendRequest(&NameServer_Stub::BlockReport, &request, &response, 600);
+    bool ret = nameserver_->SendRequest(&NameServer_Stub::BlockReport,
+                                        &request, &response, FLAGS_block_report_timeout);
     int64_t after_report = common::timer::get_micros();
     if (after_report - before_report > 20 * 1000 * 1000) {
         LOG(WARNING, "Block report use %ld ms", (after_report - before_report) / 1000);
