@@ -182,7 +182,7 @@ bool BlockManager::LoadStorage() {
             if (std::find(store_path_list_.begin(), store_path_list_.end(), meta.store_path())
                     == store_path_list_.end()) {
                 LOG(WARNING, "Block #%ld store path %s not in current store configuration, ignore it",
-                        file_path.c_str());
+                    block_id, file_path.c_str());
                 continue;
             }
             struct stat st;

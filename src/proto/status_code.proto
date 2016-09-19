@@ -66,4 +66,5 @@ message Params {
     optional int32 report_interval = 1 [default = -1];
     optional int32 report_size = 2 [default = -1];
     optional int32 recover_size = 3 [default = -1];
+    optional int32 keepalive_timeout = 4 [default = -1];
 }
