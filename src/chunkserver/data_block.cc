@@ -59,7 +59,7 @@ Block::Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cac
         recv_window_ = NULL;
     } else {
         finished_ = false;
-        recv_window_ = new common::SlidingWindow<Buffer>(100,
+        recv_window_ = new common::SlidingWindow<Buffer>(10,
                        boost::bind(&Block::WriteCallback, this, _1, _2));
     }
 }
