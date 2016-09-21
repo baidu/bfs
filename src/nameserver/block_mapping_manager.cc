@@ -63,16 +63,17 @@ bool BlockMappingManager::UpdateBlockInfo(int64_t block_id, int32_t server_id, i
     return block_mapping_[bucket_offset]->UpdateBlockInfo(block_id, server_id, block_size, block_version);
 }
 
-void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info) {
+void BlockMappingManager::RemoveBlocksForFile(const FileInfo& file_info,
+                                              std::map<int64_t, std::set<int32_t> >* blocks) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int32_t bucket_offset = GetBucketOffset(file_info.blocks(i));
-        block_mapping_[bucket_offset]->RemoveBlocksForFile(file_info);
+        block_mapping_[bucket_offset]->RemoveBlocksForFile(file_info, blocks);
     }
 }
 
 void BlockMappingManager::RemoveBlock(int64_t block_id) {
     int32_t bucket_offset = GetBucketOffset(block_id);
-    block_mapping_[bucket_offset]->RemoveBlock(block_id);
+    block_mapping_[bucket_offset]->RemoveBlock(block_id, NULL);
 }
 
 void BlockMappingManager::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks) {
@@ -94,7 +95,7 @@ StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t vers
 
 void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                        std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
-                       int32_t* hi_num) {
+                       int32_t* hi_num, bool hi_only) {
     int start_bucket = rand() % blockmapping_bucket_num_;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         block_mapping_[start_bucket % blockmapping_bucket_num_]->
@@ -102,6 +103,9 @@ void BlockMappingManager::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         ++start_bucket;
     }
     *(hi_num) += recover_blocks->size();
+    if (hi_only) {
+        return;
+    }
     start_bucket = rand() % blockmapping_bucket_num_;
     for (int i = 0; i < blockmapping_bucket_num_ && (size_t)block_num > recover_blocks->size(); i++) {
         block_mapping_[start_bucket % blockmapping_bucket_num_]->

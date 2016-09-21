@@ -26,6 +26,12 @@ class ChunkServerManager;
 class BlockMappingManager;
 class Sync;
 
+enum RecoverMode {
+    kStopRecover = 0,
+    kHiOnly = 1,
+    kRecoverAll = 2,
+};
+
 class NameServerImpl : public NameServer {
 public:
     NameServerImpl(Sync* sync);
@@ -136,8 +142,12 @@ private:
                     const ::google::protobuf::Message* request,
                     ::google::protobuf::Message* response,
                     ::google::protobuf::Closure* done);
+    bool CheckFileHasBlock(const FileInfo& file_info,
+                           const std::string& file_name,
+                           int64_t block_id);
 private:
     /// Global thread pool
+    ThreadPool* read_thread_pool_;
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
     ThreadPool* heartbeat_thread_pool_;
@@ -147,7 +157,7 @@ private:
     BlockMappingManager* block_mapping_manager_;
     /// Safemode
     volatile int safe_mode_;
-    volatile int start_recover_;
+    RecoverMode recover_mode_;
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;

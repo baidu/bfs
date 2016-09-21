@@ -52,6 +52,7 @@ DECLARE_int32(chunkserver_max_sliding_window_size);
 DECLARE_int64(chunkserver_max_unfinished_bytes);
 DECLARE_int32(chunkserver_max_writing_blocks);
 DECLARE_bool(chunkserver_auto_clean);
+DECLARE_int32(block_report_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -271,7 +272,8 @@ void ChunkServerImpl::SendBlockReport() {
 
     BlockReportResponse response;
     int64_t before_report = common::timer::get_micros();
-    bool ret = nameserver_->SendRequest(&NameServer_Stub::BlockReport, &request, &response, 600);
+    bool ret = nameserver_->SendRequest(&NameServer_Stub::BlockReport,
+                                        &request, &response, FLAGS_block_report_timeout);
     int64_t after_report = common::timer::get_micros();
     if (after_report - before_report > 20 * 1000 * 1000) {
         LOG(WARNING, "Block report use %ld ms", (after_report - before_report) / 1000);
@@ -458,7 +460,11 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
                      "status= %s, error= %d\n",
             next_server.c_str(), block_id, packet_seq, offset, databuf.size(),
             StatusCode_Name(next_response->status()).c_str(), error);
-        response->set_status(kWriteError);
+        if (failed) {
+            response->set_status(kNetworkUnavailable);
+        } else {
+            response->set_status(next_response->status());
+        }
         delete next_response;
         g_unfinished_bytes.Sub(databuf.size());
         done->Run();

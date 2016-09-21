@@ -68,7 +68,7 @@ TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_t
 TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
-UNITTEST_OUTPUT = test/
+UNITTEST_OUTPUT = ut/
 
 all: $(BIN)
 	@echo 'Done'
@@ -139,8 +139,8 @@ mark: $(MARK_OBJ) $(LIBS)
 logdb_dump: src/nameserver/logdb.o src/utils/logdb_dump.o
 	$(CXX) src/nameserver/logdb.o src/utils/logdb_dump.o $(OBJS) -o $@ $(LDFLAGS)
 
-ns_dump: src/utils/ns_dump.o
-	$(CXX) src/utils/ns_dump.o $(OBJS) -o $@ $(LDFLAGS)
+bfs_dump: src/utils/bfs_dump.o
+	$(CXX) src/utils/bfs_dump.o $(OBJS) -o $@ $(LDFLAGS)
 
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
