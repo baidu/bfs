@@ -49,6 +49,7 @@ DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_recover_thread_num);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int64(chunkserver_max_unfinished_bytes);
+DECLARE_int32(chunkserver_max_writing_blocks);
 DECLARE_bool(chunkserver_auto_clean);
 DECLARE_int32(block_report_timeout);
 
@@ -121,10 +122,11 @@ void ChunkServerImpl::LogStatus(bool routine) {
     counter_manager_->GatherCounters();
     CounterManager::Counters counters = counter_manager_->GetCounters();
 
-    LOG(INFO, "[Status] blocks %ld %ld buffers %ld pending %ld data %sB, "
+    LOG(INFO, "[Status] blocks %ld %ld writing bytes %ld buffers %ld pending %ld data %sB, "
               "find %ld read %ld write %ld %ld %.2f MB, rpc %ld %ld %ld, "
               "unfinished: %ld recovering %ld",
-        g_writing_blocks.Get() ,g_blocks.Get(), g_block_buffers.Get(), g_pending_writes.Get(),
+        g_writing_blocks.Get() ,g_blocks.Get(), g_writing_bytes.Get(),
+        g_block_buffers.Get(), g_pending_writes.Get(),
         common::HumanReadableString(g_data_size.Get()).c_str(),
         counters.find_ops, counters.read_ops,
         counters.write_ops, counters.refuse_ops,
@@ -363,10 +365,13 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         /// Flow control
-        if (g_block_buffers.Get() > FLAGS_chunkserver_max_pending_buffers) {
-            response->set_status(kCsTooMuchPendingBuffer);
-            LOG(WARNING, "[WriteBlock] pending buf[%ld] req[%ld] reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
-                g_block_buffers.Get(), work_thread_pool_->PendingNum(),
+        StatusCode memory_stat = CheckMemoryStat(block_id, packet_seq);
+        if (memory_stat != kOK) {
+            response->set_status(memory_stat);
+            LOG(WARNING, "[WriteBlock] pending buf %ld MB sliding window size %ld MB,"
+                    "req %ld reject #%ld seq:%d, offset:%ld, len:%lu ts:%lu",
+                (g_block_buffers.Get() * FLAGS_write_buf_size) >> 20,
+                g_writing_bytes.Get() >> 20, work_thread_pool_->PendingNum(),
                 block_id, packet_seq, offset, databuf.size(), request->sequence_id());
             g_unfinished_bytes.Sub(databuf.size());
             done->Run();
@@ -809,6 +814,19 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
 
     if (block) block->DecRef();
 
+}
+
+StatusCode ChunkServerImpl::CheckMemoryStat(int64_t block_id, int32_t packet_seq) {
+    bool too_much_pending_buffer= (g_block_buffers.Get() * FLAGS_write_buf_size >> 20) >
+                                                      FLAGS_chunkserver_max_pending_buffers;
+    int32_t writing_blocks = g_writing_blocks.Get();
+    if (too_much_pending_buffer) {
+        return kCsTooMuchPendingBuffer;
+    } else if (writing_blocks > FLAGS_chunkserver_max_writing_blocks) {
+        LOG(WARNING, "Cs too much sliding window(%d)", writing_blocks);
+        return kCsTooMuchSlidingWindow;
+    }
+    return kOK;
 }
 
 bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
