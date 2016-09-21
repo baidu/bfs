@@ -46,7 +46,7 @@ public:
     uint32_t Uniform(int n) { return Next() % n; }
 };
 
-Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size), exit_(false) {
+Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10), exit_(false) {
     if (!FS::OpenFileSystem(FLAGS_nameserver_nodes.c_str(), &fs_, FSOptions())) {
         std::cerr << "Open filesytem failed " << FLAGS_nameserver_nodes << std::endl;
         exit(EXIT_FAILURE);
@@ -73,6 +73,7 @@ bool Mark::FinishPut(File* file, int thread_id) {
 }
 
 void Mark::Put(const std::string& filename, const std::string& base, int thread_id) {
+    int64_t start_time = common::timer::get_micros();
     File* file;
     if (OK != fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, &file, WriteOptions())) {
         if (FLAGS_break_on_failure) {
@@ -103,6 +104,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
         }
         len += write_len;
     }
+    int64_t end_write = common::timer::get_micros();
     if (!FinishPut(file, thread_id)) {
         if (FLAGS_break_on_failure) {
             std::cerr << "Close file failed " << filename << std::endl;
@@ -114,6 +116,9 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     }
     put_counter_.Inc();
     all_counter_.Inc();
+    int64_t end_time = common::timer::get_micros();
+    std::cerr << "WRITE USE " << (end_time - start_time) / 1000 << "CLOSE USE " <<
+        (end_time - end_write) / 1000 << std::endl;
 }
 
 bool Mark::FinishRead(File* file) {
