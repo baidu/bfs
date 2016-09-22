@@ -193,7 +193,7 @@ message ReportBlockInfo {
     optional int64 block_id = 1;
     optional int64 version = 2;
     optional int64 block_size = 3;
-    optional bool is_recover = 4;
+    optional bool is_recover = 4 [default = false];
 }
 message ReplicaInfo {
     optional int64 block_id = 1;

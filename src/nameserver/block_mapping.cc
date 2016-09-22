@@ -542,8 +542,7 @@ void BlockMapping::RemoveBlock(int64_t block_id, std::map<int64_t, std::set<int3
         lo_pri_recover_.erase(block_id);
     }
     delete block;
-    size_t c = block_map_.erase(block_id);
-    LOG(INFO, "LL: remove #%ld c = %u", block_id, c);
+    block_map_.erase(block_id);
     g_blocks_num.Dec();
 }
 

@@ -184,7 +184,7 @@ void ChunkServerImpl::Register() {
     assert (response.chunkserver_id() != -1);
     chunkserver_id_ = response.chunkserver_id();
     report_id_ = response.report_id() + 1;
-    LOG(INFO, "LL: Connect to nameserver version= %ld, cs_id = C%d report_interval = %d "
+    LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d "
             "report_size = %d report_id = %ld",
             block_manager_->NameSpaceVersion(), chunkserver_id_,
             params_.report_interval(), params_.report_size(), report_id_);
@@ -285,10 +285,11 @@ void ChunkServerImpl::SendBlockReport() {
                                         &request, &response, FLAGS_block_report_timeout);
     int64_t after_report = common::timer::get_micros();
     if (after_report - before_report > 20 * 1000 * 1000) {
-        LOG(WARNING, "Block report use %ld ms", (after_report - before_report) / 1000);
+        LOG(WARNING, "Block report use %ld ms last_id %lu (%lu)",
+                (after_report - before_report) / 1000, last_report_id, request.sequence_id());
     }
     if (!ret) {
-        LOG(WARNING, "LL: Block report fail last_id %lu (%lu)\n", last_report_id, request.sequence_id());
+        LOG(WARNING, "Block report fail last_id %lu (%lu)\n", last_report_id, request.sequence_id());
     } else {
         if (response.status() != kOK) {
             last_report_blockid_ = -1;
@@ -310,7 +311,7 @@ void ChunkServerImpl::SendBlockReport() {
             write_thread_pool_->AddTask(task);
         }
 
-        LOG(INFO, "LL: Block report (%lu) done. %d replica blocks last_id %ld next_id %ld",
+        LOG(INFO, "Block report (%lu) done. %d replica blocks last_id %ld next_id %ld",
                 request.sequence_id(), response.new_replicas_size(), last_report_id, report_id_);
         g_recover_count.Add(response.new_replicas_size());
         for (int i = 0; i < response.new_replicas_size(); ++i) {
