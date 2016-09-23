@@ -719,7 +719,7 @@ int64_t ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks
     std::set<int64_t>* ns_blocks = &cs_block_map->blocks;
     bool pass_check = true;
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
-        pass_check &= cs_block_map->blocks.insert(*it).second;
+        pass_check &= ns_blocks->insert(*it).second;
     }
     if (pass_check) {
         LOG(DEBUG, "C%d pass block check", id);
@@ -753,7 +753,7 @@ int64_t ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks
         ++ns_it;
         ++cs_it;
     }
-    while (*ns_it <= end && ns_it != ns_blocks->end()) {
+    while (ns_it != ns_blocks->end() && *ns_it <= end) {
         lost->push_back(*ns_it);
         ++ns_it;
     }
