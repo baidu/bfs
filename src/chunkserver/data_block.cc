@@ -100,7 +100,7 @@ Block::~Block() {
     if (file_desc_ >= 0) {
         close(file_desc_);
         g_writing_blocks.Dec();
-        file_desc_ = -1;
+        file_desc_ = -2;
     }
     if (recv_window_) {
         if (recv_window_->Size()) {
