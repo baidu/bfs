@@ -100,7 +100,7 @@ Block::~Block() {
     if (file_desc_ >= 0) {
         close(file_desc_);
         g_writing_blocks.Dec();
-        file_desc_ = -1;
+        file_desc_ = -2;
     }
     if (recv_window_) {
         if (recv_window_->Size()) {
@@ -292,7 +292,7 @@ bool Block::Close() {
     this->AddRef();
     thread_pool_->AddPriorityTask(boost::bind(&Block::DiskWrite, this));
 
-    while (file_desc_ != -1) {
+    while (file_desc_ != -2) {
         close_cv_.Wait();
     }
     if (meta_.version() == -1) {
@@ -362,12 +362,12 @@ void Block::DiskWrite() {
         }
         if (finished_ || deleted_) {
             assert (deleted_ || block_buf_list_.empty());
-            if (file_desc_ != -1) {
+            if (file_desc_ != -2) {
                 int ret = close(file_desc_);
                 LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
                 assert(ret == 0);
                 g_writing_blocks.Dec();
-                file_desc_ = -1;
+                file_desc_ = -2;
                 if (recv_window_ && recv_window_->Size()) {
                     LOG(INFO, "#%ld recv_window fragments: %d\n",
                             meta_.block_id(), recv_window_->Size());
