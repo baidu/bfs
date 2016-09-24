@@ -124,8 +124,8 @@ TEST(TERA_SO_TEST, TERA_SO) {
     /// List directory
     std::vector<std::string> result;
     ASSERT_TRUE(0 == dfs->ListDirectory(test_path, &result));
-    ASSERT_TRUE(2 == result.size());
-    ASSERT_TRUE(file2.substr(file2.rfind('/')+1) == result[0]);
+    ASSERT_TRUE(4 == result.size());
+    ASSERT_TRUE(file2.substr(file2.rfind('/') + 1) == result[2]);
 
     /// Delete
     ASSERT_TRUE(0 == dfs->Delete(file2));
