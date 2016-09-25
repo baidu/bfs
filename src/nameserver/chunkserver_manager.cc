@@ -627,6 +627,7 @@ void ChunkServerManager::LogStats() {
     int32_t w_qps = 0, r_qps = 0;
     int64_t w_speed = 0, r_speed = 0, recover_speed = 0;
     int32_t overload = 0;
+    MutexLock lock(&mu_);
     for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
         ChunkServerInfo* cs = it->second;
         w_qps += cs->w_qps();
