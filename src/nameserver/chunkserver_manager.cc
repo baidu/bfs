@@ -14,7 +14,7 @@
 #include "nameserver/location_provider.h"
 
 DECLARE_int32(keepalive_timeout);
-DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_int32(chunkserver_max_pending_buffer_size);
 DECLARE_int32(recover_speed);
 DECLARE_int32(recover_dest_limit);
 DECLARE_int32(heartbeat_interval);
@@ -248,7 +248,7 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 }
 
 double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
-    double max_pending = FLAGS_chunkserver_max_pending_buffers * 0.8;
+    double max_pending = FLAGS_chunkserver_max_pending_buffer_size * 0.8;
     double pending_score = cs->buffers() / max_pending;
     double data_score = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();

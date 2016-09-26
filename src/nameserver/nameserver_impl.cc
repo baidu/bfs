@@ -29,7 +29,7 @@
 
 DECLARE_bool(bfs_web_kick_enable);
 DECLARE_int32(nameserver_safemode_time);
-DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_int32(chunkserver_max_pending_buffer_size);
 DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
 DECLARE_int32(nameserver_read_thread_num);
