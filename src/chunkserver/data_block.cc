@@ -59,7 +59,7 @@ Block::Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cac
         recv_window_ = NULL;
     } else {
         finished_ = false;
-        recv_window_ = new common::SlidingWindow<Buffer>(100,
+        recv_window_ = new common::SlidingWindow<Buffer>(10,
                        boost::bind(&Block::WriteCallback, this, _1, _2));
     }
 }
@@ -430,6 +430,10 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
     g_data_size.Add(len);
     last_seq_ = seq;
     return kOK;
+}
+
+int32_t Block::MaxPacketOffsetReceived() {
+    return recv_window_->GetMaxOffset();
 }
 
 } // namespace bfs

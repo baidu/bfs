@@ -73,6 +73,7 @@ bool Mark::FinishPut(File* file, int thread_id) {
 }
 
 void Mark::Put(const std::string& filename, const std::string& base, int thread_id) {
+    int64_t start_time = common::timer::get_micros();
     File* file;
     if (OK != fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, &file, WriteOptions())) {
         if (FLAGS_break_on_failure) {
@@ -103,6 +104,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
         }
         len += write_len;
     }
+    int64_t end_write = common::timer::get_micros();
     if (!FinishPut(file, thread_id)) {
         if (FLAGS_break_on_failure) {
             std::cerr << "Close file failed " << filename << std::endl;
@@ -114,6 +116,9 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     }
     put_counter_.Inc();
     all_counter_.Inc();
+    int64_t end_time = common::timer::get_micros();
+    std::cerr << "WRITE USE " << (end_time - start_time) / 1000 << "CLOSE USE " <<
+        (end_time - end_write) / 1000 << std::endl;
 }
 
 bool Mark::FinishRead(File* file) {
@@ -211,9 +216,15 @@ void Mark::PutWrapper(int thread_id) {
     int name_id = 0;
     int64_t count = 0;
     std::string base;
-    RandomString(&base, 1<<20, thread_id);
+    RandomString(&base, 1<<10, thread_id);
+    char host_name[256];
+    gethostname(host_name, 200);
+    int32_t now_time = common::timer::now_time();
+    std::string pod_name = std::string(host_name, strlen(host_name)) +
+                                common::NumToString(now_time);
     while (FLAGS_count == 0 || count != FLAGS_count) {
-        std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" + common::NumToString(name_id);
+        std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" +
+            pod_name + "/" + common::NumToString(name_id);
         Put(filename, base, thread_id);
         ++name_id;
         ++count;

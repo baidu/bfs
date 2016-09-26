@@ -70,6 +70,7 @@ public:
     void AddRef();
     void DecRef();
     int GetRef();
+    int32_t MaxPacketOffsetReceived();
 private:
     /// Open corresponding file for write.
     bool OpenForWrite();

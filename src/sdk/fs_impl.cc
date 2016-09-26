@@ -12,6 +12,7 @@
 #include <common/string_util.h>
 #include <common/tprinter.h>
 #include <common/util.h>
+#include <common/counter.h>
 
 #include "proto/status_code.pb.h"
 #include "proto/chunkserver.pb.h"
@@ -22,6 +23,9 @@
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
+DECLARE_int32(sdk_max_writing_buffer_size);
+
+baidu::common::Counter g_writing_buffer_size;
 
 namespace baidu {
 namespace bfs {
@@ -301,6 +305,10 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
                          File** file, const WriteOptions& options) {
     if (!(flags & O_WRONLY)) {
         return BAD_PARAMETER;
+    }
+    if ((g_writing_buffer_size.Get() >> 20) > FLAGS_sdk_max_writing_buffer_size) {
+        LOG(WARNING, "Creaet %s fail: not enough memory space left", path);
+        return NOT_ENOUGH_SPACE;
     }
     common::timer::AutoTimer at(100, "OpenFile", path);
     int32_t ret = OK;
