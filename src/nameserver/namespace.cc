@@ -282,7 +282,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
     if (!LookUp(path, &info)) {
         return kNsNotFound;
     }
-    if (!(info.type() & (1 << 9))) {
+    if (!IsDir(info.type())) {
         FileInfo* file_info = outputs->Add();
         file_info->CopyFrom(info);
         file_info->clear_name();
