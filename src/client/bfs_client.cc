@@ -330,8 +330,8 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
                 prefix.resize(prefix.size() - 1);
         }
         printf("%s %-9s %s %s%s\n",
-                statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
-                timestr, prefix.c_str(), files[i].name);
+               statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
+               timestr, prefix.c_str(), files[i].name);
     }
     delete[] files;
     return 0;
