@@ -310,8 +310,14 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         fprintf(stderr, "List dir %s fail\n", path.c_str());
         return 1;
     }
-    printf("Found %d items\n", num);
+    // num may include "." and ".."
+    int32_t item_num = num >= 2 ? num - 2: num;
+    printf("Found %d items\n", item_num);
     for (int i = 0; i < num; i++) {
+        if (strcmp(files[i].name, ".") == 0 ||
+                strcmp(files[i].name, "..") == 0) {
+            continue;
+        }
         int32_t type = files[i].mode;
         char statbuf[16] = "drwxrwxrwx";
         for (int j = 0; j < 10; j++) {
@@ -325,9 +331,19 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         localtime_r(&ctime, &stm);
         snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
-        printf("%s %-9s %s %s%s\n",
-               statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
-               timestr, path.c_str(), files[i].name);
+        if (item_num == num) {
+            std::string file_pre_fix = path;
+            if (path[path.size() -1] == '/') {
+                file_pre_fix.resize(file_pre_fix.size() - 1);
+            }
+            printf("%s %-9s %s %s\n",
+                    statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
+                    timestr, file_pre_fix.c_str());
+        } else {
+            printf("%s %-9s %s %s%s\n",
+                    statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
+                    timestr, path.c_str(), files[i].name);
+        }
     }
     delete[] files;
     return 0;

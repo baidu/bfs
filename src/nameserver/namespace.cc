@@ -141,7 +141,7 @@ void NameSpace::SetupRoot() {
 /// 3filez -> 6
 /// 4filex -> 7
 /// 5filey -> 8
-bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
+bool NameSpace::LookUp(const std::string& path, FileInfo* info, FileInfo* parent_info = NULL) {
     if (path == "/") {
         info->CopyFrom(root_path_);
         return true;
@@ -152,9 +152,15 @@ bool NameSpace::LookUp(const std::string& path, FileInfo* info) {
     }
     int64_t parent_id = kRootEntryid;
     int64_t entry_id = kRootEntryid;
+    if (parent_info) {
+        parent_info->CopyFrom(root_path_);
+    }
     for (size_t i = 0; i < paths.size(); i++) {
         if (!LookUp(entry_id, paths[i], info)) {
             return false;
+        }
+        if (parent_info) {
+            parent_info->CopyFrom(*info);
         }
         parent_id = entry_id;
         entry_id = info->entry_id();
@@ -279,9 +285,22 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
                              google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
     FileInfo info;
-    if (!LookUp(path, &info)) {
+    FileInfo parent_info;
+    if (!LookUp(path, &info, &parent_info)) {
         return kNsNotFound;
     }
+    if (!(info.type() & (1 << 9))) {
+        FileInfo* file_info = outputs->Add();
+        file_info->CopyFrom(info);
+        LOG(INFO, "List %s return %ld items", path.c_str(), outputs->size());
+        return kOK;
+    }
+    FileInfo* p_info = outputs->Add();
+    p_info->CopyFrom(parent_info);
+    p_info->set_name(".");
+    FileInfo* s_info = outputs->Add();
+    s_info->CopyFrom(info);
+    s_info->set_name("..");
     int64_t entry_id = info.entry_id();
     LOG(DEBUG, "ListDirectory entry_id= E%ld ", entry_id);
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
@@ -302,7 +321,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
             path.c_str(), file_info->name().c_str(),
             common::DebugString(key.ToString()).c_str());
     }
-    LOG(INFO, "List return %ld items", outputs->size());
+    LOG(INFO, "List %s return %ld items", path.c_str(), outputs->size());
     delete it;
     return kOK;
 }
