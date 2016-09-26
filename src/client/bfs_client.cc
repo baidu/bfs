@@ -325,9 +325,19 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         localtime_r(&ctime, &stm);
         snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
-        printf("%s %-9s %s %s%s\n",
-               statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
-               timestr, path.c_str(), files[i].name);
+        if (strcmp(files[i].name, "") == 0) {
+            std::string fname = path;
+            if (fname[fname.size() - 1] == '/') {
+                fname.resize(fname.size() - 1);
+            }
+            printf("%s %-9s %s %s\n",
+                    statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
+                    timestr, fname.c_str());
+        } else {
+            printf("%s %-9s %s %s%s\n",
+                    statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
+                    timestr, path.c_str(), files[i].name);
+        }
     }
     delete[] files;
     return 0;

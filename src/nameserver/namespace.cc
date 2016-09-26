@@ -282,6 +282,13 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
     if (!LookUp(path, &info)) {
         return kNsNotFound;
     }
+    if (!(info.type() & (1 << 9))) {
+        FileInfo* file_info = outputs->Add();
+        file_info->CopyFrom(info);
+        file_info->clear_name();
+        LOG(INFO, "List %s return %ld items", path.c_str(), outputs->size());
+        return kOK;
+    }
     int64_t entry_id = info.entry_id();
     LOG(DEBUG, "ListDirectory entry_id= E%ld ", entry_id);
     common::timer::AutoTimer at1(100, "ListDirectory iterate", path.c_str());
