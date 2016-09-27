@@ -707,7 +707,7 @@ bool ChunkServerManager::GetChunkServerBlockMapPtr(std::map<int32_t, ChunkServer
     return true;
 }
 
-int64_t ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks,
+int64_t ChunkServerManager::AddBlockWithCheck(int32_t id, const std::set<int64_t>& blocks,
                                   int64_t start, int64_t end, std::vector<int64_t>* lost,
                                   int64_t report_id) {
     ChunkServerBlockMap* cs_block_map = NULL;
@@ -732,30 +732,18 @@ int64_t ChunkServerManager::AddBlock(int32_t id, const std::set<int64_t>& blocks
     }
     cs_block_map->report_id = report_id;
 
-    std::set<int64_t>::iterator ns_it = ns_blocks->lower_bound(start);
-    std::set<int64_t>::iterator cs_it = blocks.begin();
-    int count = 0;
-    // cs_blocks is a subset of ns_blocks, cause all cs_blocks have been inserted into ns_blocks
-    while (cs_it != blocks.end() && ns_it != ns_blocks->end() && *ns_it <= end) {
-        ++count;
-        while (ns_it != ns_blocks->end() && *cs_it > *ns_it) {
-            LOG(WARNING, "Check Block for C%d missing %ld ", id, *ns_it);
-            lost->push_back(*ns_it);
-            ++ns_it;
+    // report_id == -1 means this is an old-version cs, skip check
+    if (report_id != -1) {
+        for (std::set<int64_t>::iterator ns_it = ns_blocks->lower_bound(start);
+                ns_it != ns_blocks->end() && *ns_it <= end;) {
+            if (blocks.find(*ns_it) == blocks.end()) {
+                LOG(WARNING, "Check Block for C%d missing #%ld ", id, *ns_it);
+                lost->push_back(*ns_it);
+                ns_blocks->erase(ns_it++);
+                continue;
+            }
+            ns_it++;
         }
-        if (ns_it == ns_blocks->end()) {
-            break;
-        }
-        if (*cs_it != *ns_it) {
-            LOG(WARNING, "Check failed for C%d, mismatch ns = %ld cs = %ld", id, *ns_it, *cs_it);
-            return report_id;
-        }
-        ++ns_it;
-        ++cs_it;
-    }
-    while (ns_it != ns_blocks->end() && *ns_it <= end) {
-        lost->push_back(*ns_it);
-        ++ns_it;
     }
     ChunkServerBlockMap* delta_block_map = NULL;
     if (!GetChunkServerBlockMapPtr(chunkserver_block_delta_, id, &delta_block_map)) {

@@ -273,12 +273,13 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     }
     int64_t before_add_block = common::timer::get_micros();
     std::vector<int64_t> lost;
-    chunkserver_manager_->AddBlock(cs_id, insert_blocks, request->start(),
+    chunkserver_manager_->AddBlockWithCheck(cs_id, insert_blocks, request->start(),
                                    request->end(), &lost, report_id);
-    if (lost.size() != 0)
-        LOG(INFO, "C%d lost %u blocks", lost.size());
-    for (uint32_t i = 0; i < lost.size(); ++i) {
-        block_mapping_manager_->DealWithDeadBlock(cs_id, lost[i]);
+    if (lost.size() != 0) {
+        LOG(INFO, "C%d lost %u blocks",cs_id, lost.size());
+        for (uint32_t i = 0; i < lost.size(); ++i) {
+            block_mapping_manager_->DealWithDeadBlock(cs_id, lost[i]);
+        }
     }
     int64_t after_add_block = common::timer::get_micros();
     response->set_report_id(report_id);

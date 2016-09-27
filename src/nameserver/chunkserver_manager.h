@@ -51,7 +51,7 @@ public:
                  int64_t* r_speed, int64_t* recover_speed);
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
     bool GetShutdownChunkServerStat();
-    int64_t AddBlock(int32_t id, const std::set<int64_t>& blocks, int64_t start, int64_t end,
+    int64_t AddBlockWithCheck(int32_t id, const std::set<int64_t>& blocks, int64_t start, int64_t end,
                   std::vector<int64_t>* lost, int64_t report_id);
     void SetParam(const Params& p);
 private:
