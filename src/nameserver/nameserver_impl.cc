@@ -274,7 +274,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
     // recover replica
     if (!safe_mode_ && recover_mode_ != kStopRecover) {
-        std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
+        RecoverVec recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
                                                 &hi_num, recover_mode_ == kHiOnly);

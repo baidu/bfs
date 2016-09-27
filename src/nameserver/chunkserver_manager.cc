@@ -564,8 +564,7 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     cs_block_map->blocks.erase(block_id);
 }
 
-void ChunkServerManager::PickRecoverBlocks(int cs_id,
-                                           std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
+void ChunkServerManager::PickRecoverBlocks(int cs_id, RecoverVec* recover_blocks,
                                            int* hi_num, bool hi_only) {
     ChunkServerInfo* cs = NULL;
     {
