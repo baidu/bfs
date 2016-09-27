@@ -85,9 +85,6 @@ private:
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     void ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result);
     void ListRecoverList(const std::set<int64_t>& recover_set, std::set<int64_t>* result);
-    void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
-                            std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
-                            std::set<int64_t>* check_set);
     void TryRecover(NSBlock* block);
     bool RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id);
     void CheckRecover(int32_t cs_id, int64_t block_id);

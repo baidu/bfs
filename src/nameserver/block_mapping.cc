@@ -13,7 +13,8 @@
 #include <common/string_util.h>
 
 DECLARE_int32(recover_speed);
-DECLARE_int32(recover_timeout);
+DECLARE_int32(hi_recover_timeout);
+DECLARE_int32(lo_recover_timeout);
 DECLARE_bool(bfs_bug_tolerant);
 DECLARE_bool(clean_redundancy);
 DECLARE_int32(web_recover_list_size);
@@ -634,34 +635,59 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                                      std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                                      RecoverPri pri) {
     MutexLock lock(&mu_);
-    if ((pri == kHigh && hi_pri_recover_.empty()) ||
-            (pri == kLow && lo_pri_recover_.empty())) {
+    if ((pri == kHigh && hi_pri_recover_.empty()) || (pri == kLow && lo_pri_recover_.empty())) {
         return;
     }
-    std::set<int64_t>& hi_check_set = hi_recover_check_[cs_id];
-    std::set<int64_t>& lo_check_set = lo_recover_check_[cs_id];
-    LOG(DEBUG, "C%d has %lu/%lu pending_recover blocks, quota=%d",
-        cs_id, hi_check_set.size(), lo_check_set.size(), block_num);
-    /*
-    int32_t quota = FLAGS_recover_speed - lo_check_set.size() - hi_check_set.size();
-    quota = quota < block_num ? quota : block_num;
-    */
-    std::set<int64_t>* target_set = NULL, *check_set = NULL;
-    if (pri == kHigh) {
-        target_set = &hi_pri_recover_;
-        check_set = &hi_check_set;
-    } else {
-        target_set = &lo_pri_recover_;
-        check_set = &lo_check_set;
+    std::set<int64_t>* target_set = pri == kHigh ? &hi_pri_recover_ : &lo_pri_recover_;
+    std::set<int64_t>* check_set =
+        pri == kHigh ? &hi_recover_check_[cs_id] : &lo_recover_check_[cs_id];
+    LOG(DEBUG, "Before Pick: C%d has %lu pending_recover blocks quota=%d pri=%s",
+            cs_id, check_set->size(), block_num, RecoverPri_Name(pri).c_str());
+
+    common::timer::TimeChecker pick_timer;
+    std::set<int64_t>::iterator it = target_set->begin();
+    // leave 3 seconds buffer
+    int32_t timeout = 3 + (pri == kHigh ? FLAGS_hi_recover_timeout : FLAGS_lo_recover_timeout);
+    while (static_cast<int>(recover_blocks->size()) < block_num && it != target_set->end()) {
+        NSBlock* cur_block = NULL;
+        if (!GetBlockPtr(*it, &cur_block)) { // block is removed
+            LOG(DEBUG, "PickRecoverBlocks for C%d can't find block: #%ld ", cs_id, *it);
+            target_set->erase(it++);
+            continue;
+        }
+        const std::set<int32_t>& replica = cur_block->replica;
+        int64_t block_id = cur_block->id;
+        if (replica.size() >= cur_block->expect_replica_num) {
+            LOG(DEBUG, "Replica num enough #%ld %lu", block_id, replica.size());
+            target_set->erase(it++);
+            SetState(cur_block, kNotInRecover);
+            continue;
+        }
+        if (replica.size() == 0) {
+            LOG(WARNING, "All Replica lost #%ld , give up recover.", block_id);
+            abort();
+            SetStateIf(cur_block, kAny, kLost);
+            lost_blocks_.insert(block_id);
+            target_set->erase(it++);
+            continue;
+        }
+        if (replica.find(cs_id) == replica.end()) {
+            ++it;
+            continue;
+        }
+        recover_blocks->push_back(std::make_pair(block_id, replica));
+        check_set->insert(block_id);
+        assert(cur_block->recover_stat == kHiRecover || cur_block->recover_stat == kLoRecover);
+        cur_block->recover_stat = kCheck;
+        LOG(INFO, "PickRecoverBlocks for C%d #%ld %s",
+                cs_id, block_id, RecoverStat_Name(cur_block->recover_stat).c_str());
+        thread_pool_->DelayTask(timeout * 1000,
+            boost::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
+        target_set->erase(it++);
     }
-    int64_t before_pick = common::timer::get_micros();
-    PickRecoverFromSet(cs_id, block_num, target_set, recover_blocks, check_set);
-    int64_t after_pick = common::timer::get_micros();
-    if (after_pick - before_pick > 100 * 1000) {
-        LOG(WARNING, "C%d pick %lu block use %ld micors",
-                cs_id, recover_blocks->size(), after_pick - before_pick);
-    }
-    LOG(DEBUG, "After Pick: recover num(hi/lo): %ld/%ld ", hi_pri_recover_.size(), lo_pri_recover_.size());
+    pick_timer.Check(100 * 1000, "[PickRecoverBlocks] pick recover");
+    LOG(DEBUG, "After Pick: C%d has %u pending_recover blocks pri=%s",
+            cs_id, check_set->size(), RecoverPri_Name(pri).c_str());
     LOG(INFO, "C%d picked %lu blocks to recover", cs_id, recover_blocks->size());
 }
 
@@ -786,50 +812,6 @@ void BlockMapping::ListRecover(RecoverBlockSet* recover_blocks) {
     ListCheckList(hi_recover_check_, &(recover_blocks->hi_check));
     ListCheckList(lo_recover_check_, &(recover_blocks->lo_check));
     ListCheckList(incomplete_, &(recover_blocks->incomplete));
-}
-
-void BlockMapping::PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
-                                      std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
-                                      std::set<int64_t>* check_set) {
-    mu_.AssertHeld();
-    std::set<int64_t>::iterator it = recover_set->begin();
-    while (static_cast<int>(recover_blocks->size()) < quota && it != recover_set->end()) {
-        NSBlock* cur_block = NULL;
-        if (!GetBlockPtr(*it, &cur_block)) { // block is removed
-            LOG(DEBUG, "PickRecoverBlocks for C%d can't find block: #%ld ", cs_id, *it);
-            recover_set->erase(it++);
-            continue;
-        }
-        std::set<int32_t>& replica = cur_block->replica;
-        int64_t block_id = cur_block->id;
-        if (replica.size() >= cur_block->expect_replica_num) {
-            LOG(DEBUG, "Replica num enough #%ld %lu", block_id, replica.size());
-            recover_set->erase(it++);
-            SetState(cur_block, kNotInRecover);
-            continue;
-        }
-        if (replica.size() == 0) {
-            LOG(WARNING, "All Replica lost #%ld , give up recover.", block_id);
-            abort();
-            SetStateIf(cur_block, kAny, kLost);
-            lost_blocks_.insert(block_id);
-            recover_set->erase(it++);
-            continue;
-        }
-        if (replica.find(cs_id) == replica.end()) {
-            ++it;
-            continue;
-        }
-        recover_blocks->push_back(std::make_pair(block_id, replica));
-        check_set->insert(block_id);
-        assert(cur_block->recover_stat == kHiRecover || cur_block->recover_stat == kLoRecover);
-        cur_block->recover_stat = kCheck;
-        LOG(INFO, "PickRecoverBlocks for C%d #%ld %s",
-                cs_id, block_id, RecoverStat_Name(cur_block->recover_stat).c_str());
-        thread_pool_->DelayTask(FLAGS_recover_timeout * 1000,
-            boost::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
-        recover_set->erase(it++);
-    }
 }
 
 void BlockMapping::TryRecover(NSBlock* block) {
