@@ -65,7 +65,7 @@ struct LocatedBlocks {
     }
 };
 
-class FileImpl : public File {
+class FileImpl {
 public:
     FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string& name,
              int32_t flags, const WriteOptions& options);
