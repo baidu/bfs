@@ -58,7 +58,6 @@ class File {
 public:
     File(FSImpl* fs, RpcClient* rpc_client,
             const std::string& name, int32_t flags, const WriteOptions& options);
-
     File(FSImpl* fs, RpcClient* rpc_client,
             const std::string& name, int32_t flags, const ReadOptions& options);
     File(FileImpl* file_impl);

@@ -15,7 +15,6 @@ File::File(FSImpl* fs, RpcClient* rpc_client,
            const std::string& name, int32_t flags, const WriteOptions& options) :
            impl_(new FileImpl(fs, rpc_client, name, flags, options)) {}
 
-
 File::File(FSImpl* fs, RpcClient* rpc_client,
            const std::string& name, int32_t flags, const ReadOptions& options) :
            impl_(new FileImpl(fs, rpc_client, name, flags, options)) {}
