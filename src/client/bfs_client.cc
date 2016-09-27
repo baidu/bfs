@@ -326,8 +326,12 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
         std::string prefix = path;
-        if (files[i].name[0] == '\0' && prefix[prefix.size() - 1] == '/') {
-                prefix.resize(prefix.size() - 1);
+        if (files[i].name[0] == '\0') {
+            int32_t pos = prefix.size() - 1;
+            while (pos >= 0 && prefix[pos] == '/') {
+                pos--;
+            }
+            prefix.resize(pos + 1);
         }
         printf("%s %-9s %s %s%s\n",
                statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),

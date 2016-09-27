@@ -285,6 +285,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
     if (!IsDir(info.type())) {
         FileInfo* file_info = outputs->Add();
         file_info->CopyFrom(info);
+        //for a file, name should be empty because it's a relative path
         file_info->clear_name();
         LOG(INFO, "List %s return %ld items", path.c_str(), outputs->size());
         return kOK;
