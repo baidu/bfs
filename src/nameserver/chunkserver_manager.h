@@ -75,7 +75,7 @@ private:
         const std::vector<std::pair<double, ChunkServerInfo*> >& loads,
         std::vector<std::pair<int32_t,std::string> >* chains);
     void MarkChunkServerReadonly(const std::string& chunkserver_address);
-    bool GetChunkServerBlockMapPtr(std::map<int32_t, ChunkServerBlockMap*>& src_map,
+    bool GetChunkServerBlockMapPtr(const std::map<int32_t, ChunkServerBlockMap*>& src_map,
                                    int32_t cs_id, ChunkServerBlockMap** cs_block_map);
 private:
     ThreadPool* thread_pool_;

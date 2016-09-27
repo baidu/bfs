@@ -531,13 +531,16 @@ int32_t ChunkServerManager::GetChunkServerId(const std::string& addr) {
 
 void ChunkServerManager::AddBlock(int32_t id, int64_t block_id, bool is_recover) {
     ChunkServerBlockMap* cs_block_map = NULL;
-    if (is_recover && !GetChunkServerBlockMapPtr(chunkserver_block_delta_, id, &cs_block_map)) {
-        LOG(WARNING, "Can't find chunkserver C%d in chunkserver_block_delta_", id);
-        return;
-    }
-    if (!is_recover && !GetChunkServerBlockMapPtr(chunkserver_block_map_, id, &cs_block_map)) {
-        LOG(WARNING, "Can't find chunkserver C%d in chunkserver_block_map_", id);
-        return;
+    if (is_recover) {
+        if (!GetChunkServerBlockMapPtr(chunkserver_block_delta_, id, &cs_block_map)) {
+            LOG(WARNING, "Can't find chunkserver C%d in chunkserver_block_delta_", id);
+            return;
+        }
+    } else {
+        if (!GetChunkServerBlockMapPtr(chunkserver_block_map_, id, &cs_block_map)) {
+            LOG(WARNING, "Can't find chunkserver C%d in chunkserver_block_map_", id);
+            return;
+        }
     }
     MutexLock lock(cs_block_map->mu);
     cs_block_map->blocks.insert(block_id);
@@ -636,15 +639,18 @@ void ChunkServerManager::LogStats() {
     int32_t w_qps = 0, r_qps = 0;
     int64_t w_speed = 0, r_speed = 0, recover_speed = 0;
     int32_t overload = 0;
-    for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
-        ChunkServerInfo* cs = it->second;
-        w_qps += cs->w_qps();
-        w_speed += cs->w_speed();
-        r_qps += cs->r_qps();
-        r_speed += cs->r_speed();
-        recover_speed += cs->recover_speed();
-        if (cs->load() > kChunkServerLoadMax) {
-            ++overload;
+    {
+        MutexLock lock(&mu_);
+        for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
+            ChunkServerInfo* cs = it->second;
+            w_qps += cs->w_qps();
+            w_speed += cs->w_speed();
+            r_qps += cs->r_qps();
+            r_speed += cs->r_speed();
+            recover_speed += cs->recover_speed();
+            if (cs->load() > kChunkServerLoadMax) {
+                ++overload;
+            }
         }
     }
     stats_.w_qps = w_qps;
@@ -694,11 +700,11 @@ bool ChunkServerManager::GetShutdownChunkServerStat() {
     return !chunkservers_to_offline_.empty();
 }
 
-bool ChunkServerManager::GetChunkServerBlockMapPtr(std::map<int32_t, ChunkServerBlockMap*>& src_map,
+bool ChunkServerManager::GetChunkServerBlockMapPtr(const std::map<int32_t, ChunkServerBlockMap*>& src_map,
                                                    int32_t cs_id, ChunkServerBlockMap** cs_block_map)
 {
     MutexLock lock(&mu_);
-    std::map<int32_t, ChunkServerBlockMap*>::iterator it = src_map.find(cs_id);
+    std::map<int32_t, ChunkServerBlockMap*>::const_iterator it = src_map.find(cs_id);
     if (it == src_map.end()) {
         *cs_block_map = NULL;
         return false;
