@@ -308,7 +308,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     }
     if ((g_writing_buffer_size.Get() >> 20) > FLAGS_sdk_max_writing_buffer_size) {
         LOG(WARNING, "Creaet %s fail: no enough memory space left", path);
-        return NOT_ENOUGH_SPACE;
+        return NOT_ENOUGH_QUOTA;
     }
     common::timer::AutoTimer at(100, "OpenFile", path);
     int32_t ret = OK;
