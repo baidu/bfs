@@ -88,6 +88,11 @@ void BlockMappingManager::DealWithDeadNode(int32_t cs_id, const std::set<int64_t
     }
 }
 
+void BlockMappingManager::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
+    int32_t bucket_offset = GetBucketOffset(block_id);
+    block_mapping_[bucket_offset]->DealWithDeadBlock(cs_id, block_id);
+}
+
 StatusCode BlockMappingManager::CheckBlockVersion(int64_t block_id, int64_t version) {
     int32_t bucket_offset = GetBucketOffset(block_id);
     return block_mapping_[bucket_offset]->CheckBlockVersion(block_id, version);

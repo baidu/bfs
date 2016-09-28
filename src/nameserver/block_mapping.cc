@@ -561,7 +561,7 @@ StatusCode BlockMapping::CheckBlockVersion(int64_t block_id, int64_t version) {
     return kOK;
 }
 
-void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
+void BlockMapping::DealWithDeadBlockInternal(int32_t cs_id, int64_t block_id) {
     mu_.AssertHeld();
     NSBlock* block = NULL;
     if (!GetBlockPtr(block_id, &block)) {
@@ -606,7 +606,7 @@ void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
 void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks) {
     for (std::set<int64_t>::iterator it = blocks.begin(); it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
-        DealWithDeadBlock(cs_id, *it);
+        DealWithDeadBlockInternal(cs_id, *it);
     }
     MutexLock lock(&mu_);
     NSBlock* block = NULL;
@@ -628,6 +628,11 @@ void BlockMapping::DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& bloc
         }
     }
     lo_recover_check_.erase(cs_id);
+}
+
+void BlockMapping::DealWithDeadBlock(int32_t cs_id, int64_t block_id) {
+    MutexLock lock(&mu_);
+    DealWithDeadBlockInternal(cs_id, block_id);
 }
 
 void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
