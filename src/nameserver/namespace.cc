@@ -92,7 +92,7 @@ void NameSpace::EncodingStoreKey(int64_t entry_id,
                                  const std::string& path,
                                  std::string* key_str) {
     key_str->resize(8);
-    common::util::EncodeBigEndian(&(*key_str)[0], entry_id);
+    common::util::EncodeBigEndian(&(*key_str)[0], (uint64_t)entry_id);
     key_str->append(path);
 }
 
@@ -101,7 +101,7 @@ void NameSpace::DecodingStoreKey(const std::string& key_str,
                                  std::string* path) {
     assert(key_str.size() >= 8UL);
     if (entry_id) {
-        *entry_id = common::util::DecodeBigEndian(key_str.c_str());
+        *entry_id = common::util::DecodeBigEndian64(key_str.c_str());
     }
     if (path) {
         path->assign(key_str, 8, std::string::npos);
