@@ -80,6 +80,7 @@ ChunkServerImpl::ChunkServerImpl()
      heartbeat_task_id_(-1),
      blockreport_task_id_(-1),
      last_report_blockid_(-1),
+     report_id_(0),
      service_stop_(false) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     params_.set_report_interval(FLAGS_blockreport_interval);
@@ -182,9 +183,11 @@ void ChunkServerImpl::Register() {
     }
     assert (response.chunkserver_id() != -1);
     chunkserver_id_ = response.chunkserver_id();
-    LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d report_size = %d",
-        block_manager_->NameSpaceVersion(), chunkserver_id_,
-        params_.report_interval(), params_.report_size());
+    report_id_ = response.report_id() + 1;
+    LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d "
+            "report_size = %d report_id = %ld",
+            block_manager_->NameSpaceVersion(), chunkserver_id_,
+            params_.report_interval(), params_.report_size(), report_id_);
 
     work_thread_pool_->DelayTask(1, boost::bind(&ChunkServerImpl::SendBlockReport, this));
     heartbeat_thread_->DelayTask(1, boost::bind(&ChunkServerImpl::SendHeartbeat, this));
@@ -245,8 +248,12 @@ void ChunkServerImpl::SendHeartbeat() {
 
 void ChunkServerImpl::SendBlockReport() {
     BlockReportRequest request;
+    request.set_sequence_id(common::timer::get_micros());
     request.set_chunkserver_id(chunkserver_id_);
     request.set_chunkserver_addr(data_server_addr_);
+    request.set_start(last_report_blockid_ + 1);
+    request.set_report_id(report_id_);
+    int64_t last_report_id = report_id_;
 
     std::vector<BlockMeta> blocks;
     block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, params_.report_size());
@@ -266,6 +273,11 @@ void ChunkServerImpl::SendBlockReport() {
             last_report_blockid_ = blocks[blocks_num - 1].block_id();
         }
     }
+    if (blocks_num == 0) {
+        request.set_end(0);
+    } else {
+        request.set_end(blocks[blocks_num - 1].block_id());
+    }
 
     BlockReportResponse response;
     int64_t before_report = common::timer::get_micros();
@@ -273,18 +285,21 @@ void ChunkServerImpl::SendBlockReport() {
                                         &request, &response, FLAGS_block_report_timeout);
     int64_t after_report = common::timer::get_micros();
     if (after_report - before_report > 20 * 1000 * 1000) {
-        LOG(WARNING, "Block report use %ld ms", (after_report - before_report) / 1000);
+        LOG(WARNING, "Block report use %ld ms last_id %lu (%lu)",
+                (after_report - before_report) / 1000, last_report_id, request.sequence_id());
     }
     if (!ret) {
-        LOG(WARNING, "Block reprot fail\n");
+        LOG(WARNING, "Block report fail last_id %lu (%lu)\n", last_report_id, request.sequence_id());
     } else {
         if (response.status() != kOK) {
             last_report_blockid_ = -1;
+            report_id_ = 0;
             LOG(WARNING, "BlockReport return %s, Pause to report", StatusCode_Name(response.status()).c_str());
             return;
         }
         //LOG(INFO, "Report return old: %d new: %d", chunkserver_id_, response.chunkserver_id());
         //deal with obsolete blocks
+        report_id_ = response.report_id() + 1;
         std::vector<int64_t> obsolete_blocks;
         for (int i = 0; i < response.obsolete_blocks_size(); i++) {
             obsolete_blocks.push_back(response.obsolete_blocks(i));
@@ -296,7 +311,8 @@ void ChunkServerImpl::SendBlockReport() {
             write_thread_pool_->AddTask(task);
         }
 
-        LOG(INFO, "Block report done. %d replica blocks", response.new_replicas_size());
+        LOG(INFO, "Block report (%lu) done. %d replica blocks last_id %ld next_id %ld",
+                request.sequence_id(), response.new_replicas_size(), last_report_id, report_id_);
         g_recover_count.Add(response.new_replicas_size());
         for (int i = 0; i < response.new_replicas_size(); ++i) {
             const ReplicaInfo& rep = response.new_replicas(i);
@@ -330,6 +346,7 @@ bool ChunkServerImpl::ReportFinish(Block* block) {
     info->set_block_id(block->Id());
     info->set_block_size(block->Size());
     info->set_version(block->GetVersion());
+    info->set_is_recover(block->IsRecover());
     BlockReceivedResponse response;
     if (!nameserver_->SendRequest(&NameServer_Stub::BlockReceived, &request, &response, 20)) {
         LOG(WARNING, "Reprot finish fail: #%ld ", block->Id());

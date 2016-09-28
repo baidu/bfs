@@ -214,7 +214,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id, block_size, block_version)) {
             blockreceived_timer.Check(50 * 1000, "UpdateBlockInfo");
             // update cs -> block
-            chunkserver_manager_->AddBlock(cs_id, block_id);
+            chunkserver_manager_->AddBlock(cs_id, block_id, block.is_recover());
             blockreceived_timer.Check(50 * 1000, "AddBlock");
         } else {
             LOG(INFO, "BlockReceived drop C%d #%ld V%ld %ld",
@@ -236,8 +236,10 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     }
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
-    LOG(INFO, "Report from C%d %s %d blocks\n",
-        cs_id, request->chunkserver_addr().c_str(), request->blocks_size());
+    int64_t report_id = request->report_id();
+    LOG(INFO, "Report from C%d (%lu) %s %d blocks id %ld start %ld end %ld\n",
+        cs_id, request->sequence_id(), request->chunkserver_addr().c_str(),
+        request->blocks_size(), report_id, request->start(), request->end());
     const ::google::protobuf::RepeatedPtrField<ReportBlockInfo>& blocks = request->blocks();
 
     int64_t start_report = common::timer::get_micros();
@@ -250,6 +252,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         return;
     }
     int64_t before_update = common::timer::get_micros();
+    std::set<int64_t> insert_blocks;
     for (int i = 0; i < blocks.size(); i++) {
         g_report_blocks.Inc();
         const ReportBlockInfo& block =  blocks.Get(i);
@@ -264,13 +267,22 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
             chunkserver_manager_->RemoveBlock(cs_id, cur_block_id);
             LOG(INFO, "BlockReport remove obsolete block: #%ld C%d ", cur_block_id, cs_id);
             continue;
+        } else {
+            insert_blocks.insert(cur_block_id);
         }
-
-        // update cs -> block
     }
     int64_t before_add_block = common::timer::get_micros();
-    chunkserver_manager_->AddBlock(cs_id, blocks);
+    std::vector<int64_t> lost;
+    chunkserver_manager_->AddBlockWithCheck(cs_id, insert_blocks, request->start(),
+                                   request->end(), &lost, report_id);
+    if (lost.size() != 0) {
+        LOG(INFO, "C%d lost %u blocks",cs_id, lost.size());
+        for (uint32_t i = 0; i < lost.size(); ++i) {
+            block_mapping_manager_->DealWithDeadBlock(cs_id, lost[i]);
+        }
+    }
     int64_t after_add_block = common::timer::get_micros();
+    response->set_report_id(report_id);
 
     // recover replica
     if (!safe_mode_ && recover_mode_ != kStopRecover) {
@@ -474,7 +486,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             replicas.push_back(cs_id);
             // update cs -> block
             add_block_timer.Reset();
-            chunkserver_manager_->AddBlock(cs_id, new_block_id);
+            chunkserver_manager_->AddBlock(cs_id, new_block_id, false);
             add_block_timer.Check(50 * 1000, "AddBlock");
         }
         block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
