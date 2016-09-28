@@ -252,14 +252,15 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 
 double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
     double max_pending = FLAGS_chunkserver_max_pending_buffers * 0.8;
-    double pending_score = cs->buffers() / max_pending;
+    double buffer_score = cs->buffers() / max_pending;
+    double pending_score = cs->pending_writes() / max_pending;
     double data_score = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
-    if (data_score > 0.95 || space_left < (5L << 30) || pending_score > 1.0) {
+    if (data_score > 0.95 || space_left < (5L << 30) || buffer_score > 1.0) {
         return 1.0;
     }
-    return (data_score * data_score + pending_score) / 2;
+    return (data_score * data_score + buffer_score + pending_score) / 3;
 }
 
 void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads,
