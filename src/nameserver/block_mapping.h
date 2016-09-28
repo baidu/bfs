@@ -69,6 +69,7 @@ public:
     void RemoveBlocksForFile(const FileInfo& file_info, std::map<int64_t, std::set<int32_t> >* blocks);
     void RemoveBlock(int64_t block_id, std::map<int64_t, std::set<int32_t> >* blocks);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
+    void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     StatusCode CheckBlockVersion(int64_t block_id, int64_t version);
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
@@ -81,7 +82,7 @@ public:
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);
 private:
-    void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
+    void DealWithDeadBlockInternal(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     void ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result);
     void ListRecoverList(const std::set<int64_t>& recover_set, std::set<int64_t>* result);
