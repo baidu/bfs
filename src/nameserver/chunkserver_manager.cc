@@ -14,7 +14,7 @@
 #include "nameserver/location_provider.h"
 
 DECLARE_int32(keepalive_timeout);
-DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_int32(chunkserver_max_pending_buffer_size);
 DECLARE_int32(recover_speed);
 DECLARE_int32(recover_dest_limit);
 DECLARE_int32(heartbeat_interval);
@@ -248,7 +248,7 @@ void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<C
 }
 
 double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
-    double max_pending = FLAGS_chunkserver_max_pending_buffers * 0.8;
+    double max_pending = FLAGS_chunkserver_max_pending_buffer_size * 0.8;
     double pending_score = cs->buffers() / max_pending;
     double data_score = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();
@@ -627,15 +627,18 @@ void ChunkServerManager::LogStats() {
     int32_t w_qps = 0, r_qps = 0;
     int64_t w_speed = 0, r_speed = 0, recover_speed = 0;
     int32_t overload = 0;
-    for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
-        ChunkServerInfo* cs = it->second;
-        w_qps += cs->w_qps();
-        w_speed += cs->w_speed();
-        r_qps += cs->r_qps();
-        r_speed += cs->r_speed();
-        recover_speed += cs->recover_speed();
-        if (cs->load() > kChunkServerLoadMax) {
-            ++overload;
+    {
+        MutexLock lock(&mu_);
+        for (ServerMap::iterator it = chunkservers_.begin(); it != chunkservers_.end(); ++it) {
+            ChunkServerInfo* cs = it->second;
+            w_qps += cs->w_qps();
+            w_speed += cs->w_speed();
+            r_qps += cs->r_qps();
+            r_speed += cs->r_speed();
+            recover_speed += cs->recover_speed();
+            if (cs->load() > kChunkServerLoadMax) {
+                ++overload;
+            }
         }
     }
     stats_.w_qps = w_qps;

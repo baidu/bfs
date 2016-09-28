@@ -47,7 +47,7 @@ DECLARE_int32(chunkserver_work_thread_num);
 DECLARE_int32(chunkserver_read_thread_num);
 DECLARE_int32(chunkserver_write_thread_num);
 DECLARE_int32(chunkserver_recover_thread_num);
-DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_int32(chunkserver_max_pending_buffer_size);
 DECLARE_int64(chunkserver_max_unfinished_bytes);
 DECLARE_int32(chunkserver_max_writing_blocks);
 DECLARE_bool(chunkserver_auto_clean);
@@ -817,10 +817,10 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
 }
 
 StatusCode ChunkServerImpl::CheckMemoryStat(int64_t block_id, int32_t packet_seq) {
-    bool too_much_pending_buffer= (g_block_buffers.Get() * FLAGS_write_buf_size >> 20) >
-                                                      FLAGS_chunkserver_max_pending_buffers;
+    int32_t writing_buffer_size = (g_block_buffers.Get() * FLAGS_write_buf_size) >> 20;
     int32_t writing_blocks = g_writing_blocks.Get();
-    if (too_much_pending_buffer) {
+    if (writing_buffer_size > FLAGS_chunkserver_max_pending_buffer_size) {
+        LOG(WARNING, "Cs too much writing buffers(%ld)", writing_buffer_size);
         return kCsTooMuchPendingBuffer;
     } else if (writing_blocks > FLAGS_chunkserver_max_writing_blocks && packet_seq == 0) {
         LOG(WARNING, "Cs too much sliding window(%d)", writing_blocks);
