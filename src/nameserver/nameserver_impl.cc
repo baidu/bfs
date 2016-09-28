@@ -980,7 +980,8 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
             "<html><head><title>Recover Details</title>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
             "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
-            "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" rel=\"stylesheet\">\n"
+            "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" "
+                "rel=\"stylesheet\">\n"
             "</head>\n";
     str += "<body><div class=\"col-sm-12  col-md-12\">";
     str += "<h1>分布式文件系统控制台 - RecoverDetails</h1>";
@@ -1120,7 +1121,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             //"a:link,a:visited{color:#4078c0;} a:link{text-decoration:none;}"
             //"</style>\n"
             "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
-            "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" rel=\"stylesheet\">\n"
+            "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" "
+                "rel=\"stylesheet\">\n"
             "</head>\n";
     str += "<body><div class=\"col-sm-12  col-md-12\">";
 
@@ -1188,7 +1190,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             table_str += "Readonly";
         } else if (chunkserver.load() >= kChunkServerLoadMax) {
             if (FLAGS_bfs_web_kick_enable) {
-                table_str += "overload (<a href=\"/dfs/kick?cs=" + common::NumToString(chunkserver.id())
+                table_str += "overload (<a href=\"/dfs/kick?cs=" +
+                             common::NumToString(chunkserver.id())
                         + "\">kick</a>)";
             } else {
                 table_str += "overload";
@@ -1254,8 +1257,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "Blocks: " + common::NumToString(g_blocks_num.Get()) + "</br>";
-    str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" + common::NumToString(recover_num.lo_recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" + common::NumToString(recover_num.lo_pending) + "</br>";
+    str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" +
+            common::NumToString(recover_num.lo_recover_num) + "</br>";
+    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" +
+            common::NumToString(recover_num.lo_pending) + "</br>";
     str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
     str += "Incomplete: " + common::NumToString(recover_num.incomplete_num) + "</br>";
     str += "<a href=\"/dfs/details\">Details</a>";
