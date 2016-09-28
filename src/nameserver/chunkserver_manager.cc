@@ -23,6 +23,7 @@ DECLARE_bool(select_chunkserver_by_tag);
 DECLARE_double(select_chunkserver_local_factor);
 DECLARE_int32(blockreport_interval);
 DECLARE_int32(blockreport_size);
+DECLARE_int32(expect_chunkserver_num);
 
 namespace baidu {
 namespace bfs {
@@ -149,7 +150,7 @@ void ChunkServerManager::DeadCheck() {
                            boost::bind(&ChunkServerManager::DeadCheck, this));
 }
 
-void ChunkServerManager::HandleRegister(const std::string& ip,
+bool ChunkServerManager::HandleRegister(const std::string& ip,
                                         const RegisterRequest* request,
                                         RegisterResponse* response) {
     const std::string& address = request->chunkserver_addr();
@@ -184,6 +185,7 @@ void ChunkServerManager::HandleRegister(const std::string& ip,
     response->set_report_interval(FLAGS_blockreport_interval);
     response->set_report_size(FLAGS_blockreport_size);
     response->set_status(status);
+    return chunkserver_num_ >= FLAGS_expect_chunkserver_num;
 }
 
 void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response) {

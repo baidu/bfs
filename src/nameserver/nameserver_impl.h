@@ -124,7 +124,7 @@ private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
     void Register();
-    void CheckSafemode();
+    void CheckRecoverMode();
     void LeaveSafemode();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
     bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
@@ -156,7 +156,8 @@ private:
     /// Block map
     BlockMappingManager* block_mapping_manager_;
     /// Safemode
-    volatile int safe_mode_;
+    bool safemode_;
+    volatile int recover_timeout_;
     RecoverMode recover_mode_;
     int64_t start_time_;
     /// Namespace

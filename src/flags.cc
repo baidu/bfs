@@ -18,11 +18,12 @@ DEFINE_int32(block_report_timeout, 600, "BlockReport rpc timeout");
 // nameserver
 DEFINE_string(namedb_path, "./db", "Namespace database");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
+DEFINE_int32(expect_chunkserver_num, 3, "Safemode threshtrold");
 DEFINE_int32(keepalive_timeout, 10, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 4, "Nameserver log level");
 DEFINE_string(nameserver_warninglog, "./wflog", "Warning log file");
-DEFINE_int32(nameserver_safemode_time, 120, "Nameserver leave safemode time in second");
+DEFINE_int32(nameserver_start_recover_timeout, 120, "Nameserver starts recover in second");
 DEFINE_int32(recover_speed, 100, "Max num of block to recover for one chunkserver");
 DEFINE_int32(recover_dest_limit, 5, "Number of recover dest");
 DEFINE_int32(hi_recover_timeout, 180, "Recover timeout for high priority blocks");

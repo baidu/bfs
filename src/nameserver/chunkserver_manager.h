@@ -26,7 +26,7 @@ public:
         int64_t recover_speed;
     };
     ChunkServerManager(ThreadPool* thread_pool, BlockMappingManager* block_mapping_manager);
-    void HandleRegister(const std::string& ip,
+    bool HandleRegister(const std::string& ip,
                         const RegisterRequest* request,
                         RegisterResponse* response);
     void HandleHeartBeat(const HeartBeatRequest* request, HeartBeatResponse* response);
