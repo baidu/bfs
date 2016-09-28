@@ -35,7 +35,8 @@ DECLARE_int32(nameserver_work_thread_num);
 DECLARE_int32(nameserver_read_thread_num);
 DECLARE_int32(nameserver_heartbeat_thread_num);
 DECLARE_int32(blockmapping_bucket_num);
-DECLARE_int32(recover_timeout);
+DECLARE_int32(hi_recover_timeout);
+DECLARE_int32(lo_recover_timeout);
 DECLARE_int32(block_report_timeout);
 
 namespace baidu {
@@ -295,12 +296,14 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                 recover_blocks.begin(); it != recover_blocks.end(); ++it) {
             ReplicaInfo* rep = response->add_new_replicas();
             rep->set_block_id((*it).first);
-            rep->set_priority(priority++ < hi_num);
+            rep->set_priority(priority < hi_num);
             for (std::vector<std::string>::iterator dest_it = (*it).second.begin();
                  dest_it != (*it).second.end(); ++dest_it) {
                 rep->add_chunkserver_address(*dest_it);
             }
-            rep->set_recover_timeout(FLAGS_recover_timeout);
+            rep->set_recover_timeout(priority < hi_num ?
+                                     FLAGS_hi_recover_timeout : FLAGS_lo_recover_timeout);
+            ++priority;
         }
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
