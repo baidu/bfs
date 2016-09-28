@@ -52,6 +52,8 @@ public:
     int32_t ShutdownChunkServer(const std::vector<std::string>& cs_addr);
     int32_t ShutdownChunkServerStat();
 private:
+    void LogStatus();
+private:
     RpcClient* rpc_client_;
     NameServerClient* nameserver_client_;
     //NameServer_Stub* nameserver_;

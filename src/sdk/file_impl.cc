@@ -24,6 +24,8 @@ DECLARE_int32(sdk_max_writing_buffer_size);
 DECLARE_int32(sdk_write_retry_times);
 
 extern baidu::common::Counter g_writing_buffer_size;
+extern baidu::common::Counter g_reading_file_num;
+extern baidu::common::Counter g_writing_file_num;
 
 
 namespace baidu {
@@ -749,6 +751,9 @@ int32_t FileImpl::Close() {
                 return GetErrorCode(response.status());
             }
         }
+        g_writing_file_num.Dec();
+    } else {
+        g_reading_file_num.Dec();
     }
     return ret;
 }

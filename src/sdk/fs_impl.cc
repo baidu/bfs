@@ -26,6 +26,8 @@ DECLARE_string(nameserver_nodes);
 DECLARE_int32(sdk_max_writing_buffer_size);
 
 baidu::common::Counter g_writing_buffer_size;
+baidu::common::Counter g_reading_file_num;
+baidu::common::Counter g_writing_file_num;
 
 namespace baidu {
 namespace bfs {
@@ -80,6 +82,7 @@ const char* StrError(int error_code) {
 FSImpl::FSImpl() : rpc_client_(NULL), nameserver_client_(NULL), leader_nameserver_idx_(0) {
     local_host_name_ = common::util::GetLocalHostName();
     thread_pool_ = new ThreadPool(FLAGS_sdk_thread_num);
+    thread_pool_->AddTask(boost::bind(&FSImpl::LogStatus, this));
 }
 FSImpl::~FSImpl() {
     delete nameserver_client_;
@@ -333,6 +336,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         }
     } else {
         *file = new FileImpl(this, rpc_client_, path, flags, options);
+        g_writing_file_num.Inc();
     }
     return ret;
 }
@@ -354,6 +358,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Rea
         FileImpl* f = new FileImpl(this, rpc_client_, path, flags, options);
         f->located_blocks_.CopyFrom(response.blocks());
         *file = f;
+        g_reading_file_num.Inc();
     } else {
         LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
         if (!rpc_ret) {
@@ -500,6 +505,12 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
     }
     *fs = impl;
     return true;
+}
+
+void FSImpl::LogStatus() {
+    LOG(INFO, "Sdk reading %ld files writing %ld files use memory %ld",
+        g_reading_file_num.Get(), g_writing_file_num.Get(), g_writing_buffer_size.Get());
+    thread_pool_->DelayTask(5000, boost::bind(&FSImpl::LogStatus, this));
 }
 
 } // namespace bfs
