@@ -78,6 +78,7 @@ private:
     StatusCode WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver, int32_t cancel_time, bool* timeout);
     void CloseIncompleteBlock(int64_t block_id);
     void StopBlockReport();
+    StatusCode CheckMemoryStat(int64_t block_id, int32_t packet_seq);
 private:
     BlockManager*   block_manager_;
     std::string     data_server_addr_;

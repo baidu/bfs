@@ -9,6 +9,7 @@
 #include <boost/bind.hpp>
 #include <common/sliding_window.h>
 #include <common/logging.h>
+#include <common/counter.h>
 
 #include "proto/status_code.pb.h"
 #include "rpc/rpc_client.h"
@@ -19,7 +20,12 @@
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
 DECLARE_int32(sdk_createblock_retry);
+DECLARE_int32(sdk_max_writing_buffer_size);
 DECLARE_int32(sdk_write_retry_times);
+
+extern baidu::common::Counter g_writing_buffer_size;
+extern baidu::common::Counter g_reading_file_num;
+extern baidu::common::Counter g_writing_file_num;
 
 
 namespace baidu {
@@ -34,6 +40,7 @@ WriteBuffer::WriteBuffer(int32_t seq, int32_t buf_size, int64_t block_id, int64_
 WriteBuffer::~WriteBuffer() {
     delete[] buf_;
     buf_ = NULL;
+    g_writing_buffer_size.Sub(buf_size_);
 }
 int WriteBuffer::Available() {
     return buf_size_ - data_size_;
@@ -322,7 +329,7 @@ int32_t FileImpl::AddBlock() {
     for (int i = 0; i < cs_size; i++) {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);
-        write_windows_[addr] = new common::SlidingWindow<int>(100,
+        write_windows_[addr] = new common::SlidingWindow<int>(10,
                                boost::bind(&FileImpl::OnWriteCommit, this, _1, _2));
         cs_errors_[addr] = false;
         WriteBlockRequest create_request;
@@ -381,6 +388,11 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
         }
         common::atomic_inc(&back_writing_);
     }
+    int32_t sdk_mem = g_writing_buffer_size.Get() >> 20;
+    if (sdk_mem > FLAGS_sdk_max_writing_buffer_size) {
+        LOG(WARNING, "SDK use too much memory(%d), sleep 100ms", sdk_mem);
+        usleep(100 * 1000);
+    }
     if (open_flags_ & O_WRONLY) {
         // Add block
         MutexLock lock(&mu_, "Write AddBlock", 1000);
@@ -403,9 +415,10 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
     while (w < len) {
         MutexLock lock(&mu_, "WriteInternal", 1000);
         if (write_buf_ == NULL) {
-            write_buf_ = new WriteBuffer(++last_seq_, 256*1024,
+            write_buf_ = new WriteBuffer(++last_seq_, 256 * 1024,
                                          block_for_write_->block_id(),
                                          block_for_write_->block_size());
+            g_writing_buffer_size.Add(256 * 1024);
         }
         if ( (len - w) < write_buf_->Available()) {
             write_buf_->Append(buf+w, len-w);
@@ -692,6 +705,7 @@ int32_t FileImpl::Close() {
         if (!write_buf_) {
             write_buf_ = new WriteBuffer(++last_seq_, 32, block_id,
                                          block_for_write_->block_size());
+            g_writing_buffer_size.Add(32);
         }
         write_buf_->SetLast();
         StartWrite();
@@ -737,6 +751,9 @@ int32_t FileImpl::Close() {
                 return GetErrorCode(response.status());
             }
         }
+        g_writing_file_num.Dec();
+    } else {
+        g_reading_file_num.Dec();
     }
     return ret;
 }
