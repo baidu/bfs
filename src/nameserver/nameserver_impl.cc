@@ -1172,7 +1172,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += common::HumanReadableString(chunkserver.data_size()) + "B";
         table_str += "</td><td>";
         table_str += common::HumanReadableString(chunkserver.disk_quota()) + "B";
-        double ratio = chunkserver.data_size() * 100 / chunkserver.disk_quota();
+        double ratio = double(chunkserver.data_size()) * 100.0 / double(chunkserver.disk_quota());
         std::string ratio_str = common::NumToString(ratio);
         std::string bg_color = chunkserver.is_dead() ? "background-color:#CCC;" : "";
         std::string style;
