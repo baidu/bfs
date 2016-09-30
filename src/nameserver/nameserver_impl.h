@@ -132,7 +132,7 @@ private:
     void LogStatus();
     void Register();
     void CheckRecoverMode();
-    void LeaveSafemode();
+    void LeaveReadOnly();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
     bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,

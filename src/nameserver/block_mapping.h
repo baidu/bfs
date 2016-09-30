@@ -78,7 +78,6 @@ public:
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
     void ListRecover(RecoverBlockSet* blocks);
-    void SetSafeMode(bool safe_mode);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);
 private:

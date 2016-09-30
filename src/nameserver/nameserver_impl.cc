@@ -109,10 +109,9 @@ void NameServerImpl::CheckRecoverMode() {
     common::atomic_comp_swap(&recover_timeout_, new_recover_timeout, recover_timeout);
     work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckRecoverMode, this));
 }
-void NameServerImpl::LeaveSafemode() {
+void NameServerImpl::LeaveReadOnly() {
     LOG(INFO, "Nameserver leave safemode");
     if (readonly_) {
-        block_mapping_manager_->SetSafeMode(false);
         readonly_ = false;
     }
 }
@@ -173,7 +172,7 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
     } else {
         LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
         if (chunkserver_manager_->HandleRegister(cs_ip, request, response)) {
-            LeaveSafemode();
+            LeaveReadOnly();
         }
     }
     response->set_namespace_version(namespace_->Version());
@@ -291,7 +290,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     response->set_report_id(report_id);
 
     // recover replica
-    if (!readonly_ && recover_mode_ != kStopRecover) {
+    if (recover_mode_ != kStopRecover) {
         std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
@@ -1039,12 +1038,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         return true;
     } else if (path == "/dfs/entry_read_only") {
         LOG(INFO, "ChangeStatus entry_read_only");
-        LeaveSafemode();
+        LeaveReadOnly();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/leave_read_only") {
         LOG(INFO, "ChangeStatus leave_read_only");
-        block_mapping_manager_->SetSafeMode(true);
         readonly_ = true;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
