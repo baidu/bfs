@@ -51,7 +51,7 @@ struct FSOptions {
 /// Bfs File interface
 class File {
 public:
-    File() {};
+    File() {}
     virtual ~File() {}
     virtual int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false) = 0;
     virtual int64_t Seek(int64_t offset, int32_t whence) = 0;
