@@ -13,8 +13,6 @@
 #include <map>
 #include <vector>
 
-#include <boost/shared_ptr.hpp>
-
 namespace baidu {
 namespace bfs {
 
@@ -51,26 +49,18 @@ struct FSOptions {
 };
 
 /// Bfs File interface
-class FileImpl;
-class FSImpl;
-class RpcClient;
 class File {
 public:
-    File(FSImpl* fs, RpcClient* rpc_client,
-            const std::string& name, int32_t flags, const WriteOptions& options);
-    File(FSImpl* fs, RpcClient* rpc_client,
-            const std::string& name, int32_t flags, const ReadOptions& options);
-    File(FileImpl* file_impl);
-    ~File() {}
-    int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false);
-    int64_t Seek(int64_t offset, int32_t whence);
-    int32_t Read(char* buf, int32_t read_size);
-    int32_t Write(const char* buf, int32_t write_size);
-    int32_t Flush();
-    int32_t Sync();
-    int32_t Close();
+    File() {};
+    virtual ~File() {}
+    virtual int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false) = 0;
+    virtual int64_t Seek(int64_t offset, int32_t whence) = 0;
+    virtual int32_t Read(char* buf, int32_t read_size) = 0;
+    virtual int32_t Write(const char* buf, int32_t write_size) = 0;
+    virtual int32_t Flush() = 0;
+    virtual int32_t Sync() = 0;
+    virtual int32_t Close() = 0;
 private:
-    boost::shared_ptr<FileImpl> impl_;
     // No copying allowed
     File(const File&);
     void operator=(const File&);
