@@ -32,6 +32,13 @@ enum RecoverMode {
     kRecoverAll = 2,
 };
 
+enum DisplayMode {
+    kDisplayAll = 0,
+    kAliveOnly = 1,
+    kDeadOnly = 2,
+    kOverload = 3,
+};
+
 class NameServerImpl : public NameServer {
 public:
     NameServerImpl(Sync* sync);
@@ -155,8 +162,8 @@ private:
     ChunkServerManager* chunkserver_manager_;
     /// Block map
     BlockMappingManager* block_mapping_manager_;
-    /// Safemode
-    bool safemode_;
+
+    volatile bool readonly_;
     volatile int recover_timeout_;
     RecoverMode recover_mode_;
     int64_t start_time_;
