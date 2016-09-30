@@ -112,7 +112,6 @@ void NameServerImpl::CheckRecoverMode() {
 void NameServerImpl::LeaveSafemode() {
     LOG(INFO, "Nameserver leave safemode");
     if (safemode_) {
-        block_mapping_manager_->SetSafeMode(false);
         safemode_ = false;
     }
 }
@@ -291,7 +290,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     response->set_report_id(report_id);
 
     // recover replica
-    if (!safemode_ && recover_mode_ != kStopRecover) {
+    if (recover_mode_ != kStopRecover) {
         std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
@@ -1044,7 +1043,6 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         return true;
     } else if (path == "/dfs/enter_safemode") {
         LOG(INFO, "ChangeSafeMode enter_safemode");
-        block_mapping_manager_->SetSafeMode(true);
         safemode_ = true;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;

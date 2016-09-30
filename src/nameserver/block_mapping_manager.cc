@@ -149,12 +149,6 @@ void BlockMappingManager::ListRecover(RecoverBlockSet* recover_blocks) {
     }
 }
 
-void BlockMappingManager::SetSafeMode(bool safe_mode) {
-    for (size_t i = 0; i < block_mapping_.size(); i++) {
-        block_mapping_[i]->SetSafeMode(safe_mode);
-    }
-}
-
 void BlockMappingManager::MarkIncomplete(int64_t block_id) {
     int32_t bucket_offset = GetBucketOffset(block_id);
     block_mapping_[bucket_offset]->MarkIncomplete(block_id);

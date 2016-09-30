@@ -35,12 +35,7 @@ NSBlock::NSBlock(int64_t block_id, int32_t replica,
       recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover) {
 }
 
-BlockMapping::BlockMapping(ThreadPool* thread_pool) :
-                           thread_pool_(thread_pool), safe_mode_(true) {}
-
-void BlockMapping::SetSafeMode(bool safe_mode) {
-    safe_mode_ = safe_mode;
-}
+BlockMapping::BlockMapping(ThreadPool* thread_pool) : thread_pool_(thread_pool) {}
 
 bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
     MutexLock lock(&mu_, "BlockMapping::GetBlock", 1000);
@@ -70,7 +65,7 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, in
                         block->incomplete_replica.begin(),
                         block->incomplete_replica.end());
     }
-    if (!safe_mode_ && replica->empty()) {
+    if (replica->empty()) {
         LOG(DEBUG, "Block #%ld lost all replica", id);
     }
     *size = block->block_size;
@@ -152,7 +147,6 @@ bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
         LOG(INFO, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld R%lu IR%lu",
             block_id, cs_id, block_version, block_size,
             nsblock->version, nsblock->block_size, replica.size(), inc_replica.size());
-        if (safe_mode_) return true;
         if (replica.empty() && inc_replica.empty()) {
             LOG(WARNING, "Data lost #%ld C%d V%ld %ld -> V%ld %ld",
                 block_id, cs_id, block_version, block_size,
@@ -191,8 +185,7 @@ bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
         LOG(INFO, "Writing replica finish #%ld C%d V%ld %ld R%lu IR%lu",
             block_id, cs_id, block_version, block_size, replica.size(), inc_replica.size());
     }
-    if (inc_replica.empty()
-        && (!safe_mode_ || replica.size() >= nsblock->expect_replica_num)) {
+    if (inc_replica.empty() && replica.size() >= nsblock->expect_replica_num) {
         LOG(INFO, "Writing block complete #%ld V%ld %ld R%lu",
             block_id, block_version, block_size, replica.size());
         SetState(nsblock, kNotInRecover);
@@ -238,7 +231,6 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
         LOG(INFO, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld R%lu IR%lu",
             block_id, cs_id, block_version, block_size,
             nsblock->version, nsblock->block_size, replica.size(), inc_replica.size());
-        if (safe_mode_) return true;
         if (replica.empty()) {
             LOG(WARNING, "Data lost #%ld C%d V%ld %ld -> V%ld %ld",
                 block_id, cs_id, block_version, block_size,
@@ -272,10 +264,8 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
             cs_id, block_version, block_size, block_id, replica.size());
     }
 
-    if (!safe_mode_ || replica.size() >= nsblock->expect_replica_num) {
-        TryRecover(nsblock);
-    }
-    if (FLAGS_clean_redundancy && !safe_mode_ && replica.size() > nsblock->expect_replica_num) {
+    TryRecover(nsblock);
+    if (FLAGS_clean_redundancy && replica.size() > nsblock->expect_replica_num) {
         LOG(INFO, "Too much replica #%ld R%lu expect=%d C%d ",
             block_id, replica.size(), nsblock->expect_replica_num, cs_id);
         replica.erase(cs_id);
@@ -317,7 +307,6 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
         LOG(INFO, "Block #%ld C%d has old version V%ld %ld now: V%ld %ld R%lu IR%lu",
             block_id, cs_id, block_version, block_size,
             nsblock->version, nsblock->block_size, replica.size(), inc_replica.size());
-        if (safe_mode_) return true;
         if (replica.empty() && inc_replica.empty()) {
             LOG(WARNING, "Data lost #%ld C%d V%ld %ld -> V%ld %ld",
                 block_id, cs_id, block_version, block_size,
@@ -354,8 +343,7 @@ bool BlockMapping::UpdateIncompleteBlock(NSBlock* nsblock,
         LOG(INFO, "Incomplete block replica finish %ld C%d V%ld %ld R%lu IR%lu",
             block_id, cs_id, block_version, block_size, replica.size(), inc_replica.size());
     }
-    if (inc_replica.empty()
-        && (!safe_mode_ || replica.size() >= nsblock->expect_replica_num)) {
+    if (inc_replica.empty()) {
         LOG(INFO, "Incomplete block complete #%ld V%ld %ld R%lu",
             block_id, block_version, block_size, replica.size());
         SetState(nsblock, kNotInRecover);
@@ -585,7 +573,9 @@ void BlockMapping::DealWithDeadBlockInternal(int32_t cs_id, int64_t block_id) {
     if (block->recover_stat == kIncomplete) {
         LOG(INFO, "Incomplete block C%d #%ld dead replica= %lu",
             cs_id, block_id, replica.size());
-        if (inc_replica.empty() && !safe_mode_) SetState(block, kNotInRecover);
+        if (inc_replica.empty()) {
+            SetState(block, kNotInRecover);
+        }
     } else if (block->recover_stat == kBlockWriting) {
         LOG(INFO, "Writing block C%d #%ld dead R%lu IR%lu",
             cs_id, block_id, replica.size(), inc_replica.size());
@@ -593,9 +583,7 @@ void BlockMapping::DealWithDeadBlockInternal(int32_t cs_id, int64_t block_id) {
             SetState(block, kIncomplete);
             InsertToIncomplete(block_id, inc_replica);
         } else {
-            if (!safe_mode_) {
-                SetState(block, kNotInRecover);
-            }
+            SetState(block, kNotInRecover);
         }
     }   // else Normal check low hi
 
@@ -821,8 +809,7 @@ void BlockMapping::ListRecover(RecoverBlockSet* recover_blocks) {
 
 void BlockMapping::TryRecover(NSBlock* block) {
     mu_.AssertHeld();
-    if (safe_mode_
-        || block->recover_stat == kCheck
+    if (block->recover_stat == kCheck
         || block->recover_stat == kIncomplete
         || block->recover_stat == kBlockWriting) {
         return;
