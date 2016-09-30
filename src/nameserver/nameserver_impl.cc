@@ -29,6 +29,7 @@
 
 DECLARE_bool(bfs_web_kick_enable);
 DECLARE_int32(nameserver_start_recover_timeout);
+DECLARE_double(recover_lost_ratio);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
@@ -95,6 +96,29 @@ void NameServerImpl::CheckLeader() {
 }
 
 void NameServerImpl::CheckRecoverMode() {
+    int64_t block_num = g_blocks_num.Get();
+    if (block_num == 0) {
+        recover_timeout_ = 0;
+        recover_mode_ = kRecoverAll;
+        LOG(INFO, "ChangeRecoverMode No block in system, set kRecoverAll");
+        return;
+    }
+    RecoverBlockNum recover_num;
+    block_mapping_manager_->GetStat(-1, &recover_num);
+    if ((double)recover_num.lost_num / (double)block_num <= FLAGS_recover_lost_ratio) {
+        if (recover_num.hi_recover_num == 0) {
+            if (recover_num.lo_recover_num == 0) {
+                recover_timeout_ = 0;
+                recover_mode_ = kRecoverAll;
+                LOG(INFO, "ChangeRecoverMode enough blocks received, set kRecoverAll");
+                return;
+            } else {
+                recover_mode_ = kHiOnly;
+                LOG(INFO, "ChangeRecoverMode enough blocks received, set kHiOnly");
+            }
+        }
+    }
+
     int now_time = (common::timer::get_micros() - start_time_) / 1000000;
     int recover_timeout = recover_timeout_;
     if (recover_timeout == 0) {
