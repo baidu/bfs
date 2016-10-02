@@ -52,7 +52,7 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 extern common::Counter g_blocks_num;
 
-NameServerImpl::NameServerImpl(Sync* sync) : safemode_(true),
+NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
     recover_timeout_(FLAGS_nameserver_start_recover_timeout),
     recover_mode_(kStopRecover), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
@@ -109,11 +109,10 @@ void NameServerImpl::CheckRecoverMode() {
     common::atomic_comp_swap(&recover_timeout_, new_recover_timeout, recover_timeout);
     work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckRecoverMode, this));
 }
-void NameServerImpl::LeaveSafemode() {
+void NameServerImpl::LeaveReadOnly() {
     LOG(INFO, "Nameserver leave safemode");
-    if (safemode_) {
-        block_mapping_manager_->SetSafeMode(false);
-        safemode_ = false;
+    if (readonly_) {
+        readonly_ = false;
     }
 }
 
@@ -173,7 +172,7 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
     } else {
         LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
         if (chunkserver_manager_->HandleRegister(cs_ip, request, response)) {
-            LeaveSafemode();
+            LeaveReadOnly();
         }
     }
     response->set_namespace_version(namespace_->Version());
@@ -291,7 +290,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     response->set_report_id(report_id);
 
     // recover replica
-    if (!safemode_ && recover_mode_ != kStopRecover) {
+    if (recover_mode_ != kStopRecover) {
         std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
@@ -434,7 +433,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         return;
     }
     response->set_sequence_id(request->sequence_id());
-    if (safemode_) {
+    if (readonly_) {
         LOG(INFO, "AddBlock for %s failed, safe mode.", request->file_name().c_str());
         response->set_status(kSafeMode);
         done->Run();
@@ -1013,7 +1012,7 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
-    int display_mode = 0; // 0 -> display all; 1 -> alive only; 2 -> dead only; 3 -> overload
+    DisplayMode display_mode = kDisplayAll;
     if (path == "/dfs/switchtoleader") {
         if (sync_) {
             sync_->SwitchToLeader();
@@ -1037,15 +1036,14 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         recover_mode_ = kStopRecover;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/leave_safemode") {
-        LOG(INFO, "ChangeSafeMode leave_safemode");
-        LeaveSafemode();
+    } else if (path == "/dfs/entry_read_only") {
+        LOG(INFO, "ChangeStatus entry_read_only");
+        LeaveReadOnly();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/enter_safemode") {
-        LOG(INFO, "ChangeSafeMode enter_safemode");
-        block_mapping_manager_->SetSafeMode(true);
-        safemode_ = true;
+    } else if (path == "/dfs/leave_read_only") {
+        LOG(INFO, "ChangeStatus leave_read_only");
+        readonly_ = true;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/kick" && FLAGS_bfs_web_kick_enable) {
@@ -1062,11 +1060,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         }
         return false;
     } else if (path == "/dfs/alive") {
-        display_mode = 1;
+        display_mode = kAliveOnly;
     } else if (path == "/dfs/dead") {
-        display_mode = 2;
+        display_mode = kDeadOnly;
     } else if (path == "/dfs/overload") {
-        display_mode = 3;
+        display_mode = kOverload;
     } else if (path == "/dfs/set") {
         std::map<const std::string, std::string>::const_iterator it = request.query_params->begin();
         Params p;
@@ -1151,11 +1149,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                 overladen_num++;
             }
         }
-        if (display_mode == 1 && chunkservers->Get(i).is_dead()) {
+        if (display_mode == kAliveOnly && chunkservers->Get(i).is_dead()) {
             continue;
-        } else if ( display_mode == 2 && !chunkservers->Get(i).is_dead()) {
+        } else if ( display_mode == kDeadOnly && !chunkservers->Get(i).is_dead()) {
             continue;
-        } else if (display_mode == 3 &&
+        } else if (display_mode == kOverload &&
                    (chunkserver.load() < kChunkServerLoadMax ||
                    chunkservers->Get(i).is_dead())) {
             continue;
@@ -1247,11 +1245,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-4 col-md-4\">";
-    str += "SafeMode: ";
-    if (safemode_) {
-        str += "Yes</br> <a href=\"/dfs/leave_safemode\">LeaveSafeMode</a>";
+    str += "Status: ";
+    if (readonly_) {
+        str += "<font color=\"red\">Read Only</font></br> <a href=\"/dfs/entry_read_only\">LeaveSafeMode</a>";
     } else {
-        str += "No</br> <a href=\"/dfs/enter_safemode\">EnterSafeMode</a>";
+        str += "Normal</br> <a href=\"/dfs/leave_read_only\">EnterSafeMode</a>";
     }
     str += "</br>";
     if (recover_timeout_ > 1) {
