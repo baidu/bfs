@@ -433,7 +433,7 @@ void FileImpl::StartWrite() {
     block_for_write_->set_block_size(block_for_write_->block_size() + write_buf_->Size());
     write_buf_ = NULL;
     boost::function<void ()> task =
-        boost::bind(&FileImpl::BackgroundWrite, this);
+        boost::bind(&FileImpl::BackgroundWrite, boost::weak_ptr<FileImpl>(shared_from_this()));
     common::atomic_inc(&back_writing_);
     mu_.Unlock();
     thread_pool_->AddTask(task);
@@ -456,7 +456,16 @@ bool FileImpl::CheckWriteWindows() {
 }
 
 /// Send local buffer to chunkserver
-void FileImpl::BackgroundWrite() {
+void FileImpl::BackgroundWrite(boost::weak_ptr<FileImpl> wk_fp) {
+    boost::shared_ptr<FileImpl> fp(wk_fp.lock());
+    if (!fp) {
+        LOG(DEBUG, "FileImpl has been destroied, ignore backgroud write");
+        return;
+    }
+    fp->BackgroundWriteInternal();
+}
+
+void FileImpl::BackgroundWriteInternal() {
     MutexLock lock(&mu_, "BackgroundWrite", 1000);
     while(!write_queue_.empty() && CheckWriteWindows()) {
         WriteBuffer* buffer = write_queue_.top();
@@ -499,7 +508,9 @@ void FileImpl::BackgroundWrite() {
             const int max_retry_times = FLAGS_sdk_write_retry_times;
             ChunkServer_Stub* stub = chunkservers_[cs_addr];
             boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-                = boost::bind(&FileImpl::WriteBlockCallback, this, _1, _2, _3, _4,
+                = boost::bind(&FileImpl::WriteBlockCallback,
+                        boost::weak_ptr<FileImpl>(shared_from_this()),
+                        _1, _2, _3, _4,
                         max_retry_times, buffer, cs_addr);
 
             LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
@@ -507,8 +518,9 @@ void FileImpl::BackgroundWrite() {
             common::atomic_inc(&back_writing_);
             if (delay) {
                 thread_pool_->DelayTask(5,
-                        boost::bind(&FileImpl::DelayWriteChunk, this, buffer,
-                            request, max_retry_times, cs_addr));
+                        boost::bind(&FileImpl::DelayWriteChunk,
+                            boost::weak_ptr<FileImpl>(shared_from_this()),
+                            buffer, request, max_retry_times, cs_addr));
             } else {
                 WriteBlockResponse* response = new WriteBlockResponse;
                 rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
@@ -523,12 +535,26 @@ void FileImpl::BackgroundWrite() {
     }
 }
 
-void FileImpl::DelayWriteChunk(WriteBuffer* buffer,
-                                  const WriteBlockRequest* request,
-                                  int retry_times, std::string cs_addr) {
+void FileImpl::DelayWriteChunk(boost::weak_ptr<FileImpl> wk_fp,
+                               WriteBuffer* buffer,
+                               const WriteBlockRequest* request,
+                               int retry_times, std::string cs_addr) {
+    boost::shared_ptr<FileImpl> fp(wk_fp.lock());
+    if (!fp) {
+        LOG(DEBUG, "FileImpl has been destroied, ignore delay write");
+        return;
+    }
+    fp->DelayWriteChunkInternal(buffer, request, retry_times, cs_addr);
+}
+
+void FileImpl::DelayWriteChunkInternal(WriteBuffer* buffer,
+                               const WriteBlockRequest* request,
+                               int retry_times, std::string cs_addr) {
     WriteBlockResponse* response = new WriteBlockResponse;
     boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-        = boost::bind(&FileImpl::WriteBlockCallback, this, _1, _2, _3, _4,
+        = boost::bind(&FileImpl::WriteBlockCallback,
+                      boost::weak_ptr<FileImpl>(shared_from_this()),
+                      _1, _2, _3, _4,
                       retry_times, buffer, cs_addr);
     common::atomic_inc(&back_writing_);
     ChunkServer_Stub* stub = chunkservers_[cs_addr];
@@ -541,7 +567,22 @@ void FileImpl::DelayWriteChunk(WriteBuffer* buffer,
     }
 }
 
-void FileImpl::WriteBlockCallback(const WriteBlockRequest* request,
+void FileImpl::WriteBlockCallback(boost::weak_ptr<FileImpl> wk_fp,
+                                  const WriteBlockRequest* request,
+                                  WriteBlockResponse* response,
+                                  bool failed, int error,
+                                  int retry_times,
+                                  WriteBuffer* buffer,
+                                  std::string cs_addr) {
+    boost::shared_ptr<FileImpl> fp(wk_fp.lock());
+    if (!fp) {
+        LOG(DEBUG, "FileImpl has been destroied, ignore this callback");
+        return;
+    }
+    fp->WriteBlockCallbackInternal(request, response, failed, error, retry_times, buffer, cs_addr);
+}
+
+void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
                                      WriteBlockResponse* response,
                                      bool failed, int error,
                                      int retry_times,
@@ -590,8 +631,9 @@ void FileImpl::WriteBlockCallback(const WriteBlockRequest* request,
         if (!bg_error_ && retry_times > 0) {
             common::atomic_inc(&back_writing_);
             thread_pool_->DelayTask(5000,
-                boost::bind(&FileImpl::DelayWriteChunk, this, buffer,
-                            request, retry_times, cs_addr));
+                boost::bind(&FileImpl::DelayWriteChunk,
+                    boost::weak_ptr<FileImpl>(shared_from_this()),
+                    buffer, request, retry_times, cs_addr));
         } else {
             buffer->DecRef();
             delete request;
@@ -624,7 +666,7 @@ void FileImpl::WriteBlockCallback(const WriteBlockRequest* request,
     }
 
     boost::function<void ()> task =
-        boost::bind(&FileImpl::BackgroundWrite, this);
+        boost::bind(&FileImpl::BackgroundWrite, boost::weak_ptr<FileImpl>(shared_from_this()));
     thread_pool_->AddTask(task);
 }
 
