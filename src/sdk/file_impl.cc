@@ -542,6 +542,8 @@ void FileImpl::DelayWriteChunk(boost::weak_ptr<FileImpl> wk_fp,
     boost::shared_ptr<FileImpl> fp(wk_fp.lock());
     if (!fp) {
         LOG(DEBUG, "FileImpl has been destroied, ignore delay write");
+        buffer->DecRef();
+        delete request;
         return;
     }
     fp->DelayWriteChunkInternal(buffer, request, retry_times, cs_addr);
@@ -577,6 +579,9 @@ void FileImpl::WriteBlockCallback(boost::weak_ptr<FileImpl> wk_fp,
     boost::shared_ptr<FileImpl> fp(wk_fp.lock());
     if (!fp) {
         LOG(DEBUG, "FileImpl has been destroied, ignore this callback");
+        buffer->DecRef();
+        delete request;
+        delete response;
         return;
     }
     fp->WriteBlockCallbackInternal(request, response, failed, error, retry_times, buffer, cs_addr);
