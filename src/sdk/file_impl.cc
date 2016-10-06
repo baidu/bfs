@@ -748,7 +748,7 @@ int32_t FileImpl::Close() {
         while (back_writing_) {
             bool finish = sync_signal_.TimeWait(1000, (name_ + " Close wait").c_str());
             if (!finish && ++wait_time > 30 && (wait_time %10 == 0)) {
-                LOG(WARNING, "Close timeout %d s, %s back_writing_= %d",
+                LOG(WARNING, "Close timeout %d s, %s back_writing_= %d, finish = %d",
                 wait_time, name_.c_str(), back_writing_, finish);
             }
         }
