@@ -78,7 +78,6 @@ public:
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
     void ListRecover(RecoverBlockSet* blocks);
-    void SetSafeMode(bool safe_mode);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);
 private:
@@ -106,7 +105,6 @@ private:
     ThreadPool* thread_pool_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
-    bool safe_mode_;
 
     CheckList hi_recover_check_;
     CheckList lo_recover_check_;

@@ -32,6 +32,13 @@ enum RecoverMode {
     kRecoverAll = 2,
 };
 
+enum DisplayMode {
+    kDisplayAll = 0,
+    kAliveOnly = 1,
+    kDeadOnly = 2,
+    kOverload = 3,
+};
+
 class NameServerImpl : public NameServer {
 public:
     NameServerImpl(Sync* sync);
@@ -124,8 +131,8 @@ private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
     void Register();
-    void CheckSafemode();
-    void LeaveSafemode();
+    void CheckRecoverMode();
+    void LeaveReadOnly();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
     bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,
@@ -155,8 +162,9 @@ private:
     ChunkServerManager* chunkserver_manager_;
     /// Block map
     BlockMappingManager* block_mapping_manager_;
-    /// Safemode
-    volatile int safe_mode_;
+
+    volatile bool readonly_;
+    volatile int recover_timeout_;
     RecoverMode recover_mode_;
     int64_t start_time_;
     /// Namespace

@@ -28,7 +28,7 @@
 #include "proto/status_code.pb.h"
 
 DECLARE_bool(bfs_web_kick_enable);
-DECLARE_int32(nameserver_safemode_time);
+DECLARE_int32(nameserver_start_recover_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);
 DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
@@ -52,8 +52,9 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 extern common::Counter g_blocks_num;
 
-NameServerImpl::NameServerImpl(Sync* sync) : safe_mode_(FLAGS_nameserver_safemode_time),
-    recover_mode_(kRecoverAll), sync_(sync) {
+NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
+    recover_timeout_(FLAGS_nameserver_start_recover_timeout),
+    recover_mode_(kStopRecover), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
     read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_read_thread_num);
@@ -82,9 +83,9 @@ void NameServerImpl::CheckLeader() {
         if (!LogRemote(log, boost::function<void (bool)>())) {
             LOG(FATAL, "LogRemote namespace update fail");
         }
-        safe_mode_ = FLAGS_nameserver_safemode_time;
+        recover_timeout_ = FLAGS_nameserver_start_recover_timeout;
         start_time_ = common::timer::get_micros();
-        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckRecoverMode, this));
         is_leader_ = true;
     } else {
         is_leader_ = false;
@@ -93,25 +94,26 @@ void NameServerImpl::CheckLeader() {
     }
 }
 
-void NameServerImpl::CheckSafemode() {
+void NameServerImpl::CheckRecoverMode() {
     int now_time = (common::timer::get_micros() - start_time_) / 1000000;
-    int safe_mode = safe_mode_;
-    if (safe_mode == 0) {
+    int recover_timeout = recover_timeout_;
+    if (recover_timeout == 0) {
         return;
     }
-    int new_safe_mode = FLAGS_nameserver_safemode_time - now_time;
-    if (new_safe_mode <= 0) {
+    int new_recover_timeout = FLAGS_nameserver_start_recover_timeout - now_time;
+    if (new_recover_timeout <= 0) {
         LOG(INFO, "Now time %d", now_time);
-        LeaveSafemode();
+        recover_mode_ = kRecoverAll;
         return;
     }
-    common::atomic_comp_swap(&safe_mode_, new_safe_mode, safe_mode);
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckSafemode, this));
+    common::atomic_comp_swap(&recover_timeout_, new_recover_timeout, recover_timeout);
+    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckRecoverMode, this));
 }
-void NameServerImpl::LeaveSafemode() {
+void NameServerImpl::LeaveReadOnly() {
     LOG(INFO, "Nameserver leave safemode");
-    block_mapping_manager_->SetSafeMode(false);
-    safe_mode_ = 0;
+    if (readonly_) {
+        readonly_ = false;
+    }
 }
 
 void NameServerImpl::LogStatus() {
@@ -169,7 +171,9 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
         chunkserver_manager_->RemoveChunkServer(address);
     } else {
         LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
-        chunkserver_manager_->HandleRegister(cs_ip, request, response);
+        if (chunkserver_manager_->HandleRegister(cs_ip, request, response)) {
+            LeaveReadOnly();
+        }
     }
     response->set_namespace_version(namespace_->Version());
     done->Run();
@@ -286,7 +290,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     response->set_report_id(report_id);
 
     // recover replica
-    if (!safe_mode_ && recover_mode_ != kStopRecover) {
+    if (recover_mode_ != kStopRecover) {
         std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
@@ -429,7 +433,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         return;
     }
     response->set_sequence_id(request->sequence_id());
-    if (safe_mode_) {
+    if (readonly_) {
         LOG(INFO, "AddBlock for %s failed, safe mode.", request->file_name().c_str());
         response->set_status(kSafeMode);
         done->Run();
@@ -1008,7 +1012,7 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
-    int display_mode = 0; // 0 -> display all; 1 -> alive only; 2 -> dead only; 3 -> overload
+    DisplayMode display_mode = kDisplayAll;
     if (path == "/dfs/switchtoleader") {
         if (sync_) {
             sync_->SwitchToLeader();
@@ -1032,15 +1036,14 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         recover_mode_ = kStopRecover;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/leave_safemode") {
-        LOG(INFO, "ChangeRecoverMode leave_safemode");
-        LeaveSafemode();
+    } else if (path == "/dfs/entry_read_only") {
+        LOG(INFO, "ChangeStatus entry_read_only");
+        LeaveReadOnly();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/enter_safemode") {
-        LOG(INFO, "ChangeRecoverMode enter_safemode");
-        block_mapping_manager_->SetSafeMode(true);
-        safe_mode_ = 1;
+    } else if (path == "/dfs/leave_read_only") {
+        LOG(INFO, "ChangeStatus leave_read_only");
+        readonly_ = true;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/kick" && FLAGS_bfs_web_kick_enable) {
@@ -1057,11 +1060,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         }
         return false;
     } else if (path == "/dfs/alive") {
-        display_mode = 1;
+        display_mode = kAliveOnly;
     } else if (path == "/dfs/dead") {
-        display_mode = 2;
+        display_mode = kDeadOnly;
     } else if (path == "/dfs/overload") {
-        display_mode = 3;
+        display_mode = kOverload;
     } else if (path == "/dfs/set") {
         std::map<const std::string, std::string>::const_iterator it = request.query_params->begin();
         Params p;
@@ -1146,11 +1149,11 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                 overladen_num++;
             }
         }
-        if (display_mode == 1 && chunkservers->Get(i).is_dead()) {
+        if (display_mode == kAliveOnly && chunkservers->Get(i).is_dead()) {
             continue;
-        } else if ( display_mode == 2 && !chunkservers->Get(i).is_dead()) {
+        } else if ( display_mode == kDeadOnly && !chunkservers->Get(i).is_dead()) {
             continue;
-        } else if (display_mode == 3 &&
+        } else if (display_mode == kOverload &&
                    (chunkserver.load() < kChunkServerLoadMax ||
                    chunkservers->Get(i).is_dead())) {
             continue;
@@ -1167,14 +1170,20 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += common::HumanReadableString(chunkserver.data_size()) + "B";
         table_str += "</td><td>";
         table_str += common::HumanReadableString(chunkserver.disk_quota()) + "B";
-        std::string ratio = common::NumToString(
-            chunkserver.data_size() * 100 / chunkserver.disk_quota());
+        double ratio = double(chunkserver.data_size()) * 100.0 / double(chunkserver.disk_quota());
+        std::string ratio_str = common::NumToString(ratio);
         std::string bg_color = chunkserver.is_dead() ? "background-color:#CCC;" : "";
+        std::string style;
+        if (ratio >= 94.5) {
+            style = "progress-bar-danger";
+        } else if (ratio >= 80) {
+            style = "progress-bar-warning";
+        }
         table_str += "</td><td><div class=\"progress\" style=\"margin-bottom:0\">"
-               "<div class=\"progress-bar\" "
+               "<div class=\"progress-bar " + style + "\" "
                     "role=\"progressbar\" aria-valuenow=\"60\" aria-valuemin=\"0\" "
                     "aria-valuemax=\"100\" "
-                    "style=\"width: "+ ratio + "%; color:#000;" + bg_color + "\">" + ratio + "%"
+                    "style=\"width: "+ ratio_str + "%; color:#000;" + bg_color + "\">" + ratio_str + "%"
                "</div></div>";
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
@@ -1222,29 +1231,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h4 align=left>Nameserver status</h4>";
 
-    str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "<div class=\"col-sm-4 col-md-4\">";
     str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Safemode: ";
-    if (safe_mode_ > 1) {
-        str += common::NumToString(safe_mode_);
-    };
-    if (safe_mode_) {
-        str += " <a href=\"/dfs/leave_safemode\">LeaveSafeMode</a>";
-    } else {
-        str += " <a href=\"/dfs/enter_safemode\">SafeMode</a>";
-    }
-    if (recover_mode_ == kRecoverAll) {
-        str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
-        str += "   <a href=\"/dfs/hi_only\">HighOnly</a>";
-    } else if (recover_mode_ == kHiOnly) {
-        str += "   <a href=\"/dfs/recover_all\">RecoverAll</a>";
-        str += "   <a href=\"/dfs/stop_recover\">StopRecover</a>";
-    } else {
-        str += "   <a href=\"/dfs/hi_only\">HighOnly</a>";
-        str += "   <a href=\"/dfs/recover_all\">RecoverAll</a>";
-    }
-    str += "</br>";
     str += "Pending tasks: "
         + common::NumToString(read_thread_pool_->PendingNum()) + " "
         + common::NumToString(work_thread_pool_->PendingNum()) + " "
@@ -1255,7 +1244,35 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
     str += "</div>"; // <div class="col-sm-6 col-md-6">
 
-    str += "<div class=\"col-sm-6 col-md-6\">";
+    str += "<div class=\"col-sm-4 col-md-4\">";
+    str += "Status: ";
+    if (readonly_) {
+        str += "<font color=\"red\">Read Only</font></br> <a href=\"/dfs/entry_read_only\">LeaveSafeMode</a>";
+    } else {
+        str += "Normal</br> <a href=\"/dfs/leave_read_only\">EnterSafeMode</a>";
+    }
+    str += "</br>";
+    if (recover_timeout_ > 1) {
+        str += "RecoverCountdown: " + common::NumToString(recover_timeout_) + "</br>";
+    }
+    str += "RecoverMode: ";
+    if (recover_mode_ == kRecoverAll) {
+        str += "RecoverAll</br>";
+        str += "<a href=\"/dfs/stop_recover\">StopRecover </a>";
+        str += "<a href=\"/dfs/hi_only\">HighOnly</a>";
+    } else if (recover_mode_ == kHiOnly) {
+        str += "HighOnly</br>";
+        str += "<a href=\"/dfs/recover_all\">RecoverAll </a>";
+        str += "<a href=\"/dfs/stop_recover\">StopRecover</a>";
+    } else {
+        str += "<font color=\"red\">NoRecover</font></br>";
+        str += " <a href=\"/dfs/hi_only\">HighOnly </a>";
+        str += "<a href=\"/dfs/recover_all\">RecoverAll</a>";
+    }
+
+    str += "</div>"; // <div class="col-sm-6 col-md-6">
+
+    str += "<div class=\"col-sm-4 col-md-4\">";
     str += "Blocks: " + common::NumToString(g_blocks_num.Get()) + "</br>";
     str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" +
             common::NumToString(recover_num.lo_recover_num) + "</br>";

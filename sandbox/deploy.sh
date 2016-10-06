@@ -20,12 +20,12 @@ echo '--blockreport_interval=2' >> bfs.flag
 echo '--bfs_log=./log/bfs.log' >> bfs.flag
 echo '--nameserver_log_level=2' >> bfs.flag
 echo '--keepalive_timeout=10' >> bfs.flag
-echo '--nameserver_safemode_time=1' >> bfs.flag
+echo '--nameserver_start_recover_timeout=15' >> bfs.flag
 echo '--block_store_path=./data1,./data2' >> bfs.flag
 echo '--bfs_bug_tolerant=false' >> bfs.flag
 echo '--select_chunkserver_local_factor=0' >> bfs.flag
 echo '--bfs_web_kick_enable=true' >> bfs.flag
-echo "--ha_strategy=$strategy" >> bfs.flag
+echo '--ha_strategy=$strategy' >> bfs.flag
 echo '--nameserver_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829' >> bfs.flag
 
 for((i=0;i<$ns_num;i++));
