@@ -19,6 +19,7 @@
 #include "rpc/nameserver_client.h"
 
 #include "file_impl.h"
+#include "file_impl_wrapper.h"
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
@@ -324,7 +325,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
             ret = GetErrorCode(response.status());
         }
     } else {
-        *file = new FileImpl(this, rpc_client_, path, flags, options);
+        *file = new FileImplWrapper(this, rpc_client_, path, flags, options);
     }
     return ret;
 }
@@ -345,7 +346,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Rea
     if (rpc_ret && response.status() == kOK) {
         FileImpl* f = new FileImpl(this, rpc_client_, path, flags, options);
         f->located_blocks_.CopyFrom(response.blocks());
-        *file = f;
+        *file = new FileImplWrapper(f);
     } else {
         LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
         if (!rpc_ret) {
