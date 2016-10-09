@@ -210,7 +210,6 @@ message RegisterRequest {
     optional string chunkserver_addr = 3;
     optional int64 namespace_version = 4;
     optional string tag = 5;
-    optional string start_time = 6;
     optional int64 disk_quota = 7;
 }
 message RegisterResponse {

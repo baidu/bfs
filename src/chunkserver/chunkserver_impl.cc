@@ -82,9 +82,6 @@ ChunkServerImpl::ChunkServerImpl()
      last_report_blockid_(-1),
      report_id_(0),
      service_stop_(false) {
-    char buf[20];
-    common::timer::now_time_str(buf, 20);
-    start_time_ = std::string(buf, 11);
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     params_.set_report_interval(FLAGS_blockreport_interval);
     params_.set_report_size(FLAGS_blockreport_size);
@@ -144,7 +141,6 @@ void ChunkServerImpl::LogStatus(bool routine) {
 void ChunkServerImpl::Register() {
     RegisterRequest request;
     request.set_chunkserver_addr(data_server_addr_);
-    request.set_start_time(start_time_);
     request.set_disk_quota(block_manager_->DiskQuota());
     request.set_namespace_version(block_manager_->NameSpaceVersion());
     request.set_tag(FLAGS_chunkserver_tag);

@@ -160,8 +160,7 @@ bool ChunkServerManager::HandleRegister(const std::string& ip,
     std::map<std::string, int32_t>::iterator it = address_map_.find(address);
     if (it == address_map_.end()) {
         cs_id = AddChunkServer(request->chunkserver_addr(), ip,
-                               request->tag(), request->disk_quota(),
-                               request->start_time());
+                               request->tag(), request->disk_quota());
         assert(cs_id >= 0);
         response->set_chunkserver_id(cs_id);
     } else {
@@ -174,7 +173,7 @@ bool ChunkServerManager::HandleRegister(const std::string& ip,
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d, internal cleaning",
                 cs_id, address.c_str(), chunkserver_num_);
         } else {
-            UpdateChunkServer(cs_id, request->tag(), request->disk_quota(), request->start_time());
+            UpdateChunkServer(cs_id, request->tag(), request->disk_quota());
             std::map<int32_t, ChunkServerBlockMap*>::iterator it = chunkserver_block_map_.find(cs_id);
             assert(it != chunkserver_block_map_.end());
             response->set_report_id(it->second->report_id);
@@ -453,14 +452,15 @@ int ChunkServerManager::SelectChunkServerByZone(int num,
     return chains->size();
 }
 
-bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, int64_t quota,
-                                           const std::string& start_time) {
+bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = NULL;
     if (!GetChunkServerPtr(cs_id, &info)) {
         return false;
     }
-    info->set_start_time(start_time);
+    char buf[20];
+    common::timer::now_time_str(buf, 20);
+    info->set_start_time(std::string(buf, 11));
     info->set_disk_quota(quota);
     info->set_tag(tag);
     if (info->status() != kCsReadonly) {
@@ -477,15 +477,18 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, in
     return true;
 }
 
-int32_t ChunkServerManager::AddChunkServer(const std::string& address, const std::string& ip,
-                                           const std::string& tag, int64_t quota,
-                                           const std::string& start_time) {
+int32_t ChunkServerManager::AddChunkServer(const std::string& address,
+                                           const std::string& ip,
+                                           const std::string& tag,
+                                           int64_t quota) {
     mu_.AssertHeld();
     ChunkServerInfo* info = new ChunkServerInfo;
     int32_t id = next_chunkserver_id_++;
+    char buf[20];
+    common::timer::now_time_str(buf, 20);
+    info->set_start_time(std::string(buf, 11));
     info->set_id(id);
     info->set_address(address);
-    info->set_start_time(start_time);
     info->set_tag(tag);
     info->set_disk_quota(quota);
     if (std::find(chunkservers_to_offline_.begin(), chunkservers_to_offline_.end(),

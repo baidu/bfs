@@ -81,7 +81,6 @@ private:
 private:
     BlockManager*   block_manager_;
     std::string     data_server_addr_;
-    std::string     start_time_;
     RpcClient*      rpc_client_;
     ThreadPool*     work_thread_pool_;
     ThreadPool*     read_thread_pool_;
