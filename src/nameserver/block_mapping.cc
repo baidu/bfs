@@ -825,7 +825,7 @@ void BlockMapping::TryRecover(NSBlock* block) {
                 hi_pri_recover_.erase(block_id);
             } else if (block->block_size == 0 && block->recover_stat == kLost) {
                 lost_blocks_.erase(block_id);
-                LOG(INFO, "[TryRecover] empty block #%ld remove from lost", block_id);
+                LOG(WARNING, "[TryRecover] empty block #%ld remove from lost", block_id);
             }
         } else if (block->replica.size() == 1 && block->recover_stat != kHiRecover) {
             hi_pri_recover_.insert(block_id);
