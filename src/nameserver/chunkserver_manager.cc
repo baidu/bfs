@@ -214,6 +214,9 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     } else if (info->status() == kCsOffLine) {
         LOG(INFO, "Dead chunkserver revival C%d %s", cs_id, address.c_str());
         assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
+        char buf[20];
+        common::timer::now_time_str(buf, 20);
+        info->set_start_time(std::string(buf, 11));
         info->set_is_dead(false);
         info->set_status(kCsActive);
         chunkserver_num_++;
