@@ -15,6 +15,7 @@ namespace bfs {
 const double kChunkServerLoadMax = 0.999999;
 
 class BlockMappingManager;
+typedef  std::vector<std::pair<int64_t, std::vector<std::string> > > RecoverVec;
 
 class ChunkServerManager {
 public:
@@ -44,9 +45,7 @@ public:
     void AddBlock(int32_t id, int64_t block_id, bool is_recover);
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkServer(ChunkServerInfo* cs, const std::string& reason);
-    void PickRecoverBlocks(int cs_id,
-                           std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
-                           int* hi_num, bool hi_only);
+    void PickRecoverBlocks(int cs_id,  RecoverVec* recover_blocks, int* hi_num, bool hi_only);
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);
