@@ -83,7 +83,7 @@ public:
     /// Send local buffer to chunkserver
     static void BackgroundWrite(boost::weak_ptr<FileImpl> wk_fp);
     /// Callback for sliding window
-    void OnWriteCommit(int32_t, int32_t);
+    static void OnWriteCommit(int32_t, int32_t);
     static void WriteBlockCallback(boost::weak_ptr<FileImpl> wk_fp,
                             const WriteBlockRequest* request,
                             WriteBlockResponse* response,
