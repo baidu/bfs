@@ -323,7 +323,7 @@ int32_t FileImpl::AddBlock() {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);
         write_windows_[addr] = new common::SlidingWindow<int>(100,
-                               boost::bind(&FileImpl::OnWriteCommit, this, _1, _2));
+                               boost::bind(&FileImpl::OnWriteCommit, _1, _2));
         cs_errors_[addr] = false;
         WriteBlockRequest create_request;
         int64_t seq = common::timer::get_micros();
