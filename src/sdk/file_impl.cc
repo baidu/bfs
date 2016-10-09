@@ -323,8 +323,7 @@ int32_t FileImpl::AddBlock() {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);
         write_windows_[addr] = new common::SlidingWindow<int>(100,
-                               boost::bind(&FileImpl::OnWriteCommit,
-                                   boost::weak_ptr<FileImpl>(shared_from_this()), _1, _2));
+                               boost::bind(&FileImpl::OnWriteCommit, this, _1, _2));
         cs_errors_[addr] = false;
         WriteBlockRequest create_request;
         int64_t seq = common::timer::get_micros();
@@ -676,16 +675,7 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
     thread_pool_->AddTask(task);
 }
 
-void FileImpl::OnWriteCommit(boost::weak_ptr<FileImpl> wk_fp, int32_t offset, int32_t item) {
-    boost::shared_ptr<FileImpl> fp(wk_fp.lock());
-    if (!fp) {
-        LOG(DEBUG, "FileImpl has been destroied");
-        return;
-    }
-    fp->OnWriteCommitInternal(offset, item);
-}
-
-void FileImpl::OnWriteCommitInternal(int32_t, int32_t) {
+void FileImpl::OnWriteCommit(int32_t, int) {
 }
 
 int32_t FileImpl::Flush() {

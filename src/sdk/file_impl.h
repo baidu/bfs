@@ -83,7 +83,7 @@ public:
     /// Send local buffer to chunkserver
     static void BackgroundWrite(boost::weak_ptr<FileImpl> wk_fp);
     /// Callback for sliding window
-    static void OnWriteCommit(boost::weak_ptr<FileImpl> wk_fp, int32_t, int32_t);
+    void OnWriteCommit(int32_t, int32_t);
     static void WriteBlockCallback(boost::weak_ptr<FileImpl> wk_fp,
                             const WriteBlockRequest* request,
                             WriteBlockResponse* response,
@@ -117,7 +117,6 @@ private:
                             std::string cs_addr);
     void DelayWriteChunkInternal(WriteBuffer* buffer, const WriteBlockRequest* request,
                                 int retry_times, std::string cs_addr);
-    void OnWriteCommitInternal(int32_t, int32_t);
 private:
     FSImpl* fs_;                        ///< 文件系统
     RpcClient* rpc_client_;             ///< RpcClient
