@@ -455,6 +455,30 @@ bool FileImpl::CheckWriteWindows() {
     return count >= (int)write_windows_.size() - 1;
 }
 
+int32_t FileImpl::GetLastWriteFinishedNum() {
+    mu_.AssertHeld();
+    std::map<std::string, common::SlidingWindow<int>* >::iterator it;
+    int count = 0;
+    for (it = write_windows_.begin(); it != write_windows_.end(); ++it) {
+        if (it->second->GetBaseOffset() == last_seq_ + 1) {
+            count++;
+        }
+    }
+    return count;
+}
+
+bool FileImpl::ShouldSetError() {
+    mu_.AssertHeld();
+    std::map<std::string, bool>::iterator it = cs_errors_.begin();
+    int count = 0;
+    for (; it != cs_errors_.end(); ++it) {
+        if (it->second == true) {
+            count++;
+        }
+    }
+    return count > 1;
+}
+
 /// Send local buffer to chunkserver
 void FileImpl::BackgroundWrite(boost::weak_ptr<FileImpl> wk_fp) {
     boost::shared_ptr<FileImpl> fp(wk_fp.lock());
@@ -620,14 +644,7 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
                 } else {
                     MutexLock lock(&mu_);
                     cs_errors_[cs_addr] = true;
-                    std::map<std::string, bool>::iterator it = cs_errors_.begin();
-                    int count = 0;
-                    for (; it != cs_errors_.end(); ++it) {
-                        if (it->second == true) {
-                            count++;
-                        }
-                    }
-                    if (count > 1) {
+                    if (ShouldSetError()) {
                         bg_error_ = true;
                     }
                 }
@@ -661,11 +678,15 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
 
     {
         MutexLock lock(&mu_, "WriteBlockCallback", 1000);
-        if (write_queue_.empty() || bg_error_) {
+        int32_t last_write_finish_num = GetLastWriteFinishedNum();
+        int32_t replica_num = write_windows_.size();
+        bool fan_out_write = FLAGS_sdk_write_mode == "fan-out" ? true : false;
+        if (write_queue_.empty() ||
+                bg_error_ ||
+                (fan_out_write && last_write_finish_num >= replica_num - 1) ||
+                (!fan_out_write && last_write_finish_num == 1)) {
             common::atomic_dec(&back_writing_);    // for AsyncRequest
-            if (back_writing_ == 0) {
-                sync_signal_.Broadcast();
-            }
+            sync_signal_.Broadcast();
             return;
         }
     }
@@ -693,8 +714,18 @@ int32_t FileImpl::Sync() {
         StartWrite();
     }
     int wait_time = 0;
-    while (back_writing_ && !bg_error_ &&
+    int32_t replica_num = write_windows_.size();
+    int32_t last_write_finish_num = 0;
+    while (!bg_error_ &&
            (w_options_.sync_timeout < 0 || wait_time < w_options_.sync_timeout)) {
+        last_write_finish_num = GetLastWriteFinishedNum();
+        if (last_write_finish_num == replica_num) {
+            break;
+        }
+        //TODO deal with sync_timeout?
+        if (last_write_finish_num == replica_num - 1 && wait_time >= 500) {
+            break;
+        }
         bool finish = sync_signal_.TimeWait(100, "Sync wait");
         wait_time += 100;
         if (wait_time >= 30000 && (wait_time % 10000 == 0)) {
@@ -733,6 +764,9 @@ int32_t FileImpl::Close() {
     MutexLock lock(&mu_, "Close", 1000);
     bool need_report_finish = false;
     int64_t block_id = -1;
+    int32_t finished_num = 0;
+    bool fan_out_write = FLAGS_sdk_write_mode == "fan-out" ? true : false;
+    int32_t replica_num = write_windows_.size();
     if (block_for_write_ && (open_flags_ & O_WRONLY)) {
         need_report_finish = true;
         block_id = block_for_write_->block_id();
@@ -745,22 +779,33 @@ int32_t FileImpl::Close() {
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
         int wait_time = 0;
-        while (back_writing_) {
+        while (!bg_error_) {
+            finished_num = GetLastWriteFinishedNum();
+            if (finished_num == replica_num) {
+                break;
+            }
+            // TODO flag for wait_time?
+            if (fan_out_write && finished_num == replica_num - 1 && wait_time >= 3) {
+                LOG(WARNING, "Skip slow chunkserver");
+                bg_error_ = true;
+                break;
+            }
             bool finish = sync_signal_.TimeWait(1000, (name_ + " Close wait").c_str());
-            if (!finish && ++wait_time > 30 && (wait_time %10 == 0)) {
+            if (!finish && ++wait_time > 30 && (wait_time % 10 == 0)) {
                 LOG(WARNING, "Close timeout %d s, %s back_writing_= %d, finish = %d",
                 wait_time, name_.c_str(), back_writing_, finish);
             }
         }
-        delete block_for_write_;
-        block_for_write_ = NULL;
     }
+    delete block_for_write_;
+    block_for_write_ = NULL;
     delete chunkserver_;
     chunkserver_ = NULL;
     LOG(DEBUG, "File %s closed", name_.c_str());
     closed_ = true;
     int32_t ret = OK;
-    if (bg_error_) {
+    if (bg_error_ && ((fan_out_write && finished_num < replica_num - 1
+                    || !fan_out_write && finished_num == 0))) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = TIMEOUT;
     }

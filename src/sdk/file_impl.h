@@ -108,6 +108,8 @@ public:
 private:
     int32_t AddBlock();
     bool CheckWriteWindows();
+    int32_t GetLastWriteFinishedNum();
+    bool ShouldSetError();
     void BackgroundWriteInternal();
     void WriteBlockCallbackInternal(const WriteBlockRequest* request,
                             WriteBlockResponse* response,
