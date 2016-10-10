@@ -476,7 +476,11 @@ bool FileImpl::ShouldSetError() {
             count++;
         }
     }
-    return count > 1;
+    if (cs_errors_.size() == 1) {
+        return count == 1;
+    } else {
+        return count > 1;
+    }
 }
 
 /// Send local buffer to chunkserver
@@ -639,14 +643,10 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
                     buffer->offset(), buffer->Size(),
                     StatusCode_Name(response->status()).c_str(), retry_times);
                 ///TODO: SetFaild & handle it
-                if (FLAGS_sdk_write_mode == "chains") {
+                MutexLock lock(&mu_);
+                cs_errors_[cs_addr] = true;
+                if (ShouldSetError()) {
                     bg_error_ = true;
-                } else {
-                    MutexLock lock(&mu_);
-                    cs_errors_[cs_addr] = true;
-                    if (ShouldSetError()) {
-                        bg_error_ = true;
-                    }
                 }
             }
         }
@@ -779,8 +779,8 @@ int32_t FileImpl::Close() {
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
         int wait_time = 0;
+        finished_num = GetLastWriteFinishedNum();
         while (!bg_error_) {
-            finished_num = GetLastWriteFinishedNum();
             if (finished_num == replica_num) {
                 break;
             }
@@ -795,6 +795,7 @@ int32_t FileImpl::Close() {
                 LOG(WARNING, "Close timeout %d s, %s back_writing_= %d, finish = %d",
                 wait_time, name_.c_str(), back_writing_, finish);
             }
+            finished_num = GetLastWriteFinishedNum();
         }
     }
     delete block_for_write_;
