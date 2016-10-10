@@ -340,10 +340,12 @@ void NameServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
     response->set_sequence_id(request->sequence_id());
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
+    common::timer::TimeChecker checker;
     for (int i = 0; i < request->blocks_size(); i++) {
         block_mapping_manager_->ProcessRecoveredBlock(cs_id, request->blocks(i),
             request->status_size() > i ? request->status(i) : kOK);
     }
+    checker.Check(10 * 1000, "[PushBlockReport] ProcessRecoveredBlock");
     done->Run();
 }
 
@@ -367,10 +369,13 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     int replica_num = request->replica_num();
     NameServerLog log;
     std::vector<int64_t> blocks_to_remove;
+    common::timer::TimeChecker checker;
     StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove, &log);
+    checker.Check(10 * 1000, "[CreateFile] update namespace");
     for (size_t i = 0; i < blocks_to_remove.size(); i++) {
         block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
     }
+    checker.Check(10 * 1000, "[CreateFile] update mapping");
     response->set_status(status);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s create file %s returns %s",
@@ -449,6 +454,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         return;
     }
 
+    common::timer::TimeChecker add_block_timer;
     if (file_info.blocks_size() > 0) {
         std::map<int64_t, std::set<int32_t> > block_cs;
         block_mapping_manager_->RemoveBlocksForFile(file_info, &block_cs);
@@ -460,14 +466,15 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             }
         }
         file_info.clear_blocks();
+        add_block_timer.Check(10 * 1000, "[AddBlock] RemoveBlock");
     }
     /// replica num
     int replica_num = file_info.replicas();
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
-    common::timer::TimeChecker add_block_timer;
+    add_block_timer.Reset();
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
-        add_block_timer.Check(50 * 1000, "GetChunkServerChains");
+        add_block_timer.Check(50 * 1000, "[AddBlock] GetChunkServerChains");
         NameServerLog log;
         int64_t new_block_id = namespace_->GetNewBlockId(&log);
         LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
@@ -478,10 +485,12 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         for (int i = 0; i < replica_num; i++) {
             file_info.add_cs_addrs(chunkserver_manager_->GetChunkServerAddr(chains[i].first));
         }
+        add_block_timer.Reset();
         if (!namespace_->UpdateFileInfo(file_info, &log)) {
             LOG(WARNING, "Update file info fail: %s", path.c_str());
             response->set_status(kUpdateError);
         }
+        add_block_timer.Check(10 * 1000, "[AddBlock] UpdateFileInfo");
         LocatedBlock* block = response->mutable_block();
         std::vector<int32_t> replicas;
         for (int i = 0; i < replica_num; i++) {
@@ -523,19 +532,23 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
+    common::timer::TimeChecker checker;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
         response->set_status(kNsNotFound);
         done->Run();
         return;
     }
+    checker.Check(10 * 1000, "[SyncBlock] GetFileInfo");
     if (!CheckFileHasBlock(file_info, file_name, block_id)) {
         response->set_status(kNoPermission);
         done->Run();
         return;
     }
+
     file_info.set_size(request->size());
     NameServerLog log;
+    checker.Reset();
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
         LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
         response->set_status(kUpdateError);
@@ -545,6 +558,7 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
         LOG(INFO, "SyncBlock #%ld for file %s, V%ld, size: %ld",
                 block_id, file_name.c_str(), file_info.version(), file_info.size());
     }
+    checker.Check(10 * 1000, "[SyncBlock] UpdateFileInfo");
     response->set_status(kOK);
     LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
@@ -580,10 +594,13 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s finish file %s block #%ld",
             ctl->RemoteAddress().c_str(), file_name.c_str(), block_id);
+    common::timer::TimeChecker checker;
     if (request->close_with_error()) {
+        checker.Check(10 * 1000, "[FinishBlock] close_with_error");
         LOG(INFO, "Sdk close %s with error", file_name.c_str());
         block_mapping_manager_->MarkIncomplete(block_id);
         response->set_status(kOK);
+        checker.Check(10 * 1000, "[FinishBlock] MarkIncomplete");
         done->Run();
         return;
     }
@@ -594,6 +611,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    checker.Check(10 * 1000, "[FinishBlock] GetFileInfo");
 
     if (!CheckFileHasBlock(file_info, file_name, block_id)) {
         response->set_status(kNoPermission);
@@ -603,12 +621,14 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
     NameServerLog log;
+    checker.Reset();
     if (!namespace_->UpdateFileInfo(file_info, &log)) {
         LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
         response->set_status(kUpdateError);
         done->Run();
         return;
     }
+    checker.Check(10 * 1000, "[FinishBlock] UpdateFileInfo");
     StatusCode ret = block_mapping_manager_->CheckBlockVersion(block_id, block_version);
     response->set_status(ret);
     if (ret != kOK) {
@@ -781,7 +801,9 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
 
     FileInfo file_info;
     NameServerLog log;
+    common::timer::TimeChecker checker;
     StatusCode status = namespace_->RemoveFile(path, &file_info, &log);
+    checker.Check(10 * 1000, "[Unlink] RemoveFile");
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s unlink file %s returns %s",
             ctl->RemoteAddress().c_str(), path.c_str(), StatusCode_Name(status).c_str());
