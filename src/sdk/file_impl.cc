@@ -269,7 +269,7 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
 
 int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
     //printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
-    if (open_flags_ == O_WRONLY) {
+    if (open_flags_ != O_RDONLY) {
         if (offset == 0 && whence == SEEK_CUR) {
             return common::atomic_add64(&write_offset_, 0);
         }
