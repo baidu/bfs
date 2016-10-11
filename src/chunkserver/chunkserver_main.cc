@@ -14,6 +14,8 @@
 #include "chunkserver/chunkserver_impl.h"
 #include "version.h"
 
+#include <iostream>
+
 DECLARE_string(flagfile);
 DECLARE_string(chunkserver_port);
 DECLARE_string(block_store_path);
@@ -43,6 +45,7 @@ int main(int argc, char* argv[])
     }
 
     ::google::ParseCommandLineFlags(&argc, &argv, false);
+    std::cerr << FLAGS_flagfile << std::endl;
     if (FLAGS_bfs_log != "") {
         baidu::common::SetLogFile(FLAGS_bfs_log.c_str());
         baidu::common::SetLogSize(FLAGS_bfs_log_size);

@@ -110,7 +110,9 @@ void NameSpace::DecodingStoreKey(const std::string& key_str,
 
 bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
     std::string value;
+    common::timer::TimeChecker checker;
     leveldb::Status s = db_->Get(leveldb::ReadOptions(), key, &value);
+    checker.Check(10 * 1000, "DB Get " + key.substr(8));
     if (!s.ok()) {
         LOG(DEBUG, "GetFromStore get fail %s %s",
             key.substr(8).c_str(), s.ToString().c_str());
@@ -196,7 +198,9 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
     file_info.SerializeToString(&infobuf_for_sync);
 
+    common::timer::TimeChecker checker;
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf_for_ldb);
+    checker.Check(10 * 1000, "DB Put");
     if (!s.ok()) {
         LOG(WARNING, "NameSpace write to db fail: %s", s.ToString().c_str());
         return false;
@@ -223,6 +227,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     int64_t parent_id = kRootEntryid;
     int depth = paths.size();
     std::string info_value;
+    common::timer::TimeChecker checker;
     for (int i=0; i < depth-1; ++i) {
         if (!LookUp(parent_id, paths[i], &file_info)) {
             file_info.set_type((1<<9)|0755);
@@ -231,7 +236,9 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             file_info.SerializeToString(&info_value);
             std::string key_str;
             EncodingStoreKey(parent_id, paths[i], &key_str);
+            checker.Reset();
             leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
+            checker.Check(10 * 1000, "DB Put create " + paths[i]);
             assert(s.ok());
             EncodeLog(log, kSyncWrite, key_str, info_value);
             LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
@@ -265,6 +272,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     std::string file_key;
     EncodingStoreKey(parent_id, fname, &file_key);
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
+    checker.Check(10 * 1000, "DB Put create " + fname);
     if (s.ok()) {
         LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
         EncodeLog(log, kSyncWrite, file_key, info_value);
@@ -379,8 +387,10 @@ StatusCode NameSpace::Rename(const std::string& old_path,
 
     // Write to persistent storage
     leveldb::WriteBatch batch;
+    common::timer::TimeChecker checker;
     batch.Put(new_key, value);
     batch.Delete(old_key);
+    checker.Check(10 * 1000, "DB put rename");
 
     EncodeLog(log, kSyncWrite, new_key, value);
     EncodeLog(log, kSyncDelete, old_key, "");
