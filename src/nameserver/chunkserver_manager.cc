@@ -214,6 +214,9 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     } else if (info->status() == kCsOffLine) {
         LOG(INFO, "Dead chunkserver revival C%d %s", cs_id, address.c_str());
         assert(heartbeat_list_.find(info->last_heartbeat()) == heartbeat_list_.end());
+        char buf[20];
+        common::timer::now_time_str(buf, 20, common::timer::kMin);
+        info->set_start_time(std::string(buf));
         info->set_is_dead(false);
         info->set_status(kCsActive);
         chunkserver_num_++;
@@ -459,6 +462,9 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, in
     if (!GetChunkServerPtr(cs_id, &info)) {
         return false;
     }
+    char buf[20];
+    common::timer::now_time_str(buf, 20, common::timer::kMin);
+    info->set_start_time(std::string(buf));
     info->set_disk_quota(quota);
     info->set_tag(tag);
     if (info->status() != kCsReadonly) {
@@ -482,6 +488,9 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     mu_.AssertHeld();
     ChunkServerInfo* info = new ChunkServerInfo;
     int32_t id = next_chunkserver_id_++;
+    char buf[20];
+    common::timer::now_time_str(buf, 20, common::timer::kMin);
+    info->set_start_time(std::string(buf));
     info->set_id(id);
     info->set_address(address);
     info->set_tag(tag);
@@ -579,8 +588,7 @@ void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     cs_block_map->blocks.erase(block_id);
 }
 
-void ChunkServerManager::PickRecoverBlocks(int cs_id,
-                                           std::vector<std::pair<int64_t, std::vector<std::string> > >* recover_blocks,
+void ChunkServerManager::PickRecoverBlocks(int cs_id, RecoverVec* recover_blocks,
                                            int* hi_num, bool hi_only) {
     ChunkServerInfo* cs = NULL;
     {

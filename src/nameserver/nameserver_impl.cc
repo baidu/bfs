@@ -291,7 +291,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
 
     // recover replica
     if (recover_mode_ != kStopRecover) {
-        std::vector<std::pair<int64_t, std::vector<std::string> > > recover_blocks;
+        RecoverVec recover_blocks;
         int hi_num = 0;
         chunkserver_manager_->PickRecoverBlocks(cs_id, &recover_blocks,
                                                 &hi_num, recover_mode_ == kHiOnly);
@@ -1131,9 +1131,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
 
     table_str +=
         "<table class=\"table\">"
-        "<tr><td>id</td><td>address</td><td>blocks</td><td>Data size</td>"
-        "<td>Disk quota</td><td>Disk used</td><td>Writing buffers</td>"
-        "<td>tag</td><td>status</td><td>last_check</td><tr>";
+        "<tr><td>ID</td><td>Address</td><td>Blocks</td><td>Size</td>"
+        "<td>Quota</td><td>Used</td><td>Buffers</td>"
+        "<td>Tag</td><td>Status</td><td>Check</td><td>Start</td><tr>";
     int dead_num = 0;
     int64_t total_quota = 0;
     int64_t total_data = 0;
@@ -1216,6 +1216,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::NumToString(
                         common::timer::now_time() - chunkserver.last_heartbeat());
+        table_str += "</td><td>";
+        table_str += chunkserver.start_time();
         table_str += "</td></tr>";
     }
     table_str += "</table>";
