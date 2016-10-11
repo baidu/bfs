@@ -54,6 +54,7 @@ public:
     File() {}
     virtual ~File() {}
     virtual int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false) = 0;
+    //for files opened with O_WRONLY, only support Seek(0, SEEK_CUR)
     virtual int64_t Seek(int64_t offset, int32_t whence) = 0;
     virtual int32_t Read(char* buf, int32_t read_size) = 0;
     virtual int32_t Write(const char* buf, int32_t write_size) = 0;
