@@ -737,8 +737,8 @@ int32_t FileImpl::Sync() {
         }
         last_write_finish_num = GetLastWriteFinishedNum();
     }
-    if ((bg_error_ && (fan_out_write && last_write_finish_num < replica_num - 1 ||
-                    !fan_out_write && last_write_finish_num == 0)) || back_writing_) {
+    if ((bg_error_ && ((fan_out_write && last_write_finish_num < replica_num - 1) ||
+                    (!fan_out_write && last_write_finish_num == 0))) || back_writing_) {
         return TIMEOUT;
     }
     if (block_for_write_ && !bg_error_ && sync_offset && !synced_) {
@@ -810,8 +810,8 @@ int32_t FileImpl::Close() {
     LOG(DEBUG, "File %s closed", name_.c_str());
     closed_ = true;
     int32_t ret = OK;
-    if (bg_error_ && ((fan_out_write && finished_num < replica_num - 1
-                    || !fan_out_write && finished_num == 0))) {
+    if (bg_error_ && ((fan_out_write && finished_num < replica_num - 1)
+                    || (!fan_out_write && finished_num == 0))) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = TIMEOUT;
     }
