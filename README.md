@@ -9,16 +9,16 @@ The Baidu File System (BFS) is a distributed file system designed to support rea
 
 ## Features
 1. Continuous availability  
-数据多机房、多地域冗余，元数据通过Raft维护一致性，单个机房宕机，不影响整体可用性。
-2. High throughput
-通过高性能的单机引擎，最大化存储介质IO吞吐；
-3. Low latency 
-全局负载均衡、慢节点发现
+数据多机房、多地域冗余，元数据通过Raft维护一致性，单个机房宕机，不影响整体可用性。  
+2. High throughput  
+通过高性能的单机引擎，最大化存储介质IO吞吐；  
+3. Low latency  
+全局负载均衡、慢节点发现  
 4. Linear scalability  
-设计支持两地三机房，1万+台机器管理。
+设计支持两地三机房，1万+台机器管理。  
 
 ## Architecture
-![架构图](resources/images/bfs-arch.png)
+![架构图](resources/images/bfs-arch2-mini.png)
 
 ## Quick Start
 #### Build  
@@ -27,8 +27,8 @@ sh build.sh
 cd sandbox; sh deploy.sh; sh start.sh
 
 ## Contributing
-阅读roadmap，了解我们当前的开发方向，然后提pull request就可以了
-Please see the RoadMap file for how to help out, and then send pull request to us.
+阅读[RoadMap](doc/roadmap.md)文件，了解我们当前的开发方向，然后提pull request就可以了。  
+Please see the [RoadMap](doc/roadmap.md) file for how to help out, and then send pull request to us.
 
 ## Contact us
 opensearch@baidu.com
