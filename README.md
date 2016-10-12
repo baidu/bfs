@@ -13,7 +13,7 @@ The Baidu File System (BFS) is a distributed file system designed to support rea
 2. High throughput  
 通过高性能的单机引擎，最大化存储介质IO吞吐；  
 3. Low latency  
-全局负载均衡、慢节点发现  
+全局负载均衡、慢节点自动规避  
 4. Linear scalability  
 设计支持两地三机房，1万+台机器管理。  
 
