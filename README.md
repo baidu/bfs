@@ -27,8 +27,8 @@ sh build.sh
 cd sandbox; sh deploy.sh; sh start.sh
 
 ## Contributing
-阅读[RoadMap](doc/roadmap.md)文件，了解我们当前的开发方向，然后提pull request就可以了。  
-Please see the [RoadMap](doc/roadmap.md) file for how to help out, and then send pull request to us.
+阅读[RoadMap](docs/roadmap.md)文件，了解我们当前的开发方向，然后提pull request就可以了。  
+Please see the [RoadMap](docs/roadmap.md) file for how to help out, and then send pull request to us.
 
 ## Contact us
 opensearch@baidu.com
