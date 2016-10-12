@@ -5,13 +5,11 @@
 
 The Baidu File System (BFS) is a distributed file system designed to support real-time applications. Like many other distributed file systems, BFS is highly fault-tolerant. But different from others, BFS provides low read/write latency while maintains high throughout rates. Together with [Galaxy](https://github.com/baidu/galaxy) and [Tera](http://github.com/baidu/tera), BFS supports many real-time products in Baidu, including Baidu webpage database, Baidu incremental indexing system, Baidu user behavior analysis system, etc.
 
-##背景
-百度的核心数据库[Tera](http://github.com/baidu/tera)将数据持久化在分布式文件系统上，分布式文件系统的性能、可用性和扩展性对整个上层搜索业务的稳定性与效果有着至关重要的影响。现有的分布式文件系统无法很好地满足这几方面的要求，所以我们从Tera需求出发，开发了百度自己的分布式文件系统Baidu File System (BFS)。
+百度的核心业务和数据库系统都依赖分布式文件系统作为底层存储，文件系统的可用性和性能对上层搜索业务的稳定性与效果有着至关重要的影响。现有的分布式文件系统（如HDFS等）是为离线批处理设计的，无法在保证高吞吐的情况下做到低延迟和持续可用，所以我们从搜索的业务特点出发，设计了百度文件系统。
 
-##设计目标
+## Features
 1. 高可靠、高可用  
-通过将数据副本进行多机房、多地域冗余，实现单个机房、地域遇到严重灾害的情况下，不丢失数据。  
-将元数据服务分布化，通过多副本实现元数据服务的高可用，通过Raft等一致性协议同元数据操作日志，实现多副本的一致性。
+数据多机房、多地域冗余，元数据通过Raft维护一致性，单个机房宕机，不影响整体可用性。
 2. 高吞吐、低延迟  
 通过高性能的单机引擎，最大化存储介质IO吞吐；通过全局副本、流量调度，实现负载均衡。
 3. 可水平扩展至万台规模  
