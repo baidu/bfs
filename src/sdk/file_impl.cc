@@ -715,15 +715,15 @@ int32_t FileImpl::Sync() {
     }
     int wait_time = 0;
     int32_t replica_num = write_windows_.size();
-    int32_t last_write_finish_num = 0;
+    int32_t last_write_finish_num = GetLastWriteFinishedNum();
+    bool fan_out_write = FLAGS_sdk_write_mode == "fan-out" ? true : false;
     while (!bg_error_ &&
            (w_options_.sync_timeout < 0 || wait_time < w_options_.sync_timeout)) {
-        last_write_finish_num = GetLastWriteFinishedNum();
         if (last_write_finish_num == replica_num) {
             break;
         }
         //TODO deal with sync_timeout?
-        if (last_write_finish_num == replica_num - 1 && wait_time >= 500) {
+        if ((fan_out_write && last_write_finish_num == replica_num - 1) && wait_time >= 500) {
             break;
         }
         bool finish = sync_signal_.TimeWait(100, "Sync wait");
@@ -732,8 +732,10 @@ int32_t FileImpl::Sync() {
             LOG(WARNING, "Sync w_options_.sync_timeout %d ms, %s back_writing_= %d, finish= %d",
                 wait_time, name_.c_str(), back_writing_, finish);
         }
+        last_write_finish_num = GetLastWriteFinishedNum();
     }
-    if (bg_error_ || back_writing_) {
+    if ((bg_error_ && (fan_out_write && last_write_finish_num < replica_num - 1 ||
+                    !fan_out_write && last_write_finish_num == 0)) || back_writing_) {
         return TIMEOUT;
     }
     if (block_for_write_ && !bg_error_ && sync_offset && !synced_) {
