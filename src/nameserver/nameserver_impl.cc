@@ -110,7 +110,7 @@ void NameServerImpl::CheckRecoverMode() {
     work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckRecoverMode, this));
 }
 void NameServerImpl::LeaveReadOnly() {
-    LOG(INFO, "Nameserver leave safemode");
+    LOG(INFO, "Nameserver leave read only");
     if (readonly_) {
         readonly_ = false;
     }
@@ -1044,27 +1044,30 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         ListRecover(&response);
         return true;
     } else if (path == "/dfs/hi_only") {
+        recover_timeout_ = 0;
         LOG(INFO, "ChangeRecoverMode hi_only");
         recover_mode_ = kHiOnly;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/recover_all") {
+        recover_timeout_ = 0;
         LOG(INFO, "ChangeRecoverMode recover_all");
         recover_mode_ = kRecoverAll;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/stop_recover") {
+        recover_timeout_ = 0;
         LOG(INFO, "ChangeRecoverMode stop_recover");
         recover_mode_ = kStopRecover;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/entry_read_only") {
-        LOG(INFO, "ChangeStatus entry_read_only");
+    } else if (path == "/dfs/leave_read_only") {
+        LOG(INFO, "ChangeStatus leave_read_only");
         LeaveReadOnly();
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
-    } else if (path == "/dfs/leave_read_only") {
-        LOG(INFO, "ChangeStatus leave_read_only");
+    } else if (path == "/dfs/entry_read_only") {
+        LOG(INFO, "ChangeStatus entry_read_only");
         readonly_ = true;
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
@@ -1258,7 +1261,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-4 col-md-4\">";
     str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
     str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Pending tasks: "
+    str += "Pending: (r/w/rp/h)<br>"
         + common::NumToString(read_thread_pool_->PendingNum()) + " "
         + common::NumToString(work_thread_pool_->PendingNum()) + " "
         + common::NumToString(report_thread_pool_->PendingNum()) + " "
@@ -1271,13 +1274,13 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<div class=\"col-sm-4 col-md-4\">";
     str += "Status: ";
     if (readonly_) {
-        str += "<font color=\"red\">Read Only</font></br> <a href=\"/dfs/entry_read_only\">LeaveSafeMode</a>";
+        str += "<font color=\"red\">Read Only</font></br> <a href=\"/dfs/leave_read_only\">LeaveReadOnly</a>";
     } else {
-        str += "Normal</br> <a href=\"/dfs/leave_read_only\">EnterSafeMode</a>";
+        str += "Normal</br> <a href=\"/dfs/entry_read_only\">EnterReadOnly</a>";
     }
     str += "</br>";
     if (recover_timeout_ > 1) {
-        str += "RecoverCountdown: " + common::NumToString(recover_timeout_) + "</br>";
+        str += "Recover: " + common::NumToString(recover_timeout_) + "<a href=\"/dfs/stop_recover\"> Stop</a></br>";
     }
     str += "RecoverMode: ";
     if (recover_mode_ == kRecoverAll) {
