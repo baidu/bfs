@@ -254,7 +254,6 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
         }
         assert(meta.block_id() == block_id);
         blocks->push_back(meta);
-        // LOG(DEBUG, "List block %ld", block_id);
         if (--num <= 0) {
             break;
         }
@@ -375,8 +374,7 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
         LOG(WARNING, "Remove #%ld disk file %s %ld bytes fails: %d (%s)",
             block_id, file_path.c_str(), du, errno, strerror(errno));
     } else {
-        LOG(INFO, "Remove #%ld disk file done: %s\n",
-            block_id, file_path.c_str());
+        LOG(INFO, "Remove #%ld disk file done: %s", block_id, file_path.c_str());
     }
 
     if (meta_removed) {
@@ -413,8 +411,7 @@ bool BlockManager::RemoveAllBlocksAsync() {
     for (it->Seek(BlockId2Str(0)); it->Valid(); it->Next()) {
         int64_t block_id = 0;
         if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
-            LOG(FATAL, "[ListBlocks] Unknown meta key: %s\n",
-                it->key().ToString().c_str());
+            LOG(FATAL, "[ListBlocks] Unknown meta key: %s\n", it->key().ToString().c_str());
             delete it;
             return false;
         }

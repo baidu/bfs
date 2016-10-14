@@ -104,8 +104,7 @@ Block::~Block() {
     }
     if (recv_window_) {
         if (recv_window_->Size()) {
-            LOG(INFO, "#%ld recv_window fragments: %d\n",
-                meta_.block_id(), recv_window_->Size());
+            LOG(INFO, "#%ld recv_window fragments: %d\n", meta_.block_id(), recv_window_->Size());
             std::vector<std::pair<int32_t,Buffer> > frags;
             recv_window_->GetFragments(&frags);
             for (uint32_t i = 0; i < frags.size(); i++) {
