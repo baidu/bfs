@@ -94,7 +94,7 @@ private:
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
     int64_t report_id_;
-    bool first_round_report_;
+    int64_t first_round_report_start_;
     volatile bool service_stop_;
 
     Params params_;
