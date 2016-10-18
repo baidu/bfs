@@ -81,6 +81,7 @@ ChunkServerImpl::ChunkServerImpl()
      blockreport_task_id_(-1),
      last_report_blockid_(-1),
      report_id_(0),
+     is_first_round_(true),
      first_round_report_start_(-1),
      service_stop_(false) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
@@ -186,6 +187,7 @@ void ChunkServerImpl::Register() {
     chunkserver_id_ = response.chunkserver_id();
     report_id_ = response.report_id() + 1;
     first_round_report_start_ = last_report_blockid_;
+    is_first_round_ = true;
     LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d "
             "report_size = %d report_id = %ld",
             block_manager_->NameSpaceVersion(), chunkserver_id_,
@@ -258,11 +260,18 @@ void ChunkServerImpl::SendBlockReport() {
     int64_t last_report_id = report_id_;
 
     std::vector<BlockMeta> blocks;
-    int32_t num = first_round_report_start_ == -1 ? params_.report_size() : 1000;
+    int32_t num = is_first_round_ ? 10000 : params_.report_size();
     int32_t end = block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, num);
-    if (last_report_blockid_ < first_round_report_start_ && first_round_report_start_ <= end) {
-        first_round_report_start_ = -1;
+    // last id + 1 <= first found report start <= end -> first round ends
+    if (is_first_round_ &&
+        (last_report_blockid_ + 1) <= first_round_report_start_ &&
+        first_round_report_start_ <= end) {
+        is_first_round_ = false;
         LOG(INFO, "First round report done");
+    }
+    // bugfix, need an elegant implementation T_T
+    if (is_first_round_ && first_round_report_start_ == -1) {
+        first_round_report_start_ = 0;
     }
 
     int64_t blocks_num = blocks.size();
