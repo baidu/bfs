@@ -17,7 +17,6 @@
 #include "fs_impl.h"
 
 DECLARE_int32(sdk_file_reada_len);
-DECLARE_string(sdk_write_mode);
 DECLARE_int32(sdk_createblock_retry);
 DECLARE_int32(sdk_write_retry_times);
 
@@ -320,8 +319,8 @@ int32_t FileImpl::AddBlock() {
         }
     }
     block_for_write_ = new LocatedBlock(response.block());
-    int cs_size = FLAGS_sdk_write_mode == "chains" ? 1 :
-                                            block_for_write_->chains_size();
+    bool chains_write = IsChainsWrite();
+    int cs_size = chains_write ? 1 : block_for_write_->chains_size();
     for (int i = 0; i < cs_size; i++) {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);
@@ -337,7 +336,7 @@ int32_t FileImpl::AddBlock() {
         create_request.set_is_last(false);
         create_request.set_packet_seq(0);
         WriteBlockResponse create_response;
-        if (FLAGS_sdk_write_mode == "chains") {
+        if (chains_write) {
             for (int i = 0; i < block_for_write_->chains_size(); i++) {
                 const std::string& cs_addr = block_for_write_->chains(i).address();
                 create_request.add_chunkservers(cs_addr);
@@ -445,7 +444,7 @@ void FileImpl::StartWrite() {
 
 bool FileImpl::CheckWriteWindows() {
     mu_.AssertHeld();
-    if (FLAGS_sdk_write_mode == "chains") {
+    if (IsChainsWrite()) {
         return write_windows_.begin()->second->UpBound() > write_queue_.top()->Sequence();
     }
     std::map<std::string, common::SlidingWindow<int>* >::iterator it;
@@ -479,7 +478,7 @@ bool FileImpl::ShouldSetError() {
             count++;
         }
     }
-    if (cs_errors_.size() == 1) {
+    if (IsChainsWrite()) {
         return count == 1;
     } else {
         return count > 1;
@@ -530,7 +529,7 @@ void FileImpl::BackgroundWriteInternal() {
             request->set_packet_seq(buffer->Sequence());
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
-            if (FLAGS_sdk_write_mode == "chains") {
+            if (IsChainsWrite()) {
                 for (int i = 0; i < block_for_write_->chains_size(); i++) {
                     std::string addr = block_for_write_->chains(i).address();
                     request->add_chunkservers(addr);
@@ -683,11 +682,11 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
         MutexLock lock(&mu_, "WriteBlockCallback", 1000);
         int32_t last_write_finish_num = GetLastWriteFinishedNum();
         int32_t replica_num = write_windows_.size();
-        bool fan_out_write = FLAGS_sdk_write_mode == "fan-out" ? true : false;
+        bool chains_write = IsChainsWrite();
         if (write_queue_.empty() ||
                 bg_error_ ||
-                (fan_out_write && last_write_finish_num >= replica_num - 1) ||
-                (!fan_out_write && last_write_finish_num == 1)) {
+                (!chains_write && last_write_finish_num >= replica_num - 1) ||
+                (chains_write && last_write_finish_num == 1)) {
             common::atomic_dec(&back_writing_);    // for AsyncRequest
             sync_signal_.Broadcast();
             return;
@@ -719,14 +718,14 @@ int32_t FileImpl::Sync() {
     int wait_time = 0;
     int32_t replica_num = write_windows_.size();
     int32_t last_write_finish_num = GetLastWriteFinishedNum();
-    bool fan_out_write = FLAGS_sdk_write_mode == "fan-out" ? true : false;
+    bool chains_write = IsChainsWrite();
     while (!bg_error_ &&
            (w_options_.sync_timeout < 0 || wait_time < w_options_.sync_timeout)) {
         if (last_write_finish_num == replica_num) {
             break;
         }
         //TODO deal with sync_timeout?
-        if ((fan_out_write && last_write_finish_num == replica_num - 1) && wait_time >= 500) {
+        if ((!chains_write && last_write_finish_num == replica_num - 1) && wait_time >= 500) {
             break;
         }
         bool finish = sync_signal_.TimeWait(100, "Sync wait");
@@ -737,8 +736,8 @@ int32_t FileImpl::Sync() {
         }
         last_write_finish_num = GetLastWriteFinishedNum();
     }
-    if ((bg_error_ && ((fan_out_write && last_write_finish_num < replica_num - 1) ||
-                    (!fan_out_write && last_write_finish_num == 0))) || back_writing_) {
+    if ((bg_error_ && ((!chains_write && last_write_finish_num < replica_num - 1) ||
+                    (chains_write && last_write_finish_num == 0))) || back_writing_) {
         return TIMEOUT;
     }
     if (block_for_write_ && !bg_error_ && sync_offset && !synced_) {
@@ -770,7 +769,7 @@ int32_t FileImpl::Close() {
     bool need_report_finish = false;
     int64_t block_id = -1;
     int32_t finished_num = 0;
-    bool fan_out_write = FLAGS_sdk_write_mode == "fan-out" ? true : false;
+    bool chains_write = IsChainsWrite();
     int32_t replica_num = write_windows_.size();
     if (block_for_write_ && (open_flags_ & O_WRONLY)) {
         need_report_finish = true;
@@ -790,7 +789,7 @@ int32_t FileImpl::Close() {
                 break;
             }
             // TODO flag for wait_time?
-            if (fan_out_write && finished_num == replica_num - 1 && wait_time >= 3) {
+            if (!chains_write && finished_num == replica_num - 1 && wait_time >= 3) {
                 LOG(WARNING, "Skip slow chunkserver");
                 bg_error_ = true;
                 break;
@@ -810,8 +809,8 @@ int32_t FileImpl::Close() {
     LOG(DEBUG, "File %s closed", name_.c_str());
     closed_ = true;
     int32_t ret = OK;
-    if (bg_error_ && ((fan_out_write && finished_num < replica_num - 1)
-                    || (!fan_out_write && finished_num == 0))) {
+    if (bg_error_ && ((!chains_write && finished_num < replica_num - 1)
+                    || (chains_write && finished_num == 0))) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = TIMEOUT;
     }
@@ -837,6 +836,10 @@ int32_t FileImpl::Close() {
         }
     }
     return ret;
+}
+
+bool FileImpl::IsChainsWrite() {
+    return w_options_.write_mode == "chains";
 }
 
 } // namespace bfs

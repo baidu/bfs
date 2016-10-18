@@ -34,7 +34,8 @@ struct WriteOptions {
     int sync_timeout;   // in ms, <= 0 means do not timeout, == 0 means do not wait
     int close_timeout;  // in ms, <= 0 means do not timeout, == 0 means do not wait
     int replica;
-    WriteOptions() : flush_timeout(-1), sync_timeout(-1), close_timeout(-1), replica(-1) {}
+    std::string write_mode; // chains or fan-out
+    WriteOptions() : flush_timeout(-1), sync_timeout(-1), close_timeout(-1), replica(-1), write_mode("chains") { }
 };
 
 struct ReadOptions {
