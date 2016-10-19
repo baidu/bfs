@@ -418,7 +418,7 @@ int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
         return GetErrorCode(response.status());
     }
     */
-    return OK;
+    return PERMISSION_DENIED;
 }
 int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     SysStatRequest request;
