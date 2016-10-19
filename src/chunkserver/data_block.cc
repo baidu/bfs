@@ -10,8 +10,8 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <functional>
 
-#include <boost/bind.hpp>
 #include <gflags/gflags.h>
 #include <common/counter.h>
 #include <common/thread_pool.h>
@@ -60,7 +60,7 @@ Block::Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cac
     } else {
         finished_ = false;
         recv_window_ = new common::SlidingWindow<Buffer>(100,
-                       boost::bind(&Block::WriteCallback, this, _1, _2));
+                       std::bind(&Block::WriteCallback, this, std::placeholders::_1, std::placeholders::_2));
     }
 }
 Block::~Block() {
@@ -290,7 +290,7 @@ bool Block::Close() {
     finished_ = true;
     // DiskWrite will close file_desc_ asynchronously.
     this->AddRef();
-    thread_pool_->AddPriorityTask(boost::bind(&Block::DiskWrite, this));
+    thread_pool_->AddPriorityTask(std::bind(&Block::DiskWrite, this));
 
     while (file_desc_ != -2) {
         close_cv_.Wait();
@@ -412,7 +412,7 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
         memcpy(blockbuf_ + bufdatalen_, buf, wlen);
         block_buf_list_.push_back(std::make_pair(blockbuf_, FLAGS_write_buf_size));
         this->AddRef();
-        thread_pool_->AddTask(boost::bind(&Block::DiskWrite, this));
+        thread_pool_->AddTask(std::bind(&Block::DiskWrite, this));
 
         blockbuf_ = new char[buflen_];
         g_pending_writes.Inc();

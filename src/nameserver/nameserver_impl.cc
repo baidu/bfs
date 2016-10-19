@@ -9,9 +9,8 @@
 #include <set>
 #include <map>
 #include <sstream>
+#include <cstdlib>
 
-#include <boost/bind.hpp>
-#include <boost/lexical_cast.hpp>
 #include <gflags/gflags.h>
 #include <sofa/pbrpc/pbrpc.h>
 
@@ -63,11 +62,11 @@ NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
     if (sync_) {
-        sync_->Init(boost::bind(&NameSpace::TailLog, namespace_, _1));
+        sync_->Init(std::bind(&NameSpace::TailLog, namespace_, std::placeholders::_1));
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
-    read_thread_pool_->AddTask(boost::bind(&NameServerImpl::LogStatus, this));
+    read_thread_pool_->AddTask(std::bind(&NameServerImpl::LogStatus, this));
 }
 
 NameServerImpl::~NameServerImpl() {
@@ -77,19 +76,19 @@ void NameServerImpl::CheckLeader() {
     if (!sync_ || sync_->IsLeader()) {
         LOG(INFO, "Leader nameserver, rebuild block map.");
         NameServerLog log;
-        boost::function<void (const FileInfo&)> task =
-            boost::bind(&NameServerImpl::RebuildBlockMapCallback, this, _1);
+        std::function<void (const FileInfo&)> task =
+            std::bind(&NameServerImpl::RebuildBlockMapCallback, this, std::placeholders::_1);
         namespace_->Activate(task, &log);
-        if (!LogRemote(log, boost::function<void (bool)>())) {
+        if (!LogRemote(log, std::function<void (bool)>())) {
             LOG(FATAL, "LogRemote namespace update fail");
         }
         recover_timeout_ = FLAGS_nameserver_start_recover_timeout;
         start_time_ = common::timer::get_micros();
-        work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckRecoverMode, this));
+        work_thread_pool_->DelayTask(1000, std::bind(&NameServerImpl::CheckRecoverMode, this));
         is_leader_ = true;
     } else {
         is_leader_ = false;
-        work_thread_pool_->DelayTask(100, boost::bind(&NameServerImpl::CheckLeader, this));
+        work_thread_pool_->DelayTask(100, std::bind(&NameServerImpl::CheckLeader, this));
         //LOG(INFO, "Delay CheckLeader");
     }
 }
@@ -107,7 +106,7 @@ void NameServerImpl::CheckRecoverMode() {
         return;
     }
     common::atomic_comp_swap(&recover_timeout_, new_recover_timeout, recover_timeout);
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::CheckRecoverMode, this));
+    work_thread_pool_->DelayTask(1000, std::bind(&NameServerImpl::CheckRecoverMode, this));
 }
 void NameServerImpl::LeaveReadOnly() {
     LOG(INFO, "Nameserver leave read only");
@@ -125,7 +124,7 @@ void NameServerImpl::LogStatus() {
         g_report_blocks.Clear(), g_heart_beat.Clear(),
         read_thread_pool_->PendingNum(),
         work_thread_pool_->PendingNum(), report_thread_pool_->PendingNum());
-    work_thread_pool_->DelayTask(1000, boost::bind(&NameServerImpl::LogStatus, this));
+    work_thread_pool_->DelayTask(1000, std::bind(&NameServerImpl::LogStatus, this));
 }
 
 void NameServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
@@ -379,15 +378,15 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+    LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
-                               (std::vector<FileInfo>*)NULL, _1));
+                               (std::vector<FileInfo>*)NULL, std::placeholders::_1));
 }
 
-bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (bool)> callback) {
+bool NameServerImpl::LogRemote(const NameServerLog& log, std::function<void (bool)> callback) {
     if (sync_ == NULL) {
-        if (!callback.empty()) {
-            work_thread_pool_->AddTask(boost::bind(callback, true));
+        if (callback) {
+            work_thread_pool_->AddTask(std::bind(callback, true));
         }
         return true;
     }
@@ -395,11 +394,11 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, boost::function<void (b
     if (!log.SerializeToString(&logstr)) {
         LOG(FATAL, "Serialize log fail");
     }
-    if (callback.empty()) {
-        return sync_->Log(logstr);
-    } else {
+    if (callback) {
         sync_->Log(logstr, callback);
         return true;
+    } else {
+        return sync_->Log(logstr);
     }
 }
 
@@ -500,9 +499,9 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         add_block_timer.Check(50 * 1000, "AddNewBlock");
         block->set_block_id(new_block_id);
         response->set_status(kOK);
-        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+        LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, _1));
+                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
     } else {
         LOG(WARNING, "AddBlock for %s failed.", path.c_str());
         response->set_status(kGetChunkServerError);
@@ -546,9 +545,9 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
                 block_id, file_name.c_str(), file_info.version(), file_info.size());
     }
     response->set_status(kOK);
-    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+    LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
-                               (std::vector<FileInfo>*)NULL, _1));
+                               (std::vector<FileInfo>*)NULL, std::placeholders::_1));
 }
 
 bool NameServerImpl::CheckFileHasBlock(const FileInfo& file_info,
@@ -616,9 +615,9 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
     } else {
         LOG(INFO, "FinishBlock #%ld %s", block_id, file_name.c_str());
-        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+        LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, _1));
+                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
     }
 }
 
@@ -762,8 +761,8 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
         removed = new std::vector<FileInfo>;
         removed->push_back(remove_file);
     }
-    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
-                               controller, request, response, done, removed, _1));
+    LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done, removed, std::placeholders::_1));
 }
 
 void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
@@ -792,9 +791,9 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     }
     std::vector<FileInfo>* removed = new std::vector<FileInfo>;
     removed->push_back(file_info);
-    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+    LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
-                               removed, _1));
+                               removed, std::placeholders::_1));
 }
 
 void NameServerImpl::DiskUsage(::google::protobuf::RpcController* controller,
@@ -849,8 +848,8 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
         done->Run();
         return;
     }
-    LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
-                               controller, request, response, done, removed, _1));
+    LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done, removed, std::placeholders::_1));
 }
 
 void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,
@@ -883,9 +882,9 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
             }
         }
         response->set_status(kOK);
-        LogRemote(log, boost::bind(&NameServerImpl::SyncLogCallback, this,
+        LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, _1));
+                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
         return;
     } else {
         LOG(INFO, "Change replica num not found: %s", file_name.c_str());
@@ -1072,7 +1071,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         std::map<const std::string, std::string>::const_iterator it = request.query_params->begin();
         Params p;
         if (it != request.query_params->end()) {
-            int32_t v = boost::lexical_cast<int32_t>(it->second);
+            int32_t v = std::atoi(it->second.c_str());
             if (it->first == "report_interval") {
                 if (v < 1 || v > 3600) {
                     response.content->Append("<h1>Bad Parameter : 1 <= report_interval <= 3600 </h1>");
@@ -1388,8 +1387,8 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     ThreadPool* thread_pool = ThreadPoolOfMethod[id].second;
     if (thread_pool != NULL) {
         int64_t recv_time = common::timer::get_micros();
-        boost::function<void ()> task =
-            boost::bind(&CallMethodHelper, this, method, controller,
+        std::function<void ()> task =
+            std::bind(&CallMethodHelper, this, method, controller,
                         request, response, done, recv_time);
         thread_pool->AddTask(task);
     } else {

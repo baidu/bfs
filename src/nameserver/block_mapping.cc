@@ -5,7 +5,6 @@
 #include "block_mapping.h"
 
 #include <vector>
-#include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
 #include <common/counter.h>
@@ -675,7 +674,7 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         LOG(INFO, "PickRecoverBlocks for C%d #%ld %s",
                 cs_id, block_id, RecoverStat_Name(cur_block->recover_stat).c_str());
         thread_pool_->DelayTask(timeout * 1000,
-            boost::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
+            std::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
         target_set->erase(it++);
     }
     pick_timer.Check(100 * 1000, "[PickRecoverBlocks] pick recover");

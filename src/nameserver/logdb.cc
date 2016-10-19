@@ -9,8 +9,6 @@
 #include <dirent.h>
 #include <common/logging.h>
 #include <common/string_util.h>
-#include <boost/bind.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include "nameserver/logdb.h"
 
@@ -48,7 +46,7 @@ void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr)
     }
     std::map<std::string, std::string>::iterator it = logdb->markers_.find(".smallest_index_");
     if (it != logdb->markers_.end()) {
-        logdb->smallest_index_ = boost::lexical_cast<int64_t>(it->second);
+        logdb->smallest_index_ = std::atol(it->second.c_str());
     }
     if (!logdb->BuildFileCache()) {
         LOG(WARNING, "[LogDB] BuildFileCache failed");
@@ -310,7 +308,7 @@ bool LogDB::BuildFileCache() {
         size_t idx = std::string(entry->d_name).find(".idx");
         if (idx != std::string::npos) {
             std::string file_name = std::string(entry->d_name);
-            int64_t index = boost::lexical_cast<int64_t>(file_name.substr(0, idx));
+            int64_t index = std::atol(file_name.substr(0, idx).c_str());
             std::string log_name, idx_name;
             FormLogName(index, &log_name, &idx_name);
             FILE* idx_fp = fopen(idx_name.c_str(), "r");
@@ -479,7 +477,7 @@ void LogDB::WriteMarkerSnapshot() {
         return;
     }
     LOG(INFO, "[LogDB] WriteMarkerSnapshot done");
-    thread_pool_->DelayTask(snapshot_interval_, boost::bind(&LogDB::WriteMarkerSnapshot, this));
+    thread_pool_->DelayTask(snapshot_interval_, std::bind(&LogDB::WriteMarkerSnapshot, this));
 }
 
 void LogDB::CloseCurrent() {

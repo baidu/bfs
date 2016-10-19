@@ -37,11 +37,11 @@ bool RaftImpl::Log(const std::string& entry, int timeout_ms) {
     return raft_node_->AppendLog(entry, timeout_ms);
 }
 
-void RaftImpl::Log(const std::string& entry, boost::function<void (bool)> callback) {
+void RaftImpl::Log(const std::string& entry, std::function<void (bool)> callback) {
     raft_node_->AppendLog(entry, callback);
 }
 
-void RaftImpl::Init(boost::function<void (const std::string& log)> callback) {
+void RaftImpl::Init(std::function<void (const std::string& log)> callback) {
     return raft_node_->Init(callback);
 }
 

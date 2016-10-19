@@ -4,9 +4,9 @@
 
 #include "chunkserver_manager.h"
 
-#include <boost/bind.hpp>
-#include <gflags/gflags.h>
+#include <algorithm>
 
+#include <gflags/gflags.h>
 #include <common/logging.h>
 #include <common/string_util.h>
 #include <common/util.h>
@@ -34,8 +34,8 @@ ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingMana
       chunkserver_num_(0),
       next_chunkserver_id_(1) {
     memset(&stats_, 0, sizeof(stats_));
-    thread_pool_->AddTask(boost::bind(&ChunkServerManager::DeadCheck, this));
-    thread_pool_->AddTask(boost::bind(&ChunkServerManager::LogStats, this));
+    thread_pool_->AddTask(std::bind(&ChunkServerManager::DeadCheck, this));
+    thread_pool_->AddTask(std::bind(&ChunkServerManager::LogStats, this));
     localhostname_ = common::util::GetLocalHostName();
     localzone_ = LocationProvider(localhostname_, "").GetZone();
     params_.set_report_interval(FLAGS_blockreport_interval);
@@ -100,8 +100,8 @@ bool ChunkServerManager::RemoveChunkServer(const std::string& addr) {
     assert(ret);
     if (cs_info->status() == kCsActive) {
         cs_info->set_status(kCsWaitClean);
-        boost::function<void ()> task =
-            boost::bind(&ChunkServerManager::CleanChunkServer,
+        std::function<void ()> task =
+            std::bind(&ChunkServerManager::CleanChunkServer,
                         this, cs_info, std::string("Dead"));
         thread_pool_->AddTask(task);
     }
@@ -125,8 +125,8 @@ void ChunkServerManager::DeadCheck() {
             cs->set_is_dead(true);
             if (cs->status() == kCsActive || cs->status() == kCsReadonly) {
                 cs->set_status(kCsWaitClean);
-                boost::function<void ()> task =
-                    boost::bind(&ChunkServerManager::CleanChunkServer,
+                std::function<void ()> task =
+                    std::bind(&ChunkServerManager::CleanChunkServer,
                                 this, cs, std::string("Dead"));
                 thread_pool_->AddTask(task);
             } else {
@@ -147,7 +147,7 @@ void ChunkServerManager::DeadCheck() {
         }
     }
     thread_pool_->DelayTask(idle_time * 1000,
-                           boost::bind(&ChunkServerManager::DeadCheck, this));
+                           std::bind(&ChunkServerManager::DeadCheck, this));
 }
 
 bool ChunkServerManager::HandleRegister(const std::string& ip,
@@ -673,7 +673,7 @@ void ChunkServerManager::LogStats() {
                common::HumanReadableString(r_speed).c_str(),
                common::HumanReadableString(recover_speed).c_str(), overload);
     thread_pool_->DelayTask(FLAGS_heartbeat_interval * 1000,
-                           boost::bind(&ChunkServerManager::LogStats, this));
+                           std::bind(&ChunkServerManager::LogStats, this));
 }
 
 void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_address) {

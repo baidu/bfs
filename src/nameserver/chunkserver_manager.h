@@ -4,6 +4,7 @@
 
 #include <set>
 #include <map>
+#include <functional>
 
 #include <common/thread_pool.h>
 #include "proto/nameserver.pb.h"
