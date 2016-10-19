@@ -266,7 +266,8 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::string path = argv[0];
     assert(path.size() > 0);
     if (path[path.size() - 1] != '*') {
-        return BfsDuV2(fs, path);
+        int64_t du_size = BfsDuV2(fs, path);
+        return du_size >= 0 ? 0 : -1;
     }
 
     // Wildcard
