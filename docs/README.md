@@ -1,10 +1,5 @@
 TODO
 ========
-* chunkserver支持全异步写
-* 整理错误码
-* 目录移动（In progress）
-* 副本恢复
-* master主从同步
 * Docker image
 * 负载均衡
 * 机架&数据中心感知
@@ -21,3 +16,8 @@ DONE
 * 自定义副本数
 * 多盘支持
 * 扇出写支持
+* chunkserver支持全异步写
+* 整理错误码
+* 目录移动
+* 副本恢复
+* master主从同步
