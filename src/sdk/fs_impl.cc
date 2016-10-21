@@ -399,6 +399,7 @@ int32_t FSImpl::Rename(const char* oldpath, const char* newpath) {
     return OK;
 }
 int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
+    /*
     ChangeReplicaNumRequest request;
     ChangeReplicaNumResponse response;
     request.set_file_name(file_name);
@@ -416,7 +417,8 @@ int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
                 file_name, replica_num, StatusCode_Name(response.status()).c_str());
         return GetErrorCode(response.status());
     }
-    return OK;
+    */
+    return PERMISSION_DENIED;
 }
 int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     SysStatRequest request;
