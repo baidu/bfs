@@ -28,14 +28,13 @@ cd sandbox; ./deploy.sh; ./start.sh
 
 ## How to Contribute
 1. Please see the [RoadMap](docs/roadmap.md) file or source code.
+   阅读[RoadMap](docs/roadmap.md)文件或者源代码，了解我们当前的开发方向
 2. Select features which you are interested in.
+   找到自己感兴趣开发的的功能或模块
 3. Write the code and and check whether it can pass the test(make test && make check)
+   进行开发，开发完成后自测功能是否正确，并运行make test及make check检查是否可以通过已有的测试case
 4. Create a pull request to us, after codereview, your code will be run in thousands of servers~
-
-1. 阅读[RoadMap](docs/roadmap.md)文件或者源代码，了解我们当前的开发方向
-2. 找到自己感兴趣开发的的功能或模块
-3. 进行开发，开发完成后自测功能是否正确，并运行make test及make check检查是否可以通过已有的测试case
-4. 发起pull request，在codereview通过后，你的代码便有机会运行在百度的数万台服务器上~
+   发起pull request，在codereview通过后，你的代码便有机会运行在百度的数万台服务器上~
 
 ## Contact us
 opensearch@baidu.com
