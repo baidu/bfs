@@ -251,6 +251,10 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
             return kFileExists;
         } else {
+            if (IsDir(file_info.type())) {
+                LOG(INFO, "CreateFile %s fail: directory with same name exist", fname.c_str());
+                return kFileExists;
+            }
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 blocks_to_remove->push_back(file_info.blocks(i));
             }
