@@ -38,6 +38,7 @@ DECLARE_int32(blockmapping_bucket_num);
 DECLARE_int32(hi_recover_timeout);
 DECLARE_int32(lo_recover_timeout);
 DECLARE_int32(block_report_timeout);
+DECLARE_bool(clean_redundancy);
 
 namespace baidu {
 namespace bfs {
@@ -1072,7 +1073,10 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         std::map<const std::string, std::string>::const_iterator it = request.query_params->begin();
         Params p;
         if (it != request.query_params->end()) {
-            int32_t v = boost::lexical_cast<int32_t>(it->second);
+            int32_t v = 0;
+            if (it->first != "clean_redundancy") {
+                v = boost::lexical_cast<int32_t>(it->second);
+            }
             if (it->first == "report_interval") {
                 if (v < 1 || v > 3600) {
                     response.content->Append("<h1>Bad Parameter : 1 <= report_interval <= 3600 </h1>");
@@ -1103,6 +1107,12 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     return true;
                 }
                 FLAGS_block_report_timeout = v;
+            } else if (it->first == "clean_redundancy") {
+                if (it->second != "true" && it->second != "false") {
+                    response.content->Append("<h1>Bad Parameter : clean_redundancy == true || false");
+                    return true;
+                }
+                FLAGS_clean_redundancy = it->second == "true" ? true : false;
             } else {
                 response.content->Append("<h1>Bad Parameter :");
                 response.content->Append(it->first);
