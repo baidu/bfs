@@ -18,7 +18,7 @@ mkdir -p ${DEPS_SOURCE} ${DEPS_PREFIX} ${FLAG_DIR}
 if [ ! -f "${FLAG_DIR}/dl_third" ] || [ ! -d "${DEPS_SOURCE}/.git" ]; then
     rm -rf ${DEPS_SOURCE}
     mkdir ${DEPS_SOURCE}
-    git clone https://github.com/yvxiang/thirdparty.git
+    git clone https://github.com/yvxiang/thirdparty.git thirdsrc
     touch "${FLAG_DIR}/dl_third"
 fi
 
