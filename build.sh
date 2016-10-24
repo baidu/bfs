@@ -96,7 +96,6 @@ fi
 
 # cmake for gflags
 if ! which cmake ; then
-    tar zxf CMake-3.2.1.tar.gz
     cd CMake-3.2.1
     ./configure --prefix=${DEPS_PREFIX}
     make -j4
