@@ -80,6 +80,7 @@ public:
     void ListRecover(RecoverBlockSet* blocks);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);
+    void SetCleanRedundancy(bool clean);
 private:
     void DealWithDeadBlockInternal(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
@@ -100,6 +101,7 @@ private:
                            int64_t block_version);
     bool UpdateIncompleteBlock(NSBlock* nsblock,int32_t cs_id, int64_t block_size,
                                int64_t block_version);
+    bool GetCleanRedundancyState();
 private:
     Mutex mu_;
     ThreadPool* thread_pool_;
@@ -112,6 +114,8 @@ private:
     std::set<int64_t> lo_pri_recover_;
     std::set<int64_t> hi_pri_recover_;
     std::set<int64_t> lost_blocks_;
+
+    volatile bool clean_redundancy_;
 };
 
 } // namespace bfs

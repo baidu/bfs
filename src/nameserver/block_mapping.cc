@@ -35,7 +35,7 @@ NSBlock::NSBlock(int64_t block_id, int32_t replica,
       recover_stat(block_version < 0 ? kBlockWriting : kNotInRecover) {
 }
 
-BlockMapping::BlockMapping(ThreadPool* thread_pool) : thread_pool_(thread_pool) {}
+BlockMapping::BlockMapping(ThreadPool* thread_pool) : thread_pool_(thread_pool), clean_redundancy_(false) {}
 
 bool BlockMapping::GetBlock(int64_t block_id, NSBlock* block) {
     MutexLock lock(&mu_, "BlockMapping::GetBlock", 1000);
@@ -265,7 +265,7 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
     }
 
     TryRecover(nsblock);
-    if (FLAGS_clean_redundancy && replica.size() > nsblock->expect_replica_num) {
+    if (clean_redundancy_ && replica.size() > nsblock->expect_replica_num) {
         LOG(INFO, "Too much replica #%ld R%lu expect=%d C%d ",
             block_id, replica.size(), nsblock->expect_replica_num, cs_id);
         replica.erase(cs_id);
@@ -946,6 +946,16 @@ void BlockMapping::MarkIncomplete(int64_t block_id) {
         }
         SetState(block, kIncomplete);
     }
+}
+
+void BlockMapping::SetCleanRedundancy(bool clean) {
+    MutexLock lock(&mu_);
+    clean_redundancy_ = clean;
+}
+
+bool BlockMapping::GetCleanRedundancyState() {
+    mu_.AssertHeld();
+    return clean_redundancy_;
 }
 
 } // namespace bfs

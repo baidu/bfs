@@ -55,6 +55,7 @@ extern common::Counter g_blocks_num;
 
 NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
     recover_timeout_(FLAGS_nameserver_start_recover_timeout),
+    block_report_timeout_(FLAGS_block_report_timeout),
     recover_mode_(kStopRecover), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
     report_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_report_thread_num);
@@ -1106,13 +1107,13 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     response.content->Append("<h1>Bad Parameter : 2 <= block_report_timeout <= 3600 </h1>");
                     return true;
                 }
-                FLAGS_block_report_timeout = v;
+                SetBlockReportTimeout(v);
             } else if (it->first == "clean_redundancy") {
                 if (it->second != "true" && it->second != "false") {
                     response.content->Append("<h1>Bad Parameter : clean_redundancy == true || false");
                     return true;
                 }
-                FLAGS_clean_redundancy = it->second == "true" ? true : false;
+                SetCleanRedundancy(it->second == "true" ? true : false);
             } else {
                 response.content->Append("<h1>Bad Parameter :");
                 response.content->Append(it->first);
@@ -1348,7 +1349,8 @@ static void CallMethodHelper(NameServerImpl* impl,
                              int64_t recv_time) {
     if (method->index() == 16) {
         int64_t delay = common::timer::get_micros() - recv_time;
-        if (delay > FLAGS_block_report_timeout *1000L * 1000L) {
+        int32_t timeout = impl->GetBlockReportTimeout();
+        if (delay > timeout * 1000L * 1000L) {
             const BlockReportRequest* report =
                 static_cast<const BlockReportRequest*>(request);
             LOG(WARNING, "BlockReport from %s, delay %ld ms",
@@ -1405,6 +1407,20 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     } else {
         NameServer::CallMethod(method, controller, request, response, done);
     }
+}
+
+void NameServerImpl::SetBlockReportTimeout(int32_t v) {
+    MutexLock lock(&mu_);
+    block_report_timeout_ = v;
+}
+
+void NameServerImpl::SetCleanRedundancy(bool clean) {
+    block_mapping_manager_->SetCleanRedundancy(clean);
+}
+
+int32_t NameServerImpl::GetBlockReportTimeout() {
+    MutexLock lock(&mu_);
+    return block_report_timeout_;
 }
 
 } // namespace bfs

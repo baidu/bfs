@@ -125,6 +125,7 @@ public:
             ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
+    int32_t GetBlockReportTimeout();
 
 private:
     void CheckLeader();
@@ -152,6 +153,8 @@ private:
     bool CheckFileHasBlock(const FileInfo& file_info,
                            const std::string& file_name,
                            int64_t block_id);
+    void SetBlockReportTimeout(int32_t v);
+    void SetCleanRedundancy(bool clean);
 private:
     /// Global thread pool
     ThreadPool* read_thread_pool_;
@@ -164,7 +167,8 @@ private:
     BlockMappingManager* block_mapping_manager_;
 
     volatile bool readonly_;
-    volatile int recover_timeout_;
+    volatile int32_t recover_timeout_;
+    int32_t block_report_timeout_;
     RecoverMode recover_mode_;
     int64_t start_time_;
     /// Namespace
@@ -172,6 +176,7 @@ private:
     /// ha
     Sync* sync_;
     bool is_leader_;
+    Mutex mu_;
 };
 
 } // namespace bfs

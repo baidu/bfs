@@ -39,6 +39,7 @@ public :
     void GetRecoverNum(int32_t bucket_id, RecoverBlockNum* recover_num);
     void ListRecover(RecoverBlockSet* recover_blocks);
     void MarkIncomplete(int64_t block_id);
+    void SetCleanRedundancy(bool clean);
 private:
     int32_t GetBucketOffset(int64_t block_id);
 private:
