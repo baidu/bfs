@@ -37,11 +37,8 @@ void print_usage() {
     printf("\t    put <localfile> <bfsfile> : copy file from local to bfs\n");
     printf("\t    rmdir <path> : remove empty directory\n");
     printf("\t    rmr <path> : remove directory recursively\n");
-    printf("\t    change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
     printf("\t    du <path> : count disk usage for path\n");
     printf("\t    stat : list current stat of the file system\n");
-    printf("\t    shutdownchunkserver <chunkserver_list_file>: shutdownt chunkservers in the list file\n");
-    printf("\t    shutdownstat : display stat of shutdown chunkserver progress\n");
 }
 
 int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -269,7 +266,8 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::string path = argv[0];
     assert(path.size() > 0);
     if (path[path.size() - 1] != '*') {
-        return BfsDuV2(fs, path);
+        int64_t du_size = BfsDuV2(fs, path);
+        return du_size >= 0 ? 0 : -1;
     }
 
     // Wildcard

@@ -20,7 +20,7 @@ DEFINE_string(mode, "put", "[put | read]");
 DEFINE_int64(count, 0, "put/read/delete file count");
 DEFINE_int32(thread, 5, "thread num");
 DEFINE_int32(seed, 301, "random seed");
-DEFINE_int32(file_size, 1024, "file size in KB");
+DEFINE_int64(file_size, 1024, "file size in KB");
 DEFINE_string(folder, "test", "write data to which folder");
 DEFINE_bool(break_on_failure, true, "exit when error occurs");
 
@@ -87,7 +87,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     int64_t len = 0;
     int64_t base_size = (1 << 20) / 2;
     while (len < file_size_) {
-        uint32_t w = base_size + rand_[thread_id]->Uniform(base_size);
+        uint64_t w = base_size + rand_[thread_id]->Uniform(base_size);
 
         uint32_t write_len = file->Write(base.c_str(), w);
         if (write_len != w) {
@@ -145,7 +145,7 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     int64_t bytes = 0;
     int32_t len = 0;
     while (1) {
-        uint32_t r = base_size + rand_[thread_id]->Uniform(base_size);
+        uint64_t r = base_size + rand_[thread_id]->Uniform(base_size);
         len = file->Read(buf, r);
         if (len < 0) {
             if (FLAGS_break_on_failure) {
