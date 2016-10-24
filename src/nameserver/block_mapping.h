@@ -115,7 +115,7 @@ private:
     std::set<int64_t> hi_pri_recover_;
     std::set<int64_t> lost_blocks_;
 
-    volatile bool clean_redundancy_;
+    bool clean_redundancy_;
 };
 
 } // namespace bfs
