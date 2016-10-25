@@ -59,10 +59,6 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    sofa::pbrpc::Servlet webservice =
-        sofa::pbrpc::NewPermanentExtClosure(metaserver_service, &baidu::bfs::MetaServerImpl::WebService);
-    rpc_server.RegisterWebServlet("/dfs", webservice);
-
     // Start
     std::vector<std::string> metaserver_nodes;
     baidu::common::SplitString(FLAGS_metaserver_nodes, ",", &metaserver_nodes);

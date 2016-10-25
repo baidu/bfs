@@ -4,7 +4,6 @@
 //
 // Author: yanshiguang02@baidu.com
 
-
 #include "file_cache.h"
 
 #include <fcntl.h>
