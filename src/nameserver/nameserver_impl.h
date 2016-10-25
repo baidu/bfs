@@ -10,6 +10,7 @@
 #include <common/thread_pool.h>
 
 #include "proto/nameserver.pb.h"
+#include "proto/status_code.pb.h"
 
 namespace sofa {
 namespace pbrpc {
@@ -25,19 +26,6 @@ class NameSpace;
 class ChunkServerManager;
 class BlockMappingManager;
 class Sync;
-
-enum RecoverMode {
-    kStopRecover = 0,
-    kHiOnly = 1,
-    kRecoverAll = 2,
-};
-
-enum DisplayMode {
-    kDisplayAll = 0,
-    kAliveOnly = 1,
-    kDeadOnly = 2,
-    kOverload = 3,
-};
 
 class NameServerImpl : public NameServer {
 public:
@@ -153,8 +141,7 @@ private:
     bool CheckFileHasBlock(const FileInfo& file_info,
                            const std::string& file_name,
                            int64_t block_id);
-    void SetBlockReportTimeout(int32_t v);
-    void SetCleanRedundancy(bool clean);
+    void SetNameServerParams(const NameServerParams& para);
 private:
     /// Global thread pool
     ThreadPool* read_thread_pool_;
@@ -168,8 +155,8 @@ private:
 
     volatile bool readonly_;
     volatile int32_t recover_timeout_;
-    int32_t block_report_timeout_;
-    RecoverMode recover_mode_;
+    volatile int32_t block_report_timeout_;
+    volatile RecoverMode recover_mode_;
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;

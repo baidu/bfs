@@ -1024,21 +1024,28 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         ListRecover(&response);
         return true;
     } else if (path == "/dfs/hi_only") {
-        recover_timeout_ = 0;
+        NameServerParams para;
+        para.set_recover_timeout(0);
         LOG(INFO, "ChangeRecoverMode hi_only");
         recover_mode_ = kHiOnly;
+        para.set_recover_mode(kHiOnly);
         response.content->Append("<body onload=\"history.back()\"></body>");
+        SetNameServerParams(para);
         return true;
     } else if (path == "/dfs/recover_all") {
-        recover_timeout_ = 0;
+        NameServerParams para;
+        para.set_recover_timeout(0);
         LOG(INFO, "ChangeRecoverMode recover_all");
-        recover_mode_ = kRecoverAll;
+        para.set_recover_mode(kRecoverAll);
+        SetNameServerParams(para);
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/stop_recover") {
-        recover_timeout_ = 0;
+        NameServerParams para;
+        para.set_recover_timeout(0);
         LOG(INFO, "ChangeRecoverMode stop_recover");
-        recover_mode_ = kStopRecover;
+        para.set_recover_mode(kStopRecover);
+        SetNameServerParams(para);
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/leave_read_only") {
@@ -1048,7 +1055,9 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         return true;
     } else if (path == "/dfs/entry_read_only") {
         LOG(INFO, "ChangeStatus entry_read_only");
-        readonly_ = true;
+        NameServerParams para;
+        para.set_readonly(true);
+        SetNameServerParams(para);
         response.content->Append("<body onload=\"history.back()\"></body>");
         return true;
     } else if (path == "/dfs/kick" && FLAGS_bfs_web_kick_enable) {
@@ -1072,7 +1081,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         display_mode = kOverload;
     } else if (path == "/dfs/set") {
         std::map<const std::string, std::string>::const_iterator it = request.query_params->begin();
-        Params p;
+        ChunkServerParams p;
         if (it != request.query_params->end()) {
             int32_t v = 0;
             if (it->first != "clean_redundancy") {
@@ -1107,13 +1116,21 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     response.content->Append("<h1>Bad Parameter : 2 <= block_report_timeout <= 3600 </h1>");
                     return true;
                 }
-                SetBlockReportTimeout(v);
+                NameServerParams para;
+                para.set_block_report_timeout(v);
+                SetNameServerParams(para);
             } else if (it->first == "clean_redundancy") {
                 if (it->second != "true" && it->second != "false") {
                     response.content->Append("<h1>Bad Parameter : clean_redundancy == true || false");
                     return true;
                 }
-                SetCleanRedundancy(it->second == "true" ? true : false);
+                NameServerParams para;
+                if (it->second == "true") {
+                    para.set_clean_redundancy(true);
+                } else {
+                    para.set_clean_redundancy(false);
+                }
+                SetNameServerParams(para);
             } else {
                 response.content->Append("<h1>Bad Parameter :");
                 response.content->Append(it->first);
@@ -1409,17 +1426,26 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     }
 }
 
-void NameServerImpl::SetBlockReportTimeout(int32_t v) {
+void NameServerImpl::SetNameServerParams(const NameServerParams& para) {
     MutexLock lock(&mu_);
-    block_report_timeout_ = v;
-}
-
-void NameServerImpl::SetCleanRedundancy(bool clean) {
-    block_mapping_manager_->SetCleanRedundancy(clean);
+    if (para.has_block_report_timeout()) {
+        block_report_timeout_ = para.block_report_timeout();
+    }
+    if (para.has_clean_redundancy()) {
+        block_mapping_manager_->SetCleanRedundancy(para.clean_redundancy());
+    }
+    if (para.has_recover_mode()) {
+        recover_mode_ = para.recover_mode();
+    }
+    if (para.has_recover_timeout()) {
+        recover_timeout_ = para.recover_timeout();
+    }
+    if (para.has_readonly()) {
+        readonly_ = para.readonly();
+    }
 }
 
 int32_t NameServerImpl::GetBlockReportTimeout() {
-    MutexLock lock(&mu_);
     return block_report_timeout_;
 }
 

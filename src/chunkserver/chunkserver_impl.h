@@ -96,7 +96,7 @@ private:
     int64_t report_id_;
     volatile bool service_stop_;
 
-    Params params_;
+    ChunkServerParams params_;
 };
 
 } // namespace bfs

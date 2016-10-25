@@ -557,7 +557,7 @@ void ChunkServerManager::AddBlock(int32_t id, int64_t block_id, bool is_recover)
     cs_block_map->blocks.insert(block_id);
 }
 
-void ChunkServerManager::SetParam(const Params& p) {
+void ChunkServerManager::SetParam(const ChunkServerParams& p) {
     MutexLock lock(&mu_);
     if (p.report_interval() != -1) {
         params_.set_report_interval(p.report_interval());
