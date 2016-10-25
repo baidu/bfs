@@ -953,10 +953,5 @@ void BlockMapping::SetCleanRedundancy(bool clean) {
     clean_redundancy_ = clean;
 }
 
-bool BlockMapping::GetCleanRedundancyState() {
-    mu_.AssertHeld();
-    return clean_redundancy_;
-}
-
 } // namespace bfs
 } // namespace baidu

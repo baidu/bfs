@@ -101,7 +101,6 @@ private:
                            int64_t block_version);
     bool UpdateIncompleteBlock(NSBlock* nsblock,int32_t cs_id, int64_t block_size,
                                int64_t block_version);
-    bool GetCleanRedundancyState();
 private:
     Mutex mu_;
     ThreadPool* thread_pool_;
