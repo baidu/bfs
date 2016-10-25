@@ -37,7 +37,7 @@ public:
     bool LoadStorage();
     int64_t NameSpaceVersion() const;
     bool SetNameSpaceVersion(int64_t version);
-    bool ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num);
+    int64_t ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num);
     Block* CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status);
     Block* FindBlock(int64_t block_id);
     std::string BlockId2Str(int64_t block_id);
