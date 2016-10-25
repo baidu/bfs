@@ -81,22 +81,17 @@ private:
                            const std::string& file_name,
                            int64_t block_id);
 private:
-    /// Global thread pool
     ThreadPool* read_thread_pool_;
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
     ThreadPool* heartbeat_thread_pool_;
-    /// ChunkServer map
     ChunkServerManager* chunkserver_manager_;
-    /// Block map
     BlockMappingManager* block_mapping_manager_;
 
     volatile bool readonly_;
     volatile int recover_timeout_;
     RecoverMode recover_mode_;
     int64_t start_time_;
-    /// Namespace
-    NameSpace* namespace_;
 };
 
 } // namespace bfs
