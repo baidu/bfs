@@ -81,6 +81,8 @@ ChunkServerImpl::ChunkServerImpl()
      blockreport_task_id_(-1),
      last_report_blockid_(-1),
      report_id_(0),
+     is_first_round_(true),
+     first_round_report_start_(-1),
      service_stop_(false) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     params_.set_report_interval(FLAGS_blockreport_interval);
@@ -184,6 +186,8 @@ void ChunkServerImpl::Register() {
     assert (response.chunkserver_id() != -1);
     chunkserver_id_ = response.chunkserver_id();
     report_id_ = response.report_id() + 1;
+    first_round_report_start_ = last_report_blockid_;
+    is_first_round_ = true;
     LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d "
             "report_size = %d report_id = %ld",
             block_manager_->NameSpaceVersion(), chunkserver_id_,
@@ -256,7 +260,19 @@ void ChunkServerImpl::SendBlockReport() {
     int64_t last_report_id = report_id_;
 
     std::vector<BlockMeta> blocks;
-    block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, params_.report_size());
+    int32_t num = is_first_round_ ? 10000 : params_.report_size();
+    int32_t end = block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, num);
+    // last id + 1 <= first found report start <= end -> first round ends
+    if (is_first_round_ &&
+        (last_report_blockid_ + 1) <= first_round_report_start_ &&
+        first_round_report_start_ <= end) {
+        is_first_round_ = false;
+        LOG(INFO, "First round report done");
+    }
+    // bugfix, need an elegant implementation T_T
+    if (is_first_round_ && first_round_report_start_ == -1) {
+        first_round_report_start_ = 0;
+    }
 
     int64_t blocks_num = blocks.size();
     for (int64_t i = 0; i < blocks_num; i++) {
@@ -266,28 +282,18 @@ void ChunkServerImpl::SendBlockReport() {
         info->set_version(blocks[i].version());
     }
 
-    if (blocks_num < params_.report_size()) {
+    if (blocks_num < num) {
         last_report_blockid_ = -1;
     } else {
-        if (blocks_num) {
-            last_report_blockid_ = blocks[blocks_num - 1].block_id();
-        }
+        last_report_blockid_ = end;
     }
-    if (blocks_num == 0) {
-        request.set_end(0);
-    } else {
-        request.set_end(blocks[blocks_num - 1].block_id());
-    }
+    request.set_end(end);
 
     BlockReportResponse response;
-    int64_t before_report = common::timer::get_micros();
+    common::timer::TimeChecker checker;
     bool ret = nameserver_->SendRequest(&NameServer_Stub::BlockReport,
                                         &request, &response, FLAGS_block_report_timeout);
-    int64_t after_report = common::timer::get_micros();
-    if (after_report - before_report > 20 * 1000 * 1000) {
-        LOG(WARNING, "Block report use %ld ms last_id %lu (%lu)",
-                (after_report - before_report) / 1000, last_report_id, request.sequence_id());
-    }
+    checker.Check(20 * 1000 * 1000, "[SendBlockReport] SendRequest");
     if (!ret) {
         LOG(WARNING, "Block report fail last_id %lu (%lu)\n", last_report_id, request.sequence_id());
     } else {

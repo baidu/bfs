@@ -94,6 +94,8 @@ private:
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
     int64_t report_id_;
+    bool is_first_round_;
+    int64_t first_round_report_start_;
     volatile bool service_stop_;
 
     ChunkServerParams params_;

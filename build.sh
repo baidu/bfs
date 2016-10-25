@@ -18,14 +18,7 @@ mkdir -p ${DEPS_SOURCE} ${DEPS_PREFIX} ${FLAG_DIR}
 if [ ! -f "${FLAG_DIR}/dl_third" ] || [ ! -d "${DEPS_SOURCE}/.git" ]; then
     rm -rf ${DEPS_SOURCE}
     mkdir ${DEPS_SOURCE}
-    wget --no-check-certificate http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.gz
-    wget --no-check-certificate https://github.com/gperftools/gperftools/releases/download/gperftools-2.2.1/gperftools-2.2.1.tar.gz -O ${DEPS_SOURCE}/gperftools-2.2.1.tar.gz
-    git clone https://github.com/yvxiang/gtest.git ${DEPS_SOURCE}/gtest
-    wget --no-check-certificate https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz -O ${DEPS_SOURCE}/protobuf-2.6.1.tar.gz
-    wget --no-check-certificate https://github.com/gflags/gflags/archive/v2.1.1.tar.gz -O ${DEPS_SOURCE}/gflags-2.1.1.tar.gz
-    wget --no-check-certificate http://download.savannah.gnu.org/releases/libunwind/libunwind-0.99.tar.gz -P ${DEPS_SOURCE}
-    wget --no-check-certificate http://pkgs.fedoraproject.org/repo/pkgs/snappy/snappy-1.1.1.tar.gz/8887e3b7253b22a31f5486bca3cbc1c2/snappy-1.1.1.tar.gz -P ${DEPS_SOURCE}
-    wget --no-check-certificate https://cmake.org/files/v3.2/cmake-3.2.1.tar.gz -P ${DEPS_SOURCE}
+    git clone https://github.com/yvxiang/thirdparty.git thirdsrc
     touch "${FLAG_DIR}/dl_third"
 fi
 
@@ -81,11 +74,11 @@ if [ ! -f "${FLAG_DIR}/snappy_1_1_1" ] \
 fi
 
 # sofa-pbrpc
-if [ ! -f "${FLAG_DIR}/sofa-pbrpc_1_0_0" ] \
+if [ ! -f "${FLAG_DIR}/sofa-pbrpc" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libsofa-pbrpc.a" ] \
     || [ ! -d "${DEPS_PREFIX}/include/sofa/pbrpc" ]; then
     rm -rf sofa-pbrpc
-#    git clone --depth=1 https://github.com/cyshi/sofa-pbrpc.git sofa-pbrpc
+
     git clone --depth=1 https://github.com/baidu/sofa-pbrpc.git sofa-pbrpc
     cd sofa-pbrpc
     sed -i '/BOOST_HEADER_DIR=/ d' depends.mk
@@ -98,13 +91,12 @@ if [ ! -f "${FLAG_DIR}/sofa-pbrpc_1_0_0" ] \
     make -j4
     make install
     cd -
-    touch "${FLAG_DIR}/sofa-pbrpc_1_0_0"
+    touch "${FLAG_DIR}/sofa-pbrpc"
 fi
 
 # cmake for gflags
 if ! which cmake ; then
-    tar zxf cmake-3.2.1.tar.gz
-    cd cmake-3.2.1
+    cd CMake-3.2.1
     ./configure --prefix=${DEPS_PREFIX}
     make -j4
     make install
@@ -128,7 +120,7 @@ fi
 if [ ! -f "${FLAG_DIR}/gtest_1_7_0" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libgtest.a" ] \
     || [ ! -d "${DEPS_PREFIX}/include/gtest" ]; then
-    cd gtest
+    cd gtest-1.7.0
     ./configure ${DEPS_CONFIG}
     make
     cp -a lib/.libs/* ${DEPS_PREFIX}/lib
