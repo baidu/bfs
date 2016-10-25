@@ -3,7 +3,7 @@
 
  [![Build Status](https://travis-ci.org/baidu/bfs.svg?branch=master)](https://travis-ci.org/baidu/bfs)  [![Build Status](https://scan.coverity.com/projects/8135/badge.svg)](https://scan.coverity.com/projects/myawan-bfs-1/) 
 
-The Baidu File System (BFS) is a distributed file system designed to support real-time applications. Like many other distributed file systems, BFS is highly fault-tolerant. But different from others, BFS provides low read/write latency while maintaining high throughout rates. Together with [Galaxy](https://github.com/baidu/galaxy) and [Tera](http://github.com/baidu/tera), BFS supports many real-time products in Baidu, including Baidu webpage database, Baidu incremental indexing system, Baidu user behavior analysis system, etc.
+The Baidu File System (BFS) is a distributed file system designed to support real-time applications. Like many other distributed file systems, BFS is highly fault-tolerant. But different from others, BFS provides low read/write latency while maintaining high throughput rates. Together with [Galaxy](https://github.com/baidu/galaxy) and [Tera](http://github.com/baidu/tera), BFS supports many real-time products in Baidu, including Baidu webpage database, Baidu incremental indexing system, Baidu user behavior analysis system, etc.
 
 ## Features
 1. Continuous availability 
@@ -20,9 +20,11 @@ The Baidu File System (BFS) is a distributed file system designed to support rea
 
 ## Quick Start
 #### Build  
-./build.sh
+    ./build.sh
 #### Standalone BFS
-cd sandbox; ./deploy.sh; ./start.sh
+    cd sandbox
+    ./deploy.sh
+    ./start.sh
 
 ## How to Contribute
 1. Please read the [RoadMap](docs/roadmap.md) or source code.  
@@ -56,10 +58,12 @@ opensearch@baidu.com
 ![架构图](resources/images/bfs-arch2-mini.png)
 
 ## 快速试用
-#### 构建  
-./build.sh
+#### 构建
+    ./build.sh
 #### 单机版BFS
-cd sandbox; ./deploy.sh; ./start.sh
+    cd sandbox
+    ./deploy.sh
+    ./start.sh
 
 ## 如何参与开发
 1. 阅读[RoadMap](docs/roadmap.md)文件或者源代码，了解我们当前的开发方向
