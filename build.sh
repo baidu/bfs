@@ -27,6 +27,7 @@ cd ${DEPS_SOURCE}
 # boost
 if [ ! -f "${FLAG_DIR}/boost_1_57_0" ] \
     || [ ! -d "${DEPS_PREFIX}/boost_1_57_0/boost" ]; then
+    wget --no-check-certificate  https://raw.githubusercontent.com/lylei9/boost_1_57_0/master/boost_1_57_0.tar.gz
     tar zxf boost_1_57_0.tar.gz
     rm -rf ${DEPS_PREFIX}/boost_1_57_0
     mv boost_1_57_0 ${DEPS_PREFIX}/boost_1_57_0
@@ -37,7 +38,6 @@ fi
 if [ ! -f "${FLAG_DIR}/protobuf_2_6_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libprotobuf.a" ] \
     || [ ! -d "${DEPS_PREFIX}/include/google/protobuf" ]; then
-    tar zxf protobuf-2.6.1.tar.gz
     cd protobuf-2.6.1
     ./configure ${DEPS_CONFIG}
     make -j4
@@ -64,7 +64,6 @@ fi
 if [ ! -f "${FLAG_DIR}/snappy_1_1_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libsnappy.a" ] \
     || [ ! -f "${DEPS_PREFIX}/include/snappy.h" ]; then
-    tar zxf snappy-1.1.1.tar.gz
     cd snappy-1.1.1
     ./configure ${DEPS_CONFIG}
     make -j4
@@ -107,7 +106,6 @@ fi
 if [ ! -f "${FLAG_DIR}/gflags_2_1_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libgflags.a" ] \
     || [ ! -d "${DEPS_PREFIX}/include/gflags" ]; then
-    tar zxf gflags-2.1.1.tar.gz
     cd gflags-2.1.1
     cmake -DCMAKE_INSTALL_PREFIX=${DEPS_PREFIX} -DGFLAGS_NAMESPACE=google -DCMAKE_CXX_FLAGS=-fPIC
     make -j4
@@ -133,7 +131,6 @@ fi
 if [ ! -f "${FLAG_DIR}/libunwind_0_99" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libunwind.a" ] \
     || [ ! -f "${DEPS_PREFIX}/include/libunwind.h" ]; then
-    tar zxf libunwind-0.99.tar.gz
     cd libunwind-0.99
     ./configure ${DEPS_CONFIG}
     make CFLAGS=-fPIC -j4
@@ -145,7 +142,6 @@ fi
 # gperftools (tcmalloc)
 if [ ! -f "${FLAG_DIR}/gperftools_2_2_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libtcmalloc_minimal.a" ]; then
-    tar zxf gperftools-2.2.1.tar.gz
     cd gperftools-2.2.1
     ./configure ${DEPS_CONFIG} CPPFLAGS=-I${DEPS_PREFIX}/include LDFLAGS=-L${DEPS_PREFIX}/lib
     make -j4
