@@ -38,6 +38,7 @@ DECLARE_bool(clean_redundancy);
 
 namespace baidu {
 namespace bfs {
+namespace metaserver {
 
 common::Counter g_get_location;
 common::Counter g_add_block;
@@ -426,6 +427,7 @@ void MetaServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+} // namespace metaserver
 } // namespace bfs
 } // namespace baidu
 

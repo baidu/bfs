@@ -48,7 +48,7 @@ int main(int argc, char* argv[])
     sofa::pbrpc::RpcServer rpc_server(options);
 
     // Server
-    baidu::bfs::MetaServer* metaserver_service = new baidu::bfs::MetaServerImpl();
+    baidu::bfs::metaserver::MetaServer* metaserver_service = new baidu::bfs::metaserver::MetaServerImpl();
 
     // Register
     if (!rpc_server.RegisterService(metaserver_service)) {
