@@ -49,16 +49,15 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 extern common::Counter g_blocks_num;
 
-MetaServerImpl::MetaServerImpl(Sync* sync) : readonly_(true),
-    recover_timeout_(FLAGS_metaserver_start_recover_timeout),
-    recover_mode_(kStopRecover), sync_(sync) {
+MetaServerImpl::MetaServerImpl() : readonly_(true),
+    recover_timeout_(0),
+    recover_mode_(kStopRecover) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
-    report_thread_pool_ = new common::ThreadPool(FLAGS_metaserver_report_thread_num);
-    read_thread_pool_ = new common::ThreadPool(FLAGS_metaserver_read_thread_num);
-    work_thread_pool_ = new common::ThreadPool(FLAGS_metaserver_work_thread_num);
-    heartbeat_thread_pool_ = new common::ThreadPool(FLAGS_metaserver_heartbeat_thread_num);
+    report_thread_pool_ = new common::ThreadPool(0);
+    read_thread_pool_ = new common::ThreadPool(10);
+    work_thread_pool_ = new common::ThreadPool(10);
+    heartbeat_thread_pool_ = new common::ThreadPool(10);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
-    namespace_ = new NameSpace(false);
     start_time_ = common::timer::get_micros();
 }
 
@@ -71,7 +70,7 @@ void MetaServerImpl::CheckRecoverMode() {
     if (recover_timeout == 0) {
         return;
     }
-    int new_recover_timeout = FLAGS_metaserver_start_recover_timeout - now_time;
+    int new_recover_timeout =  recover_timeout - now_time;
     if (new_recover_timeout <= 0) {
         LOG(INFO, "Now time %d", now_time);
         recover_mode_ = kRecoverAll;
@@ -91,20 +90,20 @@ void MetaServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
                          const HeartBeatRequest* request,
                          HeartBeatResponse* response,
                          ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
+    //if (!is_leader_) {
+    //    response->set_status(kIsFollower);
+    //    done->Run();
+    //    return;
+    //}
     g_heart_beat.Inc();
-    // printf("Receive HeartBeat() from %s\n", request->data_server_addr().c_str());
-    int64_t version = request->namespace_version();
-    if (version == namespace_->Version()) {
-        chunkserver_manager_->HandleHeartBeat(request, response);
-    } else {
-        response->set_status(kVersionError);
-    }
-    response->set_namespace_version(namespace_->Version());
+    //printf("Receive HeartBeat() from %s\n", request->data_server_addr().c_str());
+    //int64_t version = request->namespace_version();
+    //if (version == namespace_->Version()) {
+    //    chunkserver_manager_->HandleHeartBeat(request, response);
+    //} else {
+    //    response->set_status(kVersionError);
+    //}
+    //response->set_namespace_version(namespace_->Version());
     done->Run();
 }
 
@@ -112,29 +111,29 @@ void MetaServerImpl::Register(::google::protobuf::RpcController* controller,
                    const ::baidu::bfs::RegisterRequest* request,
                    ::baidu::bfs::RegisterResponse* response,
                    ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
-    sofa::pbrpc::RpcController* sofa_cntl =
-        reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
-    const std::string& address = request->chunkserver_addr();
-    const std::string& ip_address = sofa_cntl->RemoteAddress();
-    const std::string cs_ip = ip_address.substr(ip_address.find(':'));
-    LOG(INFO, "Register ip: %s", ip_address.c_str());
-    int64_t version = request->namespace_version();
-    if (version != namespace_->Version()) {
-        LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
-            address.c_str(), version, namespace_->Version());
-        chunkserver_manager_->RemoveChunkServer(address);
-    } else {
-        LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
-        if (chunkserver_manager_->HandleRegister(cs_ip, request, response)) {
-            LeaveReadOnly();
-        }
-    }
-    response->set_namespace_version(namespace_->Version());
+    //if (!is_leader_) {
+    //    response->set_status(kIsFollower);
+    //    done->Run();
+    //    return;
+    //}
+    //sofa::pbrpc::RpcController* sofa_cntl =
+    //    reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    //const std::string& address = request->chunkserver_addr();
+    //const std::string& ip_address = sofa_cntl->RemoteAddress();
+    //const std::string cs_ip = ip_address.substr(ip_address.find(':'));
+    //LOG(INFO, "Register ip: %s", ip_address.c_str());
+    //int64_t version = request->namespace_version();
+    //if (version != namespace_->Version()) {
+    //    LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
+    //        address.c_str(), version, namespace_->Version());
+    //    chunkserver_manager_->RemoveChunkServer(address);
+    //} else {
+    //    LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
+    //    if (chunkserver_manager_->HandleRegister(cs_ip, request, response)) {
+    //        LeaveReadOnly();
+    //    }
+    //}
+    //response->set_namespace_version(namespace_->Version());
     done->Run();
 }
 
@@ -143,11 +142,11 @@ void MetaServerImpl::BlockReceived(::google::protobuf::RpcController* controller
                        const BlockReceivedRequest* request,
                        BlockReceivedResponse* response,
                        ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
+    //if (!is_leader_) {
+    //    response->set_status(kIsFollower);
+    //    done->Run();
+    //    return;
+    //}
     g_block_report.Inc();
     response->set_sequence_id(request->sequence_id());
     int32_t cs_id = request->chunkserver_id();
@@ -193,11 +192,11 @@ void MetaServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    const BlockReportRequest* request,
                    BlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
+    //if (!is_leader_) {
+    //    response->set_status(kIsFollower);
+    //    done->Run();
+    //    return;
+    //}
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
     int64_t report_id = request->report_id();
@@ -291,11 +290,11 @@ void MetaServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
                    const PushBlockReportRequest* request,
                    PushBlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
+    //if (!is_leader_) {
+    //    response->set_status(kIsFollower);
+    //    done->Run();
+    //    return;
+    //}
     response->set_sequence_id(request->sequence_id());
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
@@ -310,11 +309,6 @@ void MetaServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                          const AddBlockRequest* request,
                          AddBlockResponse* response,
                          ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
     response->set_sequence_id(request->sequence_id());
     if (readonly_) {
         LOG(INFO, "AddBlock for %s failed, safe mode.", request->file_name().c_str());
@@ -325,13 +319,7 @@ void MetaServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     g_add_block.Inc();
     std::string path = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
-    if (!namespace_->GetFileInfo(path, &file_info)) {
-        LOG(INFO, "AddBlock file not found: %s", path.c_str());
-        response->set_status(kNsNotFound);
-        done->Run();
-        return;
-    }
-
+    
     if (file_info.blocks_size() > 0) {
         std::map<int64_t, std::set<int32_t> > block_cs;
         block_mapping_manager_->RemoveBlocksForFile(file_info, &block_cs);
@@ -345,93 +333,48 @@ void MetaServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         file_info.clear_blocks();
     }
     /// replica num
-    int replica_num = file_info.replicas();
+    //int replica_num = file_info.replicas();
     /// check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     common::timer::TimeChecker add_block_timer;
-    if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
-        add_block_timer.Check(50 * 1000, "GetChunkServerChains");
-        MetaServerLog log;
-        int64_t new_block_id = namespace_->GetNewBlockId(&log);
-        LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
-            path.c_str(), new_block_id, replica_num, request->client_address().c_str());
-        file_info.add_blocks(new_block_id);
-        file_info.set_version(-1);
-        ///TODO: Lost update? Get&Update not atomic.
-        for (int i = 0; i < replica_num; i++) {
-            file_info.add_cs_addrs(chunkserver_manager_->GetChunkServerAddr(chains[i].first));
-        }
-        if (!namespace_->UpdateFileInfo(file_info, &log)) {
-            LOG(WARNING, "Update file info fail: %s", path.c_str());
-            response->set_status(kUpdateError);
-        }
-        LocatedBlock* block = response->mutable_block();
-        std::vector<int32_t> replicas;
-        for (int i = 0; i < replica_num; i++) {
-            ChunkServerInfo* info = block->add_chains();
-            int32_t cs_id = chains[i].first;
-            info->set_address(chains[i].second);
-            LOG(INFO, "Add C%d %s to #%ld response",
-                cs_id, chains[i].second.c_str(), new_block_id);
-            replicas.push_back(cs_id);
-            // update cs -> block
-            add_block_timer.Reset();
-            chunkserver_manager_->AddBlock(cs_id, new_block_id, false);
-            add_block_timer.Check(50 * 1000, "AddBlock");
-        }
-        block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
-        add_block_timer.Check(50 * 1000, "AddNewBlock");
-        block->set_block_id(new_block_id);
-        response->set_status(kOK);
-        LogRemote(log, boost::bind(&MetaServerImpl::SyncLogCallback, this,
-                                   controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, _1));
-    } else {
-        LOG(WARNING, "AddBlock for %s failed.", path.c_str());
-        response->set_status(kGetChunkServerError);
-        done->Run();
-    }
+    done->Run();
 }
 
-void MetaServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
+ void MetaServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
                                    const SyncBlockRequest* request,
                                    SyncBlockResponse* response,
                                    ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
-    int64_t block_id = request->block_id();
+    //if (!is_leader_) {
+    //    response->set_status(kIsFollower);
+    //    done->Run();
+    //    return;
+    //}
     response->set_sequence_id(request->sequence_id());
-    std::string file_name = NameSpace::NormalizePath(request->file_name());
-    FileInfo file_info;
-    if (!namespace_->GetFileInfo(file_name, &file_info)) {
-        LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
-        response->set_status(kNsNotFound);
-        done->Run();
-        return;
-    }
-    if (!CheckFileHasBlock(file_info, file_name, block_id)) {
-        response->set_status(kNoPermission);
-        done->Run();
-        return;
-    }
-    file_info.set_size(request->size());
-    MetaServerLog log;
-    if (!namespace_->UpdateFileInfo(file_info, &log)) {
-        LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
-        response->set_status(kUpdateError);
-        done->Run();
-        return;
-    } else {
-        LOG(INFO, "SyncBlock #%ld for file %s, V%ld, size: %ld",
-                block_id, file_name.c_str(), file_info.version(), file_info.size());
-    }
+    //FileInfo file_info;
+    //if (!namespace_->GetFileInfo(file_name, &file_info)) {
+    //    LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
+    //    response->set_status(kNsNotFound);
+    //    done->Run();
+    //    return;
+    //}
+    //if (!CheckFileHasBlock(file_info, file_name, block_id)) {
+    //    response->set_status(kNoPermission);
+    //    done->Run();
+    //    return;
+    //}
+    //file_info.set_size(request->size());
+    //MetaServerLog log;
+    //if (!namespace_->UpdateFileInfo(file_info, &log)) {
+    //    LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
+    //    response->set_status(kUpdateError);
+    //    done->Run();
+    //    return;
+    //} else {
+    //    LOG(INFO, "SyncBlock #%ld for file %s, V%ld, size: %ld",
+    //            block_id, file_name.c_str(), file_info.version(), file_info.size());
+    //}
     response->set_status(kOK);
-    LogRemote(log, boost::bind(&MetaServerImpl::SyncLogCallback, this,
-                               controller, request, response, done,
-                               (std::vector<FileInfo>*)NULL, _1));
+    done->Run();
 }
 
 bool MetaServerImpl::CheckFileHasBlock(const FileInfo& file_info,
@@ -451,11 +394,6 @@ void MetaServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
                          const FinishBlockRequest* request,
                          FinishBlockResponse* response,
                          ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
     int64_t block_id = request->block_id();
     int64_t block_version = request->block_version();
     response->set_sequence_id(request->sequence_id());
@@ -471,13 +409,6 @@ void MetaServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         return;
     }
     FileInfo file_info;
-    if (!namespace_->GetFileInfo(file_name, &file_info)) {
-        LOG(INFO, "FinishBlock file not found: #%ld %s", block_id, file_name.c_str());
-        response->set_status(kNsNotFound);
-        done->Run();
-        return;
-    }
-
     if (!CheckFileHasBlock(file_info, file_name, block_id)) {
         response->set_status(kNoPermission);
         done->Run();
@@ -485,65 +416,13 @@ void MetaServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     }
     file_info.set_version(block_version);
     file_info.set_size(request->block_size());
-    MetaServerLog log;
-    if (!namespace_->UpdateFileInfo(file_info, &log)) {
-        LOG(WARNING, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
-        response->set_status(kUpdateError);
-        done->Run();
-        return;
-    }
     StatusCode ret = block_mapping_manager_->CheckBlockVersion(block_id, block_version);
     response->set_status(ret);
     if (ret != kOK) {
         LOG(INFO, "FinishBlock fail: #%ld %s", block_id, file_name.c_str());
-        done->Run();
     } else {
         LOG(INFO, "FinishBlock #%ld %s", block_id, file_name.c_str());
-        LogRemote(log, boost::bind(&MetaServerImpl::SyncLogCallback, this,
-                                   controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, _1));
     }
-}
-
-void MetaServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,
-                                      const ChangeReplicaNumRequest* request,
-                                      ChangeReplicaNumResponse* response,
-                                      ::google::protobuf::Closure* done) {
-    if (!is_leader_) {
-        response->set_status(kIsFollower);
-        done->Run();
-        return;
-    }
-    response->set_sequence_id(request->sequence_id());
-    std::string file_name = NameSpace::NormalizePath(request->file_name());
-    int32_t replica_num = request->replica_num();
-    StatusCode ret_status = kOK;
-    FileInfo file_info;
-    if (namespace_->GetFileInfo(file_name, &file_info)) {
-        file_info.set_replicas(replica_num);
-        MetaServerLog log;
-        bool ret = namespace_->UpdateFileInfo(file_info, &log);
-        assert(ret);
-        for (int i = 0; i < file_info.blocks_size(); i++) {
-            if (block_mapping_manager_->ChangeReplicaNum(file_info.blocks(i), replica_num)) {
-                LOG(INFO, "Change %s replica num to %d", file_name.c_str(), replica_num);
-            } else {
-                ///TODO: need to undo when file have multiple blocks?
-                LOG(WARNING, "Change %s replica num to %d fail", file_name.c_str(), replica_num);
-                ret_status = kNotOK;
-                break;
-            }
-        }
-        response->set_status(kOK);
-        LogRemote(log, boost::bind(&MetaServerImpl::SyncLogCallback, this,
-                                   controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, _1));
-        return;
-    } else {
-        LOG(INFO, "Change replica num not found: %s", file_name.c_str());
-        ret_status = kNsNotFound;
-    }
-    response->set_status(ret_status);
     done->Run();
 }
 
