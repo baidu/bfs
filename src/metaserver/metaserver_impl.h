@@ -24,6 +24,7 @@ namespace bfs {
 
 class BlockMappingManager;
 class ChunkServerManager;
+namespace metaserver {
 
 enum RecoverMode {
     kStopRecover = 0,
@@ -100,6 +101,7 @@ private:
     int64_t start_time_;
 };
 
+} // namespace metaserver
 } // namespace bfs
 } // namespace biadu
 
