@@ -4,12 +4,13 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#ifndef  BFS_NAMESERVER_IMPL_H_
-#define  BFS_NAMESERVER_IMPL_H_
+#ifndef  BFS_METASERVER_IMPL_H_
+#define  BFS_METASERVER_IMPL_H_
 
 #include <common/thread_pool.h>
 
 #include "proto/nameserver.pb.h"
+#include "proto/metaserver.pb.h"
 
 namespace sofa {
 namespace pbrpc {
@@ -22,6 +23,7 @@ namespace baidu {
 namespace bfs {
 
 class BlockMappingManager;
+class ChunkServerManager;
 
 enum RecoverMode {
     kStopRecover = 0,
@@ -38,7 +40,7 @@ enum DisplayMode {
 
 class MetaServerImpl : public MetaServer {
 public:
-    MetaServerImpl(Sync* sync);
+    MetaServerImpl();
     virtual ~MetaServerImpl();
     void AddBlock(::google::protobuf::RpcController* controller,
                        const AddBlockRequest* request,
@@ -56,6 +58,10 @@ public:
                        const ::baidu::bfs::RegisterRequest* request,
                        ::baidu::bfs::RegisterResponse* response,
                        ::google::protobuf::Closure* done);
+    void HeartBeat(::google::protobuf::RpcController* controller,
+                             const HeartBeatRequest* request,
+                             HeartBeatResponse* response,
+                             ::google::protobuf::Closure* done);
     void BlockReport(::google::protobuf::RpcController* controller,
                        const BlockReportRequest* request,
                        BlockReportResponse* response,
@@ -97,6 +103,6 @@ private:
 } // namespace bfs
 } // namespace biadu
 
-#endif  //BFS_NAMESERVER_IMPL_H_
+#endif  //BFS_METASERVER_IMPL_H_
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
