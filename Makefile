@@ -35,6 +35,10 @@ NAMESERVER_SRC = $(wildcard src/nameserver/*.cc)
 NAMESERVER_OBJ = $(patsubst %.cc, %.o, $(NAMESERVER_SRC))
 NAMESERVER_HEADER = $(wildcard src/nameserver/*.h)
 
+METASERVER_SRC = $(wildcard src/metaserver/*.cc)
+METASERVER_OBJ = $(patsubst %.cc, %.o, $(METASERVER_SRC))
+METASERVER_HEADER = $(wildcard src/metaserver/*.h)
+
 CHUNKSERVER_SRC = $(wildcard src/chunkserver/*.cc)
 CHUNKSERVER_OBJ = $(patsubst %.cc, %.o, $(CHUNKSERVER_SRC))
 CHUNKSERVER_HEADER = $(wildcard src/chunkserver/*.h)
@@ -58,7 +62,7 @@ VERSION_OBJ = src/version.o
 OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
-BIN = nameserver chunkserver bfs_client
+BIN = nameserver metaserver chunkserver bfs_client
 
 ifdef FUSE_PATH
 	BIN += bfs_mount
@@ -76,6 +80,7 @@ all: $(BIN)
 # Depends
 $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)
 $(NAMESERVER_OBJ): $(NAMESERVER_HEADER)
+$(METASERVER_OBJ): $(METASERVER_HEADER)
 $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
 $(SDK_OBJ): $(SDK_HEADER)
 $(FUSE_OBJ): $(FUSE_HEADER)
@@ -123,6 +128,9 @@ location_provider_test: src/nameserver/test/location_provider_test.o src/nameser
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
+
+metaserver: $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o
+	$(CXX) $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o src/nameserver/location_provider.o -o $@ $(LDFLAGS)
 
 chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
 	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)

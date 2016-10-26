@@ -1,5 +1,7 @@
+import "nameserver.proto";
+import "status_code.proto";
 
-package baidu.bfs;
+package baidu.bfs.metaserver;
 
 option cc_generic_services = true;
 
@@ -11,7 +13,6 @@ message AddBlockRequest {
 message AddBlockResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
-    optional LocatedBlock block = 3;
 }
 
 message SyncBlockRequest {
@@ -55,4 +56,3 @@ service MetaServer {
     rpc FinishBlock(FinishBlockRequest) returns(FinishBlockResponse);
     rpc RemoveBlock(RemoveBlockRequest) returns(RemoveBlockResponse);
 }
-

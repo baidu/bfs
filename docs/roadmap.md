@@ -4,7 +4,7 @@
 - [x] Basic files, directory operations(Create/Delete/Read/Write/Rename)
 - [x] Automatic recovery
 - [x] Nameserver HA
-- [ ] Seperate the Metaserver from the Nameserver
+- [ ] Separate the Metaserver from the Nameserver
 - [ ] Disk loadbalance
 - [ ] Dynamic load balance between chunkservers
 - [ ] File Lock & Directory Lock

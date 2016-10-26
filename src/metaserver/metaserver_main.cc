@@ -11,17 +11,15 @@
 #include <common/string_util.h>
 
 #include "metaserver/metaserver_impl.h"
+#include "proto/metaserver.pb.h"
 #include "version.h"
 
 DECLARE_string(flagfile);
-DECLARE_string(metaserver_nodes);
 DECLARE_int32(node_index);
-DECLARE_int32(metaserver_log_level);
-DECLARE_string(metaserver_logfile);
-DECLARE_string(metaserver_warninglog);
 DECLARE_string(bfs_log);
 DECLARE_int32(bfs_log_size);
 DECLARE_int32(bfs_log_limit);
+DEFINE_string(metaserver_nodes, "", "metaserver nodes");
 
 int main(int argc, char* argv[])
 {
@@ -41,8 +39,6 @@ int main(int argc, char* argv[])
         baidu::common::SetLogSize(FLAGS_bfs_log_size);
         baidu::common::SetLogSizeLimit(FLAGS_bfs_log_limit);
     }
-    ::baidu::common::SetLogLevel(FLAGS_metaserver_log_level);
-    ::baidu::common::SetWarningFile(FLAGS_metaserver_warninglog.c_str());
 
     LOG(baidu::common::INFO, "MetaServer start ...");
 
@@ -52,7 +48,7 @@ int main(int argc, char* argv[])
     sofa::pbrpc::RpcServer rpc_server(options);
 
     // Server
-    baidu::bfs::MetaServerImpl* metaserver_service = new baidu::bfs::MetaServerImpl(sync);
+    baidu::bfs::metaserver::MetaServer* metaserver_service = new baidu::bfs::metaserver::MetaServerImpl();
 
     // Register
     if (!rpc_server.RegisterService(metaserver_service)) {
@@ -62,11 +58,6 @@ int main(int argc, char* argv[])
     // Start
     std::vector<std::string> metaserver_nodes;
     baidu::common::SplitString(FLAGS_metaserver_nodes, ",", &metaserver_nodes);
-    if (static_cast<int>(metaserver_nodes.size()) <= FLAGS_node_index) {
-        LOG(baidu::common::FATAL, "Bad nodes or index: %s, %d",
-            FLAGS_metaserver_nodes.c_str(), FLAGS_node_index);
-        return EXIT_FAILURE;
-    }
     std::string server_addr = metaserver_nodes[FLAGS_node_index];
     std::string listen_addr = std::string("0.0.0.0") + server_addr.substr(server_addr.rfind(':'));
     if (!rpc_server.Start(listen_addr)) {
