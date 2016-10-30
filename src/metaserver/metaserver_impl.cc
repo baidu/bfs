@@ -91,20 +91,20 @@ void MetaServerImpl::HeartBeat(::google::protobuf::RpcController* controller,
                          const HeartBeatRequest* request,
                          HeartBeatResponse* response,
                          ::google::protobuf::Closure* done) {
-    //if (!is_leader_) {
-    //    response->set_status(kIsFollower);
-    //    done->Run();
-    //    return;
-    //}
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
     g_heart_beat.Inc();
-    //printf("Receive HeartBeat() from %s\n", request->data_server_addr().c_str());
-    //int64_t version = request->namespace_version();
-    //if (version == namespace_->Version()) {
-    //    chunkserver_manager_->HandleHeartBeat(request, response);
-    //} else {
-    //    response->set_status(kVersionError);
-    //}
-    //response->set_namespace_version(namespace_->Version());
+    printf("Receive HeartBeat() from %s\n", request->data_server_addr().c_str());
+    int64_t version = request->namespace_version();
+    if (version == namespace_->Version()) {
+        chunkserver_manager_->HandleHeartBeat(request, response);
+    } else {
+        response->set_status(kVersionError);
+    }
+    response->set_namespace_version(namespace_->Version());
     done->Run();
 }
 
@@ -112,29 +112,29 @@ void MetaServerImpl::Register(::google::protobuf::RpcController* controller,
                    const ::baidu::bfs::RegisterRequest* request,
                    ::baidu::bfs::RegisterResponse* response,
                    ::google::protobuf::Closure* done) {
-    //if (!is_leader_) {
-    //    response->set_status(kIsFollower);
-    //    done->Run();
-    //    return;
-    //}
-    //sofa::pbrpc::RpcController* sofa_cntl =
-    //    reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
-    //const std::string& address = request->chunkserver_addr();
-    //const std::string& ip_address = sofa_cntl->RemoteAddress();
-    //const std::string cs_ip = ip_address.substr(ip_address.find(':'));
-    //LOG(INFO, "Register ip: %s", ip_address.c_str());
-    //int64_t version = request->namespace_version();
-    //if (version != namespace_->Version()) {
-    //    LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
-    //        address.c_str(), version, namespace_->Version());
-    //    chunkserver_manager_->RemoveChunkServer(address);
-    //} else {
-    //    LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
-    //    if (chunkserver_manager_->HandleRegister(cs_ip, request, response)) {
-    //        LeaveReadOnly();
-    //    }
-    //}
-    //response->set_namespace_version(namespace_->Version());
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    sofa::pbrpc::RpcController* sofa_cntl =
+        reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    const std::string& address = request->chunkserver_addr();
+    const std::string& ip_address = sofa_cntl->RemoteAddress();
+    const std::string cs_ip = ip_address.substr(ip_address.find(':'));
+    LOG(INFO, "Register ip: %s", ip_address.c_str());
+    int64_t version = request->namespace_version();
+    if (version != namespace_->Version()) {
+        LOG(INFO, "Register from %s version %ld mismatch %ld, remove internal",
+            address.c_str(), version, namespace_->Version());
+        chunkserver_manager_->RemoveChunkServer(address);
+    } else {
+        LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
+        if (chunkserver_manager_->HandleRegister(cs_ip, request, response)) {
+            LeaveReadOnly();
+        }
+    }
+    response->set_namespace_version(namespace_->Version());
     done->Run();
 }
 
@@ -143,11 +143,11 @@ void MetaServerImpl::BlockReceived(::google::protobuf::RpcController* controller
                        const BlockReceivedRequest* request,
                        BlockReceivedResponse* response,
                        ::google::protobuf::Closure* done) {
-    //if (!is_leader_) {
-    //    response->set_status(kIsFollower);
-    //    done->Run();
-    //    return;
-    //}
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
     g_block_report.Inc();
     response->set_sequence_id(request->sequence_id());
     int32_t cs_id = request->chunkserver_id();
@@ -173,11 +173,11 @@ void MetaServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         int64_t block_version = block.version();
         LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
             cs_id, block_id, block_version, block_size);
-        // update block -> cs;
+        //update block -> cs;
         blockreceived_timer.Reset();
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id, block_size, block_version)) {
             blockreceived_timer.Check(50 * 1000, "UpdateBlockInfo");
-            // update cs -> block
+            //update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id, block.is_recover());
             blockreceived_timer.Check(50 * 1000, "AddBlock");
         } else {
@@ -193,11 +193,11 @@ void MetaServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                    const BlockReportRequest* request,
                    BlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
-    //if (!is_leader_) {
-    //    response->set_status(kIsFollower);
-    //    done->Run();
-    //    return;
-    //}
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
     g_block_report.Inc();
     int32_t cs_id = request->chunkserver_id();
     int64_t report_id = request->report_id();
@@ -291,11 +291,11 @@ void MetaServerImpl::PushBlockReport(::google::protobuf::RpcController* controll
                    const PushBlockReportRequest* request,
                    PushBlockReportResponse* response,
                    ::google::protobuf::Closure* done) {
-    //if (!is_leader_) {
-    //    response->set_status(kIsFollower);
-    //    done->Run();
-    //    return;
-    //}
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
     response->set_sequence_id(request->sequence_id());
     response->set_status(kOK);
     int32_t cs_id = request->chunkserver_id();
@@ -333,9 +333,9 @@ void MetaServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         }
         file_info.clear_blocks();
     }
-    /// replica num
-    //int replica_num = file_info.replicas();
-    /// check lease for write
+    // replica num
+    int replica_num = file_info.replicas();
+    // check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     common::timer::TimeChecker add_block_timer;
     done->Run();
@@ -345,35 +345,35 @@ void MetaServerImpl::AddBlock(::google::protobuf::RpcController* controller,
                                    const SyncBlockRequest* request,
                                    SyncBlockResponse* response,
                                    ::google::protobuf::Closure* done) {
-    //if (!is_leader_) {
-    //    response->set_status(kIsFollower);
-    //    done->Run();
-    //    return;
-    //}
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
     response->set_sequence_id(request->sequence_id());
-    //FileInfo file_info;
-    //if (!namespace_->GetFileInfo(file_name, &file_info)) {
-    //    LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
-    //    response->set_status(kNsNotFound);
-    //    done->Run();
-    //    return;
-    //}
-    //if (!CheckFileHasBlock(file_info, file_name, block_id)) {
-    //    response->set_status(kNoPermission);
-    //    done->Run();
-    //    return;
-    //}
-    //file_info.set_size(request->size());
-    //MetaServerLog log;
-    //if (!namespace_->UpdateFileInfo(file_info, &log)) {
-    //    LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
-    //    response->set_status(kUpdateError);
-    //    done->Run();
-    //    return;
-    //} else {
-    //    LOG(INFO, "SyncBlock #%ld for file %s, V%ld, size: %ld",
-    //            block_id, file_name.c_str(), file_info.version(), file_info.size());
-    //}
+    FileInfo file_info;
+    if (!namespace_->GetFileInfo(file_name, &file_info)) {
+        LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
+        response->set_status(kNsNotFound);
+        done->Run();
+        return;
+    }
+    if (!CheckFileHasBlock(file_info, file_name, block_id)) {
+        response->set_status(kNoPermission);
+        done->Run();
+        return;
+    }
+    file_info.set_size(request->size());
+    MetaServerLog log;
+    if (!namespace_->UpdateFileInfo(file_info, &log)) {
+        LOG(WARNING, "SyncBlock fail: #%ld %s", block_id, file_name.c_str());
+        response->set_status(kUpdateError);
+        done->Run();
+        return;
+    } else {
+        LOG(INFO, "SyncBlock #%ld for file %s, V%ld, size: %ld",
+                block_id, file_name.c_str(), file_info.version(), file_info.size());
+    }
     response->set_status(kOK);
     done->Run();
 }
@@ -427,8 +427,8 @@ void MetaServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
-} // namespace metaserver
-} // namespace bfs
-} // namespace baidu
+}  //namespace metaserver
+}  //namespace bfs
+}  //namespace baidu
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

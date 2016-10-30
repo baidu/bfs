@@ -62,7 +62,7 @@ VERSION_OBJ = src/version.o
 OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
-BIN = nameserver metaserver chunkserver bfs_client
+BIN = nameserver chunkserver bfs_client
 
 ifdef FUSE_PATH
 	BIN += bfs_mount
