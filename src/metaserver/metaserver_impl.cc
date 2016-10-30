@@ -173,11 +173,11 @@ void MetaServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         int64_t block_version = block.version();
         LOG(INFO, "BlockReceived C%d #%ld V%ld %ld",
             cs_id, block_id, block_version, block_size);
-         update block -> cs;
+        //update block -> cs;
         blockreceived_timer.Reset();
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id, block_size, block_version)) {
             blockreceived_timer.Check(50 * 1000, "UpdateBlockInfo");
-             update cs -> block
+            //update cs -> block
             chunkserver_manager_->AddBlock(cs_id, block_id, block.is_recover());
             blockreceived_timer.Check(50 * 1000, "AddBlock");
         } else {
@@ -223,7 +223,7 @@ void MetaServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         int64_t cur_block_id = block.block_id();
         int64_t cur_block_size = block.block_size();
 
-         update block -> cs
+        // update block -> cs
         int64_t block_version = block.version();
         if (!block_mapping_manager_->UpdateBlockInfo(cur_block_id, cs_id, cur_block_size,
                                                      block_version)) {
@@ -248,7 +248,7 @@ void MetaServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     int64_t after_add_block = common::timer::get_micros();
     response->set_report_id(report_id);
 
-     recover replica
+    // recover replica
     if (recover_mode_ != kStopRecover) {
         RecoverVec recover_blocks;
         int hi_num = 0;
@@ -333,9 +333,9 @@ void MetaServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         }
         file_info.clear_blocks();
     }
-    / replica num
+    // replica num
     int replica_num = file_info.replicas();
-    / check lease for write
+    // check lease for write
     std::vector<std::pair<int32_t, std::string> > chains;
     common::timer::TimeChecker add_block_timer;
     done->Run();
