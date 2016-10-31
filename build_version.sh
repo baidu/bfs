@@ -10,12 +10,13 @@ gen_info_template_header ()
     echo " "
     echo "#include <iostream>"
     echo "#include \"version.h\""
-    echo "const char kGitInfo[] ="
+    echo "const char kGitInfo[] = \"\\"
 }
 
 
 gen_info_template_foot ()
 {
+    echo "\";"
     echo "const char kBuildTime[] = \"$BUILD_DATE_TIME\";"
     echo "const char kBuilderName[] = \"$USER\";"
     echo "const char kHostName[] = \"$BUILD_HOSTNAME\";"
@@ -42,8 +43,8 @@ GIT_INFO_FILE=git_info.tmp
 VERSION_CPP_FILE=src/version.cc
 
 # generate template file
-git log | head -2 | sed 's/$/&\\n\"/g' | sed 's/^/    "/' > $GIT_INFO_FILE
-git log | head -3 | tail -1 | sed 's/$/&\";/g' | sed 's/^/    "/' >> $GIT_INFO_FILE
+git remote -v | sed 's/$/&\\n\\/g' > $GIT_INFO_FILE
+git log | head -n 3 | sed 's/$/&\\n\\/g' >> $GIT_INFO_FILE
 gen_info_template_header > $TEMPLATE_HEADER_FILE
 gen_info_template_foot > $TEMPLATE_FOOT_FILE
 gen_info_print_template >> $TEMPLATE_FOOT_FILE
