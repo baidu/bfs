@@ -20,69 +20,75 @@ Tera中，`Master`通过`Nexus`判断`TabletNode`是否仍在提供服务，当`
 
 1. message定义
 
-​	 `StatusCode {`
+   `StatusCode {`
 
-​		`…...`
+	   `…...`
 
-​		`kLocked`
+       `kLocked`
 
-​		`kUnlock`
+       `kUnlock`
 
-​		`kCleaning`
+       `kCleaning`
 
-​		`…..`	
+      `…..`	
 
-`	  }`	
+   `}`	
 
- `message LockDirRequest {`
+   `message LockDirRequest {`
 
-​		`optional int64 sequence_id = 1;`
+       `optional int64 sequence_id = 1;`
+       
+       `optional string dir_path = 2;`
+       
+   `}`
 
-​	      `optional string dir_path = 2;`
+   `message LockDirResponse {`
 
-`		}`
+   	`optional int64 sequence_id = 1;`
 
-`		message LockDirResponse {`
+      `optional StatusCode status = 2;`
 
-​		optional int64 sequence_id = 1;
+     `}`
 
-​		optional StatusCode status = 2;
+   `message UnlockDirRequest {`
 
-`	}`
+      `optional int64 sequence_id = 1;`
 
- `message UnlockDirRequest {`
+      `optional string dir_path = 2;`
 
-​	`optional int64 sequence_id = 1;`
+      `optional StatusCode status = 3;` 
 
-​	`optional string dir_path = 2;`
+    `}`
 
-​	`optional StatusCode status = 3;` 
+   `message UnlockDirResponse {`
 
-`}`
+      `optional int64 sequence_id = 1;`
 
-`message UnlockDirResponse {`
+      `optional StatusCode status = 2;`
 
-​	`optional int64 sequence_id = 1;`
-
-​	`optional StatusCode status = 2;`
-
-`}`
+     `}`
 
 2.对指定目录加锁:
 
 `void LockDir(::google::protobuf::RpcController* controller,`
-​			  `const LockDirRequest* request,`
- 			  `LockDirResponse* response,`
-​			 `::google::protobuf::Closure* done);`
+
+   `const LockDirRequest* request,`
+   
+   `LockDirResponse* response,`
+ 
+   `::google::protobuf::Closure* done);`
 
 `request`中存有需要加锁的路径，`response`中的`status`表明加锁是否成功
 
 3.释放掉指定目录的锁
 
 `void UnlockDir(::google::protobuf::RpcController* controller,`
-​			  `const UnlockDirRequest* request,`
- 			  `UnlockDirResponse* response,`
-​			 `::google::protobuf::Closure* done);`
+
+   `const UnlockDirRequest* request,`
+   
+   `UnlockDirResponse* response,`
+   
+   `::google::protobuf::Closure* done);`
 
 `request`中存有需要解锁的路径，`response`中的`status`表明是否解锁成功
 
