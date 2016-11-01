@@ -40,4 +40,4 @@ Tera中，`Master`通过`Nexus`判断`TabletNode`是否仍在提供服务，当`
 
 # TODO
 
-1. 此方案中，清锁动作为Tera的Master主动发出，未来可以考虑TabletNode与NameServer维持心跳，心跳超时后主动清锁的设计
+1. 此方案中，清锁动作为Tera的`Master`主动发出，未来可以考虑`TabletNode`与`NameServer`维持心跳，心跳超时后主动清锁的设计
