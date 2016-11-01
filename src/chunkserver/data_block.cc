@@ -240,15 +240,16 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
 /// Write operation.
 bool Block::Write(int32_t seq, int64_t offset, const char* data,
                   int64_t len, int64_t* add_use) {
-    if (finished_) {
-        LOG(INFO, "Write a finish block #%ld V%ld %ld, seq: %d, offset: %ld",
-            meta_.block_id(), meta_.version(), meta_.block_size(), seq, offset);
+    MutexLock lock(&mu_, "BlockWrite", 1000);
+    if (finished_ || deleted_) {
+        LOG(INFO, "Write a finish block #%ld V%ld %ld, seq: %d, offset: %ld, finished: %d, deleted: %d",
+            meta_.block_id(), meta_.version(), meta_.block_size(), seq, offset, finished_, deleted_);
         return false;
     }
     if (offset < meta_.block_size()) {
-        assert (offset + len <= meta_.block_size());
         LOG(INFO, "Write #%ld size %ld, seq: %d, wrong offset: %ld",
             meta_.block_id(), meta_.block_size(), seq, offset);
+        assert (offset + len <= meta_.block_size());
         return true;
     }
     char* buf = NULL;
@@ -394,12 +395,7 @@ bool Block::IsRecover() {
 }
 /// Append to block buffer
 StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
-    MutexLock lock(&mu_, "BlockAppend", 1000);
-    if (finished_ || deleted_) {
-        LOG(INFO, "[Append] block #%ld closed, do not append to blockbuf_. finished_=%d, deleted_=%d",
-            meta_.block_id(), finished_, deleted_);
-        return kBlockClosed;
-    }
+    mu_.AssertHeld();
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;
         blockbuf_ = new char[buflen_];

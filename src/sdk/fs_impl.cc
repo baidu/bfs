@@ -399,6 +399,7 @@ int32_t FSImpl::Rename(const char* oldpath, const char* newpath) {
     return OK;
 }
 int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
+    /*
     ChangeReplicaNumRequest request;
     ChangeReplicaNumResponse response;
     request.set_file_name(file_name);
@@ -416,7 +417,8 @@ int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
                 file_name, replica_num, StatusCode_Name(response.status()).c_str());
         return GetErrorCode(response.status());
     }
-    return OK;
+    */
+    return PERMISSION_DENIED;
 }
 int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     SysStatRequest request;
@@ -428,8 +430,8 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
         return TIMEOUT;
     }
     bool stat_all = (stat_name == "StatAll");
-    common::TPrinter tp(7);
-    tp.AddRow(7, "", "id", "address", "data_size", "blocks", "alive", "last_check");
+    common::TPrinter tp(8);
+    tp.AddRow(8, "", "id", "address", "data_size", "blocks", "tag", "alive", "last_check");
     for (int i = 0; i < response.chunkservers_size(); i++) {
         const ChunkServerInfo& chunkserver = response.chunkservers(i);
         if (!stat_all && chunkserver.is_dead()) {
@@ -441,6 +443,7 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
         vs.push_back(chunkserver.address());
         vs.push_back(common::HumanReadableString(chunkserver.data_size()) + "B");
         vs.push_back(common::NumToString(chunkserver.block_num()));
+        vs.push_back(chunkserver.tag());
         vs.push_back(chunkserver.is_dead() ? "dead" : "alive");
         vs.push_back(common::NumToString(
                         common::timer::now_time() - chunkserver.last_heartbeat()));

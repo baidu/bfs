@@ -234,15 +234,15 @@ bool BlockManager::SetNameSpaceVersion(int64_t version) {
     return true;
 }
 
-bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
+int64_t BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
     leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
+    int64_t largest_id = 0;
     for (it->Seek(BlockId2Str(offset)); it->Valid(); it->Next()) {
         int64_t block_id = 0;
         if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
             LOG(WARNING, "[ListBlocks] Unknown meta key: %s\n",
                 it->key().ToString().c_str());
-            delete it;
-            return false;
+            break;
         }
         BlockMeta meta;
         bool ret = meta.ParseFromArray(it->value().data(), it->value().size());
@@ -254,13 +254,14 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
         }
         assert(meta.block_id() == block_id);
         blocks->push_back(meta);
+        largest_id = block_id;
         // LOG(DEBUG, "List block %ld", block_id);
         if (--num <= 0) {
             break;
         }
     }
     delete it;
-    return true;
+    return largest_id;
 }
 
 Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status) {

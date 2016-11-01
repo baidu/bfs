@@ -16,10 +16,9 @@ gen_info_template_header ()
 
 gen_info_template_foot ()
 {
-    echo "extern const char kBuildTime[] = \"$BUILD_DATE_TIME\";"
-    echo "extern const char kBuilderName[] = \"$USER\";"
-    echo "extern const char kHostName[] = \"$BUILD_HOSTNAME\";"
-    echo "extern const char kCompiler[] = \"$BUILD_GCC_VERSION\";"
+    echo "const char kBuildTime[] = \"$BUILD_DATE_TIME\";"
+    echo "const char kBuilderName[] = \"$USER\";"
+    echo "const char kHostName[] = \"$BUILD_HOSTNAME\";"
 }
 
 gen_info_print_template ()

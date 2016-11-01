@@ -23,10 +23,10 @@ DECLARE_string(bfs_log);
 DECLARE_int32(bfs_log_size);
 DECLARE_int32(bfs_log_limit);
 
-static volatile bool s_quit = false;
+static volatile sig_atomic_t s_quit = 0;
 static void SignalIntHandler(int /*sig*/)
 {
-    s_quit = true;
+    s_quit = 1;
 }
 
 int main(int argc, char* argv[])
