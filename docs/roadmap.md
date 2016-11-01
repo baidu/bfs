@@ -2,19 +2,19 @@
 
 ## Basic functions
 - [x] Basic files, directory operations(Create/Delete/Read/Write/Rename)
-- [x] automatic recovery
+- [x] Automatic recovery
 - [x] Nameserver HA
-- [ ] Split the Metaserver from the Nameserver
-- [ ] disk loadbalance
-- [ ] Dynamic load balancing of chunkserver
+- [ ] Separate the Metaserver from the Nameserver
+- [ ] Disk loadbalance
+- [ ] Dynamic load balance between chunkservers
 - [ ] File Lock & Directory Lock
 - [x] Simple multi-geographical replica placement
-- [ ] sdk lease
+- [ ] Sdk lease
 - [ ] Skip slow nodes while reading a file
 
 ## Posix interface
-- [x] mount support
-- [ ] fuse lowlevel
+- [x] Mount support
+- [ ] Fuse lowlevel implementation
 - [x] Basic read and write operations（not include random writes）
 - [x] Small file random write, support vim, gcc and other applications
 - [ ] Large file random write
@@ -23,3 +23,5 @@
 - [x] Tera
 - [ ] Shuttle
 - [ ] Galaxy
+
+
