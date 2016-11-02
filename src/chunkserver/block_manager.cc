@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <sys/vfs.h>
 #include <functional>
+#include <algorithm>
 
 #include <gflags/gflags.h>
 #include <leveldb/db.h>
