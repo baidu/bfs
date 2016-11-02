@@ -6,8 +6,10 @@
 
 #include <set>
 #include <map>
-#include <functional>
+#include <sstream>
 
+#include <boost/bind.hpp>
+#include <boost/lexical_cast.hpp>
 #include <gflags/gflags.h>
 #include <sofa/pbrpc/pbrpc.h>
 
@@ -76,7 +78,7 @@ void MetaServerImpl::CheckRecoverMode() {
         return;
     }
     common::atomic_comp_swap(&recover_timeout_, new_recover_timeout, recover_timeout);
-    work_thread_pool_->DelayTask(1000, std::bind(&MetaServerImpl::CheckRecoverMode, this));
+    work_thread_pool_->DelayTask(1000, boost::bind(&MetaServerImpl::CheckRecoverMode, this));
 }
 void MetaServerImpl::LeaveReadOnly() {
     LOG(INFO, "Nameserver leave read only");
@@ -318,7 +320,7 @@ void MetaServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     g_add_block.Inc();
     std::string path = NameSpace::NormalizePath(request->file_name());
     FileInfo file_info;
-
+    
     if (file_info.blocks_size() > 0) {
         std::map<int64_t, std::set<int32_t> > block_cs;
         block_mapping_manager_->RemoveBlocksForFile(file_info, &block_cs);

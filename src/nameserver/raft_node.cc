@@ -6,8 +6,7 @@
 
 #include "nameserver/raft_node.h"
 
-#include <memory>
-
+#include <boost/scoped_ptr.hpp>
 #include <gflags/gflags.h>
 #include <common/mutex.h>
 #include <common/logging.h>
@@ -161,8 +160,8 @@ void RaftNodeImpl::ElectionCallback(const VoteRequest* request,
                                     bool failed,
                                     int error,
                                     const std::string& node_addr) {
-    std::unique_ptr<const VoteRequest> req(request);
-    std::unique_ptr<VoteResponse> res(response);
+    boost::scoped_ptr<const VoteRequest> req(request);
+    boost::scoped_ptr<VoteResponse> res(response);
     if (failed) {
         return;
     }
