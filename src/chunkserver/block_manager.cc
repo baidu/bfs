@@ -10,7 +10,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
-#include <boost/bind.hpp>
+#include <functional>
+#include <algorithm>
 
 #include <gflags/gflags.h>
 #include <leveldb/db.h>
@@ -419,7 +420,7 @@ bool BlockManager::RemoveAllBlocksAsync() {
             delete it;
             return false;
         }
-        thread_pool_->AddTask(boost::bind(&BlockManager::RemoveBlock, this, block_id));
+        thread_pool_->AddTask(std::bind(&BlockManager::RemoveBlock, this, block_id));
     }
     delete it;
     return true;

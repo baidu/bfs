@@ -23,15 +23,6 @@ fi
 
 cd ${DEPS_SOURCE}
 
-# boost
-if [ ! -f "${FLAG_DIR}/boost_1_57_0" ] \
-    || [ ! -d "${DEPS_PREFIX}/boost_1_57_0/boost" ]; then
-    tar zxf boost_1_57_0.tar.gz
-    rm -rf ${DEPS_PREFIX}/boost_1_57_0
-    mv boost_1_57_0 ${DEPS_PREFIX}
-    touch "${FLAG_DIR}/boost_1_57_0"
-fi
-
 # protobuf
 if [ ! -f "${FLAG_DIR}/protobuf_2_6_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libprotobuf.a" ] \
@@ -159,10 +150,9 @@ fi
 if [ ! -f "${FLAG_DIR}/common" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libcommon.a" ]; then
     rm -rf common
-    git clone https://github.com/baidu/common
+    git clone -b cpp11 https://github.com/baidu/common
     cd common
     sed -i 's/^PREFIX=.*/PREFIX=..\/..\/thirdparty/' config.mk
-    sed -i '/^INCLUDE_PATH=*/s/$/ -I..\/..\/thirdparty\/boost_1_57_0/g' Makefile
     make -j4
     make install
     cd -

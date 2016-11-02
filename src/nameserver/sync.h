@@ -7,7 +7,7 @@
 #define  BFS_NAMESERVER_SYNC_H_
 
 #include <string>
-#include <boost/function.hpp>
+#include <functional>
 
 #include "proto/status_code.pb.h"
 
@@ -21,7 +21,7 @@ public:
     virtual ~Sync() {}
     // Description: Register 'callback' to Sync and redo log.
     // NOTICE: Sync does not work until Init is called.
-    virtual void Init(boost::function<void (const std::string& log)> callback) = 0;
+    virtual void Init(std::function<void (const std::string& log)> callback) = 0;
     // Description: Return true if this server is Leader.
     // TODO: return 'leader_addr' which points to the current leader.
     virtual bool IsLeader(std::string* leader_addr = NULL) = 0;
@@ -32,7 +32,7 @@ public:
     // Description: Asynchronous interface. Leader will replicate 'entry' to followers,
     // then call 'callback' with result(true if success, false is failed) to notify the user.
     // Follower will ignore this call and return true.
-    virtual void Log(const std::string& entry, boost::function<void (bool)> callback) = 0;
+    virtual void Log(const std::string& entry, std::function<void (bool)> callback) = 0;
     // Turn a follower to leader.
     // Leader will ignore this call.
     virtual void SwitchToLeader() = 0;

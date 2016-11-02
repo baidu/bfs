@@ -8,7 +8,7 @@
 #define  BFS_RAFT_IMPL_H_
 
 #include <string>
-#include <boost/function.hpp>
+#include <functional>
 
 #include "sync.h"
 
@@ -26,10 +26,10 @@ class RaftImpl : public Sync {
 public:
     RaftImpl();
     ~RaftImpl();
-    void Init(boost::function<void (const std::string& log)> callback);
+    void Init(std::function<void (const std::string& log)> callback);
     bool IsLeader(std::string* leader_addr = NULL);
     bool Log(const std::string& entry, int timeout_ms = 10000);
-    void Log(const std::string& entry, boost::function<void (bool)> callback);
+    void Log(const std::string& entry, std::function<void (bool)> callback);
     void SwitchToLeader() {}
     std::string GetStatus();
 public:
