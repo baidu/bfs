@@ -23,6 +23,15 @@ fi
 
 cd ${DEPS_SOURCE}
 
+# boost
+if [ ! -f "${FLAG_DIR}/boost_1_57_0" ] \
+    || [ ! -d "${DEPS_PREFIX}/boost_1_57_0/boost" ]; then
+    tar zxf boost_1_57_0.tar.gz
+    rm -rf ${DEPS_PREFIX}/boost_1_57_0
+    mv boost_1_57_0 ${DEPS_PREFIX}
+    touch "${FLAG_DIR}/boost_1_57_0"
+fi
+
 # protobuf
 if [ ! -f "${FLAG_DIR}/protobuf_2_6_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libprotobuf.a" ] \
