@@ -4,7 +4,7 @@ Tera中，`Master`通过`Nexus`判断`TabletNode`是否仍在提供服务，当`
 
 # 整体设计
 
-1. 在`FileInfo`中添加`lock_status`以及`holder`标记，`lock_status`可能处于`locked`、`unlock`、`cleaning`三种状态，分别对应目录已上锁，未上锁，正在清锁三种状态，当状态为`locked`时，`holder`中记录的为持锁者的`ip:port`
+1. 在`FileInfo`中添加`lock_status`以及`holder`标记，`lock_status`可能处于`locked`、`unlock`、`cleaning`三种状态，分别对应目录已上锁，未上锁，正在清锁三种状态，当状态为`locked`时，`holder`中记录的为持锁者的标识(`ip:port:timestamp`，此标识由客户端(sdk)在加锁时发送给`NameServer`，在客户端存活期间保持不变
 2. 在对目录进行加锁时，首先检查此目录的`FileInfo`中`lock_status`是否为`unlock`:
    - 如果是，则将其状态更改为`locked`，并连同调用者的`ip:port`一同持久化到`namespace`中，加锁成功
    - 如果不是，则目录锁的状态为`locked`或`cleaning`，加锁失败，将锁目前的状态返回给调用者
