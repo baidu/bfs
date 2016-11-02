@@ -9,10 +9,11 @@
 
 #include <iostream>
 #include <string>
+#include <functional>
+
 #include <sofa/pbrpc/pbrpc.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <boost/bind.hpp>
 #include <common/counter.h>
 #include <common/string_util.h>
 #include <common/timer.h>
@@ -61,7 +62,7 @@ TEST_F(NameServerImplTest, CreateFile) {
     sofa::pbrpc::RpcController controller;
 
     for (int i = 0; i < 10; ++i) {
-        thread_pool.AddTask(boost::bind(&CreateWorder, &nameserver, &controller, common::NumToString(i)));
+        thread_pool.AddTask(std::bind(&CreateWorder, &nameserver, &controller, common::NumToString(i)));
     }
     uint64_t count = create_counter.Get();
     uint64_t start = common::timer::get_micros();

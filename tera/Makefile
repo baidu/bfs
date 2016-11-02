@@ -1,7 +1,7 @@
 
 OPT ?= -g2 -Wall
 
-INCLUDE_PATH= -I../src/sdk/ -I../src/ -I../thirdparty/include -I../thirdparty/boost_1_57_0
+INCLUDE_PATH= -I../src/sdk/ -I../src/ -I../thirdparty/include
 
 CXXFLAGS += -std=c++11 $(OPT)
 

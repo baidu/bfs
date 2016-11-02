@@ -3,13 +3,14 @@
 // found in the LICENSE file.
 //
 
-#include <gflags/gflags.h>
 #include <vector>
 #include <string>
 #include <iostream>
+#include <functional>
+
 #include <common/string_util.h>
 #include <common/thread_pool.h>
-#include <boost/bind.hpp>
+#include <gflags/gflags.h>
 
 #include "mark.h"
 
@@ -242,7 +243,7 @@ void Mark::PrintStat() {
     put_counter_.Set(0);
     del_counter_.Set(0);
     read_counter_.Set(0);
-    thread_pool_->DelayTask(1000, boost::bind(&Mark::PrintStat, this));
+    thread_pool_->DelayTask(1000, std::bind(&Mark::PrintStat, this));
 }
 
 void Mark::Run() {
@@ -254,11 +255,11 @@ void Mark::Run() {
             fs_->CreateDirectory(("/" + FLAGS_folder + "/" + prefix).c_str());
         }
         for (int i = 0; i < FLAGS_thread; ++i) {
-            thread_pool_->AddTask(boost::bind(&Mark::PutWrapper, this, i));
+            thread_pool_->AddTask(std::bind(&Mark::PutWrapper, this, i));
         }
     } else if (FLAGS_mode == "read") {
         for (int i = 0; i < FLAGS_thread; ++i) {
-            thread_pool_->AddTask(boost::bind(&Mark::ReadWrapper, this, i));
+            thread_pool_->AddTask(std::bind(&Mark::ReadWrapper, this, i));
         }
     }
     while (!exit_) {
