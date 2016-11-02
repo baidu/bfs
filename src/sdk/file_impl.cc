@@ -7,7 +7,6 @@
 #include <functional>
 
 #include <gflags/gflags.h>
-
 #include <common/sliding_window.h>
 #include <common/logging.h>
 
