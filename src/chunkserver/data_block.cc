@@ -363,7 +363,7 @@ void Block::DiskWrite() {
         }
         if (finished_ || deleted_) {
             assert (deleted_ || block_buf_list_.empty());
-            if (file_desc_ != -2) {
+            if (file_desc_ >= 0) {
                 int ret = close(file_desc_);
                 LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
                 assert(ret == 0);
