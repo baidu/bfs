@@ -27,7 +27,7 @@ The Baidu File System (BFS) is a distributed file system designed to support rea
     ./start.sh
 
 ## How to Contribute
-1. Please read the [RoadMap](docs/roadmap.md) or source code.  
+1. Please read the [RoadMap](docs/en/roadmap.md) or source code.  
 2. Find something you are interested in and start working on it.
 3. Test your code by simply running `make test` and `make check`.
 4. Make a pull request.
@@ -66,7 +66,7 @@ opensearch@baidu.com
     ./start.sh
 
 ## 如何参与开发
-1. 阅读[RoadMap](docs/roadmap.md)文件或者源代码，了解我们当前的开发方向
+1. 阅读[RoadMap](docs/cn/roadmap.md)文件或者源代码，了解我们当前的开发方向
 2. 找到自己感兴趣开发的的功能或模块
 3. 进行开发，开发完成后自测功能是否正确，并运行make test及make check检查是否可以通过已有的测试case
 4. 发起pull request
