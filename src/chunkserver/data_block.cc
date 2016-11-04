@@ -114,6 +114,19 @@ Block::~Block() {
         }
         delete recv_window_;
     }
+
+    if (deleted_) {
+        int64_t du = DiskUsed();
+        int ret = remove(disk_file_.c_str());
+        if (ret != 0 && (errno !=2 || du > 0)) {
+            LOG(WARNING, "Remove #%ld disk file %s %ld bytes fails: %d (%s)",
+                    meta_.block_id(), disk_file_.c_str(), du, errno, strerror(errno));
+        } else {
+            LOG(INFO, "Remove #%ld disk file done: %s\n",
+                    meta_.block_id(), disk_file_.c_str());
+        }
+    }
+
     LOG(INFO, "Block #%ld deconstruct", meta_.block_id());
     g_blocks.Dec();
     g_data_size.Sub(meta_.block_size());
