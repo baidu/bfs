@@ -47,7 +47,7 @@ Block::Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cac
   thread_pool_(thread_pool), meta_(meta),
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
-  disk_file_size_(meta.block_size()), file_desc_(-1), refs_(0),
+  disk_file_size_(meta.block_size()), file_desc_(kNotCreated), refs_(0),
   close_cv_(&mu_), is_recover_(false), deleted_(false),
   file_cache_(file_cache) {
     assert(meta_.block_id() < (1L<<40));
@@ -100,7 +100,7 @@ Block::~Block() {
     if (file_desc_ >= 0) {
         close(file_desc_);
         g_writing_blocks.Dec();
-        file_desc_ = -2;
+        file_desc_ = kClosed;
     }
     if (recv_window_) {
         if (recv_window_->Size()) {
@@ -293,7 +293,7 @@ bool Block::Close() {
     this->AddRef();
     thread_pool_->AddPriorityTask(std::bind(&Block::DiskWrite, this));
 
-    while (file_desc_ != -2) {
+    while (file_desc_ != kClosed) {
         close_cv_.Wait();
     }
     if (meta_.version() == -1) {
@@ -363,24 +363,25 @@ void Block::DiskWrite() {
         }
         if (finished_ || deleted_) {
             assert (deleted_ || block_buf_list_.empty());
-            if (file_desc_ != -2) {
+            if (file_desc_ >= 0) {
                 int ret = close(file_desc_);
                 LOG(INFO, "[DiskWrite] close file %s", disk_file_.c_str());
                 assert(ret == 0);
                 g_writing_blocks.Dec();
-                file_desc_ = -2;
-                if (recv_window_ && recv_window_->Size()) {
-                    LOG(INFO, "#%ld recv_window fragments: %d\n",
-                            meta_.block_id(), recv_window_->Size());
-                    std::vector<std::pair<int32_t,Buffer> > frags;
-                    recv_window_->GetFragments(&frags);
-                    for (uint32_t i = 0; i < frags.size(); i++) {
-                        delete[] frags[i].second.data_;
-                        g_writing_bytes.Sub(frags[i].second.len_);
-                    }
-                    delete recv_window_;
-                    recv_window_ = NULL;
+            }
+            file_desc_ = kClosed;
+            //free sliding window when fd is closed
+            if (recv_window_ && recv_window_->Size()) {
+                LOG(INFO, "#%ld recv_window fragments: %d\n",
+                        meta_.block_id(), recv_window_->Size());
+                std::vector<std::pair<int32_t,Buffer> > frags;
+                recv_window_->GetFragments(&frags);
+                for (uint32_t i = 0; i < frags.size(); i++) {
+                    delete[] frags[i].second.data_;
+                    g_writing_bytes.Sub(frags[i].second.len_);
                 }
+                delete recv_window_;
+                recv_window_ = NULL;
             }
             close_cv_.Signal();
         }
