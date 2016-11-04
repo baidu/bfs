@@ -7,6 +7,7 @@
 #include <string>
 #include <iostream>
 #include <functional>
+#include <assert.h>
 
 #include <common/string_util.h>
 #include <common/thread_pool.h>
