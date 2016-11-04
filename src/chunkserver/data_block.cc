@@ -293,7 +293,7 @@ bool Block::Close() {
     this->AddRef();
     thread_pool_->AddPriorityTask(std::bind(&Block::DiskWrite, this));
 
-    while (file_desc_ != -2) {
+    while (file_desc_ != kClosed) {
         close_cv_.Wait();
     }
     if (meta_.version() == -1) {
