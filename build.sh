@@ -27,7 +27,7 @@ cd ${DEPS_SOURCE}
 # boost
 if [ ! -f "${FLAG_DIR}/boost_1_57_0" ] \
     || [ ! -d "${DEPS_PREFIX}/boost_1_57_0/boost" ]; then
-    wget https://raw.githubusercontent.com/lylei9/boost_1_57_0/master/boost_1_57_0.tar.gz
+    #wget https://raw.githubusercontent.com/lylei9/boost_1_57_0/master/boost_1_57_0.tar.gz
     tar zxf boost_1_57_0.tar.gz
     rm -rf ${DEPS_PREFIX}/boost_1_57_0
     mv boost_1_57_0 ${DEPS_PREFIX}/boost_1_57_0
@@ -39,6 +39,7 @@ if [ ! -f "${FLAG_DIR}/protobuf_2_6_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libprotobuf.a" ] \
     || [ ! -d "${DEPS_PREFIX}/include/google/protobuf" ]; then
     cd protobuf-2.6.1
+	autoreconf -ivf
     ./configure ${DEPS_CONFIG}
     make -j4
     make install
@@ -65,6 +66,7 @@ if [ ! -f "${FLAG_DIR}/snappy_1_1_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libsnappy.a" ] \
     || [ ! -f "${DEPS_PREFIX}/include/snappy.h" ]; then
     cd snappy-1.1.1
+	autoreconf -ivf
     ./configure ${DEPS_CONFIG}
     make -j4
     make install
