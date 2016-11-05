@@ -184,6 +184,8 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     }
     // expect index to be current_idx_ + 1
     if (request->index() > current_idx_ + 1) {
+        LOG(INFO, "\033[32m[Sync]\033[0m out-date log request %ld, current_idx_ %ld",
+            request->index(), current_idx_);
         response->set_index(current_idx_ + 1);
         response->set_success(false);
         done->Run();
