@@ -76,7 +76,7 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
     }
     uint32_t len = entry.length();
     std::string data;
-    data.append(reinterpret_cast<char*>(&len), 4);
+    data.append(reinterpret_cast<char*>(&len), sizeof(uint32_t));
     data.append(entry);
     if (!write_log_) {
         if (!NewWriteLog(index)) {
@@ -111,6 +111,7 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
 
 StatusCode LogDB::Read(int64_t index, std::string* entry) {
     if (read_log_.empty() || index >= next_index_ || index < smallest_index_) {
+        LOG(FATAL, "[LogDB] index file value [%ld] is not appropriate.", index);
         return kNsNotFound;
     }
     FileCache::iterator it = read_log_.lower_bound(index);
@@ -162,7 +163,7 @@ StatusCode LogDB::WriteMarkerNoLock(const std::string& key, const std::string& v
     }
     std::string data;
     uint32_t len = 4 + key.length() + 4 + value.length();
-    data.append(reinterpret_cast<char*>(&len), 4);
+    data.append(reinterpret_cast<char*>(&len), sizeof(uint32_t));
     EncodeMarker(MarkerEntry(key, value), &data);
     if (fwrite(data.c_str(), 1, data.length(), marker_log_) != data.length()
         || fflush(marker_log_) != 0) {
@@ -180,7 +181,7 @@ StatusCode LogDB::WriteMarker(const std::string& key, const std::string& value) 
 }
 
 StatusCode LogDB::WriteMarker(const std::string& key, int64_t value) {
-    return WriteMarker(key, std::string(reinterpret_cast<char*>(&value), 8));
+    return WriteMarker(key, std::string(reinterpret_cast<char*>(&value), sizeof(int64_t)));
 }
 
 StatusCode LogDB::ReadMarker(const std::string& key, std::string* value) {
@@ -457,7 +458,7 @@ void LogDB::WriteMarkerSnapshot() {
         MarkerEntry marker(it->first, it->second);
         uint32_t len = 4 + (it->first).length() + 4 + (it->second).length();
         data.clear();
-        data.append(reinterpret_cast<char*>(&len), 4);
+        data.append(reinterpret_cast<char*>(&len), sizeof(uint32_t));
         EncodeMarker(marker, &data);
         if (fwrite(data.c_str(), 1, data.length(), fp) != data.length() || fflush(fp) != 0) {
             LOG(WARNING, "[LogDB] write marker.tmp failed %s", strerror(errno));
@@ -532,18 +533,18 @@ StatusCode LogDB::ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int6
 void LogDB::EncodeMarker(const MarkerEntry& marker, std::string* data) {
     int klen = (marker.key).length();
     int vlen = (marker.value).length();
-    data->append(reinterpret_cast<char*>(&klen), 4);
+    data->append(reinterpret_cast<char*>(&klen), sizeof(int));
     data->append(marker.key);
-    data->append(reinterpret_cast<char*>(&vlen), 4);
+    data->append(reinterpret_cast<char*>(&vlen), sizeof(int));
     data->append(marker.value);
 }
 
 void LogDB::DecodeMarker(const std::string& data, MarkerEntry* marker) { // data = klen + k + vlen + v
     int klen;
-    memcpy(&klen, &(data[0]), 4);
+    memcpy(&klen, &(data[0]), sizeof(int));
     (marker->key).assign(data.substr(4, klen));
     int vlen;
-    memcpy(&vlen, &(data[4 + klen]), 4);
+    memcpy(&vlen, &(data[4 + klen]), sizeof(int));
     (marker->value).assign(data.substr(4 + klen + 4, vlen));
 }
 
