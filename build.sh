@@ -188,6 +188,12 @@ echo "TCMALLOC_PATH=./thirdparty" >> depends.mk
 # build tera
 ########################################
 
+# support compiler version less than 4.8.2
+if [[ "4.8.2" > `/usr/bin/g++ -dumpversion` ]]
+then
+    sed -i 's/-std=c++11/-std=c++0x/g' Makefile
+fi
+
 make clean
 make -j4
 
