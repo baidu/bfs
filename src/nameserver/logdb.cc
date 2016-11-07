@@ -76,7 +76,7 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
     }
     uint32_t len = entry.length();
     std::string data;
-    data.append(reinterpret_cast<char*>(&len), sizeof(uint32_t));
+    data.append(reinterpret_cast<char*>(&len), sizeof(len));
     data.append(entry);
     if (!write_log_) {
         if (!NewWriteLog(index)) {
