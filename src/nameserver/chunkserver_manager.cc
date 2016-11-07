@@ -84,6 +84,7 @@ bool ChunkServerManager::KickChunkServer(int32_t cs_id) {
     MutexLock lock(&mu_, "KickChunkServer", 10);
     ChunkServerInfo* cs = NULL;
     if (!GetChunkServerPtr(cs_id, &cs)) {
+        LOG(WARNING, "get chunk server ptr error, cs_id is [%d]", cs_id);
         return false;
     }
     cs->set_kick(true);

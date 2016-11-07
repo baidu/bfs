@@ -18,7 +18,7 @@ Nameserver集群间通过一致性协议同步状态机，一个节点宕机后�
 
 * 拖镜像
 
-镜像由master主动同步给slave。master在试图给从同步某条log时发现slave已经落后太多，就会现将镜像同步给slave，再从镜像时间点开始同步log给slave。
+镜像由master主动同步给slave。master在试图给从同步某条log时发现slave已经落后太多，就会先将镜像同步给slave，再从镜像时间点开始同步log给slave。
 
 镜像的同步主要依靠两个变量：`snapshot_id` 和 `snapshot_step`。
 
