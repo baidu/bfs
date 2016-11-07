@@ -218,35 +218,6 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return ret;
 }
 
-int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
-    int64_t ret = 0;
-    std::string pad;
-    if (path[path.size() - 1] != '/') {
-        pad = "/";
-    }
-    baidu::bfs::BfsFileInfo* files = NULL;
-    int num = 0;
-    if (fs->ListDirectory(path.c_str(), &files, &num) != 0) {
-        fprintf(stderr, "List directory fail: %s\n", path.c_str());
-        return ret;
-    }
-    for (int i = 0; i < num; i++) {
-        std::string file_path = path + pad + files[i].name;
-        int32_t type = files[i].mode;
-        if (type & (1<<9)) {
-            ret += BfsDuRecursive(fs, file_path);
-            continue;
-        }
-        baidu::bfs::BfsFileInfo fileinfo;
-        if (fs->Stat(file_path.c_str(), &fileinfo) == 0) {
-            ret += fileinfo.size;
-            printf("%s\t %ld\n", file_path.c_str(), fileinfo.size);
-        }
-    }
-    delete[] files;
-    return ret;
-}
-
 int64_t BfsDuV2(baidu::bfs::FS* fs, const std::string& path) {
     int64_t du_size = 0;
     if (fs->DiskUsage(path.c_str(), &du_size) != 0) {
