@@ -24,6 +24,7 @@ DECLARE_double(select_chunkserver_local_factor);
 DECLARE_int32(blockreport_interval);
 DECLARE_int32(blockreport_size);
 DECLARE_int32(expect_chunkserver_num);
+DECLARE_bool(check_missing_in_block_report);
 
 namespace baidu {
 namespace bfs {
@@ -750,7 +751,7 @@ int64_t ChunkServerManager::AddBlockWithCheck(int32_t id, const std::set<int64_t
     cs_block_map->report_id = report_id;
 
     // report_id == -1 means this is an old-version cs, skip check
-    if (report_id != -1) {
+    if (report_id != -1 && FLAGS_check_missing_in_block_report) {
         for (std::set<int64_t>::iterator ns_it = ns_blocks->lower_bound(start);
                 ns_it != ns_blocks->end() && *ns_it <= end;) {
             if (blocks.find(*ns_it) == blocks.end()) {
