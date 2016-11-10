@@ -39,18 +39,18 @@ BFS内置一致性协议选主，所以部署不依赖外部协调模块。
 #### 配置
 一个典型的bfs配置文件:  
 \# 公共配置  
---bfs_log=../log/bfs.log   # log文件的存储路径  
---bfs_log_size=5120        # 单个log文件的大小  
---bfs_log_limit=1024000    # 总的log限制,超过限制会删除旧的log  
+--bfs_log=../log/bfs.log   # log文件的存储路径  
+--bfs_log_size=5120        # 单个log文件的大小  
+--bfs_log_limit=1024000    # 总的log限制,超过限制会删除旧的log  
 --bfs_log_level=4          # 日志级别 DEBUG = 2, INFO = 4, WARNING = 8, FATAL = 16,  
 --nameserver_nodes=ns1.baidu.com:8828,ns2.baidu.com:8828,ns3.baidu.com:8828   # NameServer节点列表  
   
 \#NameServer配置  
---ha_strategy=raft         # NameServer的HA策略, none,raft,master-slave 3选一  
---node_index=0             # 当前节点是NS节点列表的第几个  
---keepalive_timeout=30     # ChunkServer心跳超时时间  
+--ha_strategy=raft         # NameServer的HA策略, none,raft,master-slave 3选一  
+--node_index=0             # 当前节点是NS节点列表的第几个  
+--keepalive_timeout=30     # ChunkServer心跳超时时间  
 --namedb_path=/ssd1/meta   # NameServer的meta信息存储路径  
---default_replica_num=3    # 默认文件副本数  
+--default_replica_num=3    # 默认文件副本数  
   
 \#ChunkServer配置  
 --chunkserver_max_unfinished_byte=2147483648 # 未完成的写请求会占用ChunkServer内存,为避免OOM,设置了一个上限超出后就拒绝新请求.  
