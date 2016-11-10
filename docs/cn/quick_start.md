@@ -61,9 +61,12 @@ BFS内置一致性协议选主，所以部署不依赖外部协调模块。
 
 #### 分布式部署
 BFS的分布式部署一般包含3或5个NameServer节点和3+个ChunkServer节点。  
-1. 在每个bfs.flag里通过`nameserver_nodes`指定所有NameServer的主机名和端口  
+1. 在每个bfs.flag里通过`nameserver_nodes`指定所有NameServer的主机名和端口  
 2. 在NameServer的bfs.flag里通过`node_index`指定NameServer对应的序号  
 3. 以任意顺序或并发`启动3个NameServer`  
 4. 在ChunkServer的bfs.flag里通过block_store_path指定ChunkServer使用的`磁盘路径`，并确保chunkserver对这个路径拥有`写权限`。  
 5. 以任意顺序或并发`启动所有的chunkserver`  
 6. 通过`./bfs_client stat检查集群状态`，如果看到所有的chunkserver存活，即搭建完成  
+
+### BFS使用
+使用Demo参考sample/sample.cc
