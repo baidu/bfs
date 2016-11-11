@@ -161,7 +161,7 @@ $(FUSE_OBJ): %.o: %.cc
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
 src/version.cc: FORCE
-	sh build_version.sh
+	bash build_version.sh
 
 .PHONY: FORCE
 FORCE:
