@@ -9,7 +9,8 @@
 - [ ] [fuse代码](../../master/fuse/bfs_mount.cc)review,找到其中拼写或明显的错误
 
 ### 环境类
-- [ ] 非bash执行small_test.sh是出错, 98: small_test.sh: Syntax error: Bad for loop variable
+- [ ] 非bash执行small_test.sh时出错, 98: small_test.sh: Syntax error: Bad for loop variable
+- [ ] 合并sandbox下的deploy.sh和start_bfs.sh,或者加一个stop_bfs.sh
 - [ ] Mac下编译通过
 - [ ] Mac下运行
 - [ ] Ubuntu下编译通过
