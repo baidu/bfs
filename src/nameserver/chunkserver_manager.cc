@@ -45,12 +45,17 @@ void Blocks::Remove(int64_t block_id) {
     new_blocks_.erase(block_id);
 }
 
-void Blocks::CleanUp(std::set<int64_t>* blocks, std::set<int64_t>* new_bocks) {
-    MutexLock blocks_lock(&block_mu_);
-    std::swap(*new_bocks, new_blocks_);
+void Blocks::CleanUp(std::set<int64_t>* blocks) {
+    assert(blocks->empty());
+    std::set<int64_t> tmp;
+    {
+        MutexLock blocks_lock(&block_mu_);
+        std::swap(*blocks, blocks_);
 
-    MutexLock new_blocks_lock(&new_blocks_mu_);
-    std::swap(*blocks, blocks_);
+        MutexLock new_block_lock(&new_blocks_mu_);
+        std::swap(tmp, new_blocks_);
+    }
+    blocks->insert(tmp.begin(), tmp.end());
 }
 
 int64_t Blocks::CheckLost(int64_t report_id, std::set<int64_t>& blocks,
@@ -116,14 +121,12 @@ void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string
     auto it = block_map_.find(id);
     assert(it != block_map_.end());
     std::set<int64_t> blocks;
-    std::set<int64_t> new_blocks;
-    it->second->CleanUp(&blocks, &new_blocks);
+    it->second->CleanUp(&blocks);
     LOG(INFO, "Remove ChunkServer C%d %s %s, cs_num=%d",
             cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
     block_mapping_manager_->DealWithDeadNode(id, blocks);
-    block_mapping_manager_->DealWithDeadNode(id, new_blocks);
     mu_.Lock("CleanChunkServerRelock", 10);
     cs->set_w_qps(0);
     cs->set_w_speed(0);

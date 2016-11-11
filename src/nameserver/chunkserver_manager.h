@@ -24,7 +24,7 @@ public:
     int64_t GetReportId();
     void Insert(int64_t block_id);
     void Remove(int64_t block_id);
-    void CleanUp(std::set<int64_t>* blocks, std::set<int64_t>* new_bocks);
+    void CleanUp(std::set<int64_t>* blocks);
     int64_t CheckLost(int64_t report_id, std::set<int64_t>& blocks,
                       int64_t start, int64_t end, std::vector<int64_t>* lost);
 private:
