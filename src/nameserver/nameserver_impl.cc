@@ -219,7 +219,7 @@ void NameServerImpl::BlockReceived(::google::protobuf::RpcController* controller
         if (block_mapping_manager_->UpdateBlockInfo(block_id, cs_id, block_size, block_version)) {
             blockreceived_timer.Check(50 * 1000, "UpdateBlockInfo");
             // update cs -> block
-            chunkserver_manager_->AddBlock(cs_id, block_id, block.is_recover());
+            chunkserver_manager_->AddBlock(cs_id, block_id);
             blockreceived_timer.Check(50 * 1000, "AddBlock");
         } else {
             LOG(INFO, "BlockReceived drop C%d #%ld V%ld %ld",
@@ -278,7 +278,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     }
     int64_t before_add_block = common::timer::get_micros();
     std::vector<int64_t> lost;
-    chunkserver_manager_->AddBlockWithCheck(cs_id, insert_blocks, request->start(),
+    int64_t ret = chunkserver_manager_->AddBlockWithCheck(cs_id, insert_blocks, request->start(),
                                    request->end(), &lost, report_id);
     if (lost.size() != 0) {
         LOG(INFO, "C%d lost %u blocks",cs_id, lost.size());
@@ -287,7 +287,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         }
     }
     int64_t after_add_block = common::timer::get_micros();
-    response->set_report_id(report_id);
+    response->set_report_id(ret);
 
     // recover replica
     if (recover_mode_ != kStopRecover) {
@@ -493,7 +493,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             replicas.push_back(cs_id);
             // update cs -> block
             add_block_timer.Reset();
-            chunkserver_manager_->AddBlock(cs_id, new_block_id, false);
+            chunkserver_manager_->AddBlock(cs_id, new_block_id);
             add_block_timer.Check(50 * 1000, "AddBlock");
         }
         block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
