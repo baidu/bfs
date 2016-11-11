@@ -2,11 +2,11 @@
 A toy environment for testing.
 
 ## Deployment
-`sh deploy.sh`
+`bash deploy.sh`
 This script will prepare the environment to run Nameserver and Chunkservers.
 
 ## Launch
-`sh deploy.sh`
+`bash deploy.sh`
 This script will launch Nameserver and Chunkservers to put up a BFS cluster(only it is not a real cluster, but a simulation on one server). Logs will be saved under nameserver0/log and chunkserver[id]/log.
 
 ## Testing
@@ -24,16 +24,16 @@ Download a file to local fs:
 
 ## Cleanup
 To tear down the cluster and cleanup the environment:
-`sh clear.sh`
+`bash clear.sh`
 
 # Sandbox
 用于DFS的单机部署测试。
 ## 部署
-`sh deploy.sh  `
+`bash deploy.sh  `
 会创建Nameserver和Chunkserver运行环境
 
 ## 启动
-`sh start_bfs.sh  `
+`bash start_bfs.sh  `
 启动Nameserver与多个Chunkserver，形成一个单机（模拟）集群。
 日志会被打印在nameserver0/log和chunkserver[id]/log
 
@@ -51,6 +51,6 @@ To tear down the cluster and cleanup the environment:
 `./bfs_client get /chunkserver ./file_from_bfs`
 
 ## 清理
-`sh clear.sh`
+`bash clear.sh`
 
 
