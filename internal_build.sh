@@ -7,10 +7,10 @@ set -e -u -E # this script will exit if any sub-command fails
 ########################################
 
 WORK_DIR=`pwd`
-DEPS_SOURCE=`pwd`/thirdsrc
-DEPS_PREFIX=`pwd`/thirdparty
+DEPS_SOURCE=${WORK_DIR}/thirdsrc
+DEPS_PREFIX=${WORK_DIR}/thirdparty
 DEPS_CONFIG="--prefix=${DEPS_PREFIX} --disable-shared --with-pic"
-FLAG_DIR=`pwd`/.build
+FLAG_DIR=${WORK_DIR}/.build
 
 export PATH=${DEPS_PREFIX}/bin:$PATH
 mkdir -p ${DEPS_SOURCE} ${DEPS_PREFIX} ${FLAG_DIR}
@@ -187,7 +187,7 @@ echo "COMMON_PATH=./thirdparty" >> depends.mk
 echo "TCMALLOC_PATH=./thirdparty" >> depends.mk
 
 ########################################
-# build tera
+# build bfs
 ########################################
 
 make clean
