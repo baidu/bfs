@@ -278,7 +278,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
     }
     int64_t before_add_block = common::timer::get_micros();
     std::vector<int64_t> lost;
-    chunkserver_manager_->AddBlockWithCheck(cs_id, insert_blocks, request->start(),
+    int64_t ret = chunkserver_manager_->AddBlockWithCheck(cs_id, insert_blocks, request->start(),
                                    request->end(), &lost, report_id);
     if (lost.size() != 0) {
         LOG(INFO, "C%d lost %u blocks",cs_id, lost.size());
@@ -287,7 +287,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         }
     }
     int64_t after_add_block = common::timer::get_micros();
-    response->set_report_id(report_id);
+    response->set_report_id(ret);
 
     // recover replica
     if (recover_mode_ != kStopRecover) {

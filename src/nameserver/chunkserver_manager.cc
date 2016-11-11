@@ -45,12 +45,12 @@ void Blocks::Remove(int64_t block_id) {
     new_blocks_.erase(block_id);
 }
 
-void Blocks::CleanUp(std::set<int64_t>& blocks, std::set<int64_t>& new_bocks) {
+void Blocks::CleanUp(std::set<int64_t>* blocks, std::set<int64_t>* new_bocks) {
     MutexLock blocks_lock(&block_mu_);
-    std::swap(new_bocks, new_blocks_);
+    std::swap(*new_bocks, new_blocks_);
 
     MutexLock new_blocks_lock(&new_blocks_mu_);
-    std::swap(blocks, blocks_);
+    std::swap(*blocks, blocks_);
 }
 
 int64_t Blocks::CheckLost(int64_t report_id, std::set<int64_t>& blocks,
@@ -117,7 +117,7 @@ void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string
     assert(it != block_map_.end());
     std::set<int64_t> blocks;
     std::set<int64_t> new_blocks;
-    it->second->CleanUp(blocks, new_blocks);
+    it->second->CleanUp(&blocks, &new_blocks);
     LOG(INFO, "Remove ChunkServer C%d %s %s, cs_num=%d",
             cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
     cs->set_status(kCsCleaning);
