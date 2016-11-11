@@ -47,7 +47,7 @@ BFS内置一致性协议选主，所以部署不依赖外部协调模块。
   
 \#NameServer配置  
 --ha_strategy=raft         # NameServer的HA策略, none,raft,master-slave 3选一  
---node_index=0             # 当前节点是NS节点列表的第几个  
+--node_index=0             # 当前节点是NameServer节点列表的第几个  
 --keepalive_timeout=30     # ChunkServer心跳超时时间  
 --namedb_path=/ssd1/meta   # NameServer的meta信息存储路径  
 --default_replica_num=3    # 默认文件副本数  
