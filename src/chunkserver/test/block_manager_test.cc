@@ -35,7 +35,7 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     StatusCode status;
     Block* block = block_manager.CreateBlock(block_id, &sync_time, &status);
     ASSERT_TRUE(block != NULL);
-    std::string disk_file_path = block->meta_.store_path() + Block::BuildFilePath(block_id);
+    std::string disk_file_path = block->disk_file_;
     // now ref count for block is 2
     ret = block->Write(0, 0, NULL, 0, NULL);
     ASSERT_TRUE(ret);
@@ -46,42 +46,48 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     block_manager.CloseBlock(block);
     //after RemoveBlock, ref count for block is 1
     block_manager.RemoveBlock(block_id);
-    ASSERT_TRUE(block->refs_ == 1);
-    ASSERT_TRUE(block->deleted_ == true);
+    ASSERT_EQ(block->refs_, 1);
+    ASSERT_EQ(block->deleted_, true);
     struct stat st;
     ASSERT_TRUE(stat(disk_file_path.c_str(), &st) == 0);
     //after the last ref is released, disk file should be removed
     block->DecRef();
     ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
-    ASSERT_TRUE(errno == ENOENT);
+    ASSERT_EQ(errno, ENOENT);
 
     // close before write
     block_id = 456;
     block = block_manager.CreateBlock(block_id, &sync_time, &status);
     ASSERT_TRUE(block != NULL);
     block_manager.CloseBlock(block);
-    ASSERT_TRUE(block->finished_ == true);
-    ASSERT_TRUE(block->file_desc_ == -2);
+    ASSERT_EQ(block->finished_, true);
+    ASSERT_EQ(block->file_desc_, Block::kClosed);
     block_manager.RemoveBlock(block_id);
-    ASSERT_TRUE(block->refs_ == 1);
-    ASSERT_TRUE(block->deleted_ == 1);
-    disk_file_path = block->meta_.store_path() + Block::BuildFilePath(block_id);
+    ASSERT_EQ(block->refs_, 1);
+    ASSERT_EQ(block->deleted_, 1);
+    disk_file_path = block->disk_file_;
     block->DecRef();
     ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
-    ASSERT_TRUE(errno == ENOENT);
+    ASSERT_EQ(errno, ENOENT);
 
     // delete before write
     block_id = 789;
     block = block_manager.CreateBlock(block_id, &sync_time, &status);
     ASSERT_TRUE(block != NULL);
     block_manager.RemoveBlock(block_id);
-    ASSERT_TRUE(block->refs_ == 1);
-    ASSERT_TRUE(block->deleted_ == true);
-    ASSERT_TRUE(block->finished_ == false);
+    ASSERT_EQ(block->refs_, 1);
+    ASSERT_EQ(block->deleted_, true);
+    ASSERT_EQ(block->finished_, false);
+    ASSERT_EQ(block->file_desc_, Block::kNotCreated);
+    // Write will fail
+    ret = block->Write(0, 0, NULL, 0, NULL);
+    ASSERT_EQ(ret, false);
     disk_file_path = block->meta_.store_path() + Block::BuildFilePath(block_id);
+    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
+    ASSERT_EQ(errno, ENOENT);
     block->DecRef();
     ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
-    ASSERT_TRUE(errno == ENOENT);
+    ASSERT_EQ(errno, ENOENT);
 
     rmdir("./test_dir");
 }
