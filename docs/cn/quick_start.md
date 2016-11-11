@@ -69,4 +69,4 @@ BFS的分布式部署一般包含3或5个NameServer节点和3+个ChunkServer节�
 6. 通过`./bfs_client stat检查集群状态`，如果看到所有的chunkserver存活，即搭建完成  
 
 ### BFS使用
-使用Demo参考sample/sample.cc
+使用Demo参考[src/client/bfs_client.cc](https://github.com/baidu/bfs/blob/master/src/client/bfs_client.cc)
