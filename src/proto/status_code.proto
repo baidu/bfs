@@ -62,9 +62,30 @@ enum RecoverPri {
     kLow = 1;
 }
 
-message Params {
+enum RecoverMode {
+    kStopRecover = 0;
+    kHiOnly = 1;
+    kRecoverAll = 2;
+}
+
+enum DisplayMode {
+    kDisplayAll = 0;
+    kAliveOnly = 1;
+    kDeadOnly = 2;
+    kOverload = 3;
+}
+
+message ChunkServerParams {
     optional int32 report_interval = 1 [default = -1];
     optional int32 report_size = 2 [default = -1];
     optional int32 recover_size = 3 [default = -1];
     optional int32 keepalive_timeout = 4 [default = -1];
+}
+
+message NameServerParams {
+    optional int32 block_report_timeout = 1;
+    optional bool clean_redundancy = 2;
+    optional RecoverMode recover_mode = 3;
+    optional int32 recover_timeout = 4;
+    optional bool readonly = 5;
 }

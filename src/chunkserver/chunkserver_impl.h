@@ -98,7 +98,7 @@ private:
     int64_t first_round_report_start_;
     volatile bool service_stop_;
 
-    Params params_;
+    ChunkServerParams params_;
 };
 
 } // namespace bfs

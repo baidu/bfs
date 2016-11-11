@@ -154,5 +154,11 @@ void BlockMappingManager::MarkIncomplete(int64_t block_id) {
     block_mapping_[bucket_offset]->MarkIncomplete(block_id);
 }
 
+void BlockMappingManager::SetCleanRedundancy(bool clean) {
+    for (size_t i = 0; i < block_mapping_.size(); i++) {
+        block_mapping_[i]->SetCleanRedundancy(clean);
+    }
+}
+
 } //namespace bfs
 } //namespace baidu
