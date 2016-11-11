@@ -16,3 +16,4 @@
 - [ ] Mac下运行
 - [ ] Ubuntu下编译通过
 - [ ] Ubuntu下运行
+- [ ] Windows下Cygwin编译通过
