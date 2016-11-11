@@ -281,7 +281,7 @@ int bfs_release(const char* path, struct fuse_file_info* finfo) {
         }
         int wlen = file->Write(mfile->buf, mfile->buf_len);
         if (wlen < mfile->buf_len) {
-            fprintf(stderr, BFS"Write(%s, %ld) for release fail\n", path, mfile->buf_len);
+            fprintf(stderr, BFS"Write(%s, %d) for release fail\n", path, mfile->buf_len);
             retval = EACCES;
         }
         file->Close();
