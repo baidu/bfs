@@ -1,0 +1,97 @@
+// Copyright (c) 2016, Baidu.com, Inc. All Rights Reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+
+#define private public
+#include "chunkserver/block_manager.h"
+#include "chunkserver/data_block.h"
+
+#include <gflags/gflags.h>
+#include <gtest/gtest.h>
+
+DECLARE_string(namedb_path);
+DECLARE_int32(write_buf_size);
+
+
+namespace baidu {
+namespace bfs {
+
+class BlockManagerTest : public ::testing::Test {
+public:
+    BlockManagerTest() {}
+protected:
+};
+
+TEST_F(BlockManagerTest, RemoveBlock) {
+    mkdir("./test_dir", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    BlockManager block_manager("./test_dir");
+    bool ret = block_manager.LoadStorage();
+    ASSERT_TRUE(ret);
+
+    //normal case
+    int64_t block_id = 123;
+    int64_t sync_time;
+    StatusCode status;
+    Block* block = block_manager.CreateBlock(block_id, &sync_time, &status);
+    ASSERT_TRUE(block != NULL);
+    std::string disk_file_path = block->meta_.store_path() + Block::BuildFilePath(block_id);
+    // now ref count for block is 2
+    ret = block->Write(0, 0, NULL, 0, NULL);
+    ASSERT_TRUE(ret);
+    FLAGS_write_buf_size = 5;
+    std::string test_write_data("hello world");
+    ret = block->Write(1, 0, test_write_data.data(), test_write_data.size(), NULL);
+    ASSERT_TRUE(ret);
+    block_manager.CloseBlock(block);
+    //after RemoveBlock, ref count for block is 1
+    block_manager.RemoveBlock(block_id);
+    ASSERT_TRUE(block->refs_ == 1);
+    ASSERT_TRUE(block->deleted_ == true);
+    struct stat st;
+    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) == 0);
+    //after the last ref is released, disk file should be removed
+    block->DecRef();
+    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
+    ASSERT_TRUE(errno == ENOENT);
+
+    // close before write
+    block_id = 456;
+    block = block_manager.CreateBlock(block_id, &sync_time, &status);
+    ASSERT_TRUE(block != NULL);
+    block_manager.CloseBlock(block);
+    ASSERT_TRUE(block->finished_ == true);
+    ASSERT_TRUE(block->file_desc_ == -2);
+    block_manager.RemoveBlock(block_id);
+    ASSERT_TRUE(block->refs_ == 1);
+    ASSERT_TRUE(block->deleted_ == 1);
+    disk_file_path = block->meta_.store_path() + Block::BuildFilePath(block_id);
+    block->DecRef();
+    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
+    ASSERT_TRUE(errno == ENOENT);
+
+    // delete before write
+    block_id = 789;
+    block = block_manager.CreateBlock(block_id, &sync_time, &status);
+    ASSERT_TRUE(block != NULL);
+    block_manager.RemoveBlock(block_id);
+    ASSERT_TRUE(block->refs_ == 1);
+    ASSERT_TRUE(block->deleted_ == true);
+    ASSERT_TRUE(block->finished_ == false);
+    disk_file_path = block->meta_.store_path() + Block::BuildFilePath(block_id);
+    block->DecRef();
+    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
+    ASSERT_TRUE(errno == ENOENT);
+
+    rmdir("./test_dir");
+}
+
+}
+}
+
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
+
+/* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

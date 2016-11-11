@@ -99,7 +99,7 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
             disk_quota += user_quota;
         } else {
             if (stat_ret != 0) {
-                LOG(WARNING, "Stat store_path %s fail, ignore it", disk_path.c_str());
+                LOG(WARNING, "Stat store_path %s fail: %s, ignore it", disk_path.c_str(), strerror(errno));
             } else {
                 LOG(WARNING, "%s's fsid is same to %s, ignore it",
                     disk_path.c_str(), fs_map[fsid_str].c_str());
