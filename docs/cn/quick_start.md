@@ -25,7 +25,7 @@
    put: ./bfs_client put bfs_client /  
    get: ./bfs_client get /bfs_client ./bfs_client.bak  
 5. 使用SDK访问BFS  
-   
+   待完善...
    
 ## 从入门到精通
 ### 为什么使用BFS
@@ -33,9 +33,9 @@
 BFS主要从扩展性和持续可用两个方面做了改进，采用分布式的NameServer，多NameServer之间使用内置的Raft协议做日志同步，保证failover时，新主一定有最新的状态不需要额外日志同步，解决了扩展性和可用性问题。  
 ### BFS部署
 #### 依赖
-BFS使用了C++11实现，所以部署不依赖Java虚拟机。  
+BFS使用了C++实现，所以部署不依赖Java虚拟机。  
 BFS内置一致性协议选主，所以部署不依赖外部协调模块。  
-总之，BFS的部署不依赖外部系统，但你需要有一个主流的Linux发行版：RedHat、CentOS或者Ubuntu，并有Gcc4.8以上版本编译器。  
+总之，BFS的部署不依赖外部系统，但你需要有一个主流的Linux发行版：RedHat、CentOS或者Ubuntu，并有Gcc4.8及以上版本编译器。  
 #### 配置
 一个典型的bfs配置文件:  
 \# 公共配置  
