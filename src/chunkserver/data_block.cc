@@ -118,7 +118,7 @@ Block::~Block() {
     if (deleted_) {
         int64_t du = DiskUsed();
         int ret = remove(disk_file_.c_str());
-        if (ret != 0 && (errno !=2 || du > 0)) {
+        if (ret != 0 && (errno != ENOENT || du > 0)) {
             LOG(WARNING, "Remove #%ld disk file %s %ld bytes fails: %d (%s)",
                     meta_.block_id(), disk_file_.c_str(), du, errno, strerror(errno));
         } else {
