@@ -119,6 +119,7 @@ private:
     void DelayWriteChunkInternal(WriteBuffer* buffer, const WriteBlockRequest* request,
                                 int retry_times, std::string cs_addr);
     bool IsChainsWrite();
+    bool AllWriteIsFinished();
 private:
     FSImpl* fs_;                        ///< 文件系统
     RpcClient* rpc_client_;             ///< RpcClient

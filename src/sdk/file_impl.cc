@@ -683,13 +683,8 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
 
     {
         MutexLock lock(&mu_, "WriteBlockCallback", 1000);
-        int32_t last_write_finish_num = GetLastWriteFinishedNum();
-        int32_t replica_num = write_windows_.size();
-        bool chains_write = IsChainsWrite();
         if (write_queue_.empty() ||
-                bg_error_ ||
-                (!chains_write && last_write_finish_num >= replica_num - 1) ||
-                (chains_write && last_write_finish_num == 1)) {
+                bg_error_ || AllWriteIsFinished()) {
             common::atomic_dec(&back_writing_);    // for AsyncRequest
             sync_signal_.Broadcast();
             return;
@@ -812,8 +807,7 @@ int32_t FileImpl::Close() {
     LOG(DEBUG, "File %s closed", name_.c_str());
     closed_ = true;
     int32_t ret = OK;
-    if (bg_error_ && ((!chains_write && finished_num < replica_num - 1)
-                    || (chains_write && finished_num == 0))) {
+    if (bg_error_ && !AllWriteIsFinished()) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = TIMEOUT;
     }
@@ -843,6 +837,14 @@ int32_t FileImpl::Close() {
 
 bool FileImpl::IsChainsWrite() {
     return w_options_.write_mode == "chains";
+}
+
+bool FileImpl::AllWriteIsFinished() {
+    int32_t last_write_finish_num = GetLastWriteFinishedNum();
+    int32_t replica_num = write_windows_.size();
+    bool is_chains = IsChainsWrite();
+    return is_chains ? last_write_finish_num == 1 :
+                       last_write_finish_num >= replica_num - 1;
 }
 
 } // namespace bfs
