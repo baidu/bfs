@@ -17,6 +17,15 @@ DECLARE_int32(write_buf_size);
 namespace baidu {
 namespace bfs {
 
+void sleep_task() {
+    int32_t sleep_time = rand() % 3 + 1;
+    sleep(sleep_time);
+}
+
+void write_task(Block* block, int32_t seq, int64_t offset, std::string write_data) {
+    block->Write(seq, offset, write_data.data(), write_data.size(), NULL);
+}
+
 class BlockManagerTest : public ::testing::Test {
 public:
     BlockManagerTest() {}
@@ -89,6 +98,60 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
     ASSERT_EQ(errno, ENOENT);
 
+    rmdir("./test_dir");
+}
+
+TEST_F(BlockManagerTest, Out_of_order) {
+    ThreadPool thread_pool(10);
+    mkdir("./test_dir", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    BlockManager block_manager("./test_dir");
+    bool ret = block_manager.LoadStorage();
+    ASSERT_TRUE(ret);
+    StatusCode status;
+    int64_t block_id = 123;
+    int64_t sync_time;
+    //after create, ref for this block is 2
+    Block* block = block_manager.CreateBlock(block_id, &sync_time, &status);
+    ASSERT_TRUE(block != NULL);
+    // we will use thread pool and closure to operate this block
+    // first hold all threads
+    for (int i = 0; i < 10; i++) {
+        thread_pool.AddTask(std::bind(sleep_task));
+    }
+    //then add tasks to normal or priority queue, write/close/remove tasks will be out-of-order
+    FLAGS_write_buf_size = 5;
+    std::string test_data("hello world");
+    srand(time(NULL));
+    int32_t r = rand() % 2;
+    std::function<void ()> write_data_task1 = std::bind(write_task, block, 0, 0, "");
+    std::function<void ()> write_data_task2 = std::bind(write_task, block, 0, 0, test_data);
+    if (r == 0) {
+        thread_pool.AddTask(write_data_task1);
+        thread_pool.AddTask(write_data_task2);
+    } else {
+        thread_pool.AddPriorityTask(write_data_task1);
+        thread_pool.AddPriorityTask(write_data_task2);
+    }
+
+    std::function<void()> close_task = std::bind(&BlockManager::CloseBlock, &block_manager, block);
+    r = rand() % 2;
+    if (r == 0) {
+        thread_pool.AddTask(close_task);
+    } else {
+        thread_pool.AddPriorityTask(close_task);
+    }
+
+    std::function<void()> remove_task = std::bind(&BlockManager::RemoveBlock, &block_manager, block_id);
+    r = rand() % 2;
+    if (r == 0) {
+        thread_pool.AddTask(remove_task);
+    } else {
+        thread_pool.AddPriorityTask(remove_task);
+    }
+
+    //wait for all tasks run
+    thread_pool.Stop(true);
+    block->DecRef();
     rmdir("./test_dir");
 }
 
