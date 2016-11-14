@@ -8,8 +8,7 @@
 #define  BFS_RPC_CLIENT_H_
 
 #include <assert.h>
-#include <boost/function.hpp>
-#include <boost/bind.hpp>
+#include <functional>
 #include <sofa/pbrpc/pbrpc.h>
 #include <common/mutex.h>
 #include <common/thread_pool.h>
@@ -78,7 +77,7 @@ public:
                     google::protobuf::RpcController*,
                     const Request*, Response*, Callback*),
                     const Request* request, Response* response,
-                    boost::function<void (const Request*, Response*, bool, int)> callback,
+                    std::function<void (const Request*, Response*, bool, int)> callback,
                     int32_t rpc_timeout, int retry_times) {
         sofa::pbrpc::RpcController* controller = new sofa::pbrpc::RpcController();
         controller->SetTimeout(rpc_timeout * 1000L);
@@ -91,7 +90,7 @@ public:
     static void RpcCallback(sofa::pbrpc::RpcController* rpc_controller,
                             const Request* request,
                             Response* response,
-                            boost::function<void (const Request*, Response*, bool, int)> callback) {
+                            std::function<void (const Request*, Response*, bool, int)> callback) {
 
         bool failed = rpc_controller->Failed();
         int error = rpc_controller->ErrorCode();

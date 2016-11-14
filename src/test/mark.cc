@@ -3,13 +3,15 @@
 // found in the LICENSE file.
 //
 
-#include <gflags/gflags.h>
 #include <vector>
 #include <string>
 #include <iostream>
+#include <functional>
+#include <assert.h>
+
 #include <common/string_util.h>
 #include <common/thread_pool.h>
-#include <boost/bind.hpp>
+#include <gflags/gflags.h>
 
 #include "mark.h"
 
@@ -20,7 +22,7 @@ DEFINE_string(mode, "put", "[put | read]");
 DEFINE_int64(count, 0, "put/read/delete file count");
 DEFINE_int32(thread, 5, "thread num");
 DEFINE_int32(seed, 301, "random seed");
-DEFINE_int32(file_size, 1024, "file size in KB");
+DEFINE_int64(file_size, 1024, "file size in KB");
 DEFINE_string(folder, "test", "write data to which folder");
 DEFINE_bool(break_on_failure, true, "exit when error occurs");
 
@@ -87,7 +89,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     int64_t len = 0;
     int64_t base_size = (1 << 20) / 2;
     while (len < file_size_) {
-        uint32_t w = base_size + rand_[thread_id]->Uniform(base_size);
+        uint64_t w = base_size + rand_[thread_id]->Uniform(base_size);
 
         uint32_t write_len = file->Write(base.c_str(), w);
         if (write_len != w) {
@@ -145,7 +147,7 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     int64_t bytes = 0;
     int32_t len = 0;
     while (1) {
-        uint32_t r = base_size + rand_[thread_id]->Uniform(base_size);
+        uint64_t r = base_size + rand_[thread_id]->Uniform(base_size);
         len = file->Read(buf, r);
         if (len < 0) {
             if (FLAGS_break_on_failure) {
@@ -242,7 +244,7 @@ void Mark::PrintStat() {
     put_counter_.Set(0);
     del_counter_.Set(0);
     read_counter_.Set(0);
-    thread_pool_->DelayTask(1000, boost::bind(&Mark::PrintStat, this));
+    thread_pool_->DelayTask(1000, std::bind(&Mark::PrintStat, this));
 }
 
 void Mark::Run() {
@@ -254,11 +256,11 @@ void Mark::Run() {
             fs_->CreateDirectory(("/" + FLAGS_folder + "/" + prefix).c_str());
         }
         for (int i = 0; i < FLAGS_thread; ++i) {
-            thread_pool_->AddTask(boost::bind(&Mark::PutWrapper, this, i));
+            thread_pool_->AddTask(std::bind(&Mark::PutWrapper, this, i));
         }
     } else if (FLAGS_mode == "read") {
         for (int i = 0; i < FLAGS_thread; ++i) {
-            thread_pool_->AddTask(boost::bind(&Mark::ReadWrapper, this, i));
+            thread_pool_->AddTask(std::bind(&Mark::ReadWrapper, this, i));
         }
     }
     while (!exit_) {

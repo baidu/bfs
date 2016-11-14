@@ -9,8 +9,8 @@
 
 #include <stdint.h>
 #include <string>
+#include <functional>
 #include <common/mutex.h>
-#include <boost/function.hpp>
 
 #include <leveldb/db.h>
 
@@ -23,7 +23,7 @@ namespace bfs {
 class NameSpace {
 public:
     NameSpace(bool standalone = true);
-    void Activate(boost::function<void (const FileInfo&)> rebuild_callback, NameServerLog* log);
+    void Activate(std::function<void (const FileInfo&)> rebuild_callback, NameServerLog* log);
     ~NameSpace();
     /// List a directory
     StatusCode ListDirectory(const std::string& path,
@@ -53,7 +53,7 @@ public:
     /// Namespace version
     int64_t Version() const;
     /// Rebuild blockmap
-    bool RebuildBlockMap(boost::function<void (const FileInfo&)> callback);
+    bool RebuildBlockMap(std::function<void (const FileInfo&)> callback);
     /// NormalizePath
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master

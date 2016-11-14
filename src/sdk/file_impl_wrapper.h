@@ -8,7 +8,7 @@
 
 #include "bfs.h"
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
 namespace baidu {
 namespace bfs {
@@ -33,7 +33,7 @@ public:
     virtual int32_t Sync();
     virtual int32_t Close();
 private:
-    boost::shared_ptr<FileImpl> impl_;
+    std::shared_ptr<FileImpl> impl_;
     // No copying allowed
     FileImplWrapper(const FileImplWrapper&);
     void operator=(const FileImplWrapper&);

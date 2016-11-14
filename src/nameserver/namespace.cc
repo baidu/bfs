@@ -16,7 +16,6 @@
 #include <common/util.h>
 #include <common/atomic.h>
 #include <common/string_util.h>
-#include <boost/bind.hpp>
 
 #include "nameserver/sync.h"
 
@@ -48,7 +47,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     }
 }
 
-void NameSpace::Activate(boost::function<void (const FileInfo&)> callback, NameServerLog* log) {
+void NameSpace::Activate(std::function<void (const FileInfo&)> callback, NameServerLog* log) {
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
@@ -251,6 +250,10 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
             return kFileExists;
         } else {
+            if (IsDir(file_info.type())) {
+                LOG(INFO, "CreateFile %s fail: directory with same name exist", fname.c_str());
+                return kFileExists;
+            }
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 blocks_to_remove->push_back(file_info.blocks(i));
             }
@@ -553,7 +556,7 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     return ret_status;
 }
 
-bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
+bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) {
     int64_t block_num = 0;
     int64_t file_num = 0;
     std::set<int64_t> entry_id_set;
@@ -576,7 +579,7 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
                 ++block_num;
             }
             ++file_num;
-            if (!callback.empty()) {
+            if (callback) {
                 callback(file_info);
             }
         } else {

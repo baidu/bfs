@@ -1,9 +1,9 @@
 
 OPT ?= -g2 -Wall
 
-INCLUDE_PATH= -I../src/sdk/ -I../src/ -I../thirdparty/include -I../thirdparty/boost_1_57_0
+INCLUDE_PATH= -I../src/sdk/ -I../src/ -I../thirdparty/include
 
-CXXFLAGS += $(OPT)
+CXXFLAGS += -std=c++11 $(OPT)
 
 TESTLDFLAGS = -rdynamic -lgtest -lcommon -lprotobuf -lpthread -lz -ldl -lrt -L../thirdparty/lib
 
@@ -20,7 +20,6 @@ bfs_wrapper.so: bfs_wrapper.cc bfs_wrapper.h ../libbfs.a
 		-lpthread \
 		-Xlinker "-)"
 
-	
 bfs_test: bfs_test.cc bfs_wrapper.so
 	g++ $(CXXFLAGS) $(INCLUDE_PATH) -o $@ bfs_test.cc $(TESTLDFLAGS)
 
