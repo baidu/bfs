@@ -34,10 +34,6 @@ class ChunkServerImpl : public ChunkServer {
 public:
     ChunkServerImpl();
     virtual ~ChunkServerImpl();
-    void Register();
-    void SendHeartbeat();
-    void SendBlockReport();
-    bool ReportFinish(Block* block);
 
     virtual void WriteBlock(::google::protobuf::RpcController* controller,
                             const WriteBlockRequest* request,
@@ -78,6 +74,10 @@ private:
     StatusCode WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver, int32_t cancel_time, bool* timeout);
     void CloseIncompleteBlock(int64_t block_id);
     void StopBlockReport();
+    void SendHeartbeat();
+    void SendBlockReport();
+    void Register();
+    bool ReportFinish(Block* block);
 private:
     BlockManager*   block_manager_;
     std::string     data_server_addr_;
