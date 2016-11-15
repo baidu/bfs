@@ -458,7 +458,7 @@ bool FileImpl::CheckWriteWindows() {
     return count >= (int)write_windows_.size() - 1;
 }
 
-int32_t FileImpl::GetLastWriteFinishedNum() {
+int32_t FileImpl::FinishedNum() {
     mu_.AssertHeld();
     std::map<std::string, common::SlidingWindow<int>* >::iterator it;
     int count = 0;
@@ -684,7 +684,7 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
     {
         MutexLock lock(&mu_, "WriteBlockCallback", 1000);
         if (write_queue_.empty() ||
-                bg_error_ || AllWriteIsFinished()) {
+                bg_error_ || EnoughReplica()) {
             common::atomic_dec(&back_writing_);    // for AsyncRequest
             sync_signal_.Broadcast();
             return;
@@ -715,7 +715,7 @@ int32_t FileImpl::Sync() {
     }
     int wait_time = 0;
     int32_t replica_num = write_windows_.size();
-    int32_t last_write_finish_num = GetLastWriteFinishedNum();
+    int32_t last_write_finish_num = FinishedNum();
     bool chains_write = IsChainsWrite();
     while (!bg_error_ &&
            (w_options_.sync_timeout < 0 || wait_time < w_options_.sync_timeout)) {
@@ -732,7 +732,7 @@ int32_t FileImpl::Sync() {
             LOG(WARNING, "Sync w_options_.sync_timeout %d ms, %s back_writing_= %d, finish= %d",
                 wait_time, name_.c_str(), back_writing_, finish);
         }
-        last_write_finish_num = GetLastWriteFinishedNum();
+        last_write_finish_num = FinishedNum();
     }
     if ((bg_error_ && ((!chains_write && last_write_finish_num < replica_num - 1) ||
                     (chains_write && last_write_finish_num == 0))) || back_writing_) {
@@ -781,7 +781,7 @@ int32_t FileImpl::Close() {
 
         //common::timer::AutoTimer at(1, "LastWrite", _name.c_str());
         int wait_time = 0;
-        finished_num = GetLastWriteFinishedNum();
+        finished_num = FinishedNum();
         while (!bg_error_) {
             if (finished_num == replica_num) {
                 break;
@@ -797,7 +797,7 @@ int32_t FileImpl::Close() {
                 LOG(WARNING, "Close timeout %d s, %s back_writing_= %d, finish = %d",
                 wait_time, name_.c_str(), back_writing_, finish);
             }
-            finished_num = GetLastWriteFinishedNum();
+            finished_num = FinishedNum();
         }
     }
     delete block_for_write_;
@@ -807,7 +807,7 @@ int32_t FileImpl::Close() {
     LOG(DEBUG, "File %s closed", name_.c_str());
     closed_ = true;
     int32_t ret = OK;
-    if (bg_error_ && !AllWriteIsFinished()) {
+    if (bg_error_ && !EnoughReplica()) {
         LOG(WARNING, "Close file %s fail", name_.c_str());
         ret = TIMEOUT;
     }
@@ -839,8 +839,8 @@ bool FileImpl::IsChainsWrite() {
     return w_options_.write_mode == "chains";
 }
 
-bool FileImpl::AllWriteIsFinished() {
-    int32_t last_write_finish_num = GetLastWriteFinishedNum();
+bool FileImpl::EnoughReplica() {
+    int32_t last_write_finish_num = FinishedNum();
     int32_t replica_num = write_windows_.size();
     bool is_chains = IsChainsWrite();
     return is_chains ? last_write_finish_num == 1 :
