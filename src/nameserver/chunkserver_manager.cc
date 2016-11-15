@@ -58,17 +58,21 @@ void Blocks::CleanUp(std::set<int64_t>* blocks) {
     blocks->insert(tmp.begin(), tmp.end());
 }
 
-int64_t Blocks::CheckLost(int64_t report_id, std::set<int64_t>& blocks,
-                  int64_t start, int64_t end, std::vector<int64_t>* lost) {
+void Blocks::MoveNew() {
+    MutexLock blocks_lock(&block_mu_);
+    MutexLock new_block_lock(&new_blocks_mu_);
+    std::set<int64_t> tmp;
+    blocks_.insert(new_blocks_.begin(), new_blocks_.end());
+    std::swap(tmp, new_blocks_);
+}
+
+int64_t Blocks::CheckLost(int64_t report_id, const std::set<int64_t>& blocks,
+                          int64_t start, int64_t end, std::vector<int64_t>* lost) {
+    LOG(INFO, "Check block begin. C%ld id %ld blocksize %u newsize %u",
+            cs_id_, report_id, blocks_.size(), new_blocks_.size());
+    std::vector<int64_t> new_blocks;
     MutexLock block_lock(&block_mu_);
-    bool pass_check = true;
-    for (auto it = blocks.begin(); it != blocks.end(); ++it) {
-        pass_check &= blocks_.insert(*it).second;
-    }
-    if (pass_check) {
-        LOG(DEBUG, "C%d pass block check", cs_id_);
-        return report_id;
-    }
+    blocks_.insert(blocks.begin(), blocks.end());
     if (report_id != -1 && report_id <= report_id_) {
         LOG(INFO, "Report out-date C%d current_id %ld report_id %ld", cs_id_, report_id_, report_id);
         return report_id_;
@@ -77,7 +81,7 @@ int64_t Blocks::CheckLost(int64_t report_id, std::set<int64_t>& blocks,
     // report_id == -1 means this is an old-version cs, skip check
     if (report_id != -1) {
         for (auto ns_it = blocks_.lower_bound(start); ns_it != blocks_.end() && *ns_it <= end;) {
-            if (blocks_.find(*ns_it) == blocks_.end()) {
+            if (blocks.find(*ns_it) == blocks.end()) {
                 LOG(WARNING, "Check Block for C%d missing #%ld ", cs_id_, *ns_it);
                 lost->push_back(*ns_it);
                 blocks_.erase(ns_it++);
@@ -87,12 +91,15 @@ int64_t Blocks::CheckLost(int64_t report_id, std::set<int64_t>& blocks,
         }
     }
     MutexLock new_blocks_lock(&new_blocks_mu_);
-    std::set<int64_t> delta;
-    std::swap(delta, new_blocks_);
-    for (auto it = delta.begin(); it != delta.end(); ++it) {
-        blocks_.insert(*it);
+    for (auto it = blocks.rbegin(); it != blocks.rend() && (!new_blocks_.empty()); ++it) {
+        auto delta_it = new_blocks_.find(*it);
+        if (delta_it != new_blocks_.end()) {
+            new_blocks_.erase(delta_it);
+        }
     }
     report_id_ = report_id;
+    LOG(INFO, "Check block done. C%ld id %ld blocksize %u newsize %u",
+            cs_id_, report_id, blocks_.size(), new_blocks_.size());
     return report_id;
 }
 
@@ -242,6 +249,7 @@ bool ChunkServerManager::HandleRegister(const std::string& ip,
             UpdateChunkServer(cs_id, request->tag(), request->disk_quota());
             auto it = block_map_.find(cs_id);
             assert(it != block_map_.end());
+            it->second->MoveNew();
             response->set_report_id(it->second->GetReportId());
             LOG(INFO, "Reconnect chunkserver C%d %s, cs_num=%d, report_id=%ld",
                 cs_id, address.c_str(), chunkserver_num_, it->second->GetReportId());
@@ -774,9 +782,9 @@ Blocks* ChunkServerManager::GetBlockMap(int32_t cs_id) {
     return it->second;
 }
 
-int64_t ChunkServerManager::AddBlockWithCheck(int32_t id, std::set<int64_t>& blocks,
-                                  int64_t start, int64_t end, std::vector<int64_t>* lost,
-                                  int64_t report_id) {
+int64_t ChunkServerManager::AddBlockWithCheck(int32_t id, const std::set<int64_t>& blocks,
+                                              int64_t start, int64_t end,
+                                              std::vector<int64_t>* lost, int64_t report_id) {
     Blocks* cs_blocks = GetBlockMap(id);
     if (!cs_blocks) {
         LOG(WARNING, "Can't find chunkserver C%d", id);
