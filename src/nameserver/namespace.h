@@ -59,7 +59,6 @@ public:
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
     int64_t GetNewBlockId(NameServerLog* log);
-    void InitBlockIdUpbound(NameServerLog* log);
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
@@ -79,6 +78,7 @@ private:
     StatusCode InternalComputeDiskUsage(const FileInfo& info, uint64_t* du_size);
     uint32_t EncodeLog(NameServerLog* log, int32_t type,
                        const std::string& key, const std::string& value);
+    void InitBlockIdUpbound(NameServerLog* log);
     void UpdateBlockIdUpbound(NameServerLog* log);
 private:
     leveldb::DB* db_;   /// NameSpace storage

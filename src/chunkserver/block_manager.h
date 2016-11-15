@@ -31,8 +31,6 @@ public:
     BlockManager(const std::string& store_path);
     ~BlockManager();
     int64_t DiskQuota()  const;
-    void CheckStorePath(const std::string& store_path);
-    const std::string& GetStorePath(int64_t block_id);
     /// Load meta from disk
     bool LoadStorage();
     int64_t NameSpaceVersion() const;
@@ -40,14 +38,16 @@ public:
     int64_t ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num);
     Block* CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status);
     Block* FindBlock(int64_t block_id);
-    std::string BlockId2Str(int64_t block_id);
-    bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time);
     bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);
-    bool RemoveAllBlocksAsync();
     bool RemoveAllBlocks();
 private:
+    std::string BlockId2Str(int64_t block_id);
     bool RemoveBlockMeta(int64_t block_id);
+    bool RemoveAllBlocksAsync();
+    void CheckStorePath(const std::string& store_path);
+    const std::string& GetStorePath(int64_t block_id);
+    bool SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time);
 private:
     ThreadPool* thread_pool_;
     std::vector<std::string> store_path_list_;
