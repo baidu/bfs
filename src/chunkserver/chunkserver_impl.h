@@ -15,8 +15,8 @@
 
 namespace sofa {
 namespace pbrpc {
-class HTTPRequest;
-class HTTPResponse;
+struct HTTPRequest;
+struct HTTPResponse;
 }
 }
 
