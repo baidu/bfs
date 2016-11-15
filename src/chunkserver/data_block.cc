@@ -131,7 +131,7 @@ std::string Block::GetFilePath() const {
 BlockMeta Block::GetMeta() const {
     return meta_;
 }
-int64_t Block::DiskUsed() {
+int64_t Block::DiskUsed() const {
     return disk_file_size_;
 }
 bool Block::SetDeleted() {
@@ -141,10 +141,10 @@ bool Block::SetDeleted() {
 void Block::SetVersion(int64_t version) {
     meta_.set_version(std::max(version, meta_.version()));
 }
-int Block::GetVersion() {
+int Block::GetVersion() const {
     return meta_.version();
 }
-int32_t Block::GetLastSaq() {
+int32_t Block::GetLastSaq() const {
     return last_seq_;
 }
 
@@ -180,10 +180,10 @@ void Block::SetSliceNum(int32_t num) {
     slice_num_ = num;
 }
 /// Is all slice is arrival(Notify by the sliding window)
-bool Block::IsComplete() {
+bool Block::IsComplete() const {
     return (slice_num_ == last_seq_ + 1);
 }
-bool Block::IsFinished() {
+bool Block::IsFinished() const {
     return finished_;
 }
 /// Read operation.
@@ -314,7 +314,7 @@ void Block::DecRef() {
         delete this;
     }
 }
-int Block::GetRef() {
+int Block::GetRef() const {
     return refs_;
 }
 /// Invoke by slidingwindow, when next buffer arrive.
@@ -391,7 +391,7 @@ void Block::DiskWrite() {
 void Block::SetRecover() {
     is_recover_ = true;
 }
-bool Block::IsRecover() {
+bool Block::IsRecover() const {
     return is_recover_;
 }
 /// Append to block buffer
