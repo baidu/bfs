@@ -107,6 +107,8 @@ public:
 private:
     int32_t AddBlock();
     bool CheckWriteWindows();
+    int32_t FinishedNum();
+    bool ShouldSetError();
     void BackgroundWriteInternal();
     void WriteBlockCallbackInternal(const WriteBlockRequest* request,
                             WriteBlockResponse* response,
@@ -116,6 +118,8 @@ private:
                             std::string cs_addr);
     void DelayWriteChunkInternal(WriteBuffer* buffer, const WriteBlockRequest* request,
                                 int retry_times, std::string cs_addr);
+    bool IsChainsWrite();
+    bool EnoughReplica();
 private:
     FSImpl* fs_;                        ///< 文件系统
     RpcClient* rpc_client_;             ///< RpcClient
