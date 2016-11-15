@@ -23,10 +23,10 @@ DECLARE_string(bfs_log);
 DECLARE_int32(bfs_log_size);
 DECLARE_int32(bfs_log_limit);
 
-static volatile bool s_quit = false;
+static volatile sig_atomic_t s_quit = 0;
 static void SignalIntHandler(int /*sig*/)
 {
-    s_quit = true;
+    s_quit = 1;
 }
 
 int main(int argc, char* argv[])
@@ -38,7 +38,10 @@ int main(int argc, char* argv[])
             return 0;
         }
     }
-    FLAGS_flagfile = "./bfs.flag";
+    if (FLAGS_flagfile == "") {
+        FLAGS_flagfile = "./bfs.flag";
+    }
+
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     if (FLAGS_bfs_log != "") {
         baidu::common::SetLogFile(FLAGS_bfs_log.c_str());

@@ -57,36 +57,34 @@ struct RecoverBlockSet {
 
 class BlockMapping {
 public:
-    BlockMapping();
+    BlockMapping(ThreadPool* thread_pool);
     bool GetBlock(int64_t block_id, NSBlock* block);
-    bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size);
+    bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size, RecoverStat* status);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
     void AddNewBlock(int64_t block_id, int32_t replica,
                      int64_t version, int64_t block_size,
                      const std::vector<int32_t>* init_replicas);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                          int64_t block_version);
-    void RemoveBlocksForFile(const FileInfo& file_info);
-    void RemoveBlock(int64_t block_id);
+    void RemoveBlocksForFile(const FileInfo& file_info, std::map<int64_t, std::set<int32_t> >* blocks);
+    void RemoveBlock(int64_t block_id, std::map<int64_t, std::set<int32_t> >* blocks);
     void DealWithDeadNode(int32_t cs_id, const std::set<int64_t>& blocks);
+    void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
     StatusCode CheckBlockVersion(int64_t block_id, int64_t version);
     void PickRecoverBlocks(int32_t cs_id, int32_t block_num,
                            std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
                            RecoverPri pri);
-    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id);
+    void ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, StatusCode status);
     void GetCloseBlocks(int32_t cs_id, google::protobuf::RepeatedField<int64_t>* close_blocks);
     void GetStat(int32_t cs_id, RecoverBlockNum* recover_num);
-    void ListRecover(RecoverBlockSet* blocks, int32_t upbound_size);
-    void SetSafeMode(bool safe_mode);
+    void ListRecover(RecoverBlockSet* blocks);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);
 private:
-    void DealWithDeadBlock(int32_t cs_id, int64_t block_id);
+    void DealWithDeadBlockInternal(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
     void ListCheckList(const CheckList& check_list, std::map<int32_t, std::set<int64_t> >* result);
-    void PickRecoverFromSet(int32_t cs_id, int32_t quota, std::set<int64_t>* recover_set,
-                            std::vector<std::pair<int64_t, std::set<int32_t> > >* recover_blocks,
-                            std::set<int64_t>* check_set);
+    void ListRecoverList(const std::set<int64_t>& recover_set, std::set<int64_t>* result);
     void TryRecover(NSBlock* block);
     bool RemoveFromRecoverCheckList(int32_t cs_id, int64_t block_id);
     void CheckRecover(int32_t cs_id, int64_t block_id);
@@ -104,11 +102,9 @@ private:
                                int64_t block_version);
 private:
     Mutex mu_;
-    ThreadPool thread_pool_;
+    ThreadPool* thread_pool_;
     typedef std::map<int64_t, NSBlock*> NSBlockMap;
     NSBlockMap block_map_;
-    int64_t next_block_id_;
-    bool safe_mode_;
 
     CheckList hi_recover_check_;
     CheckList lo_recover_check_;

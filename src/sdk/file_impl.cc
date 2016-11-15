@@ -4,9 +4,9 @@
 //
 #include "file_impl.h"
 
-#include <gflags/gflags.h>
+#include <functional>
 
-#include <boost/bind.hpp>
+#include <gflags/gflags.h>
 #include <common/sliding_window.h>
 #include <common/logging.h>
 
@@ -19,6 +19,8 @@
 DECLARE_int32(sdk_file_reada_len);
 DECLARE_string(sdk_write_mode);
 DECLARE_int32(sdk_createblock_retry);
+DECLARE_int32(sdk_write_retry_times);
+
 
 namespace baidu {
 namespace bfs {
@@ -89,7 +91,7 @@ FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false),
+    last_read_offset_(-1), r_options_(ReadOptions()), closed_(false), synced_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -103,7 +105,7 @@ FileImpl::FileImpl(FSImpl* fs, RpcClient* rpc_client,
     chunkserver_(NULL), last_chunkserver_index_(-1),
     read_offset_(0), reada_buffer_(NULL),
     reada_buf_len_(0), reada_base_(0), sequential_ratio_(0),
-    last_read_offset_(-1), r_options_(options), closed_(false),
+    last_read_offset_(-1), r_options_(options), closed_(false), synced_(false),
     sync_signal_(&mu_), bg_error_(false) {
         thread_pool_ = fs->thread_pool_;
 }
@@ -165,9 +167,13 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
         if (located_blocks_.blocks_.empty()) {
             return 0;
         } else if (located_blocks_.blocks_[0].chains_size() == 0) {
-            LOG(WARNING, "No located chunkserver of block #%ld",
-                located_blocks_.blocks_[0].block_id());
-            return TIMEOUT;
+            if (located_blocks_.blocks_[0].block_size() == 0) {
+                return 0;
+            } else {
+                LOG(WARNING, "No located chunkserver of block #%ld",
+                    located_blocks_.blocks_[0].block_id());
+                return TIMEOUT;
+            }
         }
         lcblock.CopyFrom(located_blocks_.blocks_[0]);
         if (last_chunkserver_index_ == -1 || !chunkserver_) {
@@ -264,6 +270,9 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
 int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
     //printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
     if (open_flags_ != O_RDONLY) {
+        if (offset == 0 && whence == SEEK_CUR) {
+            return common::atomic_add64(&write_offset_, 0);
+        }
         return BAD_PARAMETER;
     }
     MutexLock lock(&read_offset_mu_);
@@ -317,7 +326,8 @@ int32_t FileImpl::AddBlock() {
         const std::string& addr = block_for_write_->chains(i).address();
         rpc_client_->GetStub(addr, &chunkservers_[addr]);
         write_windows_[addr] = new common::SlidingWindow<int>(100,
-                               boost::bind(&FileImpl::OnWriteCommit, this, _1, _2));
+                               std::bind(&FileImpl::OnWriteCommit,
+                                std::placeholders::_1, std::placeholders::_2));
         cs_errors_[addr] = false;
         WriteBlockRequest create_request;
         int64_t seq = common::timer::get_micros();
@@ -353,7 +363,7 @@ int32_t FileImpl::AddBlock() {
             if (!ret) {
                 return TIMEOUT;
             } else {
-                return GetErrorCode(response.status());
+                return GetErrorCode(create_response.status());
             }
         }
         write_windows_[addr]->Add(0, 0);
@@ -426,8 +436,8 @@ void FileImpl::StartWrite() {
     write_queue_.push(write_buf_);
     block_for_write_->set_block_size(block_for_write_->block_size() + write_buf_->Size());
     write_buf_ = NULL;
-    boost::function<void ()> task =
-        boost::bind(&FileImpl::BackgroundWrite, this);
+    std::function<void ()> task =
+        std::bind(&FileImpl::BackgroundWrite, std::weak_ptr<FileImpl>(shared_from_this()));
     common::atomic_inc(&back_writing_);
     mu_.Unlock();
     thread_pool_->AddTask(task);
@@ -450,7 +460,16 @@ bool FileImpl::CheckWriteWindows() {
 }
 
 /// Send local buffer to chunkserver
-void FileImpl::BackgroundWrite() {
+void FileImpl::BackgroundWrite(std::weak_ptr<FileImpl> wk_fp) {
+    std::shared_ptr<FileImpl> fp(wk_fp.lock());
+    if (!fp) {
+        LOG(DEBUG, "FileImpl has been destroied, ignore backgroud write");
+        return;
+    }
+    fp->BackgroundWriteInternal();
+}
+
+void FileImpl::BackgroundWriteInternal() {
     MutexLock lock(&mu_, "BackgroundWrite", 1000);
     while(!write_queue_.empty() && CheckWriteWindows()) {
         WriteBuffer* buffer = write_queue_.top();
@@ -490,10 +509,13 @@ void FileImpl::BackgroundWrite() {
                     request->add_chunkservers(addr);
                 }
             }
-            const int max_retry_times = 5;
+            const int max_retry_times = FLAGS_sdk_write_retry_times;
             ChunkServer_Stub* stub = chunkservers_[cs_addr];
-            boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-                = boost::bind(&FileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+            std::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
+                = std::bind(&FileImpl::WriteBlockCallback,
+                        std::weak_ptr<FileImpl>(shared_from_this()),
+                        std::placeholders::_1, std::placeholders::_2,
+                        std::placeholders::_3, std::placeholders::_4,
                         max_retry_times, buffer, cs_addr);
 
             LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
@@ -501,8 +523,9 @@ void FileImpl::BackgroundWrite() {
             common::atomic_inc(&back_writing_);
             if (delay) {
                 thread_pool_->DelayTask(5,
-                        boost::bind(&FileImpl::DelayWriteChunk, this, buffer,
-                            request, max_retry_times, cs_addr));
+                        std::bind(&FileImpl::DelayWriteChunk,
+                            std::weak_ptr<FileImpl>(shared_from_this()),
+                            buffer, request, max_retry_times, cs_addr));
             } else {
                 WriteBlockResponse* response = new WriteBlockResponse;
                 rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
@@ -517,12 +540,29 @@ void FileImpl::BackgroundWrite() {
     }
 }
 
-void FileImpl::DelayWriteChunk(WriteBuffer* buffer,
-                                  const WriteBlockRequest* request,
-                                  int retry_times, std::string cs_addr) {
+void FileImpl::DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
+                               WriteBuffer* buffer,
+                               const WriteBlockRequest* request,
+                               int retry_times, std::string cs_addr) {
+    std::shared_ptr<FileImpl> fp(wk_fp.lock());
+    if (!fp) {
+        LOG(DEBUG, "FileImpl has been destroied, ignore delay write");
+        buffer->DecRef();
+        delete request;
+        return;
+    }
+    fp->DelayWriteChunkInternal(buffer, request, retry_times, cs_addr);
+}
+
+void FileImpl::DelayWriteChunkInternal(WriteBuffer* buffer,
+                               const WriteBlockRequest* request,
+                               int retry_times, std::string cs_addr) {
     WriteBlockResponse* response = new WriteBlockResponse;
-    boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-        = boost::bind(&FileImpl::WriteChunkCallback, this, _1, _2, _3, _4,
+    std::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
+        = std::bind(&FileImpl::WriteBlockCallback,
+                      std::weak_ptr<FileImpl>(shared_from_this()),
+                      std::placeholders::_1, std::placeholders::_2,
+                      std::placeholders::_3, std::placeholders::_4,
                       retry_times, buffer, cs_addr);
     common::atomic_inc(&back_writing_);
     ChunkServer_Stub* stub = chunkservers_[cs_addr];
@@ -535,7 +575,25 @@ void FileImpl::DelayWriteChunk(WriteBuffer* buffer,
     }
 }
 
-void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
+void FileImpl::WriteBlockCallback(std::weak_ptr<FileImpl> wk_fp,
+                                  const WriteBlockRequest* request,
+                                  WriteBlockResponse* response,
+                                  bool failed, int error,
+                                  int retry_times,
+                                  WriteBuffer* buffer,
+                                  std::string cs_addr) {
+    std::shared_ptr<FileImpl> fp(wk_fp.lock());
+    if (!fp) {
+        LOG(DEBUG, "FileImpl has been destroied, ignore this callback");
+        buffer->DecRef();
+        delete request;
+        delete response;
+        return;
+    }
+    fp->WriteBlockCallbackInternal(request, response, failed, error, retry_times, buffer, cs_addr);
+}
+
+void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
                                      WriteBlockResponse* response,
                                      bool failed, int error,
                                      int retry_times,
@@ -543,8 +601,9 @@ void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
                                      std::string cs_addr) {
     if (failed || response->status() != kOK) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
-                && response->status() != kCsTooMuchPendingBuffer) {
-            if (retry_times < 5) {
+                && response->status() != kCsTooMuchPendingBuffer
+                && response->status() != kCsTooMuchUnfinishedWrite) {
+            if (retry_times < FLAGS_sdk_write_retry_times) {
                 LOG(INFO, "BackgroundWrite failed %s"
                     " #%ld seq:%d, offset:%ld, len:%d"
                     " status: %s, retry_times: %d",
@@ -582,9 +641,10 @@ void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         }
         if (!bg_error_ && retry_times > 0) {
             common::atomic_inc(&back_writing_);
-            thread_pool_->DelayTask(5,
-                boost::bind(&FileImpl::DelayWriteChunk, this, buffer,
-                            request, retry_times, cs_addr));
+            thread_pool_->DelayTask(5000,
+                std::bind(&FileImpl::DelayWriteChunk,
+                    std::weak_ptr<FileImpl>(shared_from_this()),
+                    buffer, request, retry_times, cs_addr));
         } else {
             buffer->DecRef();
             delete request;
@@ -606,7 +666,7 @@ void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
     delete response;
 
     {
-        MutexLock lock(&mu_, "WriteChunkCallback", 1000);
+        MutexLock lock(&mu_, "WriteBlockCallback", 1000);
         if (write_queue_.empty() || bg_error_) {
             common::atomic_dec(&back_writing_);    // for AsyncRequest
             if (back_writing_ == 0) {
@@ -616,8 +676,8 @@ void FileImpl::WriteChunkCallback(const WriteBlockRequest* request,
         }
     }
 
-    boost::function<void ()> task =
-        boost::bind(&FileImpl::BackgroundWrite, this);
+    std::function<void ()> task =
+        std::bind(&FileImpl::BackgroundWrite, std::weak_ptr<FileImpl>(shared_from_this()));
     thread_pool_->AddTask(task);
 }
 
@@ -634,6 +694,7 @@ int32_t FileImpl::Sync() {
         return BAD_PARAMETER;
     }
     MutexLock lock(&mu_, "Sync", 1000);
+    int64_t sync_offset = write_offset_;
     if (write_buf_ && write_buf_->Size()) {
         StartWrite();
     }
@@ -649,6 +710,26 @@ int32_t FileImpl::Sync() {
     }
     if (bg_error_ || back_writing_) {
         return TIMEOUT;
+    }
+    if (block_for_write_ && !bg_error_ && sync_offset && !synced_) {
+        SyncBlockRequest request;
+        SyncBlockResponse response;
+        request.set_sequence_id(common::timer::get_micros());
+        request.set_block_id(block_for_write_->block_id());
+        request.set_file_name(name_);
+        request.set_size(sync_offset);
+        bool rpc_ret = fs_->nameserver_client_->SendRequest(&NameServer_Stub::SyncBlock,
+                                                            &request, &response, 15, 1);
+        if (!(rpc_ret && response.status() == kOK))  {
+            LOG(WARNING, "Starting file %s fail, starting report returns %d, status: %s",
+                    name_.c_str(), rpc_ret, StatusCode_Name(response.status()).c_str());
+            if (!rpc_ret) {
+                return TIMEOUT;
+            } else {
+                return GetErrorCode(response.status());
+            }
+        }
+        synced_ = true;
     }
     return OK;
 }
@@ -673,7 +754,7 @@ int32_t FileImpl::Close() {
         while (back_writing_) {
             bool finish = sync_signal_.TimeWait(1000, (name_ + " Close wait").c_str());
             if (!finish && ++wait_time > 30 && (wait_time %10 == 0)) {
-                LOG(WARNING, "Close timeout %d s, %s back_writing_= %d",
+                LOG(WARNING, "Close timeout %d s, %s back_writing_= %d, finish = %d",
                 wait_time, name_.c_str(), back_writing_, finish);
             }
         }
@@ -702,7 +783,7 @@ int32_t FileImpl::Close() {
                                                    &request, &response, 15, 1);
         if (!(rpc_ret && response.status() == kOK))  {
             LOG(WARNING, "Close file %s fail, finish report returns %d, status: %s",
-                    name_.c_str(), ret, StatusCode_Name(response.status()).c_str());
+                    name_.c_str(), rpc_ret, StatusCode_Name(response.status()).c_str());
             if (!rpc_ret) {
                 return TIMEOUT;
             } else {

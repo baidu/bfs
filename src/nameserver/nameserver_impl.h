@@ -8,6 +8,7 @@
 #define  BFS_NAMESERVER_IMPL_H_
 
 #include <common/thread_pool.h>
+#include <functional>
 
 #include "proto/nameserver.pb.h"
 
@@ -25,6 +26,19 @@ class NameSpace;
 class ChunkServerManager;
 class BlockMappingManager;
 class Sync;
+
+enum RecoverMode {
+    kStopRecover = 0,
+    kHiOnly = 1,
+    kRecoverAll = 2,
+};
+
+enum DisplayMode {
+    kDisplayAll = 0,
+    kAliveOnly = 1,
+    kDeadOnly = 2,
+    kOverload = 3,
+};
 
 class NameServerImpl : public NameServer {
 public:
@@ -62,6 +76,10 @@ public:
                          const DeleteDirectoryRequest* request,
                          DeleteDirectoryResponse* response,
                          ::google::protobuf::Closure* done);
+    void SyncBlock(::google::protobuf::RpcController* controller,
+                       const SyncBlockRequest* request,
+                       SyncBlockResponse* response,
+                       ::google::protobuf::Closure* done);
     void FinishBlock(::google::protobuf::RpcController* controller,
                        const FinishBlockRequest* request,
                        FinishBlockResponse* response,
@@ -102,6 +120,10 @@ public:
             const ShutdownChunkServerStatRequest* request,
             ShutdownChunkServerStatResponse* response,
             ::google::protobuf::Closure* done);
+    void DiskUsage(::google::protobuf::RpcController* controller,
+            const DiskUsageRequest* request,
+            DiskUsageResponse* response,
+            ::google::protobuf::Closure* done);
 
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
@@ -110,10 +132,10 @@ private:
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
     void Register();
-    void CheckSafemode();
-    void LeaveSafemode();
+    void CheckRecoverMode();
+    void LeaveReadOnly();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
-    bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
+    bool LogRemote(const NameServerLog& log, std::function<void (bool)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,
                          ::google::protobuf::Message* response,
@@ -123,16 +145,28 @@ private:
     void TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
                        std::string* output);
     void TransToString(const std::set<int64_t>& block_set, std::string* output);
+    void CallMethod(const ::google::protobuf::MethodDescriptor* method,
+                    ::google::protobuf::RpcController* controller,
+                    const ::google::protobuf::Message* request,
+                    ::google::protobuf::Message* response,
+                    ::google::protobuf::Closure* done);
+    bool CheckFileHasBlock(const FileInfo& file_info,
+                           const std::string& file_name,
+                           int64_t block_id);
 private:
     /// Global thread pool
+    ThreadPool* read_thread_pool_;
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
+    ThreadPool* heartbeat_thread_pool_;
     /// ChunkServer map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
     BlockMappingManager* block_mapping_manager_;
-    /// Safemode
-    volatile int safe_mode_;
+
+    volatile bool readonly_;
+    volatile int recover_timeout_;
+    RecoverMode recover_mode_;
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;

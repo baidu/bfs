@@ -1,4 +1,10 @@
-#! /bin/bash
+#!/usr/bin/env bash
+set -x
+set -o pipefail
+export PS4='+{$LINENO `date "+%Y-%m-%d_%H:%M:%S"` :${FUNCNAME[0]}}    '
+cur=`dirname "${0}"`
+cd "${cur}"
+cur=`pwd`
 
 ns_num=1
 if [ "$1"x = "raft"x ]; then

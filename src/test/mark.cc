@@ -3,14 +3,16 @@
 // found in the LICENSE file.
 //
 
-#include <gflags/gflags.h>
 #include <vector>
 #include <string>
 #include <iostream>
+#include <functional>
+#include <assert.h>
+
 #include <common/string_util.h>
 #include <common/thread_pool.h>
 #include <common/timer.h>
-#include <boost/bind.hpp>
+#include <gflags/gflags.h>
 
 #include "mark.h"
 
@@ -21,7 +23,7 @@ DEFINE_string(mode, "put", "[put | read]");
 DEFINE_int64(count, 0, "put/read/delete file count");
 DEFINE_int32(thread, 5, "thread num");
 DEFINE_int32(seed, 301, "random seed");
-DEFINE_int32(file_size, 1024, "file size in KB");
+DEFINE_int64(file_size, 1024, "file size in KB");
 DEFINE_string(folder, "test", "write data to which folder");
 DEFINE_bool(break_on_failure, true, "exit when error occurs");
 DEFINE_int32(write_speed_limit, 30, "write speed limit(MB) for each thread");
@@ -98,7 +100,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
             double sleep_time = (bytes / 1024.0 / 1024.0) / (FLAGS_write_speed_limit) * 1000000.0;
             usleep(static_cast<uint32_t>(sleep_time));
         }
-        uint32_t w = base_size + rand_[thread_id]->Uniform(base_size);
+        uint64_t w = base_size + rand_[thread_id]->Uniform(base_size);
 
         last_len = len;
         last_write_time = baidu::common::timer::get_micros();
@@ -168,7 +170,7 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
             usleep(static_cast<uint32_t>(sleep_time));
         }
         last_bytes = bytes;
-        uint32_t r = base_size + rand_[thread_id]->Uniform(base_size);
+        uint64_t r = base_size + rand_[thread_id]->Uniform(base_size);
         last_read_time = baidu::common::timer::get_micros();
         len = file->Read(buf, r);
         if (len < 0) {
@@ -266,7 +268,7 @@ void Mark::PrintStat() {
     put_counter_.Set(0);
     del_counter_.Set(0);
     read_counter_.Set(0);
-    thread_pool_->DelayTask(1000, boost::bind(&Mark::PrintStat, this));
+    thread_pool_->DelayTask(1000, std::bind(&Mark::PrintStat, this));
 }
 
 void Mark::Run() {
@@ -278,11 +280,11 @@ void Mark::Run() {
             fs_->CreateDirectory(("/" + FLAGS_folder + "/" + prefix).c_str());
         }
         for (int i = 0; i < FLAGS_thread; ++i) {
-            thread_pool_->AddTask(boost::bind(&Mark::PutWrapper, this, i));
+            thread_pool_->AddTask(std::bind(&Mark::PutWrapper, this, i));
         }
     } else if (FLAGS_mode == "read") {
         for (int i = 0; i < FLAGS_thread; ++i) {
-            thread_pool_->AddTask(boost::bind(&Mark::ReadWrapper, this, i));
+            thread_pool_->AddTask(std::bind(&Mark::ReadWrapper, this, i));
         }
     }
     while (!exit_) {

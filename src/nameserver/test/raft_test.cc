@@ -5,7 +5,7 @@
 // Author: yanshiguang02@baidu.com
 
 #include <stdio.h>
-#include <boost/bind.hpp>
+#include <functional>
 
 #include <sofa/pbrpc/pbrpc.h>
 #include <gflags/gflags.h>
@@ -52,7 +52,7 @@ public:
             return;
         }
         std::string self = nodes[FLAGS_node_index];
-        raft_node_->Init(boost::bind(&RaftTest::LogCallback, this, _1));
+        raft_node_->Init(std::bind(&RaftTest::LogCallback, this, _1));
         while (applied_index_ < 10000) {
             if (raft_node_->GetLeader(&leader) && leader == self) {
                 applied_index_ ++;

@@ -1,0 +1,58 @@
+import "nameserver.proto";
+import "status_code.proto";
+
+package baidu.bfs.metaserver;
+
+option cc_generic_services = true;
+
+message AddBlockRequest {
+    optional int64 sequence_id = 1;
+    optional string file_name = 2;
+    optional string client_address = 3;
+}
+message AddBlockResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
+message SyncBlockRequest {
+    optional int64 sequence_id = 1;
+    optional int64 block_id = 2;
+    optional string file_name = 3;
+    optional int64 size = 4;
+}
+
+message SyncBlockResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
+message FinishBlockRequest {
+    optional int64 sequence_id = 1;
+    optional int64 block_id = 2;
+    optional int64 block_version = 3;
+    optional string file_name = 4;
+    optional int64 block_size = 5;
+    optional bool close_with_error = 6;
+}
+message FinishBlockResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
+message RemoveBlockRequest {
+    optional int64 sequence_id = 1;
+    optional int64 block_id = 2;
+}
+
+message RemoveBlockResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
+service MetaServer {
+    rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
+    rpc SyncBlock(SyncBlockRequest) returns(SyncBlockResponse);
+    rpc FinishBlock(FinishBlockRequest) returns(FinishBlockResponse);
+    rpc RemoveBlock(RemoveBlockRequest) returns(RemoveBlockResponse);
+}

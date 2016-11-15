@@ -7,6 +7,7 @@
 #include "bfs_wrapper.h"
 
 #include <assert.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <gflags/gflags.h>

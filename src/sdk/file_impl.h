@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <memory>
 
 #include <common/atomic.h>
 #include <common/mutex.h>
@@ -65,7 +66,7 @@ struct LocatedBlocks {
     }
 };
 
-class FileImpl : public File {
+class FileImpl : public File, public std::enable_shared_from_this<FileImpl> {
 public:
     FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string& name,
              int32_t flags, const WriteOptions& options);
@@ -79,18 +80,20 @@ public:
     /// Add buffer to  async write list
     void StartWrite();
     /// Send local buffer to chunkserver
-    void BackgroundWrite();
+    static void BackgroundWrite(std::weak_ptr<FileImpl> wk_fp);
     /// Callback for sliding window
-    void OnWriteCommit(int32_t, int32_t);
-    void WriteChunkCallback(const WriteBlockRequest* request,
+    static void OnWriteCommit(int32_t, int32_t);
+    static void WriteBlockCallback(std::weak_ptr<FileImpl> wk_fp,
+                            const WriteBlockRequest* request,
                             WriteBlockResponse* response,
                             bool failed, int error,
                             int retry_times,
                             WriteBuffer* buffer,
                             std::string cs_addr);
     /// When rpc buffer full deley send write reqeust
-    void DelayWriteChunk(WriteBuffer* buffer, const WriteBlockRequest* request,
-                         int retry_times, std::string cs_addr);
+    static void DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
+                                WriteBuffer* buffer, const WriteBlockRequest* request,
+                                int retry_times, std::string cs_addr);
     int32_t Flush();
     int32_t Sync();
     int32_t Close();
@@ -104,6 +107,15 @@ public:
 private:
     int32_t AddBlock();
     bool CheckWriteWindows();
+    void BackgroundWriteInternal();
+    void WriteBlockCallbackInternal(const WriteBlockRequest* request,
+                            WriteBlockResponse* response,
+                            bool failed, int error,
+                            int retry_times,
+                            WriteBuffer* buffer,
+                            std::string cs_addr);
+    void DelayWriteChunkInternal(WriteBuffer* buffer, const WriteBlockRequest* request,
+                                int retry_times, std::string cs_addr);
 private:
     FSImpl* fs_;                        ///< 文件系统
     RpcClient* rpc_client_;             ///< RpcClient
@@ -138,6 +150,7 @@ private:
     const ReadOptions r_options_;
 
     bool closed_;                       ///< 是否关闭
+    bool synced_;                     ///< 是否调用过sync
     Mutex   mu_;
     CondVar sync_signal_;               ///< _sync_var
     bool bg_error_;                     ///< background write error

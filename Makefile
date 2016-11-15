@@ -1,6 +1,6 @@
 
 # OPT ?= -O2 -DNDEBUG # (A) Production use (optimized mode)
-OPT ?= -g2 # (B) Debug mode, w/ full line-level debugging symbols
+OPT ?= -g2 -Werror # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 
 include depends.mk
@@ -23,7 +23,7 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(TCMALLOC_PATH)/lib -ltcmalloc_minimal \
           -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
-CXXFLAGS = -Wall -fPIC $(OPT)
+CXXFLAGS = -std=c++11 -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_PATH)/include
 
 PROTO_FILE = $(wildcard src/proto/*.proto)
@@ -34,6 +34,10 @@ PROTO_OBJ = $(patsubst %.proto,%.pb.o,$(PROTO_FILE))
 NAMESERVER_SRC = $(wildcard src/nameserver/*.cc)
 NAMESERVER_OBJ = $(patsubst %.cc, %.o, $(NAMESERVER_SRC))
 NAMESERVER_HEADER = $(wildcard src/nameserver/*.h)
+
+METASERVER_SRC = $(wildcard src/metaserver/*.cc)
+METASERVER_OBJ = $(patsubst %.cc, %.o, $(METASERVER_SRC))
+METASERVER_HEADER = $(wildcard src/metaserver/*.h)
 
 CHUNKSERVER_SRC = $(wildcard src/chunkserver/*.cc)
 CHUNKSERVER_OBJ = $(patsubst %.cc, %.o, $(CHUNKSERVER_SRC))
@@ -68,7 +72,7 @@ TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_t
 TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
-UNITTEST_OUTPUT = test/
+UNITTEST_OUTPUT = ut/
 
 all: $(BIN)
 	@echo 'Done'
@@ -76,6 +80,7 @@ all: $(BIN)
 # Depends
 $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)
 $(NAMESERVER_OBJ): $(NAMESERVER_HEADER)
+$(METASERVER_OBJ): $(METASERVER_HEADER)
 $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
 $(SDK_OBJ): $(SDK_HEADER)
 $(FUSE_OBJ): $(FUSE_HEADER)
@@ -124,6 +129,9 @@ location_provider_test: src/nameserver/test/location_provider_test.o src/nameser
 nameserver: $(NAMESERVER_OBJ) $(OBJS)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
+metaserver: $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o
+	$(CXX) $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o src/nameserver/location_provider.o -o $@ $(LDFLAGS)
+
 chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
 	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
@@ -139,6 +147,9 @@ mark: $(MARK_OBJ) $(LIBS)
 logdb_dump: src/nameserver/logdb.o src/utils/logdb_dump.o
 	$(CXX) src/nameserver/logdb.o src/utils/logdb_dump.o $(OBJS) -o $@ $(LDFLAGS)
 
+bfs_dump: src/utils/bfs_dump.o
+	$(CXX) src/utils/bfs_dump.o $(OBJS) -o $@ $(LDFLAGS)
+
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
 
@@ -150,7 +161,7 @@ $(FUSE_OBJ): %.o: %.cc
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
 src/version.cc: FORCE
-	sh build_version.sh
+	bash build_version.sh
 
 .PHONY: FORCE
 FORCE:

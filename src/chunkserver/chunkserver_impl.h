@@ -9,6 +9,7 @@
 
 #include "proto/chunkserver.pb.h"
 #include "proto/nameserver.pb.h"
+#include "proto/status_code.pb.h"
 
 #include <common/thread_pool.h>
 
@@ -72,9 +73,9 @@ private:
                          WriteBlockResponse* response,
                          ::google::protobuf::Closure* done);
     void RemoveObsoleteBlocks(std::vector<int64_t> blocks);
-    void PushBlock(const ReplicaInfo& new_replica_info);
-    void PushBlockProcess(const ReplicaInfo& new_replica_info);
-    bool WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver);
+    void PushBlock(const ReplicaInfo& new_replica_info, int32_t cancel_time);
+    StatusCode PushBlockProcess(const ReplicaInfo& new_replica_info, int32_t cancel_time);
+    StatusCode WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver, int32_t cancel_time, bool* timeout);
     void CloseIncompleteBlock(int64_t block_id);
     void StopBlockReport();
 private:
@@ -92,7 +93,12 @@ private:
     int64_t heartbeat_task_id_;
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
+    int64_t report_id_;
+    bool is_first_round_;
+    int64_t first_round_report_start_;
     volatile bool service_stop_;
+
+    Params params_;
 };
 
 } // namespace bfs

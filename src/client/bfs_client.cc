@@ -6,6 +6,7 @@
 
 #include <gflags/gflags.h>
 
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,8 +16,9 @@
 #include <sys/stat.h>
 #include <map>
 
-#include <common/util.h>
+#include <common/string_util.h>
 #include <common/timer.h>
+#include <common/util.h>
 #include "sdk/bfs.h"
 
 DECLARE_string(flagfile);
@@ -35,11 +37,8 @@ void print_usage() {
     printf("\t    put <localfile> <bfsfile> : copy file from local to bfs\n");
     printf("\t    rmdir <path> : remove empty directory\n");
     printf("\t    rmr <path> : remove directory recursively\n");
-    printf("\t    change_replica_num <bfsfile> <num>: change replica num of <bfsfile> to <num>\n");
     printf("\t    du <path> : count disk usage for path\n");
     printf("\t    stat : list current stat of the file system\n");
-    printf("\t    shutdownchunkserver <chunkserver_list_file>: shutdownt chunkservers in the list file\n");
-    printf("\t    shutdownstat : display stat of shutdown chunkserver progress\n");
 }
 
 int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -219,33 +218,15 @@ int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return ret;
 }
 
-int64_t BfsDuRecursive(baidu::bfs::FS* fs, const std::string& path) {
-    int64_t ret = 0;
-    std::string pad;
-    if (path[path.size() - 1] != '/') {
-        pad = "/";
+int64_t BfsDuV2(baidu::bfs::FS* fs, const std::string& path) {
+    int64_t du_size = 0;
+    if (fs->DiskUsage(path.c_str(), &du_size) != 0) {
+        fprintf(stderr, "Compute Disk Usage fail: %s\n", path.c_str());
+        return -1;
     }
-    baidu::bfs::BfsFileInfo* files = NULL;
-    int num = 0;
-    if (fs->ListDirectory(path.c_str(), &files, &num) != 0) {
-        fprintf(stderr, "List directory fail: %s\n", path.c_str());
-        return ret;
-    }
-    for (int i = 0; i < num; i++) {
-        std::string file_path = path + pad + files[i].name;
-        int32_t type = files[i].mode;
-        if (type & (1<<9)) {
-            ret += BfsDuRecursive(fs, file_path);
-            continue;
-        }
-        baidu::bfs::BfsFileInfo fileinfo;
-        if (fs->Stat(file_path.c_str(), &fileinfo) == 0) {
-            ret += fileinfo.size;
-            printf("%s\t %ld\n", file_path.c_str(), fileinfo.size);
-        }
-    }
-    delete[] files;
-    return ret;
+    printf("%-9s\t%s\n",
+           baidu::common::HumanReadableString(du_size).c_str(), path.c_str());
+    return du_size;
 }
 
 int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -253,8 +234,33 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    int64_t du = BfsDuRecursive(fs, argv[0]);
-    printf("Total:\t%ld\n", du);
+    std::string path = argv[0];
+    assert(path.size() > 0);
+    if (path[path.size() - 1] != '*') {
+        int64_t du_size = BfsDuV2(fs, path);
+        return du_size >= 0 ? 0 : -1;
+    }
+
+    // Wildcard
+    path.resize(path.size() - 1);
+    std::string ppath = path.substr(0, path.rfind('/') + 1);
+    std::string prefix = path.substr(ppath.size());
+    int64_t total_size = 0;
+    baidu::bfs::BfsFileInfo* files = NULL;
+    int num = 0;
+    int ret = fs->ListDirectory(ppath.c_str(), &files, &num);
+    if (ret != 0) {
+        fprintf(stderr, "Path not found: %s\n", ppath.c_str());
+        return -1;
+    }
+    for (int i = 0; i < num; i++) {
+        std::string name(files[i].name);
+        if (name.find(prefix) != std::string::npos) {
+            int64_t sz = BfsDuV2(fs, ppath + name);
+            if (sz > 0) total_size += sz;
+        }
+    }
+    printf("Total: %s\n", baidu::common::HumanReadableString(total_size).c_str());
     return 0;
 }
 
@@ -288,7 +294,17 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         localtime_r(&ctime, &stm);
         snprintf(timestr, sizeof(timestr), "%4d-%02d-%02d %2d:%02d",
             stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min);
-        printf("%s\t%s  %s%s\n", statbuf, timestr, path.c_str(), files[i].name);
+        std::string prefix = path;
+        if (files[i].name[0] == '\0') {
+            int32_t pos = prefix.size() - 1;
+            while (pos >= 0 && prefix[pos] == '/') {
+                pos--;
+            }
+            prefix.resize(pos + 1);
+        }
+        printf("%s %-9s %s %s%s\n",
+               statbuf, baidu::common::HumanReadableString(files[i].size).c_str(),
+               timestr, prefix.c_str(), files[i].name);
     }
     delete[] files;
     return 0;

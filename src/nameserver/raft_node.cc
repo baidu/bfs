@@ -6,8 +6,8 @@
 
 #include "nameserver/raft_node.h"
 
-#include <boost/bind.hpp>
-#include <boost/scoped_ptr.hpp>
+#include <memory>
+
 #include <gflags/gflags.h>
 #include <common/mutex.h>
 #include <common/logging.h>
@@ -90,7 +90,7 @@ void RaftNodeImpl::LoadStorage(const std::string& db_path) {
         follower_context_.push_back(ctx);
         LOG(INFO, "New follower context %u %s", i, nodes_[i].c_str());
         ctx->next_index = log_index_ + 1;
-        ctx->worker.AddTask(boost::bind(&RaftNodeImpl::ReplicateLogWorker, this, i));
+        ctx->worker.AddTask(std::bind(&RaftNodeImpl::ReplicateLogWorker, this, i));
     }
 }
 
@@ -123,13 +123,15 @@ void RaftNodeImpl::Election() {
         VoteResponse* response = new VoteResponse;
         RaftNode_Stub* raft_node;
         rpc_client_->GetStub(nodes_[i], &raft_node);
-        boost::function<void (const VoteRequest*, VoteResponse*, bool, int)> callback
-                = boost::bind(&RaftNodeImpl::ElectionCallback, this, _1, _2, _3, _4, nodes_[i]);
+        std::function<void (const VoteRequest*, VoteResponse*, bool, int)> callback
+                = std::bind(&RaftNodeImpl::ElectionCallback, this,
+                            std::placeholders::_1, std::placeholders::_2,
+                            std::placeholders::_3, std::placeholders::_4, nodes_[i]);
         rpc_client_->AsyncRequest(raft_node, &RaftNode_Stub::Vote, request, response, callback, 60, 1);
         delete raft_node;
     }
     election_taskid_ =
-        thread_pool_->DelayTask(150 + rand() % 150, boost::bind(&RaftNodeImpl::Election, this));
+        thread_pool_->DelayTask(150 + rand() % 150, std::bind(&RaftNodeImpl::Election, this));
 }
 
 bool RaftNodeImpl::CheckTerm(int64_t term) {
@@ -159,8 +161,8 @@ void RaftNodeImpl::ElectionCallback(const VoteRequest* request,
                                     bool failed,
                                     int error,
                                     const std::string& node_addr) {
-    boost::scoped_ptr<const VoteRequest> req(request);
-    boost::scoped_ptr<VoteResponse> res(response);
+    std::unique_ptr<const VoteRequest> req(request);
+    std::unique_ptr<VoteResponse> res(response);
     if (failed) {
         return;
     }
@@ -218,7 +220,7 @@ void RaftNodeImpl::ResetElection() {
         CancelElection();
     }
     election_taskid_ =
-        thread_pool_->DelayTask(150 + rand() % 150, boost::bind(&RaftNodeImpl::Election, this));
+        thread_pool_->DelayTask(150 + rand() % 150, std::bind(&RaftNodeImpl::Election, this));
     //LOG(INFO, "Reset election %ld", election_taskid_);
 }
 void RaftNodeImpl::Vote(::google::protobuf::RpcController* controller,
@@ -359,10 +361,10 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                         while (last_applied_ < commit_index) {
                             last_applied_ ++;
                             LOG(INFO, "[Raft] Apply %ld to leader", last_applied_);
-                            std::map<int64_t, boost::function<void (bool)> >::iterator cb_it =
+                            std::map<int64_t, std::function<void (bool)> >::iterator cb_it =
                                 callback_map_.find(last_applied_);
                             if (cb_it != callback_map_.end()) {
-                                boost::function<void (bool)> callback = cb_it->second;
+                                std::function<void (bool)> callback = cb_it->second;
                                 callback_map_.erase(cb_it);
                                 mu_.Unlock();
                                 LOG(INFO, "[Raft] AppendLog callback %ld", last_applied_);
@@ -439,13 +441,13 @@ bool RaftNodeImpl::StoreContext(const std::string& context, const std::string& v
     return s == kOK;
 }
 
-void RaftNodeImpl::AppendLog(const std::string& log, boost::function<void (bool)> callback) {
+void RaftNodeImpl::AppendLog(const std::string& log, std::function<void (bool)> callback) {
     MutexLock lock(&mu_);
     int64_t index = ++log_index_;
     ///TODO: optimize lock
     if (!StoreLog(current_term_, index, log)) {
         log_index_ --;
-        thread_pool_->AddTask(boost::bind(callback,false));
+        thread_pool_->AddTask(std::bind(callback,false));
         return;
     }
     callback_map_.insert(std::make_pair(index, callback));
@@ -485,7 +487,7 @@ bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {
 
 void RaftNodeImpl::ApplyLog() {
     MutexLock lock(&mu_);
-    if (applying_ || log_callback_.empty()) {
+    if (applying_ || !log_callback_) {
         return;
     }
     applying_ = true;
@@ -578,12 +580,12 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
         commit_index_ = leader_commit;
     }
     if (commit_index_ > last_applied_) {
-        thread_pool_->AddTask(boost::bind(&RaftNodeImpl::ApplyLog, this));
+        thread_pool_->AddTask(std::bind(&RaftNodeImpl::ApplyLog, this));
     }
 }
 
 
-void RaftNodeImpl::Init(boost::function<void (const std::string& log)> callback) {
+void RaftNodeImpl::Init(std::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
     ApplyLog();
 }

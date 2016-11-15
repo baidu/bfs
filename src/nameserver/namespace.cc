@@ -16,7 +16,6 @@
 #include <common/util.h>
 #include <common/atomic.h>
 #include <common/string_util.h>
-#include <boost/bind.hpp>
 
 #include "nameserver/sync.h"
 
@@ -24,6 +23,7 @@ DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(block_id_allocation_size);
+DECLARE_bool(check_orphan);
 
 const int64_t kRootEntryid = 1;
 
@@ -47,7 +47,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     }
 }
 
-void NameSpace::Activate(boost::function<void (const FileInfo&)> callback, NameServerLog* log) {
+void NameSpace::Activate(std::function<void (const FileInfo&)> callback, NameServerLog* log) {
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
@@ -91,8 +91,20 @@ void NameSpace::EncodingStoreKey(int64_t entry_id,
                                  const std::string& path,
                                  std::string* key_str) {
     key_str->resize(8);
-    common::util::EncodeBigEndian(&(*key_str)[0], entry_id);
+    common::util::EncodeBigEndian(&(*key_str)[0], (uint64_t)entry_id);
     key_str->append(path);
+}
+
+void NameSpace::DecodingStoreKey(const std::string& key_str,
+                                 int64_t* entry_id,
+                                 std::string* path) {
+    assert(key_str.size() >= 8UL);
+    if (entry_id) {
+        *entry_id = common::util::DecodeBigEndian64(key_str.c_str());
+    }
+    if (path) {
+        path->assign(key_str, 8, std::string::npos);
+    }
 }
 
 bool NameSpace::GetFromStore(const std::string& key, FileInfo* info) {
@@ -238,6 +250,10 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
             return kFileExists;
         } else {
+            if (IsDir(file_info.type())) {
+                LOG(INFO, "CreateFile %s fail: directory with same name exist", fname.c_str());
+                return kFileExists;
+            }
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 blocks_to_remove->push_back(file_info.blocks(i));
             }
@@ -268,6 +284,14 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
     FileInfo info;
     if (!LookUp(path, &info)) {
         return kNsNotFound;
+    }
+    if (!IsDir(info.type())) {
+        FileInfo* file_info = outputs->Add();
+        file_info->CopyFrom(info);
+        //for a file, name should be empty because it's a relative path
+        file_info->clear_name();
+        LOG(INFO, "List %s return %ld items", path.c_str(), outputs->size());
+        return kOK;
     }
     int64_t entry_id = info.entry_id();
     LOG(DEBUG, "ListDirectory entry_id= E%ld ", entry_id);
@@ -404,11 +428,58 @@ StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed
     return ret_status;
 }
 
+StatusCode NameSpace::DiskUsage(const std::string& path, uint64_t* du_size) {
+    if (!du_size) {
+        return kOK;
+    }
+    *du_size = 0;
+    FileInfo info;
+    if (!LookUp(path, &info)) {
+        LOG(INFO, "Du Directory or File, %s is not found.", path.c_str());
+        return kNsNotFound;
+    } else if (!IsDir(info.type())) {
+        *du_size = info.size();
+        return kOK;
+    }
+    return InternalComputeDiskUsage(info, du_size);
+}
+
+StatusCode NameSpace::InternalComputeDiskUsage(const FileInfo& info, uint64_t* du_size) {
+    int64_t entry_id = info.entry_id();
+    std::string key_start, key_end;
+    EncodingStoreKey(entry_id, "", &key_start);
+    EncodingStoreKey(entry_id + 1, "", &key_end);
+    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
+    it->Seek(key_start);
+
+    StatusCode ret_status = kOK;
+    for (; it->Valid(); it->Next()) {
+        leveldb::Slice key = it->key();
+        if (key.compare(key_end) >= 0) {
+            break;
+        }
+        std::string entry_name(key.data() + 8, key.size() - 8);
+        FileInfo child_info;
+        assert(child_info.ParseFromArray(it->value().data(), it->value().size()));
+        if (IsDir(child_info.type())) {
+            child_info.set_parent_entry_id(entry_id);
+            ret_status = InternalComputeDiskUsage(child_info, du_size);
+            if (ret_status != kOK) {
+                break;
+            }
+        } else {
+            //LOG(DEBUG, "Compute Disk Usage: E%ld, file %s, size %lu", entry_id, entry_name.c_str(), child_info.size());
+            *du_size += child_info.size();
+        }
+    }
+    delete it;
+    return ret_status;
+}
+
 StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
                                std::vector<FileInfo>* files_removed, NameServerLog* log) {
     files_removed->clear();
     FileInfo info;
-    std::string store_key;
     if (!LookUp(path, &info)) {
         LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
         return kNsNotFound;
@@ -485,15 +556,19 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     return ret_status;
 }
 
-bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
+bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) {
+    int64_t block_num = 0;
+    int64_t file_num = 0;
+    std::set<int64_t> entry_id_set;
+    entry_id_set.insert(root_path_.entry_id());
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
+        assert(ret);
         if (last_entry_id_ < file_info.entry_id()) {
             last_entry_id_ = file_info.entry_id();
         }
-        assert(ret);
         if (!IsDir(file_info.type())) {
             //a file
             for (int i = 0; i < file_info.blocks_size(); i++) {
@@ -501,14 +576,38 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
                     next_block_id_ = file_info.blocks(i) + 1;
                     block_id_upbound_ = next_block_id_;
                 }
+                ++block_num;
             }
-            if (!callback.empty()) {
+            ++file_num;
+            if (callback) {
                 callback(file_info);
             }
+        } else {
+            entry_id_set.insert(file_info.entry_id());
         }
     }
+    LOG(INFO, "RebuildBlockMap done. %ld directories, %ld files, "
+              "%lu blocks, last_entry_id= E%ld",
+        entry_id_set.size(), file_num, block_num, last_entry_id_);
+    if (FLAGS_check_orphan) {
+        std::vector<std::pair<std::string, std::string> > orphan_entrys;
+        for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
+            FileInfo file_info;
+            bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
+            assert(ret);
+            int64_t parent_entry_id = 0;
+            std::string filename;
+            DecodingStoreKey(it->key().ToString(), &parent_entry_id, &filename);
+            if (entry_id_set.find(parent_entry_id) == entry_id_set.end()) {
+                LOG(WARNING, "Orphan entry PE%ld E%ld %s",
+                    parent_entry_id, file_info.entry_id(), filename.c_str());
+                orphan_entrys.push_back(std::make_pair(it->key().ToString(),
+                                                       it->value().ToString()));
+            }
+        }
+        LOG(INFO, "Check orphan done, %lu entries", orphan_entrys.size());
+    }
     delete it;
-    LOG(INFO, "RebuildBlockMap done. last_entry_id= E%ld", last_entry_id_);
     return true;
 }
 

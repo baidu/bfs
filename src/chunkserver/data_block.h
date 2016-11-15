@@ -81,6 +81,10 @@ private:
         InDisk,
         InMem,
     };
+    enum FdStatus {
+        kNotCreated = -1,
+        kClosed = -2
+    };
     ThreadPool* thread_pool_;
     BlockMeta   meta_;
     int32_t     last_seq_;
