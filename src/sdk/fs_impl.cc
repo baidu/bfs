@@ -23,6 +23,7 @@
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
+DECLARE_string(sdk_wirte_mode);
 
 namespace baidu {
 namespace bfs {
@@ -303,6 +304,14 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     if (!(flags & O_WRONLY)) {
         return BAD_PARAMETER;
     }
+    WriteOptions write_option = options;
+    if (options.write_mode == kWriteDefault) {
+        if (FLAGS_sdk_wirte_mode == "fanout") {
+            write_option.write_mode = kWriteFanout;
+        } else {
+            write_option.write_mode = kWriteChains;
+        }
+    }
     common::timer::AutoTimer at(100, "OpenFile", path);
     int32_t ret = OK;
     *file = NULL;
@@ -313,7 +322,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     request.set_sequence_id(0);
     request.set_flags(flags);
     request.set_mode(mode&0777);
-    request.set_replica_num(options.replica);
+    request.set_replica_num(write_option.replica);
     bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 1);
     if (!rpc_ret || response.status() != kOK) {
@@ -325,7 +334,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
             ret = GetErrorCode(response.status());
         }
     } else {
-        *file = new FileImplWrapper(this, rpc_client_, path, flags, options);
+        *file = new FileImplWrapper(this, rpc_client_, path, flags, write_option);
     }
     return ret;
 }

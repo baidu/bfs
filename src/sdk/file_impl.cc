@@ -836,7 +836,7 @@ int32_t FileImpl::Close() {
 }
 
 bool FileImpl::IsChainsWrite() {
-    return w_options_.write_mode == kChains;
+    return w_options_.write_mode == kWriteChains;
 }
 
 bool FileImpl::EnoughReplica() {
