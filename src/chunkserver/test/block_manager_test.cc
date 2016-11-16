@@ -18,8 +18,7 @@ namespace baidu {
 namespace bfs {
 
 void sleep_task() {
-    int32_t sleep_time = rand() % 3 + 1;
-    sleep(sleep_time);
+    sleep(1);
 }
 
 void write_task(Block* block, int32_t seq, int64_t offset, std::string write_data) {
@@ -124,7 +123,7 @@ TEST_F(BlockManagerTest, Out_of_order) {
     srand(time(NULL));
     int32_t r = rand() % 2;
     std::function<void ()> write_data_task1 = std::bind(write_task, block, 0, 0, "");
-    std::function<void ()> write_data_task2 = std::bind(write_task, block, 0, 0, test_data);
+    std::function<void ()> write_data_task2 = std::bind(write_task, block, 1, 0, test_data);
     if (r == 0) {
         thread_pool.AddTask(write_data_task1);
         thread_pool.AddTask(write_data_task2);
