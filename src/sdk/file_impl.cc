@@ -734,8 +734,9 @@ int32_t FileImpl::Sync() {
         }
         last_write_finish_num = FinishedNum();
     }
-    if ((bg_error_ && ((!chains_write && last_write_finish_num < replica_num - 1) ||
-                    (chains_write && last_write_finish_num == 0))) || back_writing_) {
+    if (bg_error_ || !EnoughReplica()) {
+        LOG(WARNING, "Sync %s timeout bg_error_ = %d, last_write_finish_num = %d, back_writing_ = %d",
+                      name_.c_str(), bg_error_, last_write_finish_num, back_writing_);
         return TIMEOUT;
     }
     if (block_for_write_ && !bg_error_ && sync_offset && !synced_) {
