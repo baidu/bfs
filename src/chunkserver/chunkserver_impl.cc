@@ -524,7 +524,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
                     block_id, StatusCode_Name(s).c_str());
             if (s == kBlockExist) {
                 response->set_current_size(block->Size());
-                response->set_current_seq(block->GetLastSaq());
+                response->set_current_seq(block->GetLastSeq());
                 LOG(INFO, "[LocalWriteBlock] #%ld exist block size = %ld", block_id, block->Size());
             }
             response->set_status(s);
