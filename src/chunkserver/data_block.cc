@@ -157,7 +157,7 @@ void Block::SetVersion(int64_t version) {
 int Block::GetVersion() const {
     return meta_.version();
 }
-int32_t Block::GetLastSaq() const {
+int32_t Block::GetLastSeq() const {
     return last_seq_;
 }
 

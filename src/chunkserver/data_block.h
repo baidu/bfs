@@ -49,7 +49,7 @@ public:
     bool SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion() const;
-    int32_t GetLastSaq() const;
+    int32_t GetLastSeq() const;
     /// Set expected slice num, for IsComplete.
     void SetSliceNum(int32_t num);
     /// Is all slice is arrival(Notify by the sliding window)
