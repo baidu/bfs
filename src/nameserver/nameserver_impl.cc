@@ -496,7 +496,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
             add_block_timer.Check(50 * 1000, "AddBlock");
         }
-        block_mapping_manager_->AddNewBlock(new_block_id, replica_num, -1, 0, &replicas);
+        block_mapping_manager_->AddBlock(new_block_id, replica_num, -1, 0, replicas);
         add_block_timer.Check(50 * 1000, "AddNewBlock");
         block->set_block_id(new_block_id);
         response->set_status(kOK);
@@ -899,8 +899,8 @@ void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
-        block_mapping_manager_->AddNewBlock(block_id, file_info.replicas(),
-                                    version, file_info.size(), NULL);
+        block_mapping_manager_->RebuildBlock(block_id, file_info.replicas(),
+                                            version, file_info.size());
     }
 }
 
