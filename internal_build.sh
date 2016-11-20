@@ -186,7 +186,6 @@ echo "PROTOBUF_PATH=./thirdparty" >> depends.mk
 echo "PROTOC_PATH=./thirdparty/bin/" >> depends.mk
 echo 'PROTOC=$(PROTOC_PATH)protoc' >> depends.mk
 echo "PBRPC_PATH=./thirdparty" >> depends.mk
-echo "BOOST_PATH=./thirdparty/boost_1_57_0" >> depends.mk
 echo "GFLAG_PATH=./thirdparty" >> depends.mk
 echo "GTEST_PATH=./thirdparty" >> depends.mk
 echo "COMMON_PATH=./thirdparty" >> depends.mk
