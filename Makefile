@@ -69,7 +69,7 @@ ifdef FUSE_PATH
 endif
 
 TESTS = namespace_test location_provider_test logdb_test \
-		chunkserver_impl_test file_cache_test block_manager_test
+		chunkserver_impl_test file_cache_test block_manager_test data_block_test
 TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
 			src/nameserver/test/location_provider_test.o \
 			src/chunkserver/test/file_cache_test.o \
