@@ -129,6 +129,7 @@ void NameSpace::SetupRoot() {
     root_path_.set_type(01755);
     root_path_.set_ctime(static_cast<uint32_t>(version_/1000000));
 }
+
 /// New SplitPath
 /// /home/dirx/filex
 ///       diry/filey
@@ -222,9 +223,9 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     int64_t parent_id = kRootEntryid;
     int depth = paths.size();
     std::string info_value;
-    for (int i=0; i < depth-1; ++i) {
+    for (int i = 0; i < depth - 1; ++i) {
         if (!LookUp(parent_id, paths[i], &file_info)) {
-            file_info.set_type((1<<9)|0755);
+            file_info.set_type((1 << 9) | 0755);
             file_info.set_ctime(time(NULL));
             file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
             file_info.SerializeToString(&info_value);

@@ -16,9 +16,9 @@ namespace bfs {
 class LocationProvider {
 public:
     LocationProvider(const std::string& hostname, const std::string& ipv4_address);
-    std::string GetRack();
-    std::string GetDataCenter();
-    std::string GetZone();
+    std::string GetRack() const;
+    std::string GetDataCenter() const;
+    std::string GetZone() const;
 private:
     std::string rack_;
     std::string datacenter_;
