@@ -10,7 +10,6 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I$(LEVELDB_PATH)/include \
                -I$(SNAPPY_PATH)/include \
-               -I$(BOOST_PATH) \
                -I$(GFLAG_PATH)/include \
                -I$(COMMON_PATH)/include
 
@@ -68,10 +67,13 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test logdb_test
+TESTS = namespace_test location_provider_test logdb_test \
+		chunkserver_impl_test file_cache_test block_manager_test
 TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
+			src/nameserver/test/location_provider_test.o \
 			src/chunkserver/test/file_cache_test.o \
-			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
+			src/chunkserver/test/chunkserver_impl_test.o \
+			src/chunkserver/test/block_manager_test.o
 UNITTEST_OUTPUT = ut/
 
 all: $(BIN)
@@ -115,6 +117,9 @@ logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
 raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o src/nameserver/logdb.o $(OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
+location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+
 file_cache_test: src/chunkserver/test/file_cache_test.o
 	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
 
@@ -123,7 +128,8 @@ chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
-location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
+block_manager_test: src/chunkserver/test/block_manager_test.o src/chunkserver/block_manager.o \
+	src/chunkserver/data_block.o src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS)

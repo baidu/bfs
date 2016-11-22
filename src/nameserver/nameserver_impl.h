@@ -131,7 +131,6 @@ private:
     void CheckLeader();
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
-    void Register();
     void CheckRecoverMode();
     void LeaveReadOnly();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);

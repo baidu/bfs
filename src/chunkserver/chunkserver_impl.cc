@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
+#include <climits>
 #include <functional>
 
 #include <gflags/gflags.h>
@@ -261,7 +262,7 @@ void ChunkServerImpl::SendBlockReport() {
 
     std::vector<BlockMeta> blocks;
     int32_t num = is_first_round_ ? 10000 : params_.report_size();
-    int32_t end = block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, num);
+    int64_t end = block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, num);
     // last id + 1 <= first found report start <= end -> first round ends
     if (is_first_round_ &&
         (last_report_blockid_ + 1) <= first_round_report_start_ &&
@@ -284,6 +285,7 @@ void ChunkServerImpl::SendBlockReport() {
 
     if (blocks_num < num) {
         last_report_blockid_ = -1;
+        end = LLONG_MAX;
     } else {
         last_report_blockid_ = end;
     }
@@ -522,7 +524,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
                     block_id, StatusCode_Name(s).c_str());
             if (s == kBlockExist) {
                 response->set_current_size(block->Size());
-                response->set_current_seq(block->GetLastSaq());
+                response->set_current_seq(block->GetLastSeq());
                 LOG(INFO, "[LocalWriteBlock] #%ld exist block size = %ld", block_id, block->Size());
             }
             response->set_status(s);

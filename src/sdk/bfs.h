@@ -30,8 +30,9 @@ namespace bfs {
 const char* StrError(int error_code);
 
 enum WriteMode {
-    kChains,
-    kFanout,
+    kWriteDefault,      // use write strategy specified by flag file by default
+    kWriteChains,
+    kWriteFanout,
 };
 
 struct WriteOptions {
@@ -41,7 +42,7 @@ struct WriteOptions {
     int replica;
     WriteMode write_mode;
     WriteOptions() : flush_timeout(-1), sync_timeout(-1),
-                     close_timeout(-1), replica(-1), write_mode(kChains) { }
+                     close_timeout(-1), replica(-1), write_mode(kWriteDefault) { }
 };
 
 struct ReadOptions {
