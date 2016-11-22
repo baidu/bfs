@@ -446,9 +446,15 @@ void bfs_destroy(void*) {
 
 int parse_args(int* argc, char* argv[]) {
     if (*argc < 2) {
-        fprintf(stderr, "usage %s mount_point [-d]"
+        fprintf(stderr, "Usage: %s mount_point [-d]"
                         " [-c bfs_cluster_addr]"
                         " [-p bfs_path]\n",
+                argv[0]);
+        fprintf(stderr, "\t-d                    Fuse debug (optional)\n"
+                        "\t-c bfs_cluster_addr   Ip:port\n"
+                        "\t-p bfs_path           The path in BFS which you mount to the mount_point\n"
+                        "Example:\n"
+                        "       %s /mnt/bfs -d -c 127.0.0.1:8827 -p /\n",
                 argv[0]);
         return 1;
     }
