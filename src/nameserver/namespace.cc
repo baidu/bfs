@@ -35,7 +35,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     block_id_upbound_(1), next_block_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
-    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
+    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
         db_ = NULL;
@@ -127,7 +127,7 @@ void NameSpace::SetupRoot() {
     root_path_.set_name("");
     root_path_.set_parent_entry_id(kRootEntryid);
     root_path_.set_type(01755);
-    root_path_.set_ctime(static_cast<uint32_t>(version_/1000000));
+    root_path_.set_ctime(static_cast<uint32_t>(version_ / 1000000));
 }
 
 /// New SplitPath
@@ -244,7 +244,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
         parent_id = file_info.entry_id();
     }
 
-    const std::string& fname = paths[depth-1];
+    const std::string& fname = paths[depth - 1];
     bool exist = LookUp(parent_id, fname, &file_info);
     if (exist) {
         if ((flags & O_TRUNC) == 0) {
