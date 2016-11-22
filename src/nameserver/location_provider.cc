@@ -41,15 +41,15 @@ LocationProvider::LocationProvider(const std::string& hostname, const std::strin
     }
 }
 
-std::string LocationProvider::GetRack() {
+std::string LocationProvider::GetRack() const {
     return rack_;
 }
 
-std::string LocationProvider::GetDataCenter() {
+std::string LocationProvider::GetDataCenter() const {
     return datacenter_;
 }
 
-std::string LocationProvider::GetZone() {
+std::string LocationProvider::GetZone() const {
     return zone_;
 }
 
