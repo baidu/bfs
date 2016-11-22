@@ -296,7 +296,7 @@ int bfs_fsync(const char* path, int datasync, struct fuse_file_info* finfo) {
     fprintf(stderr, BFS"fsync(%s, %p)\n", path, file);
     int32_t ret = file->Sync();
     if (ret != OK) {
-        fprintf(stderr, BFS"fsync(%s, %p) fail, error code\n",
+        fprintf(stderr, BFS"fsync(%s, %p) fail, error code: %s\n",
                 path, file, baidu::bfs::StrError(ret));
         return EIO;
     }
