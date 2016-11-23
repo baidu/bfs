@@ -67,9 +67,11 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test location_provider_test logdb_test \
+TESTS = namespace_test block_mapping_test location_provider_test logdb_test \
 		chunkserver_impl_test file_cache_test block_manager_test data_block_test
-TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
+TEST_OBJS = src/nameserver/test/namespace_test.o \
+			src/nameserver/test/block_mapping_test.o \
+			src/nameserver/test/logdb_test.o \
 			src/nameserver/test/location_provider_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o \
@@ -111,6 +113,9 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/location_provider.o src/nameserver/master_slave.o \
 	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
 	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
+
+block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping.o
+	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
 
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
 	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)

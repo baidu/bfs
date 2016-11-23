@@ -497,7 +497,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
             add_block_timer.Check(50 * 1000, "AddBlock");
         }
-        block_mapping_manager_->AddBlock(new_block_id, replica_num, -1, 0, replicas);
+        block_mapping_manager_->AddBlock(new_block_id, replica_num, replicas);
         add_block_timer.Check(50 * 1000, "AddNewBlock");
         block->set_block_id(new_block_id);
         response->set_status(kOK);
