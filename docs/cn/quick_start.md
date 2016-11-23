@@ -31,7 +31,7 @@
    修改bfs文件夹下的Makefile，添加`FUSE_PATH=fuse安装路径`  
    `make`产生可执行文件`bfs_mount`  
    使用前面的步骤启动集群  
-   挂载：直接输入`./bfs_mount`可以看到提示  
+   挂载：直接输入`./bfs_mount`可以看到使用提示  
    例子：`./bfs_mount /mnt/bfs -d -c 127.0.0.1:8827 -p /`  
    
 ## 从入门到精通
