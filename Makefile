@@ -114,7 +114,7 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
 	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
 
-block_mapping_test: src/nameserver/test/block_mapping_test.o
+block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping.o
 	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
 
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
