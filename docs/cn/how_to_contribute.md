@@ -6,5 +6,11 @@
 5. 提交代码时的commit message 请遵守:  
    a. 首行使用英文描述 用简短的句子描述你做出的更改, 首字母大写.  
    b. 第二行空行, 第三行写(#对应的issue号), 后面可用英文详细描述你的功能升级.  
-6. 提交pull request
-7. 在code-review通过后，你的代码便有机会运行在百度的数万台服务器上~
+   示例如下:  
+   Add RebuildBlock in BlockMapping  
+
+   (#617) 'AddNewBlock' is used both in adding new blocks and rebuild  
+   exist blocks. Use separate functions to deal with different  
+   situations.  
+6. 提交pull request  
+7. 在code-review通过后，你的代码便有机会运行在百度的数万台服务器上~  
