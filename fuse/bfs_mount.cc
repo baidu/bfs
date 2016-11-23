@@ -252,9 +252,9 @@ int bfs_statfs(const char* path, struct statvfs*) {
 int bfs_flush(const char* path, struct fuse_file_info* finfo) {
     baidu::bfs::File* file = get_bfs_file(finfo);
     fprintf(stderr, BFS"flush(%s, %p)\n", path, file);
-    int32_t ret = file->Sync();
+    int32_t ret = file->Flush();
     if (ret != OK) {
-        fprintf(stderr, BFS"fsync(%s, %p) fail, error code %s\n",
+        fprintf(stderr, BFS"flush(%s, %p) fail, error code %s\n",
                 path, file, baidu::bfs::StrError(ret));
         return EIO;
     }

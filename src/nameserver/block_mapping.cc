@@ -83,10 +83,10 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
     return true;
 }
 
-void BlockMapping::AddBlock(int64_t block_id, int32_t replica, int64_t version,
-                            int64_t size, const std::vector<int32_t>& init_replicas) {
+void BlockMapping::AddBlock(int64_t block_id, int32_t replica,
+                            const std::vector<int32_t>& init_replicas) {
     NSBlock* nsblock = NULL;
-    nsblock = new NSBlock(block_id, replica, version, size);
+    nsblock = new NSBlock(block_id, replica, -1, 0);
     if (nsblock->recover_stat == kNotInRecover) {
         nsblock->replica.insert(init_replicas.begin(), init_replicas.end());
     } else {
