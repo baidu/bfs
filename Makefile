@@ -10,7 +10,6 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I$(LEVELDB_PATH)/include \
                -I$(SNAPPY_PATH)/include \
-               -I$(BOOST_PATH) \
                -I$(GFLAG_PATH)/include \
                -I$(COMMON_PATH)/include
 
@@ -68,13 +67,16 @@ ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
 
-TESTS = namespace_test location_provider_test logdb_test \
-		chunkserver_impl_test file_cache_test block_manager_test
-TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
+TESTS = namespace_test block_mapping_test location_provider_test logdb_test \
+		chunkserver_impl_test file_cache_test block_manager_test data_block_test
+TEST_OBJS = src/nameserver/test/namespace_test.o \
+			src/nameserver/test/block_mapping_test.o \
+			src/nameserver/test/logdb_test.o \
 			src/nameserver/test/location_provider_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o \
-			src/chunkserver/test/block_manager_test.o
+			src/chunkserver/test/block_manager_test.o \
+			src/chunkserver/test/data_block_test.o
 UNITTEST_OUTPUT = ut/
 
 all: $(BIN)
@@ -112,6 +114,9 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
 	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
 
+block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping.o
+	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
+
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
 	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
 
@@ -121,16 +126,21 @@ raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o src/namese
 location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
-file_cache_test: src/chunkserver/test/file_cache_test.o
-	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
-
 chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o src/chunkserver/block_manager.o \
 	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
+file_cache_test: src/chunkserver/test/file_cache_test.o
+	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
+
 block_manager_test: src/chunkserver/test/block_manager_test.o src/chunkserver/block_manager.o \
 	src/chunkserver/data_block.o src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+
+data_block_test: src/chunkserver/test/data_block_test.o \
+	src/chunkserver/data_block.o src/chunkserver/counter_manager.o \
+   	src/chunkserver/file_cache.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS)

@@ -109,6 +109,7 @@ void NameServerImpl::CheckRecoverMode() {
     common::atomic_comp_swap(&recover_timeout_, new_recover_timeout, recover_timeout);
     work_thread_pool_->DelayTask(1000, std::bind(&NameServerImpl::CheckRecoverMode, this));
 }
+
 void NameServerImpl::LeaveReadOnly() {
     LOG(INFO, "Nameserver leave read only");
     if (readonly_) {
@@ -282,7 +283,7 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
                                    request->end(), &lost, report_id);
     if (lost.size() != 0) {
         LOG(INFO, "C%d lost %u blocks",cs_id, lost.size());
-        for (uint32_t i = 0; i < lost.size(); ++i) {
+        for (size_t i = 0; i < lost.size(); ++i) {
             block_mapping_manager_->DealWithDeadBlock(cs_id, lost[i]);
         }
     }

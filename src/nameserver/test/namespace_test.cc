@@ -10,8 +10,9 @@
 
 #include <common/util.h>
 #include <common/string_util.h>
+#include <common/thread_pool.h>
 #include <fcntl.h>
-#include <iostream>
+#include <functional>
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -274,22 +275,31 @@ TEST_F(NameSpaceTest, NormalizePath) {
     ASSERT_EQ(NameSpace::NormalizePath("//home/work/") , std::string("/home/work"));
 }
 
+void UpdateFileInfoHelper(NameSpace* ns, int n) {
+    NameServerLog log;
+    for (auto i = 0; i <= n; i++) {
+        FileInfo info;
+        info.add_blocks(ns->GetNewBlockId());
+        ns->UpdateFileInfo(info, &log);
+    }
+}
+
 TEST_F(NameSpaceTest, GetNewBlockId) {
     system("rm -rf ./db");
     FLAGS_block_id_allocation_size = 100;
-    NameServerLog log;
+    ThreadPool tp(3);
     {
         NameSpace ns;
-        for (int i = 1; i <= 110; i++) {
-            FileInfo info;
-            info.add_blocks(ns.GetNewBlockId());
-            ns.UpdateFileInfo(info, &log);
+        for (auto i = 0; i < 10; i++) {
+            tp.AddTask(std::bind(&UpdateFileInfoHelper, &ns, 110));
         }
+        tp.Stop(true);
     }
     {
         NameSpace ns;
-        ASSERT_EQ(ns.GetNewBlockId(), 201);
+        ASSERT_EQ(ns.GetNewBlockId(), 1201);
     }
+    system("rm -rf ./db");
 }
 
 }

@@ -252,9 +252,9 @@ int bfs_statfs(const char* path, struct statvfs*) {
 int bfs_flush(const char* path, struct fuse_file_info* finfo) {
     baidu::bfs::File* file = get_bfs_file(finfo);
     fprintf(stderr, BFS"flush(%s, %p)\n", path, file);
-    int32_t ret = file->Sync();
+    int32_t ret = file->Flush();
     if (ret != OK) {
-        fprintf(stderr, BFS"fsync(%s, %p) fail, error code %s\n",
+        fprintf(stderr, BFS"flush(%s, %p) fail, error code %s\n",
                 path, file, baidu::bfs::StrError(ret));
         return EIO;
     }
@@ -446,9 +446,15 @@ void bfs_destroy(void*) {
 
 int parse_args(int* argc, char* argv[]) {
     if (*argc < 2) {
-        fprintf(stderr, "usage %s mount_point [-d]"
+        fprintf(stderr, "Usage: %s mount_point [-d]"
                         " [-c bfs_cluster_addr]"
                         " [-p bfs_path]\n",
+                argv[0]);
+        fprintf(stderr, "\t-d                    Fuse debug (optional)\n"
+                        "\t-c bfs_cluster_addr   Ip:port\n"
+                        "\t-p bfs_path           The path in BFS which you mount to the mount_point\n"
+                        "Example:\n"
+                        "       %s /mnt/bfs -d -c 127.0.0.1:8827 -p /\n",
                 argv[0]);
         return 1;
     }
