@@ -189,6 +189,7 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
         MutexLock lock(&mu_);
         for (auto i = 0; i < file_info.blocks_size(); ++i) {
             if (file_info.blocks(i) >= block_id_upbound_) {
+                LOG(INFO, "LL: update block id block_id = %ld ", file_info.blocks(i));
                 UpdateBlockIdUpbound(log);
             }
         }
@@ -706,7 +707,7 @@ void NameSpace::InitBlockIdUpbound(NameServerLog* log) {
     }
 }
 
-int64_t NameSpace::GetNewBlockId(NameServerLog* log) {
+int64_t NameSpace::GetNewBlockId() {
     MutexLock lock(&mu_);
     return next_block_id_++;
 }

@@ -468,8 +468,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     common::timer::TimeChecker add_block_timer;
     if (chunkserver_manager_->GetChunkServerChains(replica_num, &chains, request->client_address())) {
         add_block_timer.Check(50 * 1000, "GetChunkServerChains");
-        NameServerLog log;
-        int64_t new_block_id = namespace_->GetNewBlockId(&log);
+        int64_t new_block_id = namespace_->GetNewBlockId();
         LOG(INFO, "[AddBlock] new block for %s #%ld R%d %s",
             path.c_str(), new_block_id, replica_num, request->client_address().c_str());
         file_info.add_blocks(new_block_id);
@@ -478,6 +477,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         for (int i = 0; i < replica_num; i++) {
             file_info.add_cs_addrs(chunkserver_manager_->GetChunkServerAddr(chains[i].first));
         }
+        NameServerLog log;
         if (!namespace_->UpdateFileInfo(file_info, &log)) {
             LOG(WARNING, "Update file info fail: %s", path.c_str());
             response->set_status(kUpdateError);
@@ -496,7 +496,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
             chunkserver_manager_->AddBlock(cs_id, new_block_id);
             add_block_timer.Check(50 * 1000, "AddBlock");
         }
-        block_mapping_manager_->AddBlock(new_block_id, replica_num, -1, 0, replicas);
+        block_mapping_manager_->AddBlock(new_block_id, replica_num, replicas);
         add_block_timer.Check(50 * 1000, "AddNewBlock");
         block->set_block_id(new_block_id);
         response->set_status(kOK);

@@ -11,6 +11,7 @@
 #include <common/util.h>
 #include <common/string_util.h>
 #include <fcntl.h>
+#include <iostream>
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -275,20 +276,20 @@ TEST_F(NameSpaceTest, NormalizePath) {
 
 TEST_F(NameSpaceTest, GetNewBlockId) {
     system("rm -rf ./db");
-    FLAGS_block_id_allocation_size = 10000;
+    FLAGS_block_id_allocation_size = 100;
+    NameServerLog log;
     {
         NameSpace ns;
-        for (int i = 1; i <= 20010; i++) {
-            ASSERT_EQ(ns.GetNewBlockId(NULL), i);
+        for (int i = 1; i <= 110; i++) {
+            FileInfo info;
+            info.add_blocks(ns.GetNewBlockId());
+            ns.UpdateFileInfo(info, &log);
         }
     }
     {
         NameSpace ns;
-        for (int i = 1; i <= 20010; i++) {
-            ASSERT_EQ(ns.GetNewBlockId(NULL), i + 30000);
-        }
+        ASSERT_EQ(ns.GetNewBlockId(), 201);
     }
-
 }
 
 }
