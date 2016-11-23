@@ -26,6 +26,13 @@
    get: ./bfs_client get /bfs_client ./bfs_client.bak  
 5. 使用SDK访问BFS  
    待完善...
+6. 使用bfs_mount把BFS挂载到本地文件系统  
+   安装fuse(2.6以上)  
+   修改bfs文件夹下的Makefile，添加FUSE_PATH=fuse安装路径  
+   `make`产生可执行文件`bfs_mount`  
+   使用前面的步骤启动集群  
+   挂载：直接输入`./bfs_mount`可以看到提示  
+   例子：./bfs_mount /mnt/bfs -d -c 127.0.0.1:8827 -p /  
    
 ## 从入门到精通
 ### 为什么使用BFS
