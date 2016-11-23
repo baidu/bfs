@@ -6,7 +6,7 @@ Baidu File System (以下简称BFS) 的committer负责pull request的code-review
 ## 贡献
 BFS的issue，Todo List 和 RoadMap 中会注明该条目完成后对BFS产生的贡献值，contributer 完成相应功能开发或bug修复并被合入代码库中后获得相应贡献值。贡献量化参考标准如下：
 
-	* 1点： 拼写错误、代码风格修正，文档完善补充
+	* 1点：拼写错误、代码风格修正，文档完善补充
 	* 2点：小bug修复，简单功能实现	
 	* 3点：重要bug修复，功能实现	
 	* 6点：核心feature实现			 
