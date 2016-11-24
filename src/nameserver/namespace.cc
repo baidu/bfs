@@ -186,6 +186,15 @@ bool NameSpace::DeleteFileInfo(const std::string file_key, NameServerLog* log) {
     return true;
 }
 bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
+    {
+        MutexLock lock(&mu_);
+        for (auto i = 0; i < file_info.blocks_size(); ++i) {
+            if (file_info.blocks(i) >= block_id_upbound_) {
+                UpdateBlockIdUpbound(log);
+            }
+        }
+    }
+
     FileInfo file_info_for_ldb;
     file_info_for_ldb.CopyFrom(file_info);
     file_info_for_ldb.clear_cs_addrs();
@@ -670,7 +679,6 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     block_id_upbound_key.append("block_id_upbound");
     std::string block_id_upbound_str;
     block_id_upbound_str.resize(8);
-    assert(next_block_id_ == block_id_upbound_);
     block_id_upbound_ += FLAGS_block_id_allocation_size;
     *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
@@ -699,11 +707,8 @@ void NameSpace::InitBlockIdUpbound(NameServerLog* log) {
     }
 }
 
-int64_t NameSpace::GetNewBlockId(NameServerLog* log) {
+int64_t NameSpace::GetNewBlockId() {
     MutexLock lock(&mu_);
-    if (next_block_id_ == block_id_upbound_) {
-        UpdateBlockIdUpbound(log);
-    }
     return next_block_id_++;
 }
 

@@ -58,7 +58,7 @@ public:
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
-    int64_t GetNewBlockId(NameServerLog* log);
+    int64_t GetNewBlockId();
 private:
     static bool IsDir(int type);
     static void EncodingStoreKey(int64_t entry_id,
