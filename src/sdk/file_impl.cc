@@ -715,6 +715,10 @@ int32_t FileImpl::Sync() {
     }
     int wait_time = 0;
     int32_t replica_num = write_windows_.size();
+    if (replica_num == 0) {
+        // no need for writing
+        return 0;
+    }
     int32_t last_write_finish_num = FinishedNum();
     bool chains_write = IsChainsWrite();
     while (!bg_error_ &&
