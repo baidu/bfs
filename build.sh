@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
 set -x
-set -o pipefail
-export PS4='+{$LINENO `date "+%Y-%m-%d_%H:%M:%S"` :${FUNCNAME[0]}}    '
-cur=`dirname "${0}"`
-cd "${cur}"
-cur=`pwd`
-
-set -e -u -E # this script will exit if any sub-command fails
 
 ########################################
 # download & build depend software
