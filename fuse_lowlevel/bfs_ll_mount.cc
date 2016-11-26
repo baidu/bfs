@@ -17,7 +17,7 @@ std::string g_bfs_cluster;
 static void bfs_ll_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi){
 	fprintf(stderr, BFS"%s\n", __func__);
 }
-/*
+
 static void bfs_ll_lookup(fuse_req_t req, fuse_ino_t parent, const char *name){
 	fprintf(stderr, BFS"%s(%s)\n", __func__, name);
 }
@@ -84,7 +84,7 @@ static void bfs_ll_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync, struct
 static void bfs_ll_access(fuse_req_t req, fuse_ino_t ino, int mask){
 	fprintf(stderr, BFS"%s\n", __func__);
 }
-*/
+
 
 int parse_bfs_args(int* argc, char* argv[]) {
     if (*argc < 2) {
@@ -123,30 +123,26 @@ int parse_bfs_args(int* argc, char* argv[]) {
 
 int main(int argc, char *argv[])
 {
-	//static struct fuse_lowlevel_ops bfs_ll_oper = {
-	//		.lookup         = bfs_ll_lookup,
-	//		.getattr        = bfs_ll_getattr,
-	//		.readdir        = bfs_ll_readdir,
-	//		.open           = bfs_ll_open,
-	//		.opendir        = bfs_ll_opendir,
-	//		.read           = bfs_ll_read,
-	//		.write          = bfs_ll_write,
-	//		.mknod          = bfs_ll_mknod,
-	//		.mkdir          = bfs_ll_mkdir,
-	//		.create         = bfs_ll_create,
-	//		.statfs         = bfs_ll_statfs,
-	//		.rename         = bfs_ll_rename,
-	//		.link           = bfs_ll_link,
-	//		.unlink         = bfs_ll_unlink,
-	//		.rmdir          = bfs_ll_rmdir,
-	//		.fsync          = bfs_ll_fsync,
-	//		.fsyncdir       = bfs_ll_fsyncdir,
-	//		.access         = bfs_ll_access,
-	//
-	//
-	//};
-	static struct fuse_lowlevel_ops bfs_ll_oper;
-	bfs_ll_oper.getattr = bfs_ll_getattr;
+	static struct fuse_lowlevel_ops ll_oper;
+	ll_oper.lookup = bfs_ll_lookup;
+	ll_oper.getattr = bfs_ll_getattr;
+	ll_oper.readdir = bfs_ll_readdir;
+	ll_oper.open = bfs_ll_open;
+	ll_oper.opendir = bfs_ll_opendir;
+	ll_oper.read = bfs_ll_read;
+	ll_oper.write = bfs_ll_write;
+	ll_oper.mknod = bfs_ll_mknod;
+	ll_oper.mkdir = bfs_ll_mkdir;
+	ll_oper.create = bfs_ll_create;
+	ll_oper.statfs = bfs_ll_statfs;
+	ll_oper.rename = bfs_ll_rename;
+	ll_oper.link = bfs_ll_link;
+	ll_oper.unlink = bfs_ll_unlink;
+	ll_oper.rmdir = bfs_ll_rmdir;
+	ll_oper.fsync = bfs_ll_fsync;
+	ll_oper.fsyncdir = bfs_ll_fsyncdir;
+	ll_oper.access = bfs_ll_access;
+
 	if(parse_bfs_args(&argc, argv)){
 		return 1;
 	}
@@ -159,8 +155,8 @@ int main(int argc, char *argv[])
 	    (ch = fuse_mount(mountpoint, &args)) != NULL) {
 		struct fuse_session *se;
 
-		se = fuse_lowlevel_new(&args, &bfs_ll_oper,
-				       sizeof(bfs_ll_oper), NULL);
+		se = fuse_lowlevel_new(&args, &ll_oper,
+				       sizeof(ll_oper), NULL);
 		if (se != NULL) {
 			if (fuse_set_signal_handlers(se) != -1) {
 				fuse_session_add_chan(se, ch);
