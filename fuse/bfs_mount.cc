@@ -200,7 +200,7 @@ int bfs_write(const char* path, const char* buf, size_t len, off_t offset, struc
             mfile->buf = new char[new_buf_len];
             mfile->buf_len = new_buf_len;
             int rlen = file->Pread(mfile->buf, mfile->offset, 0);
-            if (rlen < mfile->offset) {
+            if (rlen != 0 && rlen < mfile->offset) {
                 fprintf(stderr, BFS"Read(%ld) for randmon write(%s, %ld, %lu) fail", mfile->offset, path, offset, len);
                 delete[] mfile->buf;
                 mfile->buf = NULL;
