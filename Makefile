@@ -54,6 +54,10 @@ FUSE_SRC = $(wildcard fuse/*.cc)
 FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
 FUSE_HEADER = $(wildcard fuse/*.h)
 
+FUSE_LL_SRC = $(wildcard fuse_lowlevel/*.cc)
+FUSE_LL_OBJ = $(patsubst %.cc, %.o, $(FUSE_LL_SRC))
+FUSE_LL_HEADER = $(wildcard fuse_lowlevel/*.h)
+
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
 
@@ -173,8 +177,6 @@ bfs_dump: src/utils/bfs_dump.o
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
 
-%.o: %.cc
-	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 $(FUSE_OBJ): %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(FUSEFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
