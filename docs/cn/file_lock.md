@@ -8,11 +8,11 @@
 
 ## 方案
 
-在`NameServer`中，设置一个`FileLockManager`，用来负责保证单个文件元数据操作的原子性，`FiloLockManager`为每个正在进行元信息修改的文件维护一个内存结构`FileLockInfo`，该结构中包含一个等待队列`waiters_`和一个`is_locking`标志位。
+在`NameServer`中，设置一个`FileLockManager`，用来负责保证单个文件元数据操作的原子性，`FiloLockManager`为每个正在进行元信息修改的文件维护一个内存结构`FileLockInfo`，该结构中包含一个等待队列`waiters_`
 
 当对文件的操作请求到来时，首先调用`FileLockManager`的`GetFileLock`接口，尝试对该文件进行加锁
 
-1. 如果在`FileInfoManager`中并没有找到该文件对应的`FileLockInfo`，则说明并没有其它线程对该文件进行操作，此时构造一个新的`FileLockInfo`，将其`is_locking`位置位，并将其记录到`FileLockManager`中维护的`FileName-->FileLockInfo`的哈希表中，继续进行后续其它操作
+1. 如果在`FileInfoManager`中并没有找到该文件对应的`FileLockInfo`，则说明并没有其它线程对该文件进行操作，此时构造一个新的`FileLockInfo`，并将其记录到`FileLockManager`中维护的`FileName-->FileLockInfo`的哈希表中，继续进行后续其它操作
 2. 如果在`FileInfoManager`中找到该文件对应的`FileLockInfo`，则说明此文件正在被其它线程操作，则直接将当前请求的`request`、`response`插入到`waiters_`队列中，然后返回加锁失败
 
 当对文件的操作请求执行完毕时，调用`FileLockManager`的`ReleaseFileLock`接口，对该文件进行解锁
