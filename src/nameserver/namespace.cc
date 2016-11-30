@@ -371,8 +371,12 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         FileInfo dst_file;
         if (LookUp(parent_id, dst_name, &dst_file)) {
             if (IsDir(dst_file.type())) {
-                LOG(INFO, "Rename %s to %s, target %o is a exist directory",
+                LOG(INFO, "Rename %s to %s, target %o is an exist directory",
                     old_path.c_str(), new_path.c_str(), dst_file.type());
+                return kTargetDirExists;
+            } else if (IsDir(old_file.type())) {
+                LOG(INFO, "Rename %s to %s, source %o is an exist directory",
+                    old_path.c_str(), new_path.c_str(), old_file.type());
                 return kTargetDirExists;
             }
             *need_unlink = true;
