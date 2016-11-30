@@ -83,7 +83,7 @@ static void bfs_ll_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t tparent, cons
 
 static void bfs_ll_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     fprintf(stderr, BFS"%s(%s)\n", __func__, name);
- }
+}
 
 static void bfs_ll_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
     fprintf(stderr, BFS"%s(%s)\n", __func__, name);
@@ -92,7 +92,7 @@ static void bfs_ll_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
 static void bfs_ll_fsync(fuse_req_t req, fuse_ino_t ino, 
                          int datasync, struct fuse_file_info *fi) {
     fprintf(stderr, BFS"%s\n", __func__);
- }
+}
 
 static void bfs_ll_fsyncdir(fuse_req_t req, fuse_ino_t ino, 
                             int datasync, struct fuse_file_info *fi) {
@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
         .access = bfs_ll_access;
     };
 
-    if(parse_bfs_args(&argc, argv) != 0) {
+    if (parse_bfs_args(&argc, argv) != 0) {
         return -1;
     }
 
