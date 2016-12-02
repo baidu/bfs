@@ -24,6 +24,7 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
 
 CXXFLAGS = -std=c++11 -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_PATH)/include
+FUSE_LL_FLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_LL_PATH)/include
 
 PROTO_FILE = $(wildcard src/proto/*.proto)
 PROTO_SRC = $(patsubst %.proto,%.pb.cc,$(PROTO_FILE))
@@ -53,6 +54,10 @@ FUSE_SRC = $(wildcard fuse/*.cc)
 FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
 FUSE_HEADER = $(wildcard fuse/*.h)
 
+FUSE_LL_SRC = $(wildcard fuse_lowlevel/*.cc)
+FUSE_LL_OBJ = $(patsubst %.cc, %.o, $(FUSE_LL_SRC))
+FUSE_LL_HEADER = $(wildcard fuse_lowlevel/*.h)
+
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
 
@@ -66,7 +71,9 @@ BIN = nameserver chunkserver bfs_client
 ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
-
+ifdef FUSE_LL_PATH
+	BIN += bfs_ll_mount
+endif
 TESTS = namespace_test block_mapping_test location_provider_test logdb_test \
 		chunkserver_impl_test file_cache_test block_manager_test data_block_test
 TEST_OBJS = src/nameserver/test/namespace_test.o \
@@ -170,10 +177,16 @@ bfs_dump: src/utils/bfs_dump.o
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
 
-%.o: %.cc
-	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 $(FUSE_OBJ): %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(FUSEFLAGS) $(INCLUDE_PATH) -c $< -o $@
+
+bfs_ll_mount: $(FUSE_LL_OBJ) $(LIBS)
+	$(CXX) $(FUSE_LL_OBJ) $(LIBS) -o $@ -L$(FUSE_LL_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
+
+%.o: %.cc
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+$(FUSE_LL_OBJ): %.o: %.cc
+	$(CXX) $(CXXFLAGS) $(FUSE_LL_FLAGS) $(INCLUDE_PATH) -c $< -o $@
 
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
