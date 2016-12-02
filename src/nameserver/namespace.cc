@@ -39,8 +39,8 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
         db_ = NULL;
-        LOG(FATAL, "Open leveldb fail: %s\n", s.ToString().c_str());
-        return;
+        LOG(WARNING, "Open leveldb fail: %s", s.ToString().c_str());
+        exit(EXIT_FAILURE);
     }
     if (standalone) {
         Activate(NULL, NULL);
