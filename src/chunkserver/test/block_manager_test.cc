@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 //
 
-#define private public
 #include "chunkserver/block_manager.h"
 #include "chunkserver/data_block.h"
 

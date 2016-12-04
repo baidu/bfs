@@ -1,4 +1,3 @@
-#define private public
 
 #include <errno.h>
 #include <vector>

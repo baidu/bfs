@@ -105,7 +105,8 @@ check: all $(TESTS)
 	cd $(UNITTEST_OUTPUT); for t in $(TESTS); do echo "***** Running $$t"; ./$$t || exit 1; done
 
 namespace_test: src/nameserver/test/namespace_test.o
-	$(CXX) src/nameserver/namespace.o src/nameserver/test/namespace_test.o $(OBJS) -o $@ $(LDFLAGS)
+	$(CXX) -fno-access-control src/nameserver/namespace.o \
+		src/nameserver/test/namespace_test.o $(OBJS) -o $@ $(LDFLAGS)
 
 #NAMESERVER_OBJ_NO_MAIN := $(filter out "nameserver_main.o", $(NAMESERVER_OBJ))
 #nameserver_test: src/nameserver/test/nameserver_impl_test.o $(NAMESERVER_OBJ_NO_MAIN)
@@ -115,40 +116,50 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/location_provider.o src/nameserver/master_slave.o \
 	src/nameserver/nameserver_impl.o  src/nameserver/namespace.o \
 	src/nameserver/raft_impl.o  src/nameserver/raft_node.o
-	$(CXX) src/nameserver/nameserver_impl.o src/nameserver/test/nameserver_impl_test.o \
-	src/nameserver/block_mapping.o src/nameserver/chunkserver_manager.o \
-	src/nameserver/location_provider.o src/nameserver/master_slave.o \
-	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
-	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
+	$(CXX) -fno-access-control src/nameserver/nameserver_impl.o \
+		src/nameserver/test/nameserver_impl_test.o \
+		src/nameserver/block_mapping.o src/nameserver/chunkserver_manager.o \
+		src/nameserver/location_provider.o src/nameserver/master_slave.o \
+		src/nameserver/namespace.o src/nameserver/raft_impl.o  \
+		src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
 
-block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping.o
-	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
+block_mapping_test: src/nameserver/test/block_mapping_test.o \
+					src/nameserver/block_mapping.o
+	$(CXX) -fno-access-control src/nameserver/block_mapping.o \
+		src/nameserver/test/block_mapping_test.o \
+		src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
 
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
-	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
+	$(CXX) -fno-access-control src/nameserver/logdb.o \
+		src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
 
-raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o src/nameserver/logdb.o $(OBJS)
+raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o \
+		   src/nameserver/logdb.o $(OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
-location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
-	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+location_provider_test: src/nameserver/test/location_provider_test.o \
+	src/nameserver/location_provider.o
+	$(CXX) -fno-access-control $^ $(OBJS) -o $@ $(LDFLAGS)
 
 chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
-	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o src/chunkserver/block_manager.o \
-	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
-	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o \
+   	src/chunkserver/block_manager.o src/chunkserver/counter_manager.o \
+   	src/chunkserver/file_cache.o
+	$(CXX) -fno-access-control $^ $(OBJS) -o $@ $(LDFLAGS)
 
 file_cache_test: src/chunkserver/test/file_cache_test.o
-	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
+	$(CXX) -fno-access-control src/chunkserver/file_cache.o \
+		src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
 
-block_manager_test: src/chunkserver/test/block_manager_test.o src/chunkserver/block_manager.o \
-	src/chunkserver/data_block.o src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
-	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+block_manager_test: src/chunkserver/test/block_manager_test.o \
+	src/chunkserver/block_manager.o src/chunkserver/data_block.o \
+   	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
+	$(CXX) -fno-access-control $^ $(OBJS) -o $@ $(LDFLAGS)
 
 data_block_test: src/chunkserver/test/data_block_test.o \
 	src/chunkserver/data_block.o src/chunkserver/counter_manager.o \
    	src/chunkserver/file_cache.o
-	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+	$(CXX) -fno-access-control $^ $(OBJS) -o $@ $(LDFLAGS)
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
