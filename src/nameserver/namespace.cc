@@ -361,6 +361,12 @@ StatusCode NameSpace::Rename(const std::string& old_path,
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
             return kBadParameter;
         }
+        if (path_file.entry_id() == old_file.entry_id()) {
+            LOG(INFO, "Rename %s to %s fail: %s is the parent directory of %s",
+                    old_path.c_str(), new_path.c_str(), old_path.c_str(),
+                    new_path.c_str());
+            return kBadParameter;
+        }
         parent_id = path_file.entry_id();
     }
 
