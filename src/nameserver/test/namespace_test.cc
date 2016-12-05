@@ -146,12 +146,16 @@ TEST_F(NameSpaceTest, Rename) {
     NameSpace ns;
     bool need_unlink;
     FileInfo remove_file;
+    /// self -> self
+    ASSERT_EQ(kBadParameter, ns.Rename("/dir1", "/dir1", &need_unlink, &remove_file));
     /// dir -> none
     ASSERT_EQ(kOK, ns.Rename("/dir1/subdir1", "/dir1/subdir3", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
     /// dir -> existing dir
     ASSERT_NE(kOK, ns.Rename("/dir1/subdir2", "/dir1/subdir3", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
+    /// parent dir -> subdir
+    ASSERT_EQ(kBadParameter, ns.Rename("/dir1/", "/dir1/subdir4", &need_unlink, &remove_file));
     /// file -> not exist parent
     ASSERT_NE(kOK, ns.Rename("/file1", "/dir1/subdir4/file1", &need_unlink, &remove_file));
     /// file -> existing dir
