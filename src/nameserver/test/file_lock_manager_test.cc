@@ -16,23 +16,26 @@ public:
     FileLockManagerTest() {}
 };
 
-void WriteLock() {
-    flm.WriteLock("/home/dir1/file1");
+void WriteLock(const std::string& file_path) {
+    flm.WriteLock(file_path);
     sleep(1);
-    flm.Unlock("/home/dir1/file1/");
+    flm.Unlock(file_path);
 }
 
-void ReadLock() {
-    flm.ReadLock("/home/dir1/file1");
+void ReadLock(const std::string& file_path) {
+    flm.ReadLock(file_path);
     sleep(1);
-    flm.Unlock("/home/dir1/file1/");
+    flm.Unlock(file_path);
 }
 
 TEST_F(FileLockManagerTest, Basic) {
-    thread_pool.AddTask(WriteLock);
-    thread_pool.AddTask(ReadLock);
-    thread_pool.AddTask(WriteLock);
-    thread_pool.AddTask(ReadLock);
+    thread_pool.AddTask(std::bind(WriteLock, "/home/dir1/file1"));
+    thread_pool.AddTask(std::bind(ReadLock, "/home/dir1/file1"));
+    thread_pool.AddTask(std::bind(WriteLock, "/home/dir1/file1"));
+    thread_pool.AddTask(std::bind(ReadLock, "/home/dir1/file1"));
+    thread_pool.AddTask(std::bind(WriteLock, "/home/dir1/"));
+    thread_pool.AddTask(std::bind(WriteLock, "/home/dir1/file2"));
+    thread_pool.AddTask(std::bind(ReadLock, "/home/dir1/file2"));
 }
 
 } // namespace bfs

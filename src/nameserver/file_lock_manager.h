@@ -8,7 +8,6 @@
 
 #include <string>
 #include <unordered_map>
-#include <iostream>
 
 #include <common/rw_lock.h>
 #include <common/counter.h>
