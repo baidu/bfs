@@ -33,8 +33,26 @@ extern common::Counter g_find_ops;
 DiskManager::DiskManager(const std::string& store_path)
     : disk_quota_(0) {
     CheckStorePath(store_path);
-    work_thread_pool_ = new ThreadPool(5);
     file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
+}
+
+DiskManager::~DiskManager() {
+    MutexLock lock(&mu_);
+    for (auto it = block_map_.begin(); it != block_map_.end(); ++it) {
+        Block* block = it->second;
+        if (!block->IsRecover()) {
+            CloseBlock(block);
+        } else {
+            LOG(INFO, "[~BlockManager] Do not close recovering block #%ld ", block->Id());
+        }
+        block->DecRef();
+    }
+    for (size_t i = 0; i < disks_.size(); ++i) {
+        delete disks_[i];
+    }
+    block_map_.clear();
+    delete file_cache_;
+    file_cache_ = NULL;
 }
 
 void DiskManager::CheckStorePath(const std::string& store_path) {
@@ -135,7 +153,7 @@ int64_t DiskManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, 
     if (iters.size() == 0) {
         return 0;
     }
-    size_t idx = -1;
+    int32_t idx = -1;
     int64_t largest_id = 0;
     while (blocks->size() < num && iters.size() != 0) {
         int64_t block_id = FindSmallest(iters, &idx);
@@ -149,6 +167,7 @@ int64_t DiskManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, 
         assert(block_id == meta.block_id());
         blocks->push_back(meta);
         largest_id = block_id;
+        iters[idx]->Next();
     }
     return largest_id;
 }
@@ -160,10 +179,11 @@ Block* DiskManager::CreateBlock(int64_t block_id, StatusCode* status) {
     meta.set_store_path(disk->Path());
     Block* block = new Block(meta, NULL, file_cache_);
     // for block_map_
-    block->AddRef();
+    MutexLock lock(&mu_, "BlockManger::AddBlock", 1000);
     auto ret = block_map_.insert(std::make_pair(block_id, block));
-    if (!ret.second) {
-        block->DecRef();
+    if (ret.second) {
+        block->AddRef();
+    } else {
         delete block;
         if (ret.first->second->IsFinished()) {
             *status = kReadOnly;
@@ -258,7 +278,7 @@ Disk* DiskManager::PickDisk(int64_t block_id) {
     return disks_[block_id % disks_.size()];
 }
 
-int64_t DiskManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, size_t* idx) {
+int64_t DiskManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx) {
     int64_t id = LLONG_MAX;
     for (size_t i = 0; i < iters.size(); ++i) {
         auto it = iters[i];

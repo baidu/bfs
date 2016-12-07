@@ -150,7 +150,7 @@ int64_t Block::DiskUsed() const {
 StatusCode Block::SetDeleted() {
     // TODO: delete meta
     int deleted = common::atomic_swap(&deleted_, 1);
-    if (0 != deleted) {
+    if (deleted != 0) {
         return kNsNotFound;
     }
     return kOK;

@@ -48,9 +48,8 @@ public:
 private:
     void CheckStorePath(const std::string& store_path);
     Disk* PickDisk(int64_t block_id);
-    int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, size_t* idx);
+    int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx);
 private:
-    ThreadPool* work_thread_pool_;
     std::vector<Disk*> disks_;
     FileCache* file_cache_;
     Mutex   mu_;

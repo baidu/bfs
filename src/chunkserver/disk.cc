@@ -28,6 +28,13 @@ Disk::Disk(const std::string& path, FileCache* cache, int64_t quota)
     thread_pool_ = new ThreadPool(FLAGS_chunkserver_io_thread_num);
 }
 
+Disk::~Disk() {
+    thread_pool_->Stop(true);
+    delete thread_pool_;
+    delete metadb_;
+    metadb_ = NULL;
+}
+
 bool Disk::LoadStorage(std::function<void (int64_t, Block*)> callback) {
     MutexLock lock(&mu_);
     int64_t start_load_time = common::timer::get_micros();
@@ -58,8 +65,8 @@ bool Disk::LoadStorage(std::function<void (int64_t, Block*)> callback) {
         }
         BlockMeta meta;
         if (!meta.ParseFromArray(it->value().data(), it->value().size())) {
-            assert(0);
             LOG(INFO, "Parse meta for #%ld failed", block_id);
+            assert(0); // TODO: fault tolerant
         }
         // TODO: do not need store_path in meta any more
         std::string file_path = meta.store_path() + Block::BuildFilePath(block_id);
@@ -156,8 +163,7 @@ bool Disk::SyncBlockMeta(const BlockMeta& meta) {
 }
 
 bool Disk::RemoveBlockMeta(int64_t block_id) {
-    char idstr[14];
-    snprintf(idstr, sizeof(idstr), "%13ld", block_id);
+    std::string idstr = BlockId2Str(block_id);
     leveldb::Status s = metadb_->Delete(leveldb::WriteOptions(), idstr);
     if (!s.ok()) {
         LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
