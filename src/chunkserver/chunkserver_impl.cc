@@ -175,7 +175,7 @@ void ChunkServerImpl::Register() {
         }
         LOG(INFO, "Use new namespace version: %ld, clean local data", new_version);
         // Clean
-        if (!block_manager_->RemoveAllBlocks()) {
+        if (!block_manager_->CleanUp(new_version)) {
             LOG(FATAL, "Remove local blocks fail");
         }
         if (!block_manager_->SetNameSpaceVersion(new_version)) {
@@ -513,12 +513,11 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
 
     int64_t find_start = common::timer::get_micros();
     /// search;
-    int64_t sync_time = 0;
     Block* block = NULL;
 
     if (packet_seq == 0) {
         StatusCode s;
-        block = block_manager_->CreateBlock(block_id, &sync_time, &s);
+        block = block_manager_->CreateBlock(block_id, &s);
         if (s != kOK) {
             LOG(INFO, "[LocalWriteBlock] #%ld created failed, reason %s",
                     block_id, StatusCode_Name(s).c_str());
@@ -575,13 +574,11 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
 
     int64_t time_end = common::timer::get_micros();
     LOG(INFO, "[WriteBlock] done #%ld seq:%d, offset:%ld, len:%lu "
-              "use %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld ms",
+              "use %ld %ld %ld %ld %ld %ld %ld %ld ms",
         block_id, packet_seq, offset, databuf.size(),
         (response->timestamp(0) - request->sequence_id()) / 1000, // recv
         (response->timestamp(1) - response->timestamp(0)) / 1000, // dispatch time
         (find_start - response->timestamp(1)) / 1000, // async time
-        (write_start - find_start - sync_time) / 1000,  // find time
-        sync_time / 1000, // create sync time
         add_used / 1000, // sliding window add
         (write_end - write_start) / 1000,    // write time
         (report_start - write_end) / 1000, // close time
@@ -603,7 +600,7 @@ void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
     if (!block) {
         LOG(INFO, "[CloseIncompleteBlock] Block not found: #%ld ", block_id);
         StatusCode s;
-        block = block_manager_->CreateBlock(block_id, NULL, &s);
+        block = block_manager_->CreateBlock(block_id, &s);
         if (s != kOK) {
             LOG(WARNING, "[CloseIncompleteBlock] create block fail: #%ld reason: %s",
                 block_id, StatusCode_Name(s).c_str());
