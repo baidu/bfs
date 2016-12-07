@@ -39,7 +39,7 @@ public:
     Block* CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status);
     Block* FindBlock(int64_t block_id);
     bool CloseBlock(Block* block);
-    bool RemoveBlock(int64_t block_id);
+    StatusCode RemoveBlock(int64_t block_id);
     bool RemoveAllBlocks();
 private:
     std::string BlockId2Str(int64_t block_id);

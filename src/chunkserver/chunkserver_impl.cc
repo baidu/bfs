@@ -678,8 +678,13 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
 }
 void ChunkServerImpl::RemoveObsoleteBlocks(std::vector<int64_t> blocks) {
     for (size_t i = 0; i < blocks.size(); i++) {
-        if (!block_manager_->RemoveBlock(blocks[i])) {
-            LOG(INFO, "Remove block fail: #%ld ", blocks[i]);
+        StatusCode s = block_manager_->RemoveBlock(blocks[i]);
+        if (s != kOK) {
+            if (s == kCsNotFound) {
+                LOG(INFO, "Remove block fail: #%ld ", blocks[i]);
+            } else if (s == kSyncMetaFailed) {
+                LOG(WARNING, "Remove block sync meta fail: #%ld ", blocks[i]);
+            }
         }
     }
 }

@@ -147,9 +147,13 @@ BlockMeta Block::GetMeta() const {
 int64_t Block::DiskUsed() const {
     return disk_file_size_;
 }
-bool Block::SetDeleted() {
+StatusCode Block::SetDeleted() {
+    // TODO: delete meta
     int deleted = common::atomic_swap(&deleted_, 1);
-    return (0 == deleted);
+    if (0 != deleted) {
+        return kNsNotFound;
+    }
+    return kOK;
 }
 void Block::SetVersion(int64_t version) {
     meta_.set_version(std::max(version, meta_.version()));
@@ -314,6 +318,7 @@ bool Block::Close() {
     }
     LOG(INFO, "Block #%ld closed %s V%ld %ld",
         meta_.block_id(), disk_file_.c_str(), meta_.version(), meta_.block_size());
+    // Need to sync block
     return true;
 }
 

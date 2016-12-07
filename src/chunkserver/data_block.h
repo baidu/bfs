@@ -46,7 +46,7 @@ public:
     std::string GetFilePath() const;
     BlockMeta GetMeta() const;
     int64_t DiskUsed() const;
-    bool SetDeleted();
+    StatusCode SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion() const;
     int32_t GetLastSeq() const;

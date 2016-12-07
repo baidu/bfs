@@ -356,29 +356,29 @@ bool BlockManager::RemoveBlockMeta(int64_t block_id) {
     }
     return true;
 }
-bool BlockManager::RemoveBlock(int64_t block_id) {
+StatusCode BlockManager::RemoveBlock(int64_t block_id) {
     bool meta_removed = RemoveBlockMeta(block_id);
     Block* block = FindBlock(block_id);
     if (block == NULL) {
         LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
-        return false;
+        return kNsNotFound;
     }
     if (!block->SetDeleted()) {
         LOG(INFO, "Block #%ld deleted by other thread", block_id);
         block->DecRef();
-        return false;
+        return kSyncMetaFailed;
     }
 
     // disk file will be removed in block's deconstrucor
     file_cache_->EraseFileCache(block->GetFilePath());
 
-    bool ret = false;
+    StatusCode ret = kNsNotFound;
     if (meta_removed) {
         MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
         block_map_.erase(block_id);
         block->DecRef();
         LOG(INFO, "Remove #%ld meta info done, ref= %ld", block_id, block->GetRef());
-        ret = true;
+        ret = kOK;
     }
     block->DecRef();
     return ret;

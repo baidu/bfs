@@ -1,0 +1,65 @@
+// Copyright (c) 2016, Baidu.com, Inc. All Rights Reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+
+#ifndef  BAIDU_BFS_DISK_MANAGER_H_
+#define  BAIDU_BFS_DISK_MANAGER_H_
+
+#include <stdint.h>
+#include <map>
+#include <string>
+#include <vector>
+
+#include <common/thread_pool.h>
+#include "proto/status_code.pb.h"
+
+namespace leveldb {
+class DB;
+class Iterator;
+}
+
+namespace baidu {
+namespace bfs {
+
+class BlockMeta;
+class Block;
+class FileCache;
+class Disk;
+
+class DiskManager {
+public:
+    DiskManager(const std::string& store_path);
+    ~DiskManager();
+    int64_t DiskQuota()  const;
+    bool LoadStorage();
+    int64_t NameSpaceVersion();
+    bool SetNameSpaceVersion(int64_t version);
+    int64_t ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, uint32_t num);
+    Block* CreateBlock(int64_t block_id,  StatusCode* status);
+    bool CloseBlock(Block* block);
+    StatusCode RemoveBlock(int64_t block_id);
+    bool CleanUp(int64_t namespace_version);
+
+    Block* FindBlock(int64_t block_id);
+    bool AddBlock(int64_t block_id, Block* block);
+    bool EraseBlock(int64_t block_id);
+
+private:
+    void CheckStorePath(const std::string& store_path);
+    Disk* PickDisk(int64_t block_id);
+    int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, size_t* idx);
+private:
+    ThreadPool* work_thread_pool_;
+    std::vector<Disk*> disks_;
+    FileCache* file_cache_;
+    Mutex   mu_;
+    std::map<int64_t, Block*> block_map_;
+    int64_t disk_quota_;
+};
+
+} // bfs
+} // baidu
+#endif  // BAIDU_BFS_DISK_MANAGER_H_
+
+/* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
