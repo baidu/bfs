@@ -48,6 +48,7 @@ public:
     void Seek(int64_t block_id, std::vector<leveldb::Iterator*>* iters);
     bool SyncBlockMeta(const BlockMeta& meta);
     bool RemoveBlockMeta(int64_t block_id);
+    void AddTask(std::function<void ()> func, bool is_priority);
 
     bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);

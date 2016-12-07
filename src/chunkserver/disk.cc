@@ -92,7 +92,7 @@ bool Disk::LoadStorage(std::function<void (int64_t, Block*)> callback) {
                     block_id, meta.version(), meta.block_size(), file_path.c_str());
             }
         }
-        Block* block = new Block(meta, thread_pool_, file_cache_);
+        Block* block = new Block(meta, this, file_cache_);
         block->AddRef();
         callback(block_id, block);
         block_num ++;
@@ -170,6 +170,14 @@ bool Disk::RemoveBlockMeta(int64_t block_id) {
         return false;
     }
     return true;
+}
+
+void Disk::AddTask(std::function<void ()> func, bool is_priority) {
+    if (is_priority) {
+        thread_pool_->AddPriorityTask(func);
+    } else {
+        thread_pool_->AddTask(func);
+    }
 }
 
 bool Disk::CleanUp() {

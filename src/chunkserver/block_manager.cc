@@ -177,7 +177,7 @@ Block* BlockManager::CreateBlock(int64_t block_id, StatusCode* status) {
     meta.set_block_id(block_id);
     Disk* disk = PickDisk(block_id);
     meta.set_store_path(disk->Path());
-    Block* block = new Block(meta, NULL, file_cache_);
+    Block* block = new Block(meta, disk, file_cache_);
     // for block_map_
     MutexLock lock(&mu_, "BlockManger::AddBlock", 1000);
     auto ret = block_map_.insert(std::make_pair(block_id, block));

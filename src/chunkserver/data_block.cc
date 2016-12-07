@@ -20,6 +20,7 @@
 #include <common/logging.h>
 
 #include "file_cache.h"
+#include "chunkserver/disk.h"
 
 DECLARE_int32(write_buf_size);
 
@@ -43,8 +44,8 @@ extern common::Counter g_rpc_delay_all;
 extern common::Counter g_rpc_count;
 extern common::Counter g_data_size;
 
-Block::Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cache) :
-  thread_pool_(thread_pool), meta_(meta),
+Block::Block(const BlockMeta& meta, Disk* disk, FileCache* file_cache) :
+  disk_(disk), meta_(meta),
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size()), file_desc_(kNotCreated), refs_(0),
@@ -148,7 +149,7 @@ int64_t Block::DiskUsed() const {
     return disk_file_size_;
 }
 StatusCode Block::SetDeleted() {
-    // TODO: delete meta
+    disk_->RemoveBlockMeta(meta_.block_id());
     int deleted = common::atomic_swap(&deleted_, 1);
     if (deleted != 0) {
         return kNsNotFound;
@@ -308,7 +309,7 @@ bool Block::Close() {
     finished_ = true;
     // DiskWrite will close file_desc_ asynchronously.
     this->AddRef();
-    thread_pool_->AddPriorityTask(std::bind(&Block::DiskWrite, this));
+    disk_->AddTask(std::bind(&Block::DiskWrite, this), true);
 
     while (file_desc_ != kClosed) {
         close_cv_.Wait();
@@ -318,7 +319,7 @@ bool Block::Close() {
     }
     LOG(INFO, "Block #%ld closed %s V%ld %ld",
         meta_.block_id(), disk_file_.c_str(), meta_.version(), meta_.block_size());
-    // Need to sync block
+    disk_->SyncBlockMeta(meta_);
     return true;
 }
 
@@ -427,7 +428,7 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
         memcpy(blockbuf_ + bufdatalen_, buf, wlen);
         block_buf_list_.push_back(std::make_pair(blockbuf_, FLAGS_write_buf_size));
         this->AddRef();
-        thread_pool_->AddTask(std::bind(&Block::DiskWrite, this));
+        disk_->AddTask(std::bind(&Block::DiskWrite, this), false);
 
         blockbuf_ = new char[buflen_];
         g_pending_writes.Inc();
