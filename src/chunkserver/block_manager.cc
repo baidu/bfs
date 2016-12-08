@@ -284,7 +284,6 @@ Disk* BlockManager::PickDisk(int64_t block_id) {
 }
 
 int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx) {
-    LOG(INFO, "LL: find smallest size %u", iters.size());
     int64_t id = LLONG_MAX;
     for (size_t i = 0; i < iters.size(); ++i) {
         auto it = iters[i];
@@ -297,17 +296,22 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
         }
         int64_t tmp;
         if (1 != sscanf(it->key().data(), "%ld", &tmp)) {
+            delete it;
+            iters[i] = iters[iters.size() - 1];
+            iters.resize(iters.size() - 1);
+            --i;
             LOG(WARNING, "[FindSmallest] Unknown meta key: %s\n",
                 it->key().ToString().c_str());
-            return -1;
+            continue;
         }
-        LOG(INFO, "LL: round %u tmp=%ld", i, tmp);
         if (tmp < id) {
             id = tmp;
             *idx = i;
         }
     }
-    assert(id != LLONG_MAX);
+    if (id == LLONG_MAX) {
+        return -1;
+    }
     return id;
 }
 
