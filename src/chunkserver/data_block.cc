@@ -152,7 +152,7 @@ StatusCode Block::SetDeleted() {
     disk_->RemoveBlockMeta(meta_.block_id());
     int deleted = common::atomic_swap(&deleted_, 1);
     if (deleted != 0) {
-        return kNsNotFound;
+        return kCsNotFound;
     }
     return kOK;
 }

@@ -42,10 +42,11 @@ public:
     bool CleanUp(int64_t namespace_version);
 
     Block* FindBlock(int64_t block_id);
-    bool AddBlock(int64_t block_id, Block* block);
+    bool AddBlock(int64_t block_id, Disk* disk, BlockMeta meta);
 
 private:
     void CheckStorePath(const std::string& store_path);
+    void LoadOneDisk(Disk* disk);
     Disk* PickDisk(int64_t block_id);
     int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx);
 private:

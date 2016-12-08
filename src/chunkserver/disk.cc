@@ -23,8 +23,8 @@ namespace bfs {
 
 extern common::Counter g_data_size;
 
-Disk::Disk(const std::string& path, FileCache* cache, int64_t quota)
-    : path_(path), file_cache_(cache), disk_quota_(quota) {
+Disk::Disk(const std::string& path, int64_t quota)
+    : path_(path), disk_quota_(quota) {
     thread_pool_ = new ThreadPool(FLAGS_chunkserver_io_thread_num);
 }
 
@@ -35,7 +35,7 @@ Disk::~Disk() {
     metadb_ = NULL;
 }
 
-bool Disk::LoadStorage(std::function<void (int64_t, Block*)> callback) {
+bool Disk::LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback) {
     MutexLock lock(&mu_);
     int64_t start_load_time = common::timer::get_micros();
     leveldb::Options options;
@@ -92,9 +92,7 @@ bool Disk::LoadStorage(std::function<void (int64_t, Block*)> callback) {
                     block_id, meta.version(), meta.block_size(), file_path.c_str());
             }
         }
-        Block* block = new Block(meta, this, file_cache_);
-        block->AddRef();
-        callback(block_id, block);
+        callback(block_id, this, meta);
         block_num ++;
     }
     delete it;
@@ -156,7 +154,7 @@ bool Disk::SyncBlockMeta(const BlockMeta& meta) {
     meta.SerializeToString(&meta_buf);
     leveldb::Status s = metadb_->Put(options, idstr, meta_buf);
     if (!s.ok()) {
-        Log(WARNING, "Write to meta fail:%s", idstr.c_str());
+        LOG(WARNING, "Write to meta fail:%s", idstr.c_str());
         return false;
     }
     return true;

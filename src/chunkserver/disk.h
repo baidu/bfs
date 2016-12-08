@@ -39,10 +39,10 @@ struct BlockStats {
 
 class Disk {
 public:
-    Disk(const std::string& path, FileCache* cache, int64_t quota);
+    Disk(const std::string& path, int64_t quota);
     ~Disk();
     std::string Path() const;
-    bool LoadStorage(std::function<void (int64_t, Block*)> callback);
+    bool LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback);
     int64_t NameSpaceVersion() const;
     bool SetNameSpaceVersion(int64_t version);
     void Seek(int64_t block_id, std::vector<leveldb::Iterator*>* iters);
@@ -58,7 +58,6 @@ private:
 private:
     std::string path_;
     ThreadPool* thread_pool_;
-    FileCache* file_cache_;
     int64_t disk_quota_;
     leveldb::DB* metadb_;
     Mutex   mu_;

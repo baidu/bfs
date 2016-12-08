@@ -89,7 +89,7 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
                 common::HumanReadableString(super_quota).c_str(),
                 common::HumanReadableString(user_quota).c_str());
             disk_quota += user_quota;
-            Disk* disk = new Disk(store_path_list[i], file_cache_, user_quota);
+            Disk* disk = new Disk(store_path_list[i], user_quota);
             disks_.push_back(disk);
         } else {
             if (stat_ret != 0) {
@@ -106,6 +106,10 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     disk_quota_ = disk_quota;
 }
 
+void BlockManager::LoadOneDisk(Disk* disk) {
+
+}
+
 int64_t BlockManager::DiskQuota() const {
     return disk_quota_;
 }
@@ -116,7 +120,8 @@ bool BlockManager::LoadStorage() {
     for (size_t i = 0; i < disks_.size(); ++i) {
         ret = ret && disks_[i]->LoadStorage(std::bind(&BlockManager::AddBlock,
                                                       this, std::placeholders::_1,
-                                                      std::placeholders::_2));
+                                                      std::placeholders::_2,
+                                                      std::placeholders::_3));
     }
     return ret;
 }
@@ -168,6 +173,9 @@ int64_t BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset,
         blocks->push_back(meta);
         largest_id = block_id;
         iters[idx]->Next();
+    }
+    for (size_t i = 0; i < iters.size(); ++i) {
+        delete iters[i];
     }
     return largest_id;
 }
@@ -250,7 +258,9 @@ bool BlockManager::CleanUp(int64_t namespace_version) {
     return true;
 }
 
-bool BlockManager::AddBlock(int64_t block_id, Block* block) {
+bool BlockManager::AddBlock(int64_t block_id, Disk* disk, BlockMeta meta) {
+    Block* block = new Block(meta, disk, file_cache_);
+    block->AddRef();
     MutexLock lock(&mu_);
     return block_map_.insert(std::make_pair(block_id, block)).second;
 }
@@ -274,6 +284,7 @@ Disk* BlockManager::PickDisk(int64_t block_id) {
 }
 
 int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx) {
+    LOG(INFO, "LL: find smallest size %u", iters.size());
     int64_t id = LLONG_MAX;
     for (size_t i = 0; i < iters.size(); ++i) {
         auto it = iters[i];
@@ -290,6 +301,7 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
                 it->key().ToString().c_str());
             return -1;
         }
+        LOG(INFO, "LL: round %u tmp=%ld", i, tmp);
         if (tmp < id) {
             id = tmp;
             *idx = i;
