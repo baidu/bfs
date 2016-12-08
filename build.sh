@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -x
+set -x -e
 
 ########################################
 # download & build depend software
@@ -65,7 +65,6 @@ if [ ! -f "${FLAG_DIR}/snappy_1_1_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libsnappy.a" ] \
     || [ ! -f "${DEPS_PREFIX}/include/snappy.h" ]; then
     cd snappy-1.1.1
-    autoreconf -ivf
     ./configure ${DEPS_CONFIG}
     make -j4
     make install
