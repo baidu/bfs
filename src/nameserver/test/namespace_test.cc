@@ -4,7 +4,6 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#define private public
 #include "nameserver/namespace.h"
 #include "proto/status_code.pb.h"
 

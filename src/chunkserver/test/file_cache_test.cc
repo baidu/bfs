@@ -4,7 +4,6 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#define private public
 #include "chunkserver/file_cache.h"
 
 #include <gflags/gflags.h>

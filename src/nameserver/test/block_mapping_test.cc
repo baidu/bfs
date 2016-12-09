@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 //
 
-#define private public
 #include "nameserver/block_mapping.h"
 #include "proto/status_code.pb.h"
 
