@@ -16,7 +16,7 @@
 
 #include "chunkserver/data_block.h"
 
-DECLARE_int32(chunkserver_io_thread_num);
+DECLARE_int32(disk_io_thread_num);
 
 namespace baidu {
 namespace bfs {
@@ -25,7 +25,7 @@ extern common::Counter g_data_size;
 
 Disk::Disk(const std::string& path, int64_t quota)
     : path_(path), disk_quota_(quota) {
-    thread_pool_ = new ThreadPool(FLAGS_chunkserver_io_thread_num);
+    thread_pool_ = new ThreadPool(FLAGS_disk_io_thread_num);
 }
 
 Disk::~Disk() {
