@@ -39,9 +39,8 @@ TEST_F(BlockManagerTest, RemoveBlock) {
 
     //normal case
     int64_t block_id = 123;
-    int64_t sync_time;
     StatusCode status;
-    Block* block = block_manager.CreateBlock(block_id, &sync_time, &status);
+    Block* block = block_manager.CreateBlock(block_id, &status);
     ASSERT_TRUE(block != NULL);
     std::string disk_file_path = block->disk_file_;
     // now ref count for block is 2
@@ -65,7 +64,7 @@ TEST_F(BlockManagerTest, RemoveBlock) {
 
     // close before write
     block_id = 456;
-    block = block_manager.CreateBlock(block_id, &sync_time, &status);
+    block = block_manager.CreateBlock(block_id, &status);
     ASSERT_TRUE(block != NULL);
     block_manager.CloseBlock(block);
     ASSERT_EQ(block->finished_, true);
@@ -80,7 +79,7 @@ TEST_F(BlockManagerTest, RemoveBlock) {
 
     // delete before write
     block_id = 789;
-    block = block_manager.CreateBlock(block_id, &sync_time, &status);
+    block = block_manager.CreateBlock(block_id, &status);
     ASSERT_TRUE(block != NULL);
     block_manager.RemoveBlock(block_id);
     ASSERT_EQ(block->refs_, 1);
@@ -108,9 +107,8 @@ TEST_F(BlockManagerTest, Out_of_order) {
     ASSERT_TRUE(ret);
     StatusCode status;
     int64_t block_id = 123;
-    int64_t sync_time;
     //after create, ref for this block is 2
-    Block* block = block_manager.CreateBlock(block_id, &sync_time, &status);
+    Block* block = block_manager.CreateBlock(block_id, &status);
     ASSERT_TRUE(block != NULL);
     // we will use thread pool and closure to operate this block
     // first hold all threads

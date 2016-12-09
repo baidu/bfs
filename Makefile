@@ -142,12 +142,13 @@ file_cache_test: src/chunkserver/test/file_cache_test.o
 	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
 
 block_manager_test: src/chunkserver/test/block_manager_test.o src/chunkserver/block_manager.o \
-	src/chunkserver/data_block.o src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
+	src/chunkserver/disk.o src/chunkserver/data_block.o src/chunkserver/counter_manager.o \
+	src/chunkserver/file_cache.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 data_block_test: src/chunkserver/test/data_block_test.o \
 	src/chunkserver/data_block.o src/chunkserver/counter_manager.o \
-   	src/chunkserver/file_cache.o
+	src/chunkserver/file_cache.o src/chunkserver/disk.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS)
