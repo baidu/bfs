@@ -109,7 +109,7 @@ void RaftNodeImpl::Election() {
         LOG(FATAL, "Store term & vote_for fail %s %ld", voted_for_.c_str(), current_term_);
     }
     voted_.insert(self_);
-    LOG(INFO, "Start Election: %ld %ld %ld", current_term_, log_index_, log_term_);
+    LOG(INFO, "Start Election: CT%ld LI%ld LT%ld", current_term_, log_index_, log_term_);
     for (uint32_t i = 0; i < nodes_.size(); i++) {
         if (nodes_[i] == self_) {
             continue;
@@ -258,7 +258,7 @@ void RaftNodeImpl::Vote(::google::protobuf::RpcController* controller,
 }
 
 bool RaftNodeImpl::GetLeader(std::string* leader) {
-    if (leader == NULL || node_state_ != kLeader) {
+    if (node_state_ != kLeader) {
         if (leader_ != "" && leader_ != self_ && leader) {
             *leader = leader_;
         }
@@ -269,7 +269,9 @@ bool RaftNodeImpl::GetLeader(std::string* leader) {
         ApplyLog();
         return false;
     }
-    *leader = self_;
+    if (leader) {
+        *leader = self_;
+    }
     return true;
 }
 
