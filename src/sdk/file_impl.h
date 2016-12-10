@@ -9,14 +9,13 @@
 #include <map>
 #include <set>
 #include <string>
+#include <memory>
 
 #include <common/atomic.h>
 #include <common/mutex.h>
 #include <common/timer.h>
 #include <common/sliding_window.h>
 #include <common/thread_pool.h>
-#include <boost/enable_shared_from_this.hpp>
-#include <boost/weak_ptr.hpp>
 
 #include "proto/nameserver.pb.h"
 #include "proto/chunkserver.pb.h"
@@ -67,7 +66,7 @@ struct LocatedBlocks {
     }
 };
 
-class FileImpl : public File, public boost::enable_shared_from_this<FileImpl> {
+class FileImpl : public File, public std::enable_shared_from_this<FileImpl> {
 public:
     FileImpl(FSImpl* fs, RpcClient* rpc_client, const std::string& name,
              int32_t flags, const WriteOptions& options);
@@ -81,10 +80,10 @@ public:
     /// Add buffer to  async write list
     void StartWrite();
     /// Send local buffer to chunkserver
-    static void BackgroundWrite(boost::weak_ptr<FileImpl> wk_fp);
+    static void BackgroundWrite(std::weak_ptr<FileImpl> wk_fp);
     /// Callback for sliding window
     static void OnWriteCommit(int32_t, int32_t);
-    static void WriteBlockCallback(boost::weak_ptr<FileImpl> wk_fp,
+    static void WriteBlockCallback(std::weak_ptr<FileImpl> wk_fp,
                             const WriteBlockRequest* request,
                             WriteBlockResponse* response,
                             bool failed, int error,
@@ -92,7 +91,7 @@ public:
                             WriteBuffer* buffer,
                             std::string cs_addr);
     /// When rpc buffer full deley send write reqeust
-    static void DelayWriteChunk(boost::weak_ptr<FileImpl> wk_fp,
+    static void DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
                                 WriteBuffer* buffer, const WriteBlockRequest* request,
                                 int retry_times, std::string cs_addr);
     int32_t Flush();
@@ -108,6 +107,8 @@ public:
 private:
     int32_t AddBlock();
     bool CheckWriteWindows();
+    int32_t FinishedNum();
+    bool ShouldSetError();
     void BackgroundWriteInternal();
     void WriteBlockCallbackInternal(const WriteBlockRequest* request,
                             WriteBlockResponse* response,
@@ -117,6 +118,8 @@ private:
                             std::string cs_addr);
     void DelayWriteChunkInternal(WriteBuffer* buffer, const WriteBlockRequest* request,
                                 int retry_times, std::string cs_addr);
+    bool IsChainsWrite();
+    bool EnoughReplica();
 private:
     FSImpl* fs_;                        ///< 文件系统
     RpcClient* rpc_client_;             ///< RpcClient

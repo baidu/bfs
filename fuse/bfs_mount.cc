@@ -200,7 +200,7 @@ int bfs_write(const char* path, const char* buf, size_t len, off_t offset, struc
             mfile->buf = new char[new_buf_len];
             mfile->buf_len = new_buf_len;
             int rlen = file->Pread(mfile->buf, mfile->offset, 0);
-            if (rlen < mfile->offset) {
+            if (rlen != 0 && rlen < mfile->offset) {
                 fprintf(stderr, BFS"Read(%ld) for randmon write(%s, %ld, %lu) fail", mfile->offset, path, offset, len);
                 delete[] mfile->buf;
                 mfile->buf = NULL;
@@ -252,9 +252,9 @@ int bfs_statfs(const char* path, struct statvfs*) {
 int bfs_flush(const char* path, struct fuse_file_info* finfo) {
     baidu::bfs::File* file = get_bfs_file(finfo);
     fprintf(stderr, BFS"flush(%s, %p)\n", path, file);
-    int32_t ret = file->Sync();
+    int32_t ret = file->Flush();
     if (ret != OK) {
-        fprintf(stderr, BFS"fsync(%s, %p) fail, error code %s\n",
+        fprintf(stderr, BFS"flush(%s, %p) fail, error code %s\n",
                 path, file, baidu::bfs::StrError(ret));
         return EIO;
     }
@@ -281,7 +281,7 @@ int bfs_release(const char* path, struct fuse_file_info* finfo) {
         }
         int wlen = file->Write(mfile->buf, mfile->buf_len);
         if (wlen < mfile->buf_len) {
-            fprintf(stderr, BFS"Write(%s, %ld) for release fail\n", path, mfile->buf_len);
+            fprintf(stderr, BFS"Write(%s, %d) for release fail\n", path, mfile->buf_len);
             retval = EACCES;
         }
         file->Close();
@@ -296,7 +296,7 @@ int bfs_fsync(const char* path, int datasync, struct fuse_file_info* finfo) {
     fprintf(stderr, BFS"fsync(%s, %p)\n", path, file);
     int32_t ret = file->Sync();
     if (ret != OK) {
-        fprintf(stderr, BFS"fsync(%s, %p) fail, error code\n",
+        fprintf(stderr, BFS"fsync(%s, %p) fail, error code: %s\n",
                 path, file, baidu::bfs::StrError(ret));
         return EIO;
     }
@@ -446,9 +446,15 @@ void bfs_destroy(void*) {
 
 int parse_args(int* argc, char* argv[]) {
     if (*argc < 2) {
-        fprintf(stderr, "usage %s mount_point [-d]"
+        fprintf(stderr, "Usage: %s mount_point [-d]"
                         " [-c bfs_cluster_addr]"
                         " [-p bfs_path]\n",
+                argv[0]);
+        fprintf(stderr, "\t-d                    Fuse debug (optional)\n"
+                        "\t-c bfs_cluster_addr   Ip:port\n"
+                        "\t-p bfs_path           The path in BFS which you mount to the mount_point\n"
+                        "Example:\n"
+                        "       %s /mnt/bfs -d -c 127.0.0.1:8827 -p /\n",
                 argv[0]);
         return 1;
     }

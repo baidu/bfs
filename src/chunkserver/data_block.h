@@ -45,17 +45,17 @@ public:
     int64_t Size() const;
     std::string GetFilePath() const;
     BlockMeta GetMeta() const;
-    int64_t DiskUsed();
+    int64_t DiskUsed() const;
     bool SetDeleted();
     void SetVersion(int64_t version);
-    int GetVersion();
-    int32_t GetLastSaq();
+    int GetVersion() const;
+    int32_t GetLastSeq() const;
     /// Set expected slice num, for IsComplete.
     void SetSliceNum(int32_t num);
     /// Is all slice is arrival(Notify by the sliding window)
-    bool IsComplete();
+    bool IsComplete() const;
     /// Block is closed
-    bool IsFinished();
+    bool IsFinished() const;
     /// Read operation.
     int64_t Read(char* buf, int64_t len, int64_t offset);
     /// Write operation.
@@ -64,12 +64,12 @@ public:
     /// Append to block buffer
     StatusCode Append(int32_t seq, const char*buf, int64_t len);
     void SetRecover();
-    bool IsRecover();
+    bool IsRecover() const;
     /// Flush block to disk.
     bool Close();
     void AddRef();
     void DecRef();
-    int GetRef();
+    int GetRef() const;
 private:
     /// Open corresponding file for write.
     bool OpenForWrite();
@@ -80,6 +80,10 @@ private:
     enum Type {
         InDisk,
         InMem,
+    };
+    enum FdStatus {
+        kNotCreated = -1,
+        kClosed = -2
     };
     ThreadPool* thread_pool_;
     BlockMeta   meta_;

@@ -61,9 +61,10 @@ public:
     bool GetBlock(int64_t block_id, NSBlock* block);
     bool GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, int64_t* block_size, RecoverStat* status);
     bool ChangeReplicaNum(int64_t block_id, int32_t replica_num);
-    void AddNewBlock(int64_t block_id, int32_t replica,
-                     int64_t version, int64_t block_size,
-                     const std::vector<int32_t>* init_replicas);
+    void AddBlock(int64_t block_id, int32_t replica,
+                  const std::vector<int32_t>& init_replicas);
+    void RebuildBlock(int64_t block_id, int32_t replica,
+                      int64_t version, int64_t size);
     bool UpdateBlockInfo(int64_t block_id, int32_t server_id, int64_t block_size,
                          int64_t block_version);
     void RemoveBlocksForFile(const FileInfo& file_info, std::map<int64_t, std::set<int32_t> >* blocks);

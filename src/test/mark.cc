@@ -3,13 +3,15 @@
 // found in the LICENSE file.
 //
 
-#include <gflags/gflags.h>
 #include <vector>
 #include <string>
 #include <iostream>
+#include <functional>
+#include <assert.h>
+
 #include <common/string_util.h>
 #include <common/thread_pool.h>
-#include <boost/bind.hpp>
+#include <gflags/gflags.h>
 
 #include "mark.h"
 
@@ -20,7 +22,7 @@ DEFINE_string(mode, "put", "[put | read]");
 DEFINE_int64(count, 0, "put/read/delete file count");
 DEFINE_int32(thread, 5, "thread num");
 DEFINE_int32(seed, 301, "random seed");
-DEFINE_int32(file_size, 1024, "file size in KB");
+DEFINE_int64(file_size, 1024, "file size in KB");
 DEFINE_string(folder, "test", "write data to which folder");
 DEFINE_bool(break_on_failure, true, "exit when error occurs");
 
@@ -46,7 +48,8 @@ public:
     uint32_t Uniform(int n) { return Next() % n; }
 };
 
-Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10), exit_(false) {
+Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10),
+               exit_(false), has_error_(false) {
     if (!FS::OpenFileSystem(FLAGS_nameserver_nodes.c_str(), &fs_, FSOptions())) {
         std::cerr << "Open filesytem failed " << FLAGS_nameserver_nodes << std::endl;
         exit(EXIT_FAILURE);
@@ -76,41 +79,41 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
     File* file;
     if (OK != fs_->OpenFile(filename.c_str(), O_WRONLY | O_TRUNC, 664, &file, WriteOptions())) {
         if (FLAGS_break_on_failure) {
+            has_error_ = true;
             std::cerr << "OpenFile failed " << filename << std::endl;
-            exit(EXIT_FAILURE);
         } else {
-            FinishPut(file, thread_id);
             std::cerr << "[Failed] " << filename << std::endl;
-            return;
         }
+        FinishPut(file, thread_id);
+        return;
     }
     int64_t len = 0;
     int64_t base_size = (1 << 20) / 2;
     while (len < file_size_) {
-        uint32_t w = base_size + rand_[thread_id]->Uniform(base_size);
+        uint64_t w = base_size + rand_[thread_id]->Uniform(base_size);
 
         uint32_t write_len = file->Write(base.c_str(), w);
         if (write_len != w) {
             if (FLAGS_break_on_failure) {
+                has_error_ = true;
                 std::cerr << "Write length does not match write_len = "
                         << write_len << " should be " << w << std::endl;
-                exit(EXIT_FAILURE);
             } else {
-                FinishPut(file, thread_id);
                 std::cerr << "[Failed] " << filename << std::endl;
-                return;
             }
+            FinishPut(file, thread_id);
+            return;
         }
         len += write_len;
     }
     if (!FinishPut(file, thread_id)) {
         if (FLAGS_break_on_failure) {
+            has_error_ = true;
             std::cerr << "Close file failed " << filename << std::endl;
-            exit(EXIT_FAILURE);
         } else {
             std::cerr << "[Failed] " << filename << std::endl;
-            return;
         }
+        return;
     }
     put_counter_.Inc();
     all_counter_.Inc();
@@ -131,13 +134,13 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     File* file;
     if (OK != fs_->OpenFile(filename.c_str(), O_RDONLY, &file, ReadOptions())) {
         if (FLAGS_break_on_failure) {
+            has_error_ = true;
             std::cerr << "Open file failed " << filename << std::endl;
-            exit(EXIT_FAILURE);
         } else {
-            FinishRead(file);
             std::cerr << "[Failed] " << filename << std::endl;
-            return;
         }
+        FinishRead(file);
+        return;
     }
     int64_t buf_size = 1 << 20;
     int64_t base_size = buf_size / 2;
@@ -145,31 +148,31 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     int64_t bytes = 0;
     int32_t len = 0;
     while (1) {
-        uint32_t r = base_size + rand_[thread_id]->Uniform(base_size);
+        uint64_t r = base_size + rand_[thread_id]->Uniform(base_size);
         len = file->Read(buf, r);
         if (len < 0) {
             if (FLAGS_break_on_failure) {
+                has_error_ = true;
                 std::cerr << "Read length error" << std::endl;
-                exit(EXIT_FAILURE);
             } else {
-                FinishRead(file);
                 std::cerr << "[Failed] " << filename << std::endl;
-                return;
             }
+            FinishRead(file);
+            return;
         }
         if (len == 0) {
             break;
         }
         if (base.substr(0, len) != std::string(buf, len)) {
             if (FLAGS_break_on_failure) {
+                has_error_ = true;
                 std::cerr << "Read varify failed " << filename << " : bytes = " << bytes
                         << " len = " << len << " r = " << r << std::endl;
-                exit(EXIT_FAILURE);
             } else {
-                FinishRead(file);
                 std::cerr << "[Failed] " << filename << std::endl;
-                return;
             }
+            FinishRead(file);
+            return;
         }
         bytes += len;
     }
@@ -177,23 +180,23 @@ void Mark::Read(const std::string& filename, const std::string& base, int thread
     fs_->Stat(filename.c_str(), &info);
     if (bytes != info.size) {
         if (FLAGS_break_on_failure) {
+            has_error_ = true;
             std::cerr << "File size mismatch " << filename << " size = " << bytes
                     << " should be " << info.size << std::endl;
-            exit(EXIT_FAILURE);
         } else {
-            FinishRead(file);
             std::cerr << "[Failed] " << filename << std::endl;
-            return;
         }
+        FinishRead(file);
+        return;
     }
     if (!FinishRead(file)) {
         if (FLAGS_break_on_failure) {
+            has_error_ = true;
             std::cerr << "Close file failed " << filename << std::endl;
-            exit(EXIT_FAILURE);
         } else {
             std::cerr << "[Failed] " << filename << std::endl;
-            return;
         }
+        return;
     }
     read_counter_.Inc();
     all_counter_.Inc();
@@ -215,6 +218,9 @@ void Mark::PutWrapper(int thread_id) {
     while (FLAGS_count == 0 || count != FLAGS_count) {
         std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" + common::NumToString(name_id);
         Put(filename, base, thread_id);
+        if (has_error_ && FLAGS_break_on_failure) {
+            break;
+        }
         ++name_id;
         ++count;
     }
@@ -230,6 +236,9 @@ void Mark::ReadWrapper(int thread_id) {
     while (FLAGS_count == 0 || count != FLAGS_count) {
         std::string filename = "/" + FLAGS_folder + "/" + prefix + "/" + common::NumToString(name_id);
         Read(filename, base, thread_id);
+        if (has_error_ && FLAGS_break_on_failure) {
+            break;
+        }
         ++name_id;
         ++count;
     }
@@ -242,7 +251,7 @@ void Mark::PrintStat() {
     put_counter_.Set(0);
     del_counter_.Set(0);
     read_counter_.Set(0);
-    thread_pool_->DelayTask(1000, boost::bind(&Mark::PrintStat, this));
+    thread_pool_->DelayTask(1000, std::bind(&Mark::PrintStat, this));
 }
 
 void Mark::Run() {
@@ -254,19 +263,23 @@ void Mark::Run() {
             fs_->CreateDirectory(("/" + FLAGS_folder + "/" + prefix).c_str());
         }
         for (int i = 0; i < FLAGS_thread; ++i) {
-            thread_pool_->AddTask(boost::bind(&Mark::PutWrapper, this, i));
+            thread_pool_->AddTask(std::bind(&Mark::PutWrapper, this, i));
         }
     } else if (FLAGS_mode == "read") {
         for (int i = 0; i < FLAGS_thread; ++i) {
-            thread_pool_->AddTask(boost::bind(&Mark::ReadWrapper, this, i));
+            thread_pool_->AddTask(std::bind(&Mark::ReadWrapper, this, i));
         }
     }
-    while (!exit_) {
+    while (!exit_ && !has_error_) {
         sleep(1);
     }
     thread_pool_->Stop(true);
     if (FLAGS_count != 0) {
         std::cout << "Total " << FLAGS_mode << " " << FLAGS_count * FLAGS_thread << std::endl;
+    }
+    if (has_error_) {
+        std::cerr << "break on failure" << std::endl;
+        exit(EXIT_FAILURE);
     }
 }
 

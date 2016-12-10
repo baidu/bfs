@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 bash ./clear.sh
 
@@ -25,8 +25,9 @@ echo '--block_store_path=./data1,./data2' >> bfs.flag
 echo '--bfs_bug_tolerant=false' >> bfs.flag
 echo '--select_chunkserver_local_factor=0' >> bfs.flag
 echo '--bfs_web_kick_enable=true' >> bfs.flag
-echo '--ha_strategy=$strategy' >> bfs.flag
+echo "--ha_strategy=$strategy" >> bfs.flag
 echo '--nameserver_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829' >> bfs.flag
+echo '--sdk_wirte_mode=fanout' >> bfs.flag
 
 for((i=0;i<$ns_num;i++));
 do

@@ -5,7 +5,6 @@
 #include "block_mapping.h"
 
 #include <vector>
-#include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
 #include <common/counter.h>
@@ -84,32 +83,16 @@ bool BlockMapping::ChangeReplicaNum(int64_t block_id, int32_t replica_num) {
     return true;
 }
 
-void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
-                               int64_t version, int64_t size,
-                               const std::vector<int32_t>* init_replicas) {
+void BlockMapping::AddBlock(int64_t block_id, int32_t replica,
+                            const std::vector<int32_t>& init_replicas) {
     NSBlock* nsblock = NULL;
-    nsblock = new NSBlock(block_id, replica, version, size);
-    if (init_replicas) {
-        if (nsblock->recover_stat == kNotInRecover) {
-            nsblock->replica.insert(init_replicas->begin(), init_replicas->end());
-        } else {
-            nsblock->incomplete_replica.insert(init_replicas->begin(), init_replicas->end());
-        }
-        LOG(DEBUG, "Init block info: #%ld ", block_id);
+    nsblock = new NSBlock(block_id, replica, -1, 0);
+    if (nsblock->recover_stat == kNotInRecover) {
+        nsblock->replica.insert(init_replicas.begin(), init_replicas.end());
     } else {
-        if (size) {
-            nsblock->recover_stat = kLost;
-            lost_blocks_.insert(block_id);
-        } else {
-            nsblock->recover_stat = kBlockWriting;
-        }
-
-        if (version < 0) {
-            LOG(INFO, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
-        } else {
-            LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
-        }
+        nsblock->incomplete_replica.insert(init_replicas.begin(), init_replicas.end());
     }
+    LOG(DEBUG, "Init block info: #%ld ", block_id);
     g_blocks_num.Inc();
     MutexLock lock(&mu_);
     common::timer::TimeChecker insert_time;
@@ -117,6 +100,32 @@ void BlockMapping::AddNewBlock(int64_t block_id, int32_t replica,
         block_map_.insert(std::make_pair(block_id, nsblock));
     assert(ret.second == true);
     insert_time.Check(10 * 1000, "[AddNewBlock] InsertToBlockMapping");
+}
+
+void BlockMapping::RebuildBlock(int64_t block_id, int32_t replica,
+                                int64_t version, int64_t size) {
+    NSBlock* nsblock = NULL;
+    nsblock = new NSBlock(block_id, replica, version, size);
+    if (size) {
+        nsblock->recover_stat = kLost;
+        lost_blocks_.insert(block_id);
+    } else {
+        nsblock->recover_stat = kBlockWriting;
+    }
+
+    if (version < 0) {
+        LOG(INFO, "Rebuild writing block #%ld V%ld %ld", block_id, version, size);
+    } else {
+        LOG(DEBUG, "Rebuild block #%ld V%ld %ld", block_id, version, size);
+    }
+
+    g_blocks_num.Inc();
+    MutexLock lock(&mu_);
+    common::timer::TimeChecker insert_time;
+    std::pair<NSBlockMap::iterator, bool> ret =
+        block_map_.insert(std::make_pair(block_id, nsblock));
+    assert(ret.second == true);
+    insert_time.Check(10 * 1000, "[RebuildBlock] InsertToBlockMapping");
 }
 
 bool BlockMapping::UpdateWritingBlock(NSBlock* nsblock,
@@ -675,7 +684,7 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
         LOG(INFO, "PickRecoverBlocks for C%d #%ld %s",
                 cs_id, block_id, RecoverStat_Name(cur_block->recover_stat).c_str());
         thread_pool_->DelayTask(timeout * 1000,
-            boost::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
+            std::bind(&BlockMapping::CheckRecover, this, cs_id, block_id));
         target_set->erase(it++);
     }
     pick_timer.Check(100 * 1000, "[PickRecoverBlocks] pick recover");

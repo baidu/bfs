@@ -23,7 +23,7 @@ DEFINE_int32(keepalive_timeout, 10, "Chunkserver keepalive timeout");
 DEFINE_int32(default_replica_num, 3, "Default replica num of data block");
 DEFINE_int32(nameserver_log_level, 4, "Nameserver log level");
 DEFINE_string(nameserver_warninglog, "./wflog", "Warning log file");
-DEFINE_int32(nameserver_start_recover_timeout, 120, "Nameserver starts recover in second");
+DEFINE_int32(nameserver_start_recover_timeout, 3600, "Nameserver starts recover in second");
 DEFINE_int32(recover_speed, 100, "Max num of block to recover for one chunkserver");
 DEFINE_int32(recover_dest_limit, 5, "Number of recover dest");
 DEFINE_int32(hi_recover_timeout, 180, "Recover timeout for high priority blocks");
@@ -71,9 +71,9 @@ DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 DEFINE_int32(chunkserver_use_root_partition, 1, "Should chunkserver use root partition, 0: forbidden");
 DEFINE_bool(chunkserver_auto_clean, true, "If namespace version mismatch, chunkserver clean itself");
 // SDK
+DEFINE_string(sdk_wirte_mode, "chains", "Sdk write strategy, choose from [chains, fanout]");
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
-DEFINE_string(sdk_write_mode, "chains", "Sdk write mode: chains/fan-out");
 DEFINE_int32(sdk_createblock_retry, 5, "Create block retry times before fail");
 DEFINE_int32(sdk_write_retry_times, 5, "Write retry times before fail");
 

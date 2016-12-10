@@ -11,7 +11,7 @@ master的数据是落地的，不一定非得全内存，通过LRU内存cache保
 
 ## 文件meta信息
 文件meta信息存储在master会导致master负载过高（内存，cpu）
-我们选择对与不分块的文件， 讲文件meta存储在chunkserver，如果用户要list，那仅需要访问master，但如果要获取文件大小等信息，那就必须得访问对应的chunkserver了，master仅存储namespace和每个文件在哪些chunkserver上。
+我们选择对与不分块的文件， 将文件meta存储在chunkserver，如果用户要list，那仅需要访问master，但如果要获取文件大小等信息，那就必须得访问对应的chunkserver了，master仅存储namespace和每个文件在哪些chunkserver上。
 
 ## 写数据流
 有两个选择：<br />

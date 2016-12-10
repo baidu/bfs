@@ -10,7 +10,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
-#include <boost/bind.hpp>
+#include <functional>
+#include <algorithm>
 
 #include <gflags/gflags.h>
 #include <leveldb/db.h>
@@ -98,7 +99,7 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
             disk_quota += user_quota;
         } else {
             if (stat_ret != 0) {
-                LOG(WARNING, "Stat store_path %s fail, ignore it", disk_path.c_str());
+                LOG(WARNING, "Stat store_path %s fail: %s, ignore it", disk_path.c_str(), strerror(errno));
             } else {
                 LOG(WARNING, "%s's fsid is same to %s, ignore it",
                     disk_path.c_str(), fs_map[fsid_str].c_str());
@@ -234,15 +235,15 @@ bool BlockManager::SetNameSpaceVersion(int64_t version) {
     return true;
 }
 
-bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
+int64_t BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
     leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
+    int64_t largest_id = 0;
     for (it->Seek(BlockId2Str(offset)); it->Valid(); it->Next()) {
         int64_t block_id = 0;
         if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
             LOG(WARNING, "[ListBlocks] Unknown meta key: %s\n",
                 it->key().ToString().c_str());
-            delete it;
-            return false;
+            break;
         }
         BlockMeta meta;
         bool ret = meta.ParseFromArray(it->value().data(), it->value().size());
@@ -254,13 +255,14 @@ bool BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, in
         }
         assert(meta.block_id() == block_id);
         blocks->push_back(meta);
+        largest_id = block_id;
         // LOG(DEBUG, "List block %ld", block_id);
         if (--num <= 0) {
             break;
         }
     }
     delete it;
-    return true;
+    return largest_id;
 }
 
 Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status) {
@@ -367,26 +369,16 @@ bool BlockManager::RemoveBlock(int64_t block_id) {
         return false;
     }
 
-    int64_t du = block->DiskUsed();
-    std::string file_path = block->GetFilePath();
-    file_cache_->EraseFileCache(file_path);
-    int ret = remove(file_path.c_str());
-    if (ret != 0 && (errno !=2 || du > 0)) {
-        LOG(WARNING, "Remove #%ld disk file %s %ld bytes fails: %d (%s)",
-            block_id, file_path.c_str(), du, errno, strerror(errno));
-    } else {
-        LOG(INFO, "Remove #%ld disk file done: %s\n",
-            block_id, file_path.c_str());
-    }
+    // disk file will be removed in block's deconstrucor
+    file_cache_->EraseFileCache(block->GetFilePath());
 
+    bool ret = false;
     if (meta_removed) {
         MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
         block_map_.erase(block_id);
         block->DecRef();
         LOG(INFO, "Remove #%ld meta info done, ref= %ld", block_id, block->GetRef());
         ret = true;
-    } else {
-        ret = false;
     }
     block->DecRef();
     return ret;
@@ -418,7 +410,7 @@ bool BlockManager::RemoveAllBlocksAsync() {
             delete it;
             return false;
         }
-        thread_pool_->AddTask(boost::bind(&BlockManager::RemoveBlock, this, block_id));
+        thread_pool_->AddTask(std::bind(&BlockManager::RemoveBlock, this, block_id));
     }
     delete it;
     return true;

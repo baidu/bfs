@@ -5,7 +5,7 @@
 // Author: yanshiguang02@baidu.com
 
 #include <stdio.h>
-#include <boost/bind.hpp>
+#include <functional>
 
 #include <sofa/pbrpc/pbrpc.h>
 #include <gflags/gflags.h>
@@ -31,7 +31,7 @@ namespace raft {
 class KvServer : public RaftKv {
 public:
     KvServer(RaftNodeImpl* raft_node) : raft_node_(raft_node), applied_index_(0) {
-        raft_node_->Init(boost::bind(&KvServer::LogCallback, this, _1));
+        raft_node_->Init(std::bind(&KvServer::LogCallback, this, std::placeholders::_1));
     }
     void LogCallback(const std::string& log) {
         PutRequest request;
@@ -60,7 +60,7 @@ public:
         request->SerializeToString(&log);
         LOG(INFO, "Put start: %s -> %s", request->key().c_str(), request->value().c_str());
         raft_node_->AppendLog(log,
-            boost::bind(&KvServer::PutCallback, this, request, response, done, _1));
+            std::bind(&KvServer::PutCallback, this, request, response, done, std::placeholders::_1));
     }
     void PutCallback(const PutRequest* request,
                      PutResponse* response,

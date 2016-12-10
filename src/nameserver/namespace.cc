@@ -16,7 +16,6 @@
 #include <common/util.h>
 #include <common/atomic.h>
 #include <common/string_util.h>
-#include <boost/bind.hpp>
 
 #include "nameserver/sync.h"
 
@@ -36,7 +35,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     block_id_upbound_(1), next_block_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
-    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size*1024L*1024L);
+    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
         db_ = NULL;
@@ -48,7 +47,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     }
 }
 
-void NameSpace::Activate(boost::function<void (const FileInfo&)> callback, NameServerLog* log) {
+void NameSpace::Activate(std::function<void (const FileInfo&)> callback, NameServerLog* log) {
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
@@ -128,8 +127,9 @@ void NameSpace::SetupRoot() {
     root_path_.set_name("");
     root_path_.set_parent_entry_id(kRootEntryid);
     root_path_.set_type(01755);
-    root_path_.set_ctime(static_cast<uint32_t>(version_/1000000));
+    root_path_.set_ctime(static_cast<uint32_t>(version_ / 1000000));
 }
+
 /// New SplitPath
 /// /home/dirx/filex
 ///       diry/filey
@@ -186,6 +186,15 @@ bool NameSpace::DeleteFileInfo(const std::string file_key, NameServerLog* log) {
     return true;
 }
 bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
+    {
+        MutexLock lock(&mu_);
+        for (auto i = 0; i < file_info.blocks_size(); ++i) {
+            if (file_info.blocks(i) >= block_id_upbound_) {
+                UpdateBlockIdUpbound(log);
+            }
+        }
+    }
+
     FileInfo file_info_for_ldb;
     file_info_for_ldb.CopyFrom(file_info);
     file_info_for_ldb.clear_cs_addrs();
@@ -223,9 +232,9 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
     int64_t parent_id = kRootEntryid;
     int depth = paths.size();
     std::string info_value;
-    for (int i=0; i < depth-1; ++i) {
+    for (int i = 0; i < depth - 1; ++i) {
         if (!LookUp(parent_id, paths[i], &file_info)) {
-            file_info.set_type((1<<9)|0755);
+            file_info.set_type((1 << 9) | 0755);
             file_info.set_ctime(time(NULL));
             file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
             file_info.SerializeToString(&info_value);
@@ -244,13 +253,17 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
         parent_id = file_info.entry_id();
     }
 
-    const std::string& fname = paths[depth-1];
+    const std::string& fname = paths[depth - 1];
     bool exist = LookUp(parent_id, fname, &file_info);
     if (exist) {
         if ((flags & O_TRUNC) == 0) {
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
             return kFileExists;
         } else {
+            if (IsDir(file_info.type())) {
+                LOG(INFO, "CreateFile %s fail: directory with same name exist", fname.c_str());
+                return kFileExists;
+            }
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 blocks_to_remove->push_back(file_info.blocks(i));
             }
@@ -346,6 +359,12 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         if (!IsDir(path_file.type())) {
             LOG(INFO, "Rename %s to %s fail: %s is not a directory",
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
+            return kBadParameter;
+        }
+        if (path_file.entry_id() == old_file.entry_id()) {
+            LOG(INFO, "Rename %s to %s fail: %s is the parent directory of %s",
+                    old_path.c_str(), new_path.c_str(), old_path.c_str(),
+                    new_path.c_str());
             return kBadParameter;
         }
         parent_id = path_file.entry_id();
@@ -553,7 +572,7 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     return ret_status;
 }
 
-bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback) {
+bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) {
     int64_t block_num = 0;
     int64_t file_num = 0;
     std::set<int64_t> entry_id_set;
@@ -576,7 +595,7 @@ bool NameSpace::RebuildBlockMap(boost::function<void (const FileInfo&)> callback
                 ++block_num;
             }
             ++file_num;
-            if (!callback.empty()) {
+            if (callback) {
                 callback(file_info);
             }
         } else {
@@ -666,7 +685,6 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     block_id_upbound_key.append("block_id_upbound");
     std::string block_id_upbound_str;
     block_id_upbound_str.resize(8);
-    assert(next_block_id_ == block_id_upbound_);
     block_id_upbound_ += FLAGS_block_id_allocation_size;
     *(reinterpret_cast<int64_t*>(&block_id_upbound_str[0])) = block_id_upbound_;
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), block_id_upbound_key, block_id_upbound_str);
@@ -695,11 +713,8 @@ void NameSpace::InitBlockIdUpbound(NameServerLog* log) {
     }
 }
 
-int64_t NameSpace::GetNewBlockId(NameServerLog* log) {
+int64_t NameSpace::GetNewBlockId() {
     MutexLock lock(&mu_);
-    if (next_block_id_ == block_id_upbound_) {
-        UpdateBlockIdUpbound(log);
-    }
     return next_block_id_++;
 }
 

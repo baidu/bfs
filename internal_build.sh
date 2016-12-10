@@ -1,16 +1,15 @@
-#!/bin/bash
-
-set -e -u -E # this script will exit if any sub-command fails
+#!/usr/bin/env bash
+set -x
 
 ########################################
 # download & build depend software
 ########################################
 
 WORK_DIR=`pwd`
-DEPS_SOURCE=`pwd`/thirdsrc
-DEPS_PREFIX=`pwd`/thirdparty
+DEPS_SOURCE=${WORK_DIR}/thirdsrc
+DEPS_PREFIX=${WORK_DIR}/thirdparty
 DEPS_CONFIG="--prefix=${DEPS_PREFIX} --disable-shared --with-pic"
-FLAG_DIR=`pwd`/.build
+FLAG_DIR=${WORK_DIR}/.build
 
 export PATH=${DEPS_PREFIX}/bin:$PATH
 mkdir -p ${DEPS_SOURCE} ${DEPS_PREFIX} ${FLAG_DIR}
@@ -159,10 +158,9 @@ fi
 if [ ! -f "${FLAG_DIR}/common" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libcommon.a" ]; then
     rm -rf common
-    git clone https://github.com/baidu/common
+    git clone -b cpp11 https://github.com/baidu/common
     cd common
     sed -i 's/^PREFIX=.*/PREFIX=..\/..\/thirdparty/' config.mk
-    sed -i '/^INCLUDE_PATH=*/s/$/ -I..\/..\/thirdparty\/boost_1_57_0/g' Makefile
     make -j4
     make install
     cd -
@@ -181,14 +179,13 @@ echo "PROTOBUF_PATH=./thirdparty" >> depends.mk
 echo "PROTOC_PATH=./thirdparty/bin/" >> depends.mk
 echo 'PROTOC=$(PROTOC_PATH)protoc' >> depends.mk
 echo "PBRPC_PATH=./thirdparty" >> depends.mk
-echo "BOOST_PATH=./thirdparty/boost_1_57_0" >> depends.mk
 echo "GFLAG_PATH=./thirdparty" >> depends.mk
 echo "GTEST_PATH=./thirdparty" >> depends.mk
 echo "COMMON_PATH=./thirdparty" >> depends.mk
 echo "TCMALLOC_PATH=./thirdparty" >> depends.mk
 
 ########################################
-# build tera
+# build bfs
 ########################################
 
 make clean
