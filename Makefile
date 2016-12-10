@@ -133,6 +133,9 @@ raft_kv: src/nameserver/test/raft_test.o src/nameserver/raft_node.o src/nameserv
 kv_client: src/nameserver/test/kv_client.o $(OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
+kv_client: src/nameserver/test/kv_client.o $(OBJS)
+	$(CXX) $^ -o $@ $(LDFLAGS)
+
 location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
