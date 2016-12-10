@@ -13,9 +13,7 @@
 #include <common/string_util.h>
 
 #include "nameserver/raft_node.h"
-
-
-DEFINE_string(raft_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
+#include "proto/raft_kv.pb.h"
 
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
@@ -29,48 +27,78 @@ DECLARE_string(raftdb_path);
 
 namespace baidu {
 namespace bfs {
-
-class RaftTest {
+namespace raft {
+class KvServer : public RaftKv {
 public:
-    RaftTest(RaftNodeImpl* raft_node) : raft_node_(raft_node), applied_index_(0) {
+    KvServer(RaftNodeImpl* raft_node) : raft_node_(raft_node), applied_index_(0) {
+        raft_node_->Init(boost::bind(&KvServer::LogCallback, this, _1));
     }
     void LogCallback(const std::string& log) {
-        int t = 0;
-        for (uint32_t i = 9; i < log.size(); i++) {
-            t *= 10;
-            t += log[i] - '0';
-        }
-        LOG(INFO, "[LogCallback] %d %s", t, log.c_str());
-        applied_index_ = t;
-    }
-    void Run() {
-        std::string leader;
-        std::vector<std::string> nodes;
-        common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);
-        if (static_cast<int64_t>(nodes.size()) < FLAGS_node_index) {
-            LOG(WARNING, "Load nameserver nodes fail");
+        PutRequest request;
+        if (!request.ParseFromString(log)) {
+            LOG(FATAL, "Parse log fail");
             return;
         }
-        std::string self = nodes[FLAGS_node_index];
-        raft_node_->Init(boost::bind(&RaftTest::LogCallback, this, _1));
-        while (applied_index_ < 10000) {
-            if (raft_node_->GetLeader(&leader) && leader == self) {
-                applied_index_ ++;
-                char buf[64];
-                snprintf(buf, sizeof(buf), "LogEntry-%05ld", applied_index_);
-                bool ret = raft_node_->AppendLog(buf);
-                LOG(INFO, "[RaftTest] Append log: \"%s\" return %d", buf, ret);
-            } else {
-                LOG(INFO, "[RaftTest] Leader is %s", leader.c_str());
-            }
-            sleep(1);
+        if (request.del()) {
+            db_.erase(request.key());
+        } else {
+            db_[request.key()] = request.value();
         }
+        LOG(INFO, "%s %s -> %s", request.del()?"Delete":"Put",
+            request.key().c_str(), request.value().c_str());
+    }
+    virtual void Put(::google::protobuf::RpcController* controller,
+                     const PutRequest* request,
+                     PutResponse* response,
+                     ::google::protobuf::Closure* done) {
+        if (!raft_node_->GetLeader(NULL)) {
+            response->set_status(1);
+            done->Run();
+            return;
+        }
+        std::string log;
+        request->SerializeToString(&log);
+        LOG(INFO, "Put start: %s -> %s", request->key().c_str(), request->value().c_str());
+        raft_node_->AppendLog(log,
+            boost::bind(&KvServer::PutCallback, this, request, response, done, _1));
+    }
+    void PutCallback(const PutRequest* request,
+                     PutResponse* response,
+                     ::google::protobuf::Closure* done,
+                     bool ret) {
+        if (ret != 0) {
+            response->set_status(2);
+        }
+        response->set_status(0);
+        LOG(INFO, "Put done: %s %s -> %s",
+            ret ? "sucess" : "fail",
+            request->key().c_str(), request->value().c_str());
+        done->Run();
+    }
+    virtual void Get(::google::protobuf::RpcController* controller,
+                     const GetRequest* request,
+                     GetResponse* response,
+                     ::google::protobuf::Closure* done) {
+        const std::string& key = request->key();
+        std::map<std::string, std::string>::const_iterator it = db_.find(key);
+        int ret = 0;
+        if (it == db_.end()) {
+            ret = 404;
+        } else {
+            response->set_value(it->second);
+        }
+        LOG(INFO, "Get %s %d return %s",
+            key.c_str(), ret, response->value().c_str());
+        response->set_status(ret);
+        done->Run();
     }
 private:
     RaftNodeImpl* raft_node_;
+    std::map<std::string, std::string> db_;
     int64_t applied_index_;
 };
 
+}
 }
 }
 
@@ -85,22 +113,25 @@ int main(int argc, char* argv[])
     ::baidu::common::SetLogLevel(FLAGS_nameserver_log_level);
     ::baidu::common::SetWarningFile(FLAGS_nameserver_warninglog.c_str());
 
-    LOG(baidu::common::INFO, "NameServer start ...");
+    LOG(baidu::common::INFO, "RaftKv start ...");
 
     // Service
     baidu::bfs::RaftNodeImpl* raft_service =
-        new baidu::bfs::RaftNodeImpl(FLAGS_raft_nodes, FLAGS_node_index, FLAGS_raftdb_path);
-
+        new baidu::bfs::RaftNodeImpl(FLAGS_nameserver_nodes,
+                                     FLAGS_node_index, FLAGS_raftdb_path);
+    baidu::bfs::raft::KvServer* kv_service =
+        new baidu::bfs::raft::KvServer(raft_service);
     // rpc_server
     sofa::pbrpc::RpcServerOptions options;
-
     sofa::pbrpc::RpcServer rpc_server(options);
 
     // Register
     if (!rpc_server.RegisterService(raft_service)) {
         return EXIT_FAILURE;
     }
-
+    if (!rpc_server.RegisterService(kv_service)) {
+        return EXIT_FAILURE;
+    }
     // Start
     std::vector<std::string> nameserver_nodes;
     baidu::common::SplitString(FLAGS_nameserver_nodes, ",", &nameserver_nodes);
@@ -115,11 +146,11 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    baidu::bfs::RaftTest test(raft_service);
-    test.Run();
+    LOG(baidu::common::INFO, "RpcServer start.");
+    rpc_server.Run();
 
     //delete webservice;
-    LOG(baidu::common::WARNING, "Nameserver exit");
+    LOG(baidu::common::WARNING, "RaftKv exit");
     return EXIT_SUCCESS;
 }
 
