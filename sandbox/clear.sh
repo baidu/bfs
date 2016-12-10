@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 killall -9 nameserver
 killall -9 chunkserver

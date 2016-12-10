@@ -23,6 +23,7 @@
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
+DECLARE_string(sdk_wirte_mode);
 
 namespace baidu {
 namespace bfs {
@@ -303,6 +304,14 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     if (!(flags & O_WRONLY)) {
         return BAD_PARAMETER;
     }
+    WriteOptions write_option = options;
+    if (options.write_mode == kWriteDefault) {
+        if (FLAGS_sdk_wirte_mode == "fanout") {
+            write_option.write_mode = kWriteFanout;
+        } else {
+            write_option.write_mode = kWriteChains;
+        }
+    }
     common::timer::AutoTimer at(100, "OpenFile", path);
     int32_t ret = OK;
     *file = NULL;
@@ -313,7 +322,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     request.set_sequence_id(0);
     request.set_flags(flags);
     request.set_mode(mode&0777);
-    request.set_replica_num(options.replica);
+    request.set_replica_num(write_option.replica);
     bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 1);
     if (!rpc_ret || response.status() != kOK) {
@@ -325,7 +334,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
             ret = GetErrorCode(response.status());
         }
     } else {
-        *file = new FileImplWrapper(this, rpc_client_, path, flags, options);
+        *file = new FileImplWrapper(this, rpc_client_, path, flags, write_option);
     }
     return ret;
 }
@@ -399,6 +408,7 @@ int32_t FSImpl::Rename(const char* oldpath, const char* newpath) {
     return OK;
 }
 int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
+    /*
     ChangeReplicaNumRequest request;
     ChangeReplicaNumResponse response;
     request.set_file_name(file_name);
@@ -416,7 +426,8 @@ int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
                 file_name, replica_num, StatusCode_Name(response.status()).c_str());
         return GetErrorCode(response.status());
     }
-    return OK;
+    */
+    return PERMISSION_DENIED;
 }
 int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     SysStatRequest request;
@@ -428,8 +439,8 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
         return TIMEOUT;
     }
     bool stat_all = (stat_name == "StatAll");
-    common::TPrinter tp(7);
-    tp.AddRow(7, "", "id", "address", "data_size", "blocks", "alive", "last_check");
+    common::TPrinter tp(8);
+    tp.AddRow(8, "", "id", "address", "data_size", "blocks", "tag", "alive", "last_check");
     for (int i = 0; i < response.chunkservers_size(); i++) {
         const ChunkServerInfo& chunkserver = response.chunkservers(i);
         if (!stat_all && chunkserver.is_dead()) {
@@ -441,6 +452,7 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
         vs.push_back(chunkserver.address());
         vs.push_back(common::HumanReadableString(chunkserver.data_size()) + "B");
         vs.push_back(common::NumToString(chunkserver.block_num()));
+        vs.push_back(chunkserver.tag());
         vs.push_back(chunkserver.is_dead() ? "dead" : "alive");
         vs.push_back(common::NumToString(
                         common::timer::now_time() - chunkserver.last_heartbeat()));

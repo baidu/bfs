@@ -4,7 +4,6 @@
 //
 // Author: yanshiguang02@baidu.com
 
-
 #include "file_cache.h"
 
 #include <fcntl.h>
@@ -53,6 +52,7 @@ common::Cache::Handle* FileCache::FindFile(const std::string& file_path) {
     }
     return handle;
 }
+
 int64_t FileCache::ReadFile(const std::string& file_path, char* buf,
                             int64_t len, int64_t offset) {
     common::Cache::Handle* handle = FindFile(file_path);

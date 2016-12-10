@@ -10,7 +10,9 @@
 
 #include <common/util.h>
 #include <common/string_util.h>
+#include <common/thread_pool.h>
 #include <fcntl.h>
+#include <functional>
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -144,12 +146,16 @@ TEST_F(NameSpaceTest, Rename) {
     NameSpace ns;
     bool need_unlink;
     FileInfo remove_file;
+    /// self -> self
+    ASSERT_EQ(kBadParameter, ns.Rename("/dir1", "/dir1", &need_unlink, &remove_file));
     /// dir -> none
     ASSERT_EQ(kOK, ns.Rename("/dir1/subdir1", "/dir1/subdir3", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
     /// dir -> existing dir
     ASSERT_NE(kOK, ns.Rename("/dir1/subdir2", "/dir1/subdir3", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
+    /// parent dir -> subdir
+    ASSERT_EQ(kBadParameter, ns.Rename("/dir1/", "/dir1/subdir4", &need_unlink, &remove_file));
     /// file -> not exist parent
     ASSERT_NE(kOK, ns.Rename("/file1", "/dir1/subdir4/file1", &need_unlink, &remove_file));
     /// file -> existing dir
@@ -273,22 +279,31 @@ TEST_F(NameSpaceTest, NormalizePath) {
     ASSERT_EQ(NameSpace::NormalizePath("//home/work/") , std::string("/home/work"));
 }
 
+void UpdateFileInfoHelper(NameSpace* ns, int n) {
+    NameServerLog log;
+    for (auto i = 0; i <= n; i++) {
+        FileInfo info;
+        info.add_blocks(ns->GetNewBlockId());
+        ns->UpdateFileInfo(info, &log);
+    }
+}
+
 TEST_F(NameSpaceTest, GetNewBlockId) {
     system("rm -rf ./db");
-    FLAGS_block_id_allocation_size = 10000;
+    FLAGS_block_id_allocation_size = 100;
+    ThreadPool tp(3);
     {
         NameSpace ns;
-        for (int i = 1; i <= 20010; i++) {
-            ASSERT_EQ(ns.GetNewBlockId(NULL), i);
+        for (auto i = 0; i < 10; i++) {
+            tp.AddTask(std::bind(&UpdateFileInfoHelper, &ns, 110));
         }
+        tp.Stop(true);
     }
     {
         NameSpace ns;
-        for (int i = 1; i <= 20010; i++) {
-            ASSERT_EQ(ns.GetNewBlockId(NULL), i + 30000);
-        }
+        ASSERT_EQ(ns.GetNewBlockId(), 1201);
     }
-
+    system("rm -rf ./db");
 }
 
 }

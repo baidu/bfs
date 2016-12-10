@@ -12,8 +12,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
+#include <climits>
+#include <functional>
 
-#include <boost/bind.hpp>
 #include <gflags/gflags.h>
 
 #include <common/mutex.h>
@@ -81,6 +82,8 @@ ChunkServerImpl::ChunkServerImpl()
      blockreport_task_id_(-1),
      last_report_blockid_(-1),
      report_id_(0),
+     is_first_round_(true),
+     first_round_report_start_(-1),
      service_stop_(false) {
     data_server_addr_ = common::util::GetLocalHostName() + ":" + FLAGS_chunkserver_port;
     params_.set_report_interval(FLAGS_blockreport_interval);
@@ -96,8 +99,8 @@ ChunkServerImpl::ChunkServerImpl()
     rpc_client_ = new RpcClient();
     nameserver_ = new NameServerClient(rpc_client_, FLAGS_nameserver_nodes);
     counter_manager_ = new CounterManager;
-    heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::LogStatus, this, true));
-    heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
+    heartbeat_thread_->AddTask(std::bind(&ChunkServerImpl::LogStatus, this, true));
+    heartbeat_thread_->AddTask(std::bind(&ChunkServerImpl::Register, this));
 }
 
 ChunkServerImpl::~ChunkServerImpl() {
@@ -134,7 +137,7 @@ void ChunkServerImpl::LogStatus(bool routine) {
         counters.unfinished_write_bytes, g_recover_count.Get());
     if (routine) {
         heartbeat_thread_->DelayTask(1000,
-            boost::bind(&ChunkServerImpl::LogStatus, this, true));
+            std::bind(&ChunkServerImpl::LogStatus, this, true));
     }
 }
 
@@ -149,12 +152,12 @@ void ChunkServerImpl::Register() {
     RegisterResponse response;
     if (!nameserver_->SendRequest(&NameServer_Stub::Register, &request, &response, 20)) {
         LOG(WARNING, "Register fail, wait and retry");
-        work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
+        work_thread_pool_->DelayTask(5000, std::bind(&ChunkServerImpl::Register, this));
         return;
     }
     if (response.status() != kOK) {
         LOG(WARNING, "Register return %s", StatusCode_Name(response.status()).c_str());
-        work_thread_pool_->DelayTask(5000, boost::bind(&ChunkServerImpl::Register, this));
+        work_thread_pool_->DelayTask(5000, std::bind(&ChunkServerImpl::Register, this));
         return;
     }
     if (response.report_interval() != -1) {
@@ -178,19 +181,21 @@ void ChunkServerImpl::Register() {
         if (!block_manager_->SetNameSpaceVersion(new_version)) {
             LOG(FATAL, "SetNameSpaceVersion fail");
         }
-        work_thread_pool_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
+        work_thread_pool_->AddTask(std::bind(&ChunkServerImpl::Register, this));
         return;
     }
     assert (response.chunkserver_id() != -1);
     chunkserver_id_ = response.chunkserver_id();
     report_id_ = response.report_id() + 1;
+    first_round_report_start_ = last_report_blockid_;
+    is_first_round_ = true;
     LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d "
             "report_size = %d report_id = %ld",
             block_manager_->NameSpaceVersion(), chunkserver_id_,
             params_.report_interval(), params_.report_size(), report_id_);
 
-    work_thread_pool_->DelayTask(1, boost::bind(&ChunkServerImpl::SendBlockReport, this));
-    heartbeat_thread_->DelayTask(1, boost::bind(&ChunkServerImpl::SendHeartbeat, this));
+    work_thread_pool_->DelayTask(1, std::bind(&ChunkServerImpl::SendBlockReport, this));
+    heartbeat_thread_->DelayTask(1, std::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
 
 void ChunkServerImpl::StopBlockReport() {
@@ -229,7 +234,7 @@ void ChunkServerImpl::SendHeartbeat() {
             LOG(INFO, "Nameserver restart!");
         }
         StopBlockReport();
-        heartbeat_thread_->AddTask(boost::bind(&ChunkServerImpl::Register, this));
+        heartbeat_thread_->AddTask(std::bind(&ChunkServerImpl::Register, this));
         return;
     } else if (response.kick()) {
         LOG(WARNING, "Kick by nameserver");
@@ -243,7 +248,7 @@ void ChunkServerImpl::SendHeartbeat() {
         params_.set_report_size(response.report_size());
     }
     heartbeat_task_id_ = heartbeat_thread_->DelayTask(FLAGS_heartbeat_interval * 1000,
-        boost::bind(&ChunkServerImpl::SendHeartbeat, this));
+        std::bind(&ChunkServerImpl::SendHeartbeat, this));
 }
 
 void ChunkServerImpl::SendBlockReport() {
@@ -256,7 +261,19 @@ void ChunkServerImpl::SendBlockReport() {
     int64_t last_report_id = report_id_;
 
     std::vector<BlockMeta> blocks;
-    block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, params_.report_size());
+    int32_t num = is_first_round_ ? 10000 : params_.report_size();
+    int64_t end = block_manager_->ListBlocks(&blocks, last_report_blockid_ + 1, num);
+    // last id + 1 <= first found report start <= end -> first round ends
+    if (is_first_round_ &&
+        (last_report_blockid_ + 1) <= first_round_report_start_ &&
+        first_round_report_start_ <= end) {
+        is_first_round_ = false;
+        LOG(INFO, "First round report done");
+    }
+    // bugfix, need an elegant implementation T_T
+    if (is_first_round_ && first_round_report_start_ == -1) {
+        first_round_report_start_ = 0;
+    }
 
     int64_t blocks_num = blocks.size();
     for (int64_t i = 0; i < blocks_num; i++) {
@@ -266,28 +283,19 @@ void ChunkServerImpl::SendBlockReport() {
         info->set_version(blocks[i].version());
     }
 
-    if (blocks_num < params_.report_size()) {
+    if (blocks_num < num) {
         last_report_blockid_ = -1;
+        end = LLONG_MAX;
     } else {
-        if (blocks_num) {
-            last_report_blockid_ = blocks[blocks_num - 1].block_id();
-        }
+        last_report_blockid_ = end;
     }
-    if (blocks_num == 0) {
-        request.set_end(0);
-    } else {
-        request.set_end(blocks[blocks_num - 1].block_id());
-    }
+    request.set_end(end);
 
     BlockReportResponse response;
-    int64_t before_report = common::timer::get_micros();
+    common::timer::TimeChecker checker;
     bool ret = nameserver_->SendRequest(&NameServer_Stub::BlockReport,
                                         &request, &response, FLAGS_block_report_timeout);
-    int64_t after_report = common::timer::get_micros();
-    if (after_report - before_report > 20 * 1000 * 1000) {
-        LOG(WARNING, "Block report use %ld ms last_id %lu (%lu)",
-                (after_report - before_report) / 1000, last_report_id, request.sequence_id());
-    }
+    checker.Check(20 * 1000 * 1000, "[SendBlockReport] SendRequest");
     if (!ret) {
         LOG(WARNING, "Block report fail last_id %lu (%lu)\n", last_report_id, request.sequence_id());
     } else {
@@ -305,8 +313,8 @@ void ChunkServerImpl::SendBlockReport() {
             obsolete_blocks.push_back(response.obsolete_blocks(i));
         }
         if (!obsolete_blocks.empty()) {
-            boost::function<void ()> task =
-                boost::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
+            std::function<void ()> task =
+                std::bind(&ChunkServerImpl::RemoveObsoleteBlocks,
                             this, obsolete_blocks);
             write_thread_pool_->AddTask(task);
         }
@@ -317,8 +325,8 @@ void ChunkServerImpl::SendBlockReport() {
         for (int i = 0; i < response.new_replicas_size(); ++i) {
             const ReplicaInfo& rep = response.new_replicas(i);
             int32_t cancel_time = common::timer::now_time() + rep.recover_timeout();
-            boost::function<void ()> new_replica_task =
-                boost::bind(&ChunkServerImpl::PushBlock, this, rep, cancel_time);
+            std::function<void ()> new_replica_task =
+                std::bind(&ChunkServerImpl::PushBlock, this, rep, cancel_time);
             LOG(INFO, "schedule push #%ld ", rep.block_id());
             if (rep.priority()) {
                 recover_thread_pool_->AddPriorityTask(new_replica_task);
@@ -328,13 +336,13 @@ void ChunkServerImpl::SendBlockReport() {
         }
 
         for (int i = 0; i < response.close_blocks_size(); ++i) {
-            boost::function<void ()> close_block_task = // TODO
-                boost::bind(&ChunkServerImpl::CloseIncompleteBlock, this, response.close_blocks(i));
+            std::function<void ()> close_block_task = // TODO
+                std::bind(&ChunkServerImpl::CloseIncompleteBlock, this, response.close_blocks(i));
             write_thread_pool_->AddTask(close_block_task);
         }
     }
     blockreport_task_id_ = work_thread_pool_->DelayTask(params_.report_interval() * 1000,
-        boost::bind(&ChunkServerImpl::SendBlockReport, this));
+        std::bind(&ChunkServerImpl::SendBlockReport, this));
 }
 
 bool ChunkServerImpl::ReportFinish(Block* block) {
@@ -393,8 +401,8 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         LOG(DEBUG, "[WriteBlock] dispatch #%ld seq:%d, offset:%ld, len:%lu ts:%lu\n",
            block_id, packet_seq, offset, databuf.size(), request->sequence_id());
         response->add_timestamp(common::timer::get_micros());
-        boost::function<void ()> task =
-            boost::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
+        std::function<void ()> task =
+            std::bind(&ChunkServerImpl::WriteBlock, this, controller, request, response, done);
         work_thread_pool_->AddTask(task);
         return;
     }
@@ -419,8 +427,8 @@ void ChunkServerImpl::WriteBlock(::google::protobuf::RpcController* controller,
         rpc_client_->GetStub(next_server, &stub);
         WriteNext(next_server, stub, next_request, next_response, request, response, done);
     } else {
-        boost::function<void ()> callback =
-            boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
+        std::function<void ()> callback =
+            std::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
         work_thread_pool_->AddTask(callback);
     }
 }
@@ -436,9 +444,10 @@ void ChunkServerImpl::WriteNext(const std::string& next_server,
     int32_t packet_seq = request->packet_seq();
     LOG(INFO, "[WriteBlock] send #%ld seq:%d to next %s\n",
         block_id, packet_seq, next_server.c_str());
-    boost::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
-        boost::bind(&ChunkServerImpl::WriteNextCallback,
-            this, _1, _2, _3, _4, next_server, std::make_pair(request, response), done, stub);
+    std::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback =
+        std::bind(&ChunkServerImpl::WriteNextCallback,
+            this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
+            std::placeholders::_4, next_server, std::make_pair(request, response), done, stub);
     rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
         next_request, next_response, callback, 30, 3);
 }
@@ -454,8 +463,8 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
     WriteBlockResponse* response = origin.second;
     /// If RPC_ERROR_SEND_BUFFER_FULL retry send.
     if (failed && error == sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL) {
-        boost::function<void ()> callback =
-            boost::bind(&ChunkServerImpl::WriteNext, this, next_server,
+        std::function<void ()> callback =
+            std::bind(&ChunkServerImpl::WriteNext, this, next_server,
                         stub, next_request, next_response, request, response, done);
         work_thread_pool_->DelayTask(10, callback);
         return;
@@ -485,8 +494,8 @@ void ChunkServerImpl::WriteNextCallback(const WriteBlockRequest* next_request,
         delete next_response;
     }
 
-    boost::function<void ()> callback =
-        boost::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
+    std::function<void ()> callback =
+        std::bind(&ChunkServerImpl::LocalWriteBlock, this, request, response, done);
     work_thread_pool_->AddTask(callback);
 }
 
@@ -515,7 +524,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
                     block_id, StatusCode_Name(s).c_str());
             if (s == kBlockExist) {
                 response->set_current_size(block->Size());
-                response->set_current_seq(block->GetLastSaq());
+                response->set_current_seq(block->GetLastSeq());
                 LOG(INFO, "[LocalWriteBlock] #%ld exist block size = %ld", block_id, block->Size());
             }
             response->set_status(s);
@@ -623,8 +632,8 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         response->add_timestamp(common::timer::get_micros());
-        boost::function<void ()> task =
-            boost::bind(&ChunkServerImpl::ReadBlock, this, controller, request, response, done);
+        std::function<void ()> task =
+            std::bind(&ChunkServerImpl::ReadBlock, this, controller, request, response, done);
         read_thread_pool_->AddTask(task);
         return;
     }
@@ -795,8 +804,8 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
     if (!response->has_sequence_id()) {
         response->set_sequence_id(request->sequence_id());
         response->add_timestamp(common::timer::get_micros());
-        boost::function<void ()> task =
-            boost::bind(&ChunkServerImpl::GetBlockInfo, this, controller, request, response, done);
+        std::function<void ()> task =
+            std::bind(&ChunkServerImpl::GetBlockInfo, this, controller, request, response, done);
         read_thread_pool_->AddTask(task);
         return;
     }

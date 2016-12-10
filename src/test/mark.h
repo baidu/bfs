@@ -35,7 +35,8 @@ private:
     common::ThreadPool* thread_pool_;
     Random** rand_;
     int64_t file_size_;
-    bool exit_;
+    volatile bool exit_;
+    volatile bool has_error_;
 };
 
 } // namespace bfs

@@ -50,7 +50,7 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     }
 }
 
-void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callback) {
+void MasterSlaveImpl::Init(std::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
     if (logdb_->GetLargestIdx(&current_idx_) == kReadError) {
         LOG(FATAL, "\033[32m[Sync]\033[0m  Read current_idx_ failed");
@@ -80,7 +80,7 @@ void MasterSlaveImpl::Init(boost::function<void (const std::string& log)> callba
     rpc_client_ = new RpcClient();
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
     if (IsLeader()) {
-        worker_.Start(boost::bind(&MasterSlaveImpl::BackgroundLog, this));
+        worker_.Start(std::bind(&MasterSlaveImpl::BackgroundLog, this));
     }
     LogStatus();
 }
@@ -134,7 +134,7 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
     return true;
 }
 
-void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)> callback) {
+void MasterSlaveImpl::Log(const std::string& entry, std::function<void (bool)> callback) {
     if (!IsLeader()) {
         return;
     }
@@ -145,12 +145,12 @@ void MasterSlaveImpl::Log(const std::string& entry, boost::function<void (bool)>
     current_idx_++;
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
         callbacks_.insert(std::make_pair(current_idx_, callback));
-        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck,this,
+        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,this,
                                             current_idx_, true));
     } else {
         callbacks_.insert(std::make_pair(current_idx_, callback));
         LOG(DEBUG, "\033[32m[Sync]\033[0m insert callback index = %d", current_idx_);
-        thread_pool_->DelayTask(10000, boost::bind(&MasterSlaveImpl::PorcessCallbck,
+        thread_pool_->DelayTask(10000, std::bind(&MasterSlaveImpl::PorcessCallbck,
                                                    this, current_idx_, true));
         cond_.Signal();
     }
@@ -166,7 +166,7 @@ void MasterSlaveImpl::SwitchToLeader() {
     master_addr_ = slave_addr_;
     slave_addr_ = old_master_addr;
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
-    worker_.Start(boost::bind(&MasterSlaveImpl::BackgroundLog, this));
+    worker_.Start(std::bind(&MasterSlaveImpl::BackgroundLog, this));
     is_leader_ = true;
     master_only_ = true;
     LOG(INFO, "\033[32m[Sync]\033[0m node switch to leader");
@@ -184,6 +184,8 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     }
     // expect index to be current_idx_ + 1
     if (request->index() > current_idx_ + 1) {
+        LOG(INFO, "\033[32m[Sync]\033[0m out-date log request %ld, current_idx_ %ld",
+            request->index(), current_idx_);
         response->set_index(current_idx_ + 1);
         response->set_success(false);
         done->Run();
@@ -255,7 +257,7 @@ void MasterSlaveImpl::ReplicateLog() {
             LOG(INFO, "[Sync] set sync_idx_ to %d", sync_idx_);
             continue;
         }
-        thread_pool_->AddTask(boost::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_ + 1, false));
+        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_ + 1, false));
         mu_.Lock();
         sync_idx_++;
         LOG(DEBUG, "\033[32m[Sync]\033[0m Replicate log done. sync_idx_ = %d, current_idx_ = %d",
@@ -267,9 +269,9 @@ void MasterSlaveImpl::ReplicateLog() {
 }
 
 void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
-    boost::function<void (bool)> callback;
+    std::function<void (bool)> callback;
     MutexLock lock(&mu_);
-    std::map<int64_t, boost::function<void (bool)> >::iterator it = callbacks_.find(index);
+    std::map<int64_t, std::function<void (bool)> >::iterator it = callbacks_.find(index);
     if (it != callbacks_.end()) {
         callback = it->second;
         LOG(DEBUG, "\033[32m[Sync]\033[0m calling callback %d", it->first);
@@ -304,7 +306,7 @@ void MasterSlaveImpl::LogStatus() {
         LOG(WARNING, "\033[32m[Sync]\033[0m WriteMarker failed applied_idx_ = %ld sync_idx_ = %ld ",
                 applied_idx_, sync_idx_);
     }
-    thread_pool_->DelayTask(5000, boost::bind(&MasterSlaveImpl::LogStatus, this));
+    thread_pool_->DelayTask(5000, std::bind(&MasterSlaveImpl::LogStatus, this));
 }
 
 std::string MasterSlaveImpl::GetStatus() {

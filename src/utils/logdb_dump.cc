@@ -4,12 +4,11 @@
 //
 
 #include <iostream>
+#include <functional>
 #include <stdio.h>
 
 #include <common/timer.h>
 #include <common/thread.h>
-#include <boost/lexical_cast.hpp>
-#include <boost/bind.hpp>
 #include "nameserver/logdb.h"
 
 namespace baidu {
@@ -98,9 +97,9 @@ void Test(int n, int l) {
 
     start = common::timer::get_micros();
     common::Thread w;
-    w.Start(boost::bind(&WriteHelper, n, n + n, str, logdb));
+    w.Start(std::bind(&WriteHelper, n, n + n, str, logdb));
     common::Thread r;
-    r.Start(boost::bind(&ReadHelper, 0, n, str, logdb));
+    r.Start(std::bind(&ReadHelper, 0, n, str, logdb));
     w.Join();
     r.Join();
     now = common::timer::get_micros();
@@ -124,6 +123,6 @@ int main(int argc, char* argv[]) {
     } else if (path == "test") {
         std::string n(argv[2]);
         std::string l(argv[3]);
-        baidu::bfs::Test(boost::lexical_cast<int>(n), boost::lexical_cast<int>(l));
+        baidu::bfs::Test(std::stoi(n), std::stoi(l));
     }
 }

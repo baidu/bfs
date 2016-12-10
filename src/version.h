@@ -8,6 +8,7 @@
 static const int kMajorVersion = 1;
 static const int kMinorVersion = 0;
 static const int kRevision = 0;
+static const char kCompiler[] = __VERSION__;
 
 extern void PrintSystemVersion();
 

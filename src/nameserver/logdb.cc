@@ -9,8 +9,6 @@
 #include <dirent.h>
 #include <common/logging.h>
 #include <common/string_util.h>
-#include <boost/bind.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include "nameserver/logdb.h"
 
@@ -48,7 +46,7 @@ void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr)
     }
     std::map<std::string, std::string>::iterator it = logdb->markers_.find(".smallest_index_");
     if (it != logdb->markers_.end()) {
-        logdb->smallest_index_ = boost::lexical_cast<int64_t>(it->second);
+        logdb->smallest_index_ = std::atol(it->second.c_str());
     }
     if (!logdb->BuildFileCache()) {
         LOG(WARNING, "[LogDB] BuildFileCache failed");
@@ -78,7 +76,7 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
     }
     uint32_t len = entry.length();
     std::string data;
-    data.append(reinterpret_cast<char*>(&len), 4);
+    data.append(reinterpret_cast<char*>(&len), sizeof(len));
     data.append(entry);
     if (!write_log_) {
         if (!NewWriteLog(index)) {
@@ -164,7 +162,7 @@ StatusCode LogDB::WriteMarkerNoLock(const std::string& key, const std::string& v
     }
     std::string data;
     uint32_t len = 4 + key.length() + 4 + value.length();
-    data.append(reinterpret_cast<char*>(&len), 4);
+    data.append(reinterpret_cast<char*>(&len), sizeof(len));
     EncodeMarker(MarkerEntry(key, value), &data);
     if (fwrite(data.c_str(), 1, data.length(), marker_log_) != data.length()
         || fflush(marker_log_) != 0) {
@@ -182,7 +180,7 @@ StatusCode LogDB::WriteMarker(const std::string& key, const std::string& value) 
 }
 
 StatusCode LogDB::WriteMarker(const std::string& key, int64_t value) {
-    return WriteMarker(key, std::string(reinterpret_cast<char*>(&value), 8));
+    return WriteMarker(key, std::string(reinterpret_cast<char*>(&value), sizeof(value)));
 }
 
 StatusCode LogDB::ReadMarker(const std::string& key, std::string* value) {
@@ -310,7 +308,7 @@ bool LogDB::BuildFileCache() {
         size_t idx = std::string(entry->d_name).find(".idx");
         if (idx != std::string::npos) {
             std::string file_name = std::string(entry->d_name);
-            int64_t index = boost::lexical_cast<int64_t>(file_name.substr(0, idx));
+            int64_t index = std::atol(file_name.substr(0, idx).c_str());
             std::string log_name, idx_name;
             FormLogName(index, &log_name, &idx_name);
             FILE* idx_fp = fopen(idx_name.c_str(), "r");
@@ -459,7 +457,7 @@ void LogDB::WriteMarkerSnapshot() {
         MarkerEntry marker(it->first, it->second);
         uint32_t len = 4 + (it->first).length() + 4 + (it->second).length();
         data.clear();
-        data.append(reinterpret_cast<char*>(&len), 4);
+        data.append(reinterpret_cast<char*>(&len), sizeof(len));
         EncodeMarker(marker, &data);
         if (fwrite(data.c_str(), 1, data.length(), fp) != data.length() || fflush(fp) != 0) {
             LOG(WARNING, "[LogDB] write marker.tmp failed %s", strerror(errno));
@@ -479,7 +477,7 @@ void LogDB::WriteMarkerSnapshot() {
         return;
     }
     LOG(INFO, "[LogDB] WriteMarkerSnapshot done");
-    thread_pool_->DelayTask(snapshot_interval_, boost::bind(&LogDB::WriteMarkerSnapshot, this));
+    thread_pool_->DelayTask(snapshot_interval_, std::bind(&LogDB::WriteMarkerSnapshot, this));
 }
 
 void LogDB::CloseCurrent() {
@@ -534,19 +532,19 @@ StatusCode LogDB::ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int6
 void LogDB::EncodeMarker(const MarkerEntry& marker, std::string* data) {
     int klen = (marker.key).length();
     int vlen = (marker.value).length();
-    data->append(reinterpret_cast<char*>(&klen), 4);
+    data->append(reinterpret_cast<char*>(&klen), sizeof(klen));
     data->append(marker.key);
-    data->append(reinterpret_cast<char*>(&vlen), 4);
+    data->append(reinterpret_cast<char*>(&vlen), sizeof(vlen));
     data->append(marker.value);
 }
 
 void LogDB::DecodeMarker(const std::string& data, MarkerEntry* marker) { // data = klen + k + vlen + v
     int klen;
-    memcpy(&klen, &(data[0]), 4);
-    (marker->key).assign(data.substr(4, klen));
+    memcpy(&klen, &(data[0]), sizeof(klen));
+    (marker->key).assign(data.substr(sizeof(klen), klen));
     int vlen;
-    memcpy(&vlen, &(data[4 + klen]), 4);
-    (marker->value).assign(data.substr(4 + klen + 4, vlen));
+    memcpy(&vlen, &(data[sizeof(klen) + klen]), sizeof(vlen));
+    (marker->value).assign(data.substr(sizeof(klen) + klen + sizeof(vlen), vlen));
 }
 
 bool LogDB::NewWriteLog(int64_t index) {

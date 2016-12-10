@@ -10,7 +10,6 @@ INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I$(LEVELDB_PATH)/include \
                -I$(SNAPPY_PATH)/include \
-               -I$(BOOST_PATH) \
                -I$(GFLAG_PATH)/include \
                -I$(COMMON_PATH)/include
 
@@ -23,8 +22,9 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(TCMALLOC_PATH)/lib -ltcmalloc_minimal \
           -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
-CXXFLAGS = -Wall -fPIC $(OPT)
+CXXFLAGS = -std=c++11 -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_PATH)/include
+FUSE_LL_FLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_LL_PATH)/include
 
 PROTO_FILE = $(wildcard src/proto/*.proto)
 PROTO_SRC = $(patsubst %.proto,%.pb.cc,$(PROTO_FILE))
@@ -34,6 +34,10 @@ PROTO_OBJ = $(patsubst %.proto,%.pb.o,$(PROTO_FILE))
 NAMESERVER_SRC = $(wildcard src/nameserver/*.cc)
 NAMESERVER_OBJ = $(patsubst %.cc, %.o, $(NAMESERVER_SRC))
 NAMESERVER_HEADER = $(wildcard src/nameserver/*.h)
+
+METASERVER_SRC = $(wildcard src/metaserver/*.cc)
+METASERVER_OBJ = $(patsubst %.cc, %.o, $(METASERVER_SRC))
+METASERVER_HEADER = $(wildcard src/metaserver/*.h)
 
 CHUNKSERVER_SRC = $(wildcard src/chunkserver/*.cc)
 CHUNKSERVER_OBJ = $(patsubst %.cc, %.o, $(CHUNKSERVER_SRC))
@@ -50,6 +54,10 @@ FUSE_SRC = $(wildcard fuse/*.cc)
 FUSE_OBJ = $(patsubst %.cc, %.o, $(FUSE_SRC))
 FUSE_HEADER = $(wildcard fuse/*.h)
 
+FUSE_LL_SRC = $(wildcard fuse_lowlevel/*.cc)
+FUSE_LL_OBJ = $(patsubst %.cc, %.o, $(FUSE_LL_SRC))
+FUSE_LL_HEADER = $(wildcard fuse_lowlevel/*.h)
+
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
 
@@ -63,11 +71,19 @@ BIN = nameserver chunkserver bfs_client raft_kv kv_client
 ifdef FUSE_PATH
 	BIN += bfs_mount
 endif
-
-TESTS = namespace_test file_cache_test chunkserver_impl_test location_provider_test logdb_test
-TEST_OBJS = src/nameserver/test/namespace_test.o src/nameserver/test/logdb_test.o \
+ifdef FUSE_LL_PATH
+	BIN += bfs_ll_mount
+endif
+TESTS = namespace_test block_mapping_test location_provider_test logdb_test \
+		chunkserver_impl_test file_cache_test block_manager_test data_block_test
+TEST_OBJS = src/nameserver/test/namespace_test.o \
+			src/nameserver/test/block_mapping_test.o \
+			src/nameserver/test/logdb_test.o \
+			src/nameserver/test/location_provider_test.o \
 			src/chunkserver/test/file_cache_test.o \
-			src/chunkserver/test/chunkserver_impl_test.o src/nameserver/test/location_provider_test.o
+			src/chunkserver/test/chunkserver_impl_test.o \
+			src/chunkserver/test/block_manager_test.o \
+			src/chunkserver/test/data_block_test.o
 UNITTEST_OUTPUT = ut/
 
 all: $(BIN)
@@ -76,6 +92,7 @@ all: $(BIN)
 # Depends
 $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(PROTO_OBJ) $(SDK_OBJ): $(PROTO_HEADER)
 $(NAMESERVER_OBJ): $(NAMESERVER_HEADER)
+$(METASERVER_OBJ): $(METASERVER_HEADER)
 $(CHUNKSERVER_OBJ): $(CHUNKSERVER_HEADER)
 $(SDK_OBJ): $(SDK_HEADER)
 $(FUSE_OBJ): $(FUSE_HEADER)
@@ -104,6 +121,9 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/namespace.o src/nameserver/raft_impl.o  \
 	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
 
+block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping.o
+	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
+
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
 	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
 
@@ -113,19 +133,31 @@ raft_kv: src/nameserver/test/raft_test.o src/nameserver/raft_node.o src/nameserv
 kv_client: src/nameserver/test/kv_client.o $(OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
-file_cache_test: src/chunkserver/test/file_cache_test.o
-	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
+location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o src/chunkserver/block_manager.o \
 	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
-location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
+file_cache_test: src/chunkserver/test/file_cache_test.o
+	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
+
+block_manager_test: src/chunkserver/test/block_manager_test.o src/chunkserver/block_manager.o \
+	src/chunkserver/data_block.o src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+
+data_block_test: src/chunkserver/test/data_block_test.o \
+	src/chunkserver/data_block.o src/chunkserver/counter_manager.o \
+   	src/chunkserver/file_cache.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
+
+metaserver: $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o
+	$(CXX) $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o src/nameserver/location_provider.o -o $@ $(LDFLAGS)
 
 chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
 	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
@@ -148,15 +180,21 @@ bfs_dump: src/utils/bfs_dump.o
 bfs_mount: $(FUSE_OBJ) $(LIBS)
 	$(CXX) $(FUSE_OBJ) $(LIBS) -o $@ -L$(FUSE_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
 
-%.o: %.cc
-	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 $(FUSE_OBJ): %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(FUSEFLAGS) $(INCLUDE_PATH) -c $< -o $@
+
+bfs_ll_mount: $(FUSE_LL_OBJ) $(LIBS)
+	$(CXX) $(FUSE_LL_OBJ) $(LIBS) -o $@ -L$(FUSE_LL_PATH)/lib -Wl,-static -lfuse -Wl,-call_shared -ldl $(LDFLAGS)
+
+%.o: %.cc
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+$(FUSE_LL_OBJ): %.o: %.cc
+	$(CXX) $(CXXFLAGS) $(FUSE_LL_FLAGS) $(INCLUDE_PATH) -c $< -o $@
 
 %.pb.h %.pb.cc: %.proto
 	$(PROTOC) --proto_path=./src/proto/ --proto_path=/usr/local/include --cpp_out=./src/proto/ $<
 src/version.cc: FORCE
-	sh build_version.sh
+	bash build_version.sh
 
 .PHONY: FORCE
 FORCE:

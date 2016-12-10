@@ -8,13 +8,14 @@
 #define  BFS_NAMESERVER_IMPL_H_
 
 #include <common/thread_pool.h>
+#include <functional>
 
 #include "proto/nameserver.pb.h"
 
 namespace sofa {
 namespace pbrpc {
-class HTTPRequest;
-class HTTPResponse;
+struct HTTPRequest;
+struct HTTPResponse;
 }
 }
 
@@ -130,11 +131,10 @@ private:
     void CheckLeader();
     void RebuildBlockMapCallback(const FileInfo& file_info);
     void LogStatus();
-    void Register();
     void CheckRecoverMode();
     void LeaveReadOnly();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
-    bool LogRemote(const NameServerLog& log, boost::function<void (bool)> callback);
+    bool LogRemote(const NameServerLog& log, std::function<void (bool)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,
                          ::google::protobuf::Message* response,

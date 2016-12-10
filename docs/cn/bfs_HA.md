@@ -14,7 +14,7 @@ Nameserver集群中的Leader负责接收和响应Client的请求，并把所做�
 * 从Nameserver  
 Nameserver中的从实例不直接与Client进行交互，也不会给Chunkserver发出任何指令。它只将从Sync模块接收到的命令落地。但是从Nameserver和Leader一样，会接收并处理Chunkserver的心跳和Report消息，维护文件在Chunkserver上分布及Chunkserver状态等信息。这样做的目的是为了在Leader故障后，任何一个从Nameserver可以在最短时间内成为Leader并提供服务。这部分内存信息不与Leader进行一致性检查，原因是这部分信息的来源是Chunkserver，只有Chunkserver才是真理的唯一掌握者，与Leader的内存状态保持一致并没有意义。
 
-##主要操作流程
+##主要操作流程方案一
 * 写  
 在BFS中，有三种操作会产生元数据写操作：Create，Delete和Rename。操作流程如下图所示，  
 <img src="https://github.com/bluebore/bfs/blob/master/resources/images/ha-2.png" width = "400" height = "400" alt="图片名称" align=center />
@@ -34,6 +34,21 @@ Leader在收到操作后先对数据库打一个快照，检查完合法性后�
 * 重启  
 因为我们采取了先写入数据库后扩散的方式，所以Leader宕机重启后，数据库中可能存在脏数据。我们不记录Nameserver宕机前的身份，对Leader和从Nameserver宕机后的重启做同样的处理：从Leader拷贝数据库镜像，然后redo镜像后的操作log。
 
+## 主要操作流程方案二
+Client向Leader Nameserver发起请求，Leader收到请求后，对所需操作的路径加锁（加锁逻辑见另一文档），检查操作合法性。如果操作是合法的，Leader将需要落地的数据通过Sync扩散给从Nameserver。Sync模块返回扩散成功后，Leader向Client返回操作成功。Follower收到提交操作的指令后，无需检查操作合法性，直接根据指令执行操作更改状态机和内存结构。
+
+对于某一操作，具体流程如下：
+
+1. Leader		收到请求，检查请求合法性
+
+2. Leader		将操作指令序列化并交由Sync同步
+
+3. Follower		收到指令后持久化指令
+
+4. Both			确定操作同步成功后将操作应用到状态机，并更改内存状态
+
+方案一为同步结果，方案二为同步操作。同步结果的问题在于当操作的结果很大（例如，`rmr /`），可能超出内存大小范围，从而很难保证操作原子性。同步操作基于一个假设：Leader和Followers将同一个指令应用到状态机及更改内存状态所产生的结果严格一致。
+
 
 ##一期高可靠方案 - 主从模式
 Nameserver的HA方案数据流如上描述，其中Sync模块是保证数据可靠和高可用的核心。我们把这个模块设计成可插拔的插件模式，可以选用任意一种一致性协议实现以满足不同可靠、可用和性能要求。一期方案是实现一个主从模式的Nameserver，首先保证数据的可靠性，在一定程度上提高可用性。  
@@ -48,3 +63,5 @@ Nameserver的HA方案数据流如上描述，其中Sync模块是保证数据可�
 * 主从  
 这个方案中，主从任何一台机器宕机的情况下，对Nameserver的写操作都会失败，这时需要人工介入处理。没有加入检测宕机并自动切换主从的逻辑，原因是在没有一致性选主协议的情况下，几乎很难保证主从探活策略的正确性，很容易出现无主或者双主的情况。这种设计保证了数据的可靠性，但是在一定程度上牺牲了可用性。为了减小不可用时间，我们加入了一种单写模式，即对Nameserver的写操作只需在主Nameserver上更新成功。当处理完宕机，集群恢复主从都正常运行的情况下后，需切换回双写模式，以保证数据可靠性。主从切换操作流程如下： 
 <img src="https://github.com/bluebore/bfs/blob/master/resources/images/ha-5.png" width = "300" height = "300" alt="图片名称" align=center />
+
+

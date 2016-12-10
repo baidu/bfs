@@ -15,8 +15,8 @@
 
 namespace sofa {
 namespace pbrpc {
-class HTTPRequest;
-class HTTPResponse;
+struct HTTPRequest;
+struct HTTPResponse;
 }
 }
 
@@ -34,10 +34,6 @@ class ChunkServerImpl : public ChunkServer {
 public:
     ChunkServerImpl();
     virtual ~ChunkServerImpl();
-    void Register();
-    void SendHeartbeat();
-    void SendBlockReport();
-    bool ReportFinish(Block* block);
 
     virtual void WriteBlock(::google::protobuf::RpcController* controller,
                             const WriteBlockRequest* request,
@@ -78,6 +74,10 @@ private:
     StatusCode WriteRecoverBlock(Block* block, ChunkServer_Stub* chunkserver, int32_t cancel_time, bool* timeout);
     void CloseIncompleteBlock(int64_t block_id);
     void StopBlockReport();
+    void SendHeartbeat();
+    void SendBlockReport();
+    void Register();
+    bool ReportFinish(Block* block);
 private:
     BlockManager*   block_manager_;
     std::string     data_server_addr_;
@@ -94,6 +94,8 @@ private:
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;
     int64_t report_id_;
+    bool is_first_round_;
+    int64_t first_round_report_start_;
     volatile bool service_stop_;
 
     Params params_;

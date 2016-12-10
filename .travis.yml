@@ -8,7 +8,12 @@ env:
 
 install:
     - echo | sudo apt-add-repository ppa:boost-latest/ppa
+    - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
     - sudo apt-get update
+    - sudo apt-get install -qq g++-4.8
+    - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 20 
+    - sudo update-alternatives --config g++
+
     - sudo apt-get install libboost-dev
     - wget https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-$PROTOBUF_VERSION.tar.gz
     - tar xf protobuf-$PROTOBUF_VERSION.tar.gz
@@ -21,7 +26,7 @@ install:
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz
     - ( cd gflags-2.1.2 && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
-    - git clone https://github.com/baidu/common
+    - git clone -b cpp11 https://github.com/baidu/common
     - ( cd common && make -j4 && make install)
     - git clone https://github.com/yvxiang/gtest.git
     - ( cd gtest && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
@@ -47,7 +52,7 @@ before_script:
     - echo 'COMMON_PATH=./common/output' >> depends.mk
     - echo 'LEVELDB_PATH=./thirdparty' >> depends.mk
 
-script: make -j4 && make test
+script: make -j4 && make check && make test
 
 addons:
    coverity_scan:

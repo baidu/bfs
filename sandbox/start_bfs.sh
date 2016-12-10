@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 ns_num=1
 if [ "$1"x = "raft"x ]; then

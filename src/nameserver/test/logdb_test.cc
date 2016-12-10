@@ -2,11 +2,10 @@
 
 #include <errno.h>
 #include <vector>
+#include <functional>
 #include <sys/stat.h>
-#include <gtest/gtest.h>
-#include <boost/bind.hpp>
-#include <boost/function.hpp>
 
+#include <gtest/gtest.h>
 #include <common/string_util.h>
 #include <common/thread.h>
 
@@ -105,7 +104,7 @@ TEST_F(LogDBTest, WriteMarker) {
     std::vector<common::Thread*> threads;
     for (int i = 0; i < 10; ++i) {
         common::Thread* t = new common::Thread();
-        t->Start(boost::bind(&WriteMarker_Helper, common::NumToString(i), 100, logdb));
+        t->Start(std::bind(&WriteMarker_Helper, common::NumToString(i), 100, logdb));
         threads.push_back(t);
     }
     for (int i = 0; i < 10; ++i) {
@@ -181,7 +180,7 @@ TEST_F(LogDBTest, Read) {
     std::vector<common::Thread*> threads;
     for (int i = 0; i < 5; ++i) {
         common::Thread* t = new common::Thread();
-        t->Start(boost::bind(&ReadLog_Helper, i * 100, 100, logdb));
+        t->Start(std::bind(&ReadLog_Helper, i * 100, 100, logdb));
         threads.push_back(t);
     }
     for (int i = 0; i < 5; ++i) {

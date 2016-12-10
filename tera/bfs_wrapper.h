@@ -15,7 +15,7 @@ namespace bfs {
 
 class BfsFile : public leveldb::DfsFile {
 public:
-    BfsFile(const std::string& name, File* file) : _name(name), _file(file) {}
+    BfsFile(const std::string& name, File* file) : name_(name), file_(file) {}
     /// Returns the number of bytes written, -1 on error.
     virtual int32_t Write(const char* buf, int32_t len);
     /// Returns 0 on success.
@@ -35,8 +35,8 @@ public:
     /// Returns 0 on success.
     virtual int32_t CloseFile();
 private:
-    std::string _name;
-    File* _file;
+    std::string name_;
+    File* file_;
 };
 
 class BfsImpl : public leveldb::Dfs {
@@ -61,7 +61,7 @@ public:
     /// Returns DfsFile handler on success, NULL on error.
     virtual leveldb::DfsFile* OpenFile(const std::string& filename, int32_t flags);
 private:
-    bfs::FS* _fs;
+    bfs::FS* fs_;
 };
 
 }
