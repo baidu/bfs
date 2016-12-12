@@ -113,6 +113,10 @@ FileImpl::~FileImpl () {
     if (!closed_) {
         Close();
     }
+    delete block_for_write_;
+    block_for_write_ = NULL;
+    delete chunkserver_;
+    chunkserver_ = NULL;
     delete[] reada_buffer_;
     reada_buffer_ = NULL;
     std::map<std::string, common::SlidingWindow<int>* >::iterator w_it;
@@ -805,10 +809,6 @@ int32_t FileImpl::Close() {
             finished_num = FinishedNum();
         }
     }
-    delete block_for_write_;
-    block_for_write_ = NULL;
-    delete chunkserver_;
-    chunkserver_ = NULL;
     LOG(DEBUG, "File %s closed", name_.c_str());
     closed_ = true;
     int32_t ret = OK;
