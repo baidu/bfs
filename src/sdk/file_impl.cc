@@ -269,8 +269,8 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
 int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
     //printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
     if (open_flags_ != O_RDONLY) {
-        if (offset == 0 && whence == SEEK_CUR) {
-            return common::atomic_add64(&write_offset_, 0);
+        if (offset == 0 && (whence == SEEK_CUR || whence == SEEK_END)) {
+            return write_offset_;
         }
         return BAD_PARAMETER;
     }
@@ -279,6 +279,13 @@ int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
         read_offset_ = offset;
     } else if (whence == SEEK_CUR) {
         read_offset_ += offset;
+    } else if (whence == SEEK_END) {
+        int64_t file_size = 0;
+        int32_t ret = fs_->GetFileSize(name_.c_str(), &file_size);
+        if (ret != OK) {
+            return ret;
+        }
+        read_offset_ = file_size + offset;
     } else {
         return BAD_PARAMETER;
     }
