@@ -116,6 +116,9 @@ int64_t Disk::NameSpaceVersion() const {
 
 bool Disk::SetNameSpaceVersion(int64_t version) {
     MutexLock lock(&mu_);
+    if (namespace_version_ == version) {
+        return true;
+    }
     std::string version_key(8, '\0');
     version_key.append("version");
     std::string version_str(8, '\0');
@@ -204,6 +207,7 @@ bool Disk::CleanUp() {
     leveldb::Options options;
     options.create_if_missing = true;
     leveldb::Status s = leveldb::DB::Open(options, path_ + "meta/", &metadb_);
+    LOG(INFO, "CleanUp %s done", path_.c_str());
     return true;
 }
 

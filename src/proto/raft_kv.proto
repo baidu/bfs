@@ -1,0 +1,33 @@
+
+package baidu.bfs.raft;
+
+option cc_generic_services = true;
+
+message PutRequest {
+    optional int64 seq = 1;
+    optional bytes key = 2;
+    optional bytes value = 3;
+    optional bool del = 4;
+}
+
+message PutResponse {
+    optional int64 seq = 1;
+    optional int64 status = 2;
+}
+
+message GetRequest {
+    optional int64 seq = 1;
+    optional bytes key = 2;
+}
+
+message GetResponse {
+    optional int64 seq = 1;
+    optional int64 status = 2;
+    optional bytes value = 3;
+}
+
+service RaftKv {
+    rpc Put(PutRequest) returns(PutResponse);
+    rpc Get(GetRequest) returns(GetResponse);
+}
+

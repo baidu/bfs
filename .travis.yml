@@ -52,7 +52,7 @@ before_script:
     - echo 'COMMON_PATH=./common/output' >> depends.mk
     - echo 'LEVELDB_PATH=./thirdparty' >> depends.mk
 
-script: make -j4 && make test
+script: make -j4 && make check && make test
 
 addons:
    coverity_scan:
