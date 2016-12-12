@@ -46,22 +46,6 @@ void FileLockManager::WriteLock(const std::string& file_path) {
     LockInternal(cur_path, kWrite);
 }
 
-void FileLockManager::WriteLock(const std::string& file_path_a,
-                                const std::string& file_path_b) {
-    LOG(DEBUG, "Try get write lock for %s and %s",
-            file_path_a.c_str(), file_path_b.c_str());
-    int r = strcmp(file_path_a.c_str(), file_path_b.c_str());
-    if (r == 0) {
-        WriteLock(file_path_a);
-    } else if (r < 0) {
-        WriteLock(file_path_a);
-        WriteLock(file_path_b);
-    } else {
-        WriteLock(file_path_b);
-        WriteLock(file_path_a);
-    }
-}
-
 void FileLockManager::Unlock(const std::string& file_path) {
     /// TODO maybe use NormalizePath is better
     std::vector<std::string> paths;
@@ -78,22 +62,6 @@ void FileLockManager::Unlock(const std::string& file_path) {
     }
     // last unlock "/"
     UnlockInternal("/");
-}
-
-void FileLockManager::Unlock(const std::string& file_path_a,
-                                  const std::string& file_path_b) {
-    LOG(DEBUG, "Release file lock for %s and %s",
-            file_path_a.c_str(), file_path_b.c_str());
-    int r = strcmp(file_path_a.c_str(), file_path_b.c_str());
-    if (r == 0) {
-        Unlock(file_path_a);
-    } else if (r < 0) {
-        Unlock(file_path_b);
-        Unlock(file_path_a);
-    } else {
-        Unlock(file_path_a);
-        Unlock(file_path_b);
-    }
 }
 
 void FileLockManager::LockInternal(const std::string& path,

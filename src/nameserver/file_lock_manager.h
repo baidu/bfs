@@ -21,11 +21,7 @@ class FileLockManager {
 public:
     void ReadLock(const std::string& file_path);
     void WriteLock(const std::string& file_path);
-    void WriteLock(const std::string& file_path_a,
-                   const std::string& file_path_b);
     void Unlock(const std::string& file_path);
-    void Unlock(const std::string& file_path_a,
-                const std::string& file_path_b);
     ~FileLockManager();
 private:
     enum LockType {

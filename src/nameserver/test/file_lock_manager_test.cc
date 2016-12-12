@@ -50,9 +50,6 @@ TEST_F(FileLockManagerTest, Basic) {
     flm.Unlock(file_path1);
     flm.Unlock(file_path1);
 
-    flm.WriteLock(file_path1, file_path2);
-    flm.Unlock(file_path2, file_path1);
-
     flm.WriteLock("/");
     flm.Unlock("/");
 
