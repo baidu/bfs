@@ -23,6 +23,8 @@
 #include "nameserver/sync.h"
 #include "nameserver/chunkserver_manager.h"
 #include "nameserver/namespace.h"
+#include "nameserver/file_lock_manager.h"
+#include "nameserver/file_lock.h"
 
 #include "proto/status_code.pb.h"
 
@@ -63,6 +65,9 @@ NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
     heartbeat_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_heartbeat_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
+    file_lock_manager_ = new FileLockManager;
+    WriteLock::file_lock_manager_ = file_lock_manager_;
+    ReadLock::file_lock_manager_ = file_lock_manager_;
     if (sync_) {
         SyncCallbacks callbacks(std::bind(&NameSpace::TailLog, namespace_,
                                           std::placeholders::_1),
