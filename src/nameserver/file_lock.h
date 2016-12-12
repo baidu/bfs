@@ -20,7 +20,7 @@ class WriteLock {
 public:
     WriteLock(const std::string& file_path);
     WriteLock(const std::string& file_path_a,
-                   const std::string& file_path_b);
+              const std::string& file_path_b);
     ~WriteLock();
 private:
     friend class NameServerImpl;

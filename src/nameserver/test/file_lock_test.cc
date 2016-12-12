@@ -30,7 +30,7 @@ TEST_F(FileLockTest, WriteLockForOneFile) {
 }
 
 TEST_F(FileLockTest, WriteLockForTwoFile) {
-    WriteLockGuard guard2(new WriteLock("/home/dir1/file1", "/home/dir1/file2"));
+    WriteLockGuard guard2(new WriteLock("/home/dir1/file2", "/home/dir1/file1"));
 }
 
 TEST_F(FileLockTest, ReadLock) {

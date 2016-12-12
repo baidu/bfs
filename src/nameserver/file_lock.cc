@@ -23,9 +23,21 @@ WriteLock::WriteLock(const std::string& file_path_a,
                                  const std::string& file_path_b) {
     LOG(DEBUG, "Write lock guard for %s and %s",
                  file_path_a.c_str(), file_path_b.c_str());
-    file_path_.push_back(file_path_a);
-    file_path_.push_back(file_path_b);
-    file_lock_manager_->WriteLock(file_path_a, file_path_b);
+    int r = strcmp(file_path_a.c_str(),file_path_b.c_str());
+    if (r == 0) {
+        file_path_.push_back(file_path_a);
+        file_lock_manager_->WriteLock(file_path_a);
+    } else if (r < 0) {
+        file_path_.push_back(file_path_a);
+        file_path_.push_back(file_path_b);
+        file_lock_manager_->WriteLock(file_path_a);
+        file_lock_manager_->WriteLock(file_path_b);
+    } else {
+        file_path_.push_back(file_path_b);
+        file_path_.push_back(file_path_a);
+        file_lock_manager_->WriteLock(file_path_b);
+        file_lock_manager_->WriteLock(file_path_a);
+    }
 }
 
 WriteLock::~WriteLock() {
@@ -34,8 +46,9 @@ WriteLock::~WriteLock() {
         file_lock_manager_->Unlock(file_path_[0]);
     } else {
         LOG(DEBUG, "Release write lock guard for %s and %s",
-                      file_path_[0].c_str(), file_path_[1].c_str());
-        file_lock_manager_->Unlock(file_path_[0], file_path_[1]);
+                      file_path_[1].c_str(), file_path_[0].c_str());
+        file_lock_manager_->Unlock(file_path_[1]);
+        file_lock_manager_->Unlock(file_path_[0]);
     }
 }
 
