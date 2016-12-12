@@ -18,6 +18,8 @@ void FileLockManager::ReadLock(const std::string& file_path) {
     LOG(DEBUG, "Try get read lock for %s", file_path.c_str());
     std::vector<std::string> paths;
     common::SplitString(file_path, "/", &paths);
+    //first lock "/"
+    LockInternal("/", kRead);
     std::string cur_path;
     for (size_t i = 0; i < paths.size(); i++) {
         cur_path += ("/" + paths[i]);
@@ -29,6 +31,12 @@ void FileLockManager::WriteLock(const std::string& file_path) {
     LOG(DEBUG, "Try get write lock for %s", file_path.c_str());
     std::vector<std::string> paths;
     common::SplitString(file_path, "/", &paths);
+    //first lock "/"
+    if (paths.size() == 0) {
+        LockInternal("/", kWrite);
+        return;
+    }
+    LockInternal("/", kRead);
     std::string cur_path;
     for (size_t i = 0; i < paths.size() - 1; i++) {
         cur_path += ("/" + paths[i]);
@@ -68,6 +76,8 @@ void FileLockManager::Unlock(const std::string& file_path) {
         UnlockInternal(cur_path);
         cur_path.resize(cur_path.find_last_of('/'));
     }
+    // last unlock "/"
+    UnlockInternal("/");
 }
 
 void FileLockManager::Unlock(const std::string& file_path_a,
