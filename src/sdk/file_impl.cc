@@ -773,6 +773,9 @@ int32_t FileImpl::Sync() {
 int32_t FileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", name_.c_str());
     MutexLock lock(&mu_, "Close", 1000);
+    if (closed_) {
+        return OK;
+    }
     bool need_report_finish = false;
     int64_t block_id = -1;
     int32_t finished_num = 0;
