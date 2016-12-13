@@ -13,6 +13,8 @@
 
 #include <common/thread_pool.h>
 
+#include "chunkserver/counter_manager.h"
+
 namespace sofa {
 namespace pbrpc {
 struct HTTPRequest;
@@ -28,7 +30,8 @@ class RpcClient;
 class NameServerClient;
 class ChunkServer_Stub;
 class Block;
-class CounterManager;
+typedef ChunkserverCounterManager::ChunkserverCounters ChunkserverCounters;
+typedef ChunkserverCounterManager::ChunkserverStat ChunkserverStat;
 
 class ChunkServerImpl : public ChunkServer {
 public:
@@ -89,7 +92,8 @@ private:
     ThreadPool*     heartbeat_thread_;
     NameServerClient* nameserver_;
     int32_t chunkserver_id_;
-    CounterManager* counter_manager_;
+    ChunkserverCounters counters_;
+    ChunkserverCounterManager counter_manager_;
     int64_t heartbeat_task_id_;
     volatile int64_t blockreport_task_id_;
     int64_t last_report_blockid_;

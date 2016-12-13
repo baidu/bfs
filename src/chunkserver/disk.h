@@ -12,8 +12,8 @@
 #include <vector>
 
 #include <common/thread_pool.h>
-#include <common/counter.h>
 #include "proto/status_code.pb.h"
+#include "chunkserver/counter_manager.h"
 
 namespace leveldb {
 class DB;
@@ -26,16 +26,8 @@ namespace bfs {
 class BlockMeta;
 class Block;
 class FileCache;
-
-struct DiskStats {
-    common::Counter blocks;
-    common::Counter data_size;
-    common::Counter find_ops;
-};
-
-struct BlockStats {
-    common::Counter writing_buffers;
-};
+typedef DiskCounterManager::DiskCounters DCounters;
+typedef DiskCounterManager::DiskStat DiskStat;
 
 class Disk {
 public:
@@ -53,8 +45,12 @@ public:
     bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);
     bool CleanUp();
+
+    DiskStat Stat();
 private:
     std::string BlockId2Str(int64_t block_id);
+public:
+    DCounters counters_;
 private:
     std::string path_;
     ThreadPool* thread_pool_;
@@ -62,6 +58,7 @@ private:
     leveldb::DB* metadb_;
     Mutex   mu_;
     int64_t namespace_version_;
+    DiskCounterManager counter_manager_;
 };
 
 } // bfs

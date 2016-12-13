@@ -13,6 +13,7 @@
 
 #include <common/thread_pool.h>
 #include "proto/status_code.pb.h"
+#include "chunkserver/counter_manager.h"
 
 namespace leveldb {
 class DB;
@@ -26,6 +27,7 @@ class BlockMeta;
 class Block;
 class FileCache;
 class Disk;
+typedef DiskCounterManager::DiskStat DiskStat;
 
 class BlockManager {
 public:
@@ -44,17 +46,23 @@ public:
     Block* FindBlock(int64_t block_id);
     bool AddBlock(int64_t block_id, Disk* disk, BlockMeta meta);
 
+    DiskStat Stat();
+
 private:
     void CheckStorePath(const std::string& store_path);
     void LoadOneDisk(Disk* disk);
     Disk* PickDisk(int64_t block_id);
     int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx);
+    void LogStatus();
 private:
-    std::vector<Disk*> disks_;
+    ThreadPool* thread_pool_;
+    std::map<Disk*, std::pair<double, DiskStat>> disks_;
     FileCache* file_cache_;
     Mutex   mu_;
     std::map<int64_t, Block*> block_map_;
     int64_t disk_quota_;
+    DiskStat stat_;
+    DiskCounterManager* counter_manager_;
 };
 
 } // bfs

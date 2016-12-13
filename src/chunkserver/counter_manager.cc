@@ -6,69 +6,69 @@
 
 #include "chunkserver/counter_manager.h"
 
-#include <common/counter.h>
 #include <common/timer.h>
 
 namespace baidu {
 namespace bfs {
 
-common::Counter g_block_buffers;
-common::Counter g_buffers_new;
-common::Counter g_buffers_delete;
-common::Counter g_blocks;
-common::Counter g_writing_blocks;
-common::Counter g_pending_writes;
-common::Counter g_unfinished_bytes;
-common::Counter g_writing_bytes;
-common::Counter g_find_ops;
-common::Counter g_read_ops;
-common::Counter g_read_bytes;
-common::Counter g_write_ops;
-common::Counter g_write_bytes;
-common::Counter g_recover_bytes;
-common::Counter g_recover_count;
-common::Counter g_refuse_ops;
-common::Counter g_rpc_delay;
-common::Counter g_rpc_delay_all;
-common::Counter g_rpc_count;
-common::Counter g_data_size;
-
-
-CounterManager::CounterManager() {
+ChunkserverCounterManager::ChunkserverCounterManager() {
     last_gather_time_ = common::timer::get_micros();
-    memset(&counters_, 0 ,sizeof(counters_));
+    memset(&stat_, 0 ,sizeof(stat_));
 }
 
-void CounterManager::GatherCounters() {
+void ChunkserverCounterManager::GatherCounters(ChunkserverCounters* counters) {
+    MutexLock lock(&mu_);
     int64_t now = common::timer::get_micros();
     int64_t interval = now - last_gather_time_;
     last_gather_time_ = now;
 
-    Counters counters;
-    counters.rpc_count = g_rpc_count.Clear();
-    counters.rpc_delay = 0;
-    counters.delay_all = 0;
-    if (counters.rpc_count) {
-        counters.rpc_delay = g_rpc_delay.Clear() / counters.rpc_count / 1000;
-        counters.delay_all = g_rpc_delay_all.Clear() / counters.rpc_count / 1000;
+    stat_.rpc_count = counters->rpc_count.Clear();
+    stat_.rpc_delay = 0;
+    stat_.rpc_delay_all = 0;
+    if (counters->rpc_count.Get()) {
+        stat_.rpc_delay = counters->rpc_delay.Clear() / stat_.rpc_count / 1000;
+        stat_.rpc_delay_all = counters->rpc_delay_all.Clear() / stat_.rpc_count / 1000;
     }
-    counters.find_ops = g_find_ops.Clear() * 1000000 / interval;
-    counters.read_ops = g_read_ops.Clear() * 1000000 / interval;
-    counters.read_bytes = g_read_bytes.Clear() * 1000000 / interval;
-    counters.write_ops = g_write_ops.Clear() * 1000000 / interval;
-    counters.refuse_ops = g_refuse_ops.Clear() * 1000000 / interval;
-    counters.write_bytes = g_write_bytes.Clear() * 1000000 / interval;
-    counters.recover_bytes = g_recover_bytes.Clear() * 1000000 / interval;
-    counters.buffers_new = g_buffers_new.Clear() * 1000000 / interval;
-    counters.buffers_delete = g_buffers_delete.Clear() * 1000000 / interval;
-    counters.unfinished_write_bytes = g_unfinished_bytes.Get();
-    MutexLock lock(&counters_lock_);
-    counters_ = counters;
+    stat_.find_ops = counters->find_ops.Clear() * 1000000 / interval;
+    stat_.read_ops = counters->read_ops.Clear() * 1000000 / interval;
+    stat_.read_bytes = counters->read_bytes.Clear() * 1000000 / interval;
+    stat_.write_ops = counters->write_ops.Clear() * 1000000 / interval;
+    stat_.refuse_ops = counters->refuse_ops.Clear() * 1000000 / interval;
+    stat_.recover_bytes = counters->recover_bytes.Clear() * 1000000 / interval;
+    stat_.unfinished_bytes = counters->unfinished_bytes.Get();
+    stat_.recover_count = counters->recover_count.Get();
 }
 
-CounterManager::Counters CounterManager::GetCounters() {
-    MutexLock lock(&counters_lock_);
-    return counters_;
+ChunkserverCounterManager::ChunkserverStat ChunkserverCounterManager::GetCounters() {
+    MutexLock lock(&mu_);
+    return stat_;
+}
+
+DiskCounterManager::DiskCounterManager() {
+    last_gather_time_ = common::timer::get_micros();
+    memset(&stat_, 0 ,sizeof(stat_));
+}
+
+void DiskCounterManager::GatherCounters(DiskCounterManager::DiskCounters* counters) {
+    MutexLock lock(&mu_);
+    int64_t now = common::timer::get_micros();
+    int64_t interval = now - last_gather_time_;
+    last_gather_time_ = now;
+
+    stat_.buffers_new = counters->buffers_new.Clear() * 1000000 / interval;
+    stat_.buffers_delete = counters->buffers_delete.Clear() * 1000000 / interval;
+    stat_.write_bytes = counters->write_bytes.Clear() * 1000000 / interval;
+    stat_.block_buffers = counters->block_buffers.Get();
+    stat_.blocks = counters->blocks.Get();
+    stat_.writing_blocks = counters->writing_blocks.Get();
+    stat_.writing_bytes = counters->writing_bytes.Get();
+    stat_.data_size = counters->data_size.Get();
+    stat_.pending_writes = counters->pending_writes.Get();
+}
+
+DiskCounterManager::DiskStat DiskCounterManager::GetStat() {
+    MutexLock lock(&mu_);
+    return stat_;
 }
 
 } // namespace bfs

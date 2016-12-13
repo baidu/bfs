@@ -21,8 +21,6 @@ DECLARE_int32(disk_io_thread_num);
 namespace baidu {
 namespace bfs {
 
-extern common::Counter g_data_size;
-
 Disk::Disk(const std::string& path, int64_t quota)
     : path_(path), disk_quota_(quota) {
     thread_pool_ = new ThreadPool(FLAGS_disk_io_thread_num);
@@ -102,7 +100,7 @@ bool Disk::LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback)
     if (namespace_version_ == 0 && block_num > 0) {
         LOG(WARNING, "Namespace version lost!");
     }
-    disk_quota_ += g_data_size.Get();
+    disk_quota_ += counters_.data_size.Get();
     return true;
 }
 
@@ -209,6 +207,15 @@ bool Disk::CleanUp() {
     leveldb::Status s = leveldb::DB::Open(options, path_ + "meta/", &metadb_);
     LOG(INFO, "CleanUp %s done", path_.c_str());
     return true;
+}
+
+DiskStat Disk::Stat() {
+    counter_manager_.GatherCounters(&counters_);
+    DiskStat stat = counter_manager_.GetStat();
+    std::string str;
+    stat.ToString(&str);
+    LOG(DEBUG, "[Stat] %s : %s", path_.c_str(), str.c_str());
+    return stat;
 }
 
 std::string Disk::BlockId2Str(int64_t block_id) {
