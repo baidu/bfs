@@ -83,8 +83,27 @@ int64_t NameSpace::Version() const {
     return version_;
 }
 
-bool NameSpace::IsDir(int type) {
-    return (type & (1<<9));
+FileType NameSpace::GetFileType(int type){
+    int mode = type>>9;
+    return FileType(mode);
+}
+
+bool NameSpace::GetLinkSrcPath(const FileInfo &info, FileInfo *src_info){
+    *src_info = info;
+    FileType file_type = kSymlink;
+
+    while (file_type == kSymlink){
+        std::string sym_link = src_info->sym_link() ;
+        std::string sym_path = NormalizePath(sym_link);
+        LOG(INFO, "GetLinkSrcPath sym_path %s\n", sym_path.c_str());
+        if (!LookUp(sym_path, src_info)){
+            LOG(INFO, "GetLinkSrcPath  found  %s \n", sym_link.c_str());
+            return false;
+        }
+        LOG(INFO, "GetLinkSrcPath src_info %d,   %s\n", src_info->type(), src_info->name().c_str());
+        file_type = GetFileType(src_info->type());
+    }
+    return true;
 }
 
 void NameSpace::EncodingStoreKey(int64_t entry_id,
@@ -220,7 +239,7 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
 
 StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num,
                                  std::vector<int64_t>* blocks_to_remove,
-                                 NameServerLog* log) {
+                                 const std::string &sym_link, NameServerLog* log) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "CreateFile split fail %s", path.c_str());
@@ -245,7 +264,7 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             EncodeLog(log, kSyncWrite, key_str, info_value);
             LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
         } else {
-            if (!IsDir(file_info.type())) {
+            if (GetFileType(file_info.type()) != kDir){
                 LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
                 return kBadParameter;
             }
@@ -260,16 +279,19 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
             return kFileExists;
         } else {
-            if (IsDir(file_info.type())) {
+            if (GetFileType(file_info.type()) == kDir){
                 LOG(INFO, "CreateFile %s fail: directory with same name exist", fname.c_str());
                 return kFileExists;
             }
-            for (int i = 0; i < file_info.blocks_size(); i++) {
-                blocks_to_remove->push_back(file_info.blocks(i));
-            }
+            if (blocks_to_remove != NULL){
+                 for (int i = 0; i < file_info.blocks_size(); i++) {
+                    blocks_to_remove->push_back(file_info.blocks(i));
+                 }
+             }
         }
     }
-    file_info.set_type(((1 << 10) - 1) & mode);
+    file_info.set_type(((1 << 11) - 1) & mode);
+    file_info.set_sym_link(sym_link);
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
@@ -295,7 +317,8 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
     if (!LookUp(path, &info)) {
         return kNsNotFound;
     }
-    if (!IsDir(info.type())) {
+    FileType file_type = GetFileType(info.type());
+    if (file_type != kDir) {
         FileInfo* file_info = outputs->Add();
         file_info->CopyFrom(info);
         //for a file, name should be empty because it's a relative path
@@ -356,11 +379,13 @@ StatusCode NameSpace::Rename(const std::string& old_path,
             LOG(INFO, "Rename to %s which not exist", new_paths[i].c_str());
             return kNsNotFound;
         }
-        if (!IsDir(path_file.type())) {
+        FileType file_type = GetFileType(path_file.type());
+        if (file_type != kDir){
             LOG(INFO, "Rename %s to %s fail: %s is not a directory",
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
             return kBadParameter;
         }
+
         if (path_file.entry_id() == old_file.entry_id()) {
             LOG(INFO, "Rename %s to %s fail: %s is the parent directory of %s",
                     old_path.c_str(), new_path.c_str(), old_path.c_str(),
@@ -376,7 +401,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         /// dst_file maybe not exist, don't use it elsewhere.
         FileInfo dst_file;
         if (LookUp(parent_id, dst_name, &dst_file)) {
-            if (IsDir(dst_file.type())) {
+            if (GetFileType(dst_file.type()) == kDir) {
                 LOG(INFO, "Rename %s to %s, target %o is a exist directory",
                     old_path.c_str(), new_path.c_str(), dst_file.type());
                 return kTargetDirExists;
@@ -416,11 +441,34 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     }
 }
 
+StatusCode NameSpace::Symlink(const std::string& src, const std::string& dst, NameServerLog* log) {
+
+    if (src == "/" || dst == "/" || src == dst) {
+        return kBadParameter;
+    }
+    FileInfo file_info;
+    if (!LookUp(src, &file_info)) {
+        LOG(INFO, "CreateSymlink not found src_file: %s", src.c_str());
+        return kNsNotFound;
+    }
+    FileType src_type = GetFileType(file_info.type());
+    if (src_type == kDir){
+        LOG(INFO, "CreateSymlink not support directory, src_file:%s", src.c_str());
+        return kBadParameter;
+    }
+    LOG(INFO, "Use CreateFile to create dst: %s", dst.c_str());
+    StatusCode status = CreateFile(dst, 0,  02777, 0,  NULL, src, log);
+    return status;
+
+}
+
 StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log) {
     StatusCode ret_status = kOK;
     if (LookUp(path, file_removed)) {
         // Only support file
-        if ((file_removed->type() & (1<<9)) == 0) {
+        FileType file_type= GetFileType(file_removed->type());
+        //if ((file_removed->type() & (1<<9)) == 0) {
+        if (file_type != kDir){
             if (path == "/" || path.empty()) {
                 LOG(INFO, "root type= %d", file_removed->type());
             }
@@ -453,7 +501,7 @@ StatusCode NameSpace::DiskUsage(const std::string& path, uint64_t* du_size) {
     if (!LookUp(path, &info)) {
         LOG(INFO, "Du Directory or File, %s is not found.", path.c_str());
         return kNsNotFound;
-    } else if (!IsDir(info.type())) {
+    } else if (GetFileType(info.type()) != kDir) {
         *du_size = info.size();
         return kOK;
     }
@@ -477,7 +525,8 @@ StatusCode NameSpace::InternalComputeDiskUsage(const FileInfo& info, uint64_t* d
         std::string entry_name(key.data() + 8, key.size() - 8);
         FileInfo child_info;
         assert(child_info.ParseFromArray(it->value().data(), it->value().size()));
-        if (IsDir(child_info.type())) {
+        if (GetFileType(child_info.type()) == kDir){
+        //if (IsDir(child_info.type())) {
             child_info.set_parent_entry_id(entry_id);
             ret_status = InternalComputeDiskUsage(child_info, du_size);
             if (ret_status != kOK) {
@@ -499,7 +548,7 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
     if (!LookUp(path, &info)) {
         LOG(INFO, "Delete Directory, %s is not found.", path.c_str());
         return kNsNotFound;
-    } else if (!IsDir(info.type())) {
+    } else if (GetFileType(info.type()) != kDir) {
         LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
         return kBadParameter;
     }
@@ -535,7 +584,7 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
         FileInfo child_info;
         bool ret = child_info.ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
-        if (IsDir(child_info.type())) {
+        if (GetFileType(child_info.type()) == kDir){
             child_info.set_parent_entry_id(entry_id);
             child_info.set_name(entry_name);
             LOG(INFO, "Recursive to path: %s", entry_name.c_str());
@@ -585,8 +634,8 @@ bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) 
         if (last_entry_id_ < file_info.entry_id()) {
             last_entry_id_ = file_info.entry_id();
         }
-        if (!IsDir(file_info.type())) {
-            //a file
+        if (GetFileType(file_info.type()) != kDir){
+            //a file, FileType: kDefault, kDir, kSymink
             for (int i = 0; i < file_info.blocks_size(); i++) {
                 if (file_info.blocks(i) >= next_block_id_) {
                     next_block_id_ = file_info.blocks(i) + 1;
@@ -602,6 +651,7 @@ bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) 
             entry_id_set.insert(file_info.entry_id());
         }
     }
+
     LOG(INFO, "RebuildBlockMap done. %ld directories, %ld files, "
               "%lu blocks, last_entry_id= E%ld",
         entry_id_set.size(), file_num, block_num, last_entry_id_);

@@ -429,6 +429,30 @@ int32_t FSImpl::ChangeReplicaNum(const char* file_name, int32_t replica_num) {
     */
     return PERMISSION_DENIED;
 }
+
+int32_t FSImpl::Symlink(const char* src, const char* dst)
+{
+    SymlinkRequest request;
+    SymlinkResponse response;
+    request.set_src(src);
+    request.set_dst(dst);
+    request.set_sequence_id(0);
+    request.set_mode(0777|(1<<10));
+
+    bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Symlink,
+        &request, &response, 15, 1);
+    if(!ret){
+        LOG(WARNING, "CreateSymlink rpc fail: %s -> %s \n", dst, src);
+        return TIMEOUT;
+    }
+    if(response.status() != kOK){
+        LOG(WARNING, "CreateSymlink %s -> %s return: %s\n",
+            dst, src, StatusCode_Name(response.status()).c_str());
+        return GetErrorCode(response.status());
+    }
+    return OK;
+}
+
 int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     SysStatRequest request;
     SysStatResponse response;

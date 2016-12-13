@@ -20,6 +20,12 @@
 namespace baidu {
 namespace bfs {
 
+enum FileType {
+    kDefault = 0,
+    kDir = 1,
+    kSymlink = 2,
+};
+
 class NameSpace {
 public:
     NameSpace(bool standalone = true);
@@ -31,7 +37,7 @@ public:
     /// Create file by name
     StatusCode CreateFile(const std::string& file_name, int flags, int mode,
                           int replica_num, std::vector<int64_t>* blocks_to_remove,
-                          NameServerLog* log = NULL);
+                          const std::string& sym_link, NameServerLog* log = NULL);
     /// Remove file by name
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
@@ -44,6 +50,11 @@ public:
                bool* need_unlink,
                FileInfo* remove_file,
                NameServerLog* log = NULL);
+    /// Create symlink
+    StatusCode Symlink(const std::string& src,
+                const std::string& dst,
+                NameServerLog* log = NULL);
+
     /// Get file
     bool GetFileInfo(const std::string& path, FileInfo* file_info);
     /// Update file
@@ -61,6 +72,8 @@ public:
     int64_t GetNewBlockId();
 private:
     static bool IsDir(int type);
+    static FileType GetFileType(int type);
+    bool GetLinkSrcPath(const FileInfo &info, FileInfo *src_info);
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,
                           std::string* key_str);

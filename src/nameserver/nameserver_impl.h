@@ -125,6 +125,11 @@ public:
             DiskUsageResponse* response,
             ::google::protobuf::Closure* done);
 
+    void Symlink(::google::protobuf::RpcController* controller,
+            const SymlinkRequest* request,
+            SymlinkResponse* response,
+            ::google::protobuf::Closure* done);
+
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
 private:
