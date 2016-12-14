@@ -26,6 +26,7 @@
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_use_root_partition);
 DECLARE_int32(chunkserver_io_thread_num);
+DECLARE_bool(chunkserver_multi_path_on_one_disk);
 
 namespace baidu {
 namespace bfs {
@@ -65,54 +66,67 @@ int64_t BlockManager::DiskQuota() const{
 }
 
 void BlockManager::CheckStorePath(const std::string& store_path) {
-    int64_t disk_quota = 0;
-    common::SplitString(store_path, ",", &store_path_list_);
-    std::map<std::string, std::string> fs_map;
     std::string fsid_str;
     struct statfs fs_info;
-    int stat_ret = statfs("/home", &fs_info);
-    if (stat_ret != 0 && statfs("/", &fs_info) != 0) {
+    std::string home_fs;
+    if (statfs("/home", &fs_info) == 0) {
+        home_fs.assign((const char*)&fs_info.f_fsid, sizeof(fs_info.f_fsid));
+    } else if (statfs("/", &fs_info) == 0) {
+        LOG(WARNING, "statfs(\"/home\") fail: %s", strerror(errno));
+        home_fs.assign((const char*)&fs_info.f_fsid, sizeof(fs_info.f_fsid));
+    } else {
         LOG(FATAL, "statfs(\"/\") fail: %s", strerror(errno));
-    } else if (FLAGS_chunkserver_use_root_partition == 0) {
-        fsid_str.assign((const char*)&fs_info.f_fsid, sizeof(fs_info.f_fsid));
-        fs_map[fsid_str] = "Root";
-        LOG(INFO, "Root fsid: %s", common::DebugString(fsid_str).c_str());
     }
+
+    common::SplitString(store_path, ",", &store_path_list_);
     for (uint32_t i = 0; i < store_path_list_.size(); ++i) {
         std::string& disk_path = store_path_list_[i];
         disk_path = common::TrimString(disk_path, " ");
         if (disk_path.empty() || disk_path[disk_path.size() - 1] != '/') {
             disk_path += "/";
         }
-        if (0 == (stat_ret = statfs(disk_path.c_str(), &fs_info))
-          && (fsid_str.assign((const char*)&fs_info.f_fsid, sizeof(fs_info.f_fsid)),
-              fs_map.find(fsid_str) == fs_map.end())) {
-            int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
-            int64_t user_quota = fs_info.f_bavail * fs_info.f_bsize;
-            int64_t super_quota = fs_info.f_bfree * fs_info.f_bsize;
-            fs_map[fsid_str] = disk_path;
-            LOG(INFO, "Use store path: %s block: %ld disk: %s available %s quota: %s",
-                disk_path.c_str(), fs_info.f_bsize,
-                common::HumanReadableString(disk_size).c_str(),
-                common::HumanReadableString(super_quota).c_str(),
-                common::HumanReadableString(user_quota).c_str());
-            disk_quota += user_quota;
-        } else {
+    }
+    std::sort(store_path_list_.begin(), store_path_list_.end());
+    auto it = std::unique(store_path_list_.begin(), store_path_list_.end());
+    store_path_list_.resize(std::distance(store_path_list_.begin(), it));
+
+    std::set<std::string> fsids;
+    int64_t disk_quota = 0;
+    for (uint32_t i = 0; i < store_path_list_.size(); ++i) {
+        std::string& disk_path = store_path_list_[i];
+        int stat_ret = statfs(disk_path.c_str(), &fs_info);
+        std::string fs_tmp((const char*)&fs_info.f_fsid, sizeof(fs_info.f_fsid));
+        if (stat_ret != 0 ||
+            (!FLAGS_chunkserver_multi_path_on_one_disk && fsids.find(fs_tmp) != fsids.end()) ||
+            (!FLAGS_chunkserver_use_root_partition && fs_tmp == home_fs)) {
+            // statfs failed
+            // do not allow multi data path on the same disk
+            // do not allow using root as data path
             if (stat_ret != 0) {
-                LOG(WARNING, "Stat store_path %s fail: %s, ignore it", disk_path.c_str(), strerror(errno));
+                LOG(WARNING, "Stat store_path %s fail: %s, ignore it",
+                        disk_path.c_str(), strerror(errno));
             } else {
-                LOG(WARNING, "%s's fsid is same to %s, ignore it",
-                    disk_path.c_str(), fs_map[fsid_str].c_str());
+                LOG(WARNING, "%s fsid has been used", disk_path.c_str());
             }
             store_path_list_[i] = store_path_list_[store_path_list_.size() - 1];
             store_path_list_.resize(store_path_list_.size() - 1);
             --i;
+        } else {
+            if (fsids.insert(fs_tmp).second) {
+                int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
+                int64_t user_quota = fs_info.f_bavail * fs_info.f_bsize;
+                int64_t super_quota = fs_info.f_bfree * fs_info.f_bsize;
+                LOG(INFO, "Use store path: %s block: %ld disk: %s available %s quota: %s",
+                        disk_path.c_str(), fs_info.f_bsize,
+                        common::HumanReadableString(disk_size).c_str(),
+                        common::HumanReadableString(super_quota).c_str(),
+                        common::HumanReadableString(user_quota).c_str());
+                disk_quota += user_quota;
+            } else {
+                LOG(INFO, "Use store path: %s", disk_path.c_str());
+            }
         }
     }
-    std::sort(store_path_list_.begin(), store_path_list_.end());
-    std::vector<std::string>::iterator it
-       = std::unique(store_path_list_.begin(), store_path_list_.end());
-    store_path_list_.resize(std::distance(store_path_list_.begin(), it));
     LOG(INFO, "%lu store path used.", store_path_list_.size());
     assert(store_path_list_.size() > 0);
     disk_quota_ = disk_quota;
