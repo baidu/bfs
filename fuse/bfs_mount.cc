@@ -372,12 +372,13 @@ int bfs_fsync(const char* path, int /*datasync*/, struct fuse_file_info* finfo) 
             retval = -EIO;
         }
         int wlen = file->Write(mfile->buf, mfile->file_size);
-        if (wlen < mfile->buf_len) {
-            fprintf(stderr, BFSERR"Write(%s, %d) for release fail\n", path, mfile->buf_len);
+        if (wlen < mfile->file_size) {
+            fprintf(stderr, BFSERR"Write(%s, %ld) for fsync fail\n", path, mfile->file_size);
             delete file;
             file = NULL;
             retval = -EIO;
         } else {
+            fprintf(stderr, BFS"Write(%s, %ld) for fsync\n", path ,mfile->file_size);
             delete[] mfile->buf;
             mfile->buf = NULL;
         }
