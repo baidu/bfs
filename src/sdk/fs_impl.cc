@@ -23,7 +23,7 @@
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
-DECLARE_string(sdk_wirte_mode);
+DECLARE_string(sdk_write_mode);
 
 namespace baidu {
 namespace bfs {
@@ -306,10 +306,13 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     }
     WriteOptions write_option = options;
     if (options.write_mode == kWriteDefault) {
-        if (FLAGS_sdk_wirte_mode == "fanout") {
+        if (FLAGS_sdk_write_mode == "fanout") {
             write_option.write_mode = kWriteFanout;
-        } else {
+        } else if (FLAGS_sdk_write_mode == "chains") {
             write_option.write_mode = kWriteChains;
+        } else {
+            LOG(FATAL, "wrong flag %s for sdk write mode",
+                    FLAGS_sdk_write_mode.c_str());
         }
     }
     common::timer::AutoTimer at(100, "OpenFile", path);
