@@ -9,9 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <algorithm>
-
 #include <sdk/bfs.h>
-#include <common/logging.h>
 
 baidu::bfs::FS* g_fs;
 std::string g_bfs_path;
