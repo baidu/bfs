@@ -16,7 +16,12 @@ namespace bfs {
 
 class FileLockManager;
 
-class WriteLock {
+class Lock {
+public:
+    virtual ~Lock() {}
+};
+
+class WriteLock : public Lock {
 public:
     WriteLock(const std::string& file_path);
     WriteLock(const std::string& file_path_a,
@@ -28,7 +33,7 @@ private:
     std::vector<std::string> file_path_;
 };
 
-class ReadLock {
+class ReadLock : public Lock {
 public:
     ReadLock(const std::string& file_path);
     ~ReadLock();
@@ -38,8 +43,7 @@ private:
     std::string file_path_;
 };
 
-typedef std::shared_ptr<WriteLock> WriteLockGuard;
-typedef std::shared_ptr<ReadLock> ReadLockGuard;
+typedef std::shared_ptr<Lock> FileLockGuard;
 
 } // namespace bfs
 } // namespace baidu
