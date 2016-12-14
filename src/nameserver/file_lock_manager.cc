@@ -10,9 +10,26 @@
 #include <assert.h>
 
 #include <common/string_util.h>
+#include <common/hash.h>
 
 namespace baidu {
 namespace bfs {
+
+FileLockManager::FileLockManager(int bucket_num) {
+    locks_.reserve(bucket_num);
+    for (int i = 0; i < bucket_num; i++) {
+        locks_.push_back(new LockBucket);
+    }
+}
+
+FileLockManager::~FileLockManager() {
+
+}
+
+int FileLockManager::GetBucketOffset(const std::string& path) {
+    static int bucket_size = locks_.size();
+    return common::Hash(path.c_str(), path.size(), 0) % bucket_size;
+}
 
 void FileLockManager::ReadLock(const std::string& file_path) {
     LOG(DEBUG, "Try get read lock for %s", file_path.c_str());
@@ -67,21 +84,25 @@ void FileLockManager::Unlock(const std::string& file_path) {
 void FileLockManager::LockInternal(const std::string& path,
                                      LockType lock_type) {
     LockEntry* entry = NULL;
+
+    int bucket_offset = GetBucketOffset(path);
+    LockBucket* lock_bucket = locks_[bucket_offset];
+
     {
-        MutexLock lock(&mu_);
-        auto it = lock_map_.find(path);
-        if (it == lock_map_.end()) {
+        MutexLock lock(&(lock_bucket->mu));
+        auto it = lock_bucket->lock_map.find(path);
+        if (it == lock_bucket->lock_map.end()) {
             entry = new LockEntry();
             // hold a ref for lock_map_
             entry->ref_.Inc();
-            lock_map_.insert(std::make_pair(path, entry));
+            lock_bucket->lock_map.insert(std::make_pair(path, entry));
         } else {
             entry = it->second;
         }
         // inc ref_ first to prevent deconstruct
         entry->ref_.Inc();
     }
-    // shouldn't hold mu_ here
+
     if (lock_type == kRead) {
         //get read lock
         entry->rw_lock_.ReadLock();
@@ -94,9 +115,12 @@ void FileLockManager::LockInternal(const std::string& path,
 }
 
 void FileLockManager::UnlockInternal(const std::string& path) {
-    MutexLock lock(&mu_);
-    auto it = lock_map_.find(path);
-    assert(it != lock_map_.end());
+    int bucket_offset = GetBucketOffset(path);
+    LockBucket* lock_bucket = locks_[bucket_offset];
+
+    MutexLock lock(&(lock_bucket->mu));
+    auto it = lock_bucket->lock_map.find(path);
+    assert(it != lock_bucket->lock_map.end());
     LockEntry* entry = it->second;
     //release lock
     entry->rw_lock_.Unlock();
@@ -105,12 +129,8 @@ void FileLockManager::UnlockInternal(const std::string& path) {
         // we are the last holder
         /// TODO maybe don't need to deconstruct immediately
         delete entry;
-        lock_map_.erase(it);
+        lock_bucket->lock_map.erase(it);
     }
-}
-
-FileLockManager::~FileLockManager() {
-
 }
 
 } // namespace bfs
