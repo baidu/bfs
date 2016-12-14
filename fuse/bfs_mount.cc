@@ -66,7 +66,7 @@ int bfs_getattr(const char* path, struct stat* st) {
             st->st_size = file.size;
         }
     }
-    st->st_blocks = 1;
+    st->st_blocks = (st->st_size - 1) / 512 + 1;
     fprintf(stderr, BFS"bfs_getattr(%s) ctime=%u size=%ld\n", path, file.ctime, st->st_size);
     st->st_atime = file.ctime;
     st->st_ctime = file.ctime;

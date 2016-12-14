@@ -438,7 +438,7 @@ int main(int argc, char* argv[]) {
             return ret;
         }
         baidu::bfs::File* file;
-        if (fs->OpenFile(argv[2], O_WRONLY, 644, &file, baidu::bfs::WriteOptions()) != 0) {
+        if (fs->OpenFile(argv[2], O_WRONLY, 0644, &file, baidu::bfs::WriteOptions()) != 0) {
             fprintf(stderr, "Open %s fail\n", argv[2]);
         } else {
             ret = 0;
