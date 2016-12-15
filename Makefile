@@ -66,7 +66,7 @@ VERSION_OBJ = src/version.o
 OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
-BIN = nameserver chunkserver bfs_client
+BIN = nameserver chunkserver bfs_client raft_kv kv_client
 
 ifdef FUSE_PATH
 	BIN += bfs_mount
@@ -127,7 +127,10 @@ block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/bloc
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
 	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
 
-raft_node: src/nameserver/test/raft_test.o src/nameserver/raft_node.o src/nameserver/logdb.o $(OBJS)
+raft_kv: src/nameserver/test/raft_test.o src/nameserver/raft_node.o src/nameserver/logdb.o $(OBJS)
+	$(CXX) $^ -o $@ $(LDFLAGS)
+
+kv_client: src/nameserver/test/kv_client.o $(OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
 location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o

@@ -19,6 +19,10 @@ FileImplWrapper::FileImplWrapper(FSImpl* fs, RpcClient* rpc_client,
 
 FileImplWrapper::FileImplWrapper(FileImpl* file_impl) : impl_(file_impl) {}
 
+FileImplWrapper::~FileImplWrapper() {
+    impl_->Close();
+}
+
 int32_t FileImplWrapper::Pread(char* buf, int32_t read_size, int64_t offset, bool reada) {
     return impl_->Pread(buf, read_size, offset, reada);
 }
