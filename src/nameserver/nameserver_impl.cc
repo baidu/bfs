@@ -693,6 +693,22 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
 
     StatusCode status = namespace_->ListDirectory(path, response->mutable_files());
+    for (int i = 0; i < response->files_size(); i++) {
+        FileInfo* file = response->mutable_files(i);
+        if ((file->type() & (1 << 9)) == 0 && file->size() == 0) {
+            //maybe it's a incomplete file
+            int64_t file_size = 0;
+            for (int i = 0; i < file->blocks_size(); i++) {
+                int64_t block_id = file->blocks(i);
+                NSBlock nsblock;
+                if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
+                    continue;
+                }
+                file_size += nsblock.block_size;
+            }
+            file->set_size(file_size);
+        }
+    }
     response->set_status(status);
     done->Run();
 }
