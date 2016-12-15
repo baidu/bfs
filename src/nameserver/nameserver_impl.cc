@@ -696,7 +696,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     for (int i = 0; i < response->files_size(); i++) {
         FileInfo* file = response->mutable_files(i);
         if ((file->type() & (1 << 9)) == 0 && file->size() == 0) {
-            //maybe it's a incomplete file
+            //maybe it's an incomplete file
             int64_t file_size = 0;
             for (int i = 0; i < file->blocks_size(); i++) {
                 int64_t block_id = file->blocks(i);
