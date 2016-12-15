@@ -152,6 +152,7 @@ private:
     bool CheckFileHasBlock(const FileInfo& file_info,
                            const std::string& file_name,
                            int64_t block_id);
+    void SetActualFileSize(FileInfo* file);
 private:
     /// Global thread pool
     ThreadPool* read_thread_pool_;

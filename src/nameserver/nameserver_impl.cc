@@ -697,16 +697,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
         FileInfo* file = response->mutable_files(i);
         if ((file->type() & (1 << 9)) == 0 && file->size() == 0) {
             //maybe it's an incomplete file
-            int64_t file_size = 0;
-            for (int i = 0; i < file->blocks_size(); i++) {
-                int64_t block_id = file->blocks(i);
-                NSBlock nsblock;
-                if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
-                    continue;
-                }
-                file_size += nsblock.block_size;
-            }
-            file->set_size(file_size);
+            SetActualFileSize(file);
         }
     }
     response->set_status(status);
@@ -731,17 +722,8 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
         //maybe haven't been written info meta
-        if (!out_info->size()) {
-            int64_t file_size = 0;
-            for (int i = 0; i < out_info->blocks_size(); i++) {
-                int64_t block_id = out_info->blocks(i);
-                NSBlock nsblock;
-                if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
-                    continue;
-                }
-                file_size += nsblock.block_size;
-            }
-            out_info->set_size(file_size);
+        if ((out_info->type() & (1 << 9)) == 0 && !out_info->size()) {
+            SetActualFileSize(out_info);
         }
         response->set_status(kOK);
         LOG(INFO, "Stat: %s return: %ld", path.c_str(), out_info->size());
@@ -1421,6 +1403,19 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     } else {
         NameServer::CallMethod(method, controller, request, response, done);
     }
+}
+
+void NameServerImpl::SetActualFileSize(FileInfo* file) {
+    int64_t file_size = 0;
+    for (int i = 0; i < file->blocks_size(); i++) {
+        int64_t block_id = file->blocks(i);
+        NSBlock nsblock;
+        if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
+            continue;
+        }
+        file_size += nsblock.block_size;
+    }
+    file->set_size(file_size);
 }
 
 } // namespace bfs
