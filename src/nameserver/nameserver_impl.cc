@@ -722,7 +722,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
         //maybe haven't been written info meta
-        if ((out_info->type() & (1 << 9)) == 0 && !out_info->size()) {
+        if ((out_info->type() & (1 << 9)) == 0 && out_info->size() == 0) {
             SetActualFileSize(out_info);
         }
         response->set_status(kOK);
