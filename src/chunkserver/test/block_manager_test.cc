@@ -65,7 +65,6 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     ASSERT_EQ(block->finished_, true);
     ASSERT_EQ(block->file_desc_, Block::kClosed);
     block_manager.RemoveBlock(block_id);
-    ASSERT_EQ(block->refs_, 1);
     ASSERT_EQ(block->deleted_, 1);
     block->DecRef();
 
@@ -74,7 +73,6 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     block = block_manager.CreateBlock(block_id, &sync_time, &status);
     ASSERT_TRUE(block != NULL);
     block_manager.RemoveBlock(block_id);
-    ASSERT_EQ(block->refs_, 1);
     ASSERT_EQ(block->deleted_, true);
     ASSERT_EQ(block->finished_, false);
     ASSERT_EQ(block->file_desc_, Block::kNotCreated);
