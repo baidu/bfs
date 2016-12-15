@@ -117,7 +117,7 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
                     common::HumanReadableString(user_quota).c_str());
             disk_quota += user_quota;
             Disk* disk = new Disk(store_path_list[i], user_quota);
-            disks_[disk] = std::make_pair(0.0, DiskStat());
+            disks_.push_back(std::make_pair(disk, DiskStat()));
             fsids.insert(fs_tmp);
         }
     }
@@ -138,7 +138,8 @@ int64_t BlockManager::DiskQuota() const {
 bool BlockManager::LoadStorage() {
     bool ret = true;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        ret = ret && it->first->LoadStorage(std::bind(&BlockManager::AddBlock,
+        Disk* disk = it->first;
+        ret = ret && disk->LoadStorage(std::bind(&BlockManager::AddBlock,
                                                       this, std::placeholders::_1,
                                                       std::placeholders::_2,
                                                       std::placeholders::_3));
@@ -149,7 +150,8 @@ bool BlockManager::LoadStorage() {
 int64_t BlockManager::NameSpaceVersion() const {
     int64_t version = -1;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        int64_t tmp = it->first->NameSpaceVersion();
+        Disk* disk = it->first;
+        int64_t tmp = disk->NameSpaceVersion();
         if (version == -1) {
             version = tmp;
         }
@@ -162,7 +164,8 @@ int64_t BlockManager::NameSpaceVersion() const {
 
 bool BlockManager::SetNameSpaceVersion(int64_t version) {
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        if (!it->first->SetNameSpaceVersion(version)) {
+        Disk* disk = it->first;
+        if (!disk->SetNameSpaceVersion(version)) {
             return false;
         }
     }
@@ -172,7 +175,8 @@ bool BlockManager::SetNameSpaceVersion(int64_t version) {
 int64_t BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, uint32_t num) {
     std::vector<leveldb::Iterator*> iters;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        it->first->Seek(offset, &iters);
+        Disk* disk = it->first;
+        disk->Seek(offset, &iters);
     }
     if (iters.size() == 0) {
         return 0;
@@ -233,7 +237,7 @@ Block* BlockManager::CreateBlock(int64_t block_id, StatusCode* status) {
         block->AddRef();
     }
     *status = kOK;
-    LOG(INFO, "CreateBlock %ld on %s", block_id, disk->Path().c_str());
+    LOG(INFO, "CreateBlock #%ld on %s", block_id, disk->Path().c_str());
     return block;
 }
 
@@ -299,12 +303,7 @@ Block* BlockManager::FindBlock(int64_t block_id) {
 }
 
 Disk* BlockManager::PickDisk(int64_t block_id) {
-    int offset = block_id % disks_.size();
-    auto it = disks_.begin();
-    for (int i = 0; i < offset; ++i) {
-        ++it;
-    }
-    return it->first;
+    return disks_[block_id % disks_.size()].first;
 }
 
 int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx) {
@@ -340,10 +339,10 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
 }
 
 void BlockManager::LogStatus() {
-    memset(&stat_, 0 ,sizeof(stat_));
+    memset(&stat_, 0,sizeof(stat_));
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         DiskStat stat = it->first->Stat();
-        it->second = std::make_pair(0.0, stat);
+        it->second = stat;
 
         stat_.block_buffers += stat.block_buffers;
         stat_.blocks += stat.blocks;

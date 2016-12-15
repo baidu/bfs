@@ -56,7 +56,7 @@ private:
     void LogStatus();
 private:
     ThreadPool* thread_pool_;
-    std::map<Disk*, std::pair<double, DiskStat>> disks_;
+    std::vector<std::pair<Disk*, DiskStat>> disks_;
     FileCache* file_cache_;
     Mutex   mu_;
     std::map<int64_t, Block*> block_map_;
