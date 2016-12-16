@@ -485,7 +485,8 @@ std::string FileImpl::GetSlowChunkserver() {
     mu_.AssertHeld();
     auto it = write_windows_.begin();
     for (; it != write_windows_.end(); ++it) {
-        if (it->second->GetBaseOffset() != last_seq_ + 1) {
+        common::SlidingWindow<int>* sld = it->second;
+        if (sld->GetBaseOffset() != last_seq_ + 1) {
             break;
         }
     }
