@@ -29,9 +29,9 @@ message FileInfo {
     repeated string cs_addrs = 11;
     optional string sym_link = 12; //新增字段
 }
-```  
 ```
-message CreateSymlinkRequest {
+```
+message SymlinkRequest {
     optional int64 sequence_id = 1;
     optional string old_path = 2;
     optional string new_path = 3;
@@ -40,7 +40,7 @@ message CreateSymlinkRequest {
 }
 ```
 ```
-message CreateSymlinkResponse {
+message SymlinkResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
 }
@@ -48,27 +48,43 @@ message CreateSymlinkResponse {
 ### 创建软链接，需要增加接口
 ```
 @bfs_client
-int BfsCreateSymlink(baidu::bfs:FS*fs, int argc, char* argh[])
+int BfsCreateSymlink(baidu::bfs:FS*fs, int argc, char* argv[]);
+```
+```
+@bfs.h
+virtual int32_t Symlink(const char* src, const char* dst) = 0;
 ```
 ```
 @fs_impl
-int32_t CreateSymlink(
-    const char* oldpath,
-    const char* newpath){}
+int32_t Symlink(
+    const char* src,
+    const char* dst);
 ```
 ```
-@nameserver_impl:
-void CreateSymlink(
+@nameserver_impl
+void Symlink(
     ::google::protobuf::RpcController* controller,
-    const CreateSymlinkRequest* request,
-    CreateSymlinkResponse* response,
-    ::google::protobuf::Closure* done) {}
+    const SymlinkRequest* request,
+    SymlinkResponse* response,
+    ::google::protobuf::Closure* done);
 ```
 ```
 @namespace
-CreakSymlink(
-    const std:string&old_path,
-    const std::string&new_path,
+Symlink(
+    const std:string& src,
+    const std::string& dst,
     int mode,
-    NameServerLog *log){}
+    NameServerLog *log);
 ```
+
+
+
+
+
+
+
+
+
+
+
+
