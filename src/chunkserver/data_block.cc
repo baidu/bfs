@@ -76,7 +76,7 @@ Block::~Block() {
         }
         delete[] buf;
         disk_->counters_.block_buffers.Dec();
-        disk_->counters_.pending_writes.Dec();
+        disk_->counters_.pending_buf.Dec();
         disk_->counters_.buffers_delete.Inc();
     }
     block_buf_list_.clear();
@@ -285,7 +285,7 @@ bool Block::Close() {
     }
 
     block_buf_list_.push_back(std::make_pair(blockbuf_, bufdatalen_));
-    disk_->counters_.pending_writes.Inc();
+    disk_->counters_.pending_buf.Inc();
     blockbuf_ = NULL;
     bufdatalen_ = 0;
 
@@ -356,7 +356,7 @@ void Block::DiskWrite() {
                 mu_.Lock("Block::DiskWrite ReLock", 1000);
                 block_buf_list_.erase(block_buf_list_.begin());
                 delete[] buf;
-                disk_->counters_.pending_writes.Dec();
+                disk_->counters_.pending_buf.Dec();
                 disk_->counters_.block_buffers.Dec();
                 disk_->counters_.buffers_delete.Inc();
                 disk_file_size_ += len;
@@ -414,7 +414,7 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
         disk_->AddTask(std::bind(&Block::DiskWrite, this), false);
 
         blockbuf_ = new char[buflen_];
-        disk_->counters_.pending_writes.Inc();
+        disk_->counters_.pending_buf.Inc();
         disk_->counters_.block_buffers.Inc();
         disk_->counters_.buffers_new.Inc();
         bufdatalen_ = 0;

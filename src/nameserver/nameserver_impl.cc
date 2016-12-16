@@ -1199,7 +1199,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     "style=\"width: "+ ratio_str + "%; color:#000;" + bg_color + "\">" + ratio_str + "%"
                "</div></div>";
         table_str += "</td><td>";
-        table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
+        table_str += common::NumToString(chunkserver.pending_buf()) + "/" +
                      common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
         table_str += chunkserver.tag();

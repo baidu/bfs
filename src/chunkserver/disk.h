@@ -42,6 +42,7 @@ public:
     bool RemoveBlockMeta(int64_t block_id);
     void AddTask(std::function<void ()> func, bool is_priority);
     int64_t Quota();
+    double Load();
 
     bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);

@@ -17,6 +17,7 @@
 #include "chunkserver/data_block.h"
 
 DECLARE_int32(disk_io_thread_num);
+DECLARE_int32(chunkserver_disk_buf_size);
 
 namespace baidu {
 namespace bfs {
@@ -181,6 +182,12 @@ void Disk::AddTask(std::function<void ()> func, bool is_priority) {
 
 int64_t Disk::Quota() {
     return disk_quota_;
+}
+
+double Disk::Load() {
+    double disk_rate = counters_.data_size.Get() * 1.0 / disk_quota_;
+    double pending_rate = counters_.pending_buf.Get() * 1.0 / FLAGS_chunkserver_disk_buf_size;
+    return disk_rate * disk_rate + pending_rate;
 }
 
 bool Disk::CleanUp() {

@@ -65,7 +65,7 @@ void DiskCounterManager::GatherCounters(DiskCounterManager::DiskCounters* counte
     s.writing_blocks = counters->writing_blocks.Get();
     s.writing_bytes = counters->writing_bytes.Get();
     s.data_size = counters->data_size.Get();
-    s.pending_writes = counters->pending_writes.Get();
+    s.pending_buf = counters->pending_buf.Get();
     MutexLock lock(&mu_);
     stat_ = s;
 }

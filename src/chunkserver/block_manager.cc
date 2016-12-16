@@ -38,6 +38,9 @@ BlockManager::BlockManager(const std::string& store_path)
 }
 
 BlockManager::~BlockManager() {
+    thread_pool_->Stop(true);
+    delete thread_pool_;
+    delete counter_manager_;
     MutexLock lock(&mu_);
     for (auto it = block_map_.begin(); it != block_map_.end(); ++it) {
         Block* block = it->second;
@@ -58,6 +61,26 @@ BlockManager::~BlockManager() {
 
 DiskStat BlockManager::Stat() {
     return stat_;
+}
+
+void BlockManager::Stat(std::string* str) {
+    str->append("<table class=dataintable>");
+    str->append("<tr><td>Path</td><td>Blocks</td><td>Quota</td><td>Size</td><td>PendingBuf</td><td>WritingBlocks</td><td>Buffers</td></tr>");
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        const DiskStat& stat = it->first;
+        int64_t quota = it->second->Quota();
+        int64_t size = stat.data_size;
+        double ratio = size * 100.0 / quota;
+        std::string ratio_str = common::NumToString(ratio);
+        str->append("<tr><td>" + it->second->Path() + "</td>");
+        str->append("<td>" + common::NumToString(stat.blocks) + "</td>");
+        str->append("<td>" + common::HumanReadableString(quota) + "</td>");
+        str->append("<td>" + common::HumanReadableString(size) + "</td>");
+        str->append("<td>" + common::NumToString(stat.pending_buf));
+        str->append("<td>" + common::NumToString(stat.writing_blocks));
+        str->append("<td>" + common::NumToString(stat.block_buffers));
+    }
+    str->append("</table>");
 }
 
 void BlockManager::CheckStorePath(const std::string& store_path) {
@@ -124,7 +147,6 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     }
     LOG(INFO, "%lu store path used.", store_path_list.size());
     assert(store_path_list.size() > 0);
-    disk_quota_ = disk_quota;
 }
 
 void BlockManager::LoadOneDisk(Disk* disk) {
@@ -144,6 +166,7 @@ bool BlockManager::LoadStorage() {
                                                       this, std::placeholders::_1,
                                                       std::placeholders::_2,
                                                       std::placeholders::_3));
+        disk_quota_ += disk->Quota();
     }
     return ret;
 }
@@ -307,9 +330,11 @@ Disk* BlockManager::PickDisk(int64_t block_id) {
     double min_load = 9999.9;
     Disk* target = NULL;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        if (it->first.load < min_load) {
-            target = it->second;
-            min_load = it->first.load;
+        Disk* disk = it->second;
+        double load = disk->Load();
+        if (load < min_load) {
+            min_load = load;
+            target = disk;
         }
     }
     return target;
@@ -350,13 +375,9 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
 void BlockManager::LogStatus(int times) {
     memset(&stat_, 0,sizeof(stat_));
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        DiskStat stat = it->second->Stat();
-        double disk_rate = stat.data_size * 1.0 / it->second->Quota();
-        double pending_rate = stat.pending_writes * 1.0 / FLAGS_chunkserver_disk_buf_size;
-        stat.load = disk_rate * disk_rate + pending_rate;
-        LOG(INFO, "LL: size=%ld %lf pending=%ld %lf load=%lf", stat.data_size, disk_rate, stat.pending_writes, pending_rate, stat.load);
+        Disk* disk = it->second;
+        DiskStat stat = disk->Stat();
         it->first = stat;
-        LOG(INFO, "LL: disk %s load %lf", it->second->Path().c_str(), it->first.load);
 
         stat_.block_buffers += stat.block_buffers;
         stat_.blocks += stat.blocks;
@@ -366,7 +387,7 @@ void BlockManager::LogStatus(int times) {
         stat_.data_size += stat.data_size;
         stat_.buffers_new += stat.buffers_new;
         stat_.buffers_delete += stat.buffers_delete;
-        stat_.pending_writes += stat.pending_writes;
+        stat_.pending_buf += stat.pending_buf;
     }
     std::string str;
     stat_.ToString(&str);

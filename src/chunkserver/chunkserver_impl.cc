@@ -190,7 +190,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_block_num(d_stat.blocks);
     request.set_data_size(d_stat.data_size);
     request.set_buffers(d_stat.block_buffers);
-    request.set_pending_writes(d_stat.pending_writes);
+    request.set_pending_buf(d_stat.pending_buf);
     request.set_pending_recover(c_stat.recover_count);
     request.set_w_qps(c_stat.write_ops);
     request.set_w_speed(d_stat.write_bytes);
@@ -833,18 +833,18 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             "</head>";
     str += "<body> <h1>分布式文件系统控制台 - ChunkServer</h1>";
     str += "<table class=dataintable>";
-    str += "<tr><td>Block number</td><td>Data size</td>"
-           "<td>Write(QPS)</td><td>Write(Speed)</td><td>Read(QPS)</td><td>Read(Speed)</td>"
-           "<td>Recover(Speed)</td><td>Buffers(new/delete)</td>"
-           "<td>PendingTask(W/R/Close/Recv)</td><tr>";
+    str += "<tr><td>Blocks</td><td>Size</td>"
+           "<td>Write(QPS/Speed)</td><td>Read(QPS/Speed)</td>"
+           "<td>Recover(Speed)</td><td>Buffers(new/del)</td>"
+           "<td>Pending(W/R/Close/Recv)</td></tr>";
     str += "<tr><td>" + common::NumToString(d_stat.blocks) + "</td>";
     str += "<td>" + common::HumanReadableString(d_stat.data_size) + "</td>";
-    str += "<td>" + common::NumToString(c_stat.write_ops) + "</td>";
-    str += "<td>" + common::HumanReadableString(d_stat.write_bytes) + "/S</td>";
-    str += "<td>" + common::NumToString(c_stat.read_ops) + "</td>";
-    str += "<td>" + common::HumanReadableString(c_stat.read_bytes) + "/S</td>";
-    str += "<td>" + common::HumanReadableString(c_stat.recover_bytes) + "/S</td>";
-    str += "<td>" + common::NumToString(d_stat.pending_writes) + "/" +
+    str += "<td>" + common::NumToString(c_stat.write_ops);
+    str += "/" + common::HumanReadableString(d_stat.write_bytes) + "</td>";
+    str += "<td>" + common::NumToString(c_stat.read_ops);
+    str += "/" + common::HumanReadableString(c_stat.read_bytes) + "</td>";
+    str += "<td>" + common::HumanReadableString(c_stat.recover_bytes) + "</td>";
+    str += "<td>" + common::NumToString(d_stat.pending_buf) + "/" +
                     common::NumToString(d_stat.block_buffers) +
            + "(" + common::NumToString(d_stat.buffers_new) + "/"
            + common::NumToString(d_stat.buffers_delete) +")" + "</td>";
@@ -854,6 +854,7 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
            + common::NumToString(recover_thread_pool_->PendingNum()) + "</td>";
     str += "</tr>";
     str += "</table>";
+    block_manager_->Stat(&str);
     str += "<script> var int = setInterval('window.location.reload()', 1000);"
            "function check(box) {"
            "if(box.checked) {"
