@@ -3,8 +3,8 @@
 ## 整体设计
 1. 在 FileInfo 中添加 sym_link，标识 软链接路径
       原字段 type，0表示普通文件，1表示目录，增加 2表示软链接
-2. 在创建软链接时，首先检查 old_path是否存在
-      >* 如果存在，则对new_path进行检查并对父目录不存在时进行创建，成功后ldb中增加kv；失败返回；
+2. 在创建软链接时，首先检查 src 是否存在
+      >* 如果存在，则对 dst 进行检查并对父目录不存在时进行创建，成功后ldb中增加kv；失败返回；
       >* 如果不存在，则返回；
 
 3. 读文件时，如果是“软链接”，则把路径重定向到“原路径”下，再进行后续步骤；
@@ -33,8 +33,8 @@ message FileInfo {
 ```
 message SymlinkRequest {
     optional int64 sequence_id = 1;
-    optional string old_path = 2;
-    optional string new_path = 3;
+    optional string src = 2;
+    optional string dst = 3;
     optional int32 mode = 4;
     optional string user = 5;
 }
@@ -70,21 +70,9 @@ void Symlink(
 ```
 ```
 @namespace
-Symlink(
+StatusCode Symlink(
     const std:string& src,
     const std::string& dst,
     int mode,
     NameServerLog *log);
 ```
-
-
-
-
-
-
-
-
-
-
-
-
