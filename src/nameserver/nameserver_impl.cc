@@ -695,7 +695,7 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     StatusCode status = namespace_->ListDirectory(path, response->mutable_files());
     for (int i = 0; i < response->files_size(); i++) {
         FileInfo* file = response->mutable_files(i);
-        if ((file->type() & (1 << 9)) == 0 && file->size() == 0) {
+        if ((file->type() & (1 << 9)) == 0) {
             //maybe it's an incomplete file
             SetActualFileSize(file);
         }
@@ -722,7 +722,7 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
         //maybe haven't been written info meta
-        if ((out_info->type() & (1 << 9)) == 0 && out_info->size() == 0) {
+        if ((out_info->type() & (1 << 9)) == 0) {
             SetActualFileSize(out_info);
         }
         response->set_status(kOK);
@@ -1406,6 +1406,9 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
 }
 
 void NameServerImpl::SetActualFileSize(FileInfo* file) {
+    if (file->size() != 0) {
+        return;
+    }
     int64_t file_size = 0;
     for (int i = 0; i < file->blocks_size(); i++) {
         int64_t block_id = file->blocks(i);
