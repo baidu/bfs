@@ -80,14 +80,12 @@ int64_t Blocks::CheckLost(int64_t report_id, const std::set<int64_t>& blocks,
 
     // report_id == -1 means this is an old-version cs, skip check
     if (report_id != -1) {
-        for (auto ns_it = blocks_.lower_bound(start); ns_it != blocks_.end() && *ns_it <= end;) {
+        for (auto ns_it = blocks_.lower_bound(start); ns_it != blocks_.end() && *ns_it <= end; ns_it++) {
             if (blocks.find(*ns_it) == blocks.end()) {
                 LOG(WARNING, "Check Block for C%d missing #%ld ", cs_id_, *ns_it);
                 lost->push_back(*ns_it);
-                blocks_.erase(ns_it++);
-                continue;
+                blocks_.erase(ns_it);
             }
-            ns_it++;
         }
     }
     MutexLock new_blocks_lock(&new_blocks_mu_);
