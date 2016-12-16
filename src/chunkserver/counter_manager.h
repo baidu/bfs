@@ -127,6 +127,9 @@ public:
             str->append(" delete=" + common::HumanReadableString(buffers_delete));
             str->append(" pending_w=" + common::HumanReadableString(pending_writes));
         }
+        bool operator<(const DiskStat& s) const {
+            return s.load < load;
+        }
 
     };
 public:

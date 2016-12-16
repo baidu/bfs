@@ -179,6 +179,10 @@ void Disk::AddTask(std::function<void ()> func, bool is_priority) {
     }
 }
 
+int64_t Disk::Quota() {
+    return disk_quota_;
+}
+
 bool Disk::CleanUp() {
     leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
     for (it->Seek(BlockId2Str(0)); it->Valid(); it->Next()) {

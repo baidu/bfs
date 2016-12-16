@@ -53,10 +53,10 @@ private:
     void LoadOneDisk(Disk* disk);
     Disk* PickDisk(int64_t block_id);
     int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx);
-    void LogStatus();
+    void LogStatus(int times);
 private:
     ThreadPool* thread_pool_;
-    std::vector<std::pair<Disk*, DiskStat>> disks_;
+    std::vector<std::pair<DiskStat, Disk*>> disks_;
     FileCache* file_cache_;
     Mutex   mu_;
     std::map<int64_t, Block*> block_map_;

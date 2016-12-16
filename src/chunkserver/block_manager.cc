@@ -25,6 +25,7 @@
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_use_root_partition);
 DECLARE_bool(chunkserver_multi_path_on_one_disk);
+DECLARE_int32(chunkserver_disk_buf_size);
 
 namespace baidu {
 namespace bfs {
@@ -33,7 +34,7 @@ BlockManager::BlockManager(const std::string& store_path)
     : thread_pool_(new ThreadPool(1)), disk_quota_(0), counter_manager_(new DiskCounterManager) {
     CheckStorePath(store_path);
     file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
-    LogStatus();
+    LogStatus(1);
 }
 
 BlockManager::~BlockManager() {
@@ -48,7 +49,7 @@ BlockManager::~BlockManager() {
         block->DecRef();
     }
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        delete it->first;
+        delete it->second;
     }
     block_map_.clear();
     delete file_cache_;
@@ -117,7 +118,7 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
                     common::HumanReadableString(user_quota).c_str());
             disk_quota += user_quota;
             Disk* disk = new Disk(store_path_list[i], user_quota);
-            disks_.push_back(std::make_pair(disk, DiskStat()));
+            disks_.push_back(std::make_pair(DiskStat(), disk));
             fsids.insert(fs_tmp);
         }
     }
@@ -138,7 +139,7 @@ int64_t BlockManager::DiskQuota() const {
 bool BlockManager::LoadStorage() {
     bool ret = true;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        Disk* disk = it->first;
+        Disk* disk = it->second;
         ret = ret && disk->LoadStorage(std::bind(&BlockManager::AddBlock,
                                                       this, std::placeholders::_1,
                                                       std::placeholders::_2,
@@ -150,7 +151,7 @@ bool BlockManager::LoadStorage() {
 int64_t BlockManager::NameSpaceVersion() const {
     int64_t version = -1;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        Disk* disk = it->first;
+        Disk* disk = it->second;
         int64_t tmp = disk->NameSpaceVersion();
         if (version == -1) {
             version = tmp;
@@ -164,7 +165,7 @@ int64_t BlockManager::NameSpaceVersion() const {
 
 bool BlockManager::SetNameSpaceVersion(int64_t version) {
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        Disk* disk = it->first;
+        Disk* disk = it->second;
         if (!disk->SetNameSpaceVersion(version)) {
             return false;
         }
@@ -175,7 +176,7 @@ bool BlockManager::SetNameSpaceVersion(int64_t version) {
 int64_t BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, uint32_t num) {
     std::vector<leveldb::Iterator*> iters;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        Disk* disk = it->first;
+        Disk* disk = it->second;
         disk->Seek(offset, &iters);
     }
     if (iters.size() == 0) {
@@ -271,7 +272,7 @@ StatusCode BlockManager::RemoveBlock(int64_t block_id) {
 // TODO: concurrent & async cleanup
 bool BlockManager::CleanUp(int64_t namespace_version) {
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        Disk* disk = it->first;
+        Disk* disk = it->second;
         if (disk->NameSpaceVersion() != namespace_version) {
             if (!disk->CleanUp()) {
                 return false;
@@ -303,7 +304,15 @@ Block* BlockManager::FindBlock(int64_t block_id) {
 }
 
 Disk* BlockManager::PickDisk(int64_t block_id) {
-    return disks_[block_id % disks_.size()].first;
+    double min_load = 9999.9;
+    Disk* target = NULL;
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        if (it->first.load < min_load) {
+            target = it->second;
+            min_load = it->first.load;
+        }
+    }
+    return target;
 }
 
 int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx) {
@@ -338,11 +347,16 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
     return id;
 }
 
-void BlockManager::LogStatus() {
+void BlockManager::LogStatus(int times) {
     memset(&stat_, 0,sizeof(stat_));
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        DiskStat stat = it->first->Stat();
-        it->second = stat;
+        DiskStat stat = it->second->Stat();
+        double disk_rate = stat.data_size * 1.0 / it->second->Quota();
+        double pending_rate = stat.pending_writes * 1.0 / FLAGS_chunkserver_disk_buf_size;
+        stat.load = disk_rate * disk_rate + pending_rate;
+        LOG(INFO, "LL: size=%ld %lf pending=%ld %lf load=%lf", stat.data_size, disk_rate, stat.pending_writes, pending_rate, stat.load);
+        it->first = stat;
+        LOG(INFO, "LL: disk %s load %lf", it->second->Path().c_str(), it->first.load);
 
         stat_.block_buffers += stat.block_buffers;
         stat_.blocks += stat.blocks;
@@ -356,8 +370,11 @@ void BlockManager::LogStatus() {
     }
     std::string str;
     stat_.ToString(&str);
-    LOG(INFO, "[DiskStat] %s", str.c_str());
-    thread_pool_->DelayTask(1000, std::bind(&BlockManager::LogStatus, this));
+    if (times == 10) {
+        LOG(INFO, "[DiskStat] %s", str.c_str());
+        times = 0;
+    }
+    thread_pool_->DelayTask(100, std::bind(&BlockManager::LogStatus, this, ++times));
 }
 
 } // namespace bfs
