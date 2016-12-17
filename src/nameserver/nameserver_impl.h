@@ -124,7 +124,11 @@ public:
             const DiskUsageRequest* request,
             DiskUsageResponse* response,
             ::google::protobuf::Closure* done);
-
+    void Chmod(::google::protobuf::RpcController* controller,
+            const ChmodRequest* request,
+            ChmodResponse* response,
+            ::google::protobuf::Closure* done);
+        
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
 private:

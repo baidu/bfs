@@ -854,6 +854,37 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
                                controller, request, response, done, removed, std::placeholders::_1));
 }
 
+void NameServerImpl::Chmod(::google::protobuf::RpcController* controller,
+                           const ChmodRequest* request,
+                           ChmodResponse* response,
+                           ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    response->set_sequence_id(request->sequence_id());
+    std::string path = NameSpace::NormalizePath(request->path());
+    int32_t mode = request->mode();
+    StatusCode ret_status = kOK;
+    FileInfo file_info;
+    if (namespace_->GetFileInfo(path, &file_info)) {
+        file_info.set_type(mode);
+        NameServerLog log;
+        bool ret = namespace_->UpdateFileInfo(file_info, &log);
+        assert(ret);
+        response->set_status(kOK);
+        LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, done,
+                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+    } else {
+        LOG(INFO, "Chmod file not found: %s\n", path.c_str());
+        ret_status = kNsNotFound;
+        response->set_status(ret_status);
+        done->Run();
+    }
+}
+
 void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,
                                       const ChangeReplicaNumRequest* request,
                                       ChangeReplicaNumResponse* response,
@@ -1387,7 +1418,8 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("BlockReport", report_thread_pool_),
         std::make_pair("BlockReceived", work_thread_pool_),
         std::make_pair("PushBlockReport", work_thread_pool_),
-        std::make_pair("SysStat", read_thread_pool_)
+        std::make_pair("SysStat", read_thread_pool_),
+        std::make_pair("Chmod", work_thread_pool_),
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /
                             sizeof(std::pair<std::string, ThreadPool*>);

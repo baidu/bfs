@@ -113,6 +113,7 @@ public:
     virtual int32_t CloseFile(File* file) = 0;
     virtual int32_t DeleteFile(const char* path) = 0;
     virtual int32_t Rename(const char* oldpath, const char* newpath) = 0;
+    virtual int32_t Chmod(int32_t mode, const char* path) = 0;
     virtual int32_t ChangeReplicaNum(const char* file_name, int32_t replica_num) = 0;
 
     /// Show system status
