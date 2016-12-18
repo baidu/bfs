@@ -280,10 +280,10 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
         path = argv[i];
         assert(path.size() > 0);
         if (path[path.size() - 1] != '*') {
-            int64_t du_size = BfsDuV2(fs, path);
-            return du_size >= 0 ? 0 : -1;
+            BfsDuV2(fs, path);
+            continue;
         }
-
+ 
         // Wildcard
         path.resize(path.size() - 1);
         ppath = path.substr(0, path.rfind('/') + 1);
@@ -294,7 +294,7 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
         ret = fs->ListDirectory(ppath.c_str(), &files, &num);
         if (ret != 0) {
             fprintf(stderr, "Path not found: %s\n", ppath.c_str());
-            return -1;
+            continue;
         }
         for (int j = 0; j < num; j++) {
             std::string name(files[j].name);
