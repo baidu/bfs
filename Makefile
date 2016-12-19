@@ -80,6 +80,9 @@ TEST_OBJS = src/nameserver/test/namespace_test.o \
 			src/nameserver/test/block_mapping_test.o \
 			src/nameserver/test/logdb_test.o \
 			src/nameserver/test/location_provider_test.o \
+			src/nameserver/test/kv_client.o \
+			src/nameserver/test/raft_test.o \
+			src/nameserver/test/nameserver_impl_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o \
 			src/chunkserver/test/block_manager_test.o \
@@ -201,7 +204,8 @@ FORCE:
 
 clean:
 	rm -rf $(BIN) mark
-	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
+	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ)  \
+		   $(OBJS) $(TEST_OBJS) $(MARK_OBJ)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
 	rm -rf $(LIBS)
