@@ -1,3 +1,4 @@
+#define private public
 #include "nameserver/file_lock_manager.h"
 
 #include <functional>
@@ -69,6 +70,11 @@ TEST_F(FileLockManagerTest, RandomReadWriteLock) {
             thread_pool.AddTask(std::bind(ReadLock, file_path, true));
         }
     }
+    thread_pool.Stop(true);
+    for (size_t i = 0; i < flm.locks_.size(); i++) {
+        FileLockManager::LockBucket* l = flm.locks_[i];
+        ASSERT_EQ(l->lock_map.size(), 0);
+    }
 }
 
 TEST_F(FileLockManagerTest, UnlockInAnotherThread) {
@@ -76,8 +82,8 @@ TEST_F(FileLockManagerTest, UnlockInAnotherThread) {
     std::string file_path = "/home/dir1/file1";
     thread_pool.AddTask(std::bind(WriteLock, file_path, false));
     // wait for task to be executed
-    sleep(2);
-    thread_pool.AddTask(std::bind(Unlock, file_path));
+    thread_pool.Stop(true);
+    Unlock(file_path);
 }
 
 } // namespace bfs

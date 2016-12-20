@@ -71,7 +71,7 @@ void FileLockManager::Unlock(const std::string& file_path) {
     for (size_t i = 0; i < paths.size(); i++) {
         path += ("/" + paths[i]);
     }
-    LOG(DEBUG, "Release file lock for %s",file_path.c_str());
+    LOG(DEBUG, "Release file lock for %s", file_path.c_str());
     std::string cur_path = path;
     for (size_t i = 0; i < paths.size() ; i++) {
         UnlockInternal(cur_path);
