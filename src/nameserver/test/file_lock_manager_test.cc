@@ -15,7 +15,7 @@ public:
     FileLockManagerTest() {}
 };
 
-void WriteLock(const std::string& file_path, bool unlock = true) {
+void WriteLock(const std::string& file_path, bool unlock = false) {
     flm.WriteLock(file_path);
     sleep(1);
     if (unlock) {
@@ -23,7 +23,7 @@ void WriteLock(const std::string& file_path, bool unlock = true) {
     }
 }
 
-void ReadLock(const std::string& file_path, bool unlock) {
+void ReadLock(const std::string& file_path, bool unlock = false) {
     flm.ReadLock(file_path);
     sleep(1);
     if (unlock) {
