@@ -130,7 +130,7 @@ private:
     /// for write
     volatile int64_t write_offset_;     ///< user write offset
     LocatedBlock* block_for_write_;     ///< current writing block
-    WriteBuffer* write_buf_;            ///< local writer buffer
+    WriteBuffer* write_buf_;            ///< local writing buffer
     int32_t last_seq_;                  ///< last sequence number
     std::map<std::string, common::SlidingWindow<int>* > write_windows_;
     std::priority_queue<WriteBuffer*, std::vector<WriteBuffer*>, WriteBufferCmp>
@@ -144,7 +144,7 @@ private:
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
     std::set<ChunkServer_Stub*> bad_chunkservers_;
     int32_t last_chunkserver_index_;
-    int64_t read_offset_;               ///< last read pos
+    int64_t read_offset_;               ///< last read offset
     Mutex read_offset_mu_;
     char* reada_buffer_;                ///< Read ahead buffer
     int32_t reada_buf_len_;             ///< Read ahead buffer length
@@ -153,8 +153,8 @@ private:
     int64_t last_read_offset_;
     const ReadOptions r_options_;
 
-    bool closed_;                       ///< whether is closed
-    bool synced_;                     ///< whether is synced
+    bool closed_;                       ///< file is closed
+    bool synced_;                       ///< file is synced
     Mutex   mu_;
     CondVar sync_signal_;               ///< _sync_var
     bool bg_error_;                     ///< background write error
