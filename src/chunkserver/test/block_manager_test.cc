@@ -4,6 +4,7 @@
 //
 
 #define private public
+#include <iostream>
 #include "chunkserver/block_manager.h"
 #include "chunkserver/data_block.h"
 
@@ -23,6 +24,16 @@ void sleep_task() {
 
 void write_task(Block* block, int32_t seq, int64_t offset, std::string write_data) {
     block->Write(seq, offset, write_data.data(), write_data.size(), NULL);
+}
+
+void create_block(int64_t start_id, int64_t end_id, BlockManager* bm) {
+    for (int i = start_id; i <= end_id; ++i) {
+        StatusCode status;
+        Block* block = bm->CreateBlock(i, &status);
+        ASSERT_TRUE(block != NULL);
+        block->Write(0, 0, "some data", 9, NULL);
+        bm->CloseBlock(block);
+    }
 }
 
 class BlockManagerTest : public ::testing::Test {
@@ -147,33 +158,27 @@ TEST_F(BlockManagerTest, ListBlocks) {
     BlockManager block_manager(store_path);
     bool ret = block_manager.LoadStorage();
     ASSERT_TRUE(ret);
-    for (int i = 1; i <= 200; ++i) {
-        StatusCode status;
-        Block* block = block_manager.CreateBlock(i, &status);
-        ASSERT_TRUE(block != NULL);
-        block->Write(0, 0, "some data", 9, NULL);
-        block_manager.CloseBlock(block);
-    }
+    create_block(1, 50, &block_manager);
     std::vector<BlockMeta> blocks;
-    int64_t id = block_manager.ListBlocks(&blocks, 0, 1000);
-    assert(id == 200);
-    assert(blocks.size() == 200);
-    blocks.clear();
-
-    id = block_manager.ListBlocks(&blocks, 151, 1000);
-    assert(id == 200);
+    int64_t id = block_manager.ListBlocks(&blocks, 0, 100);
+    assert(id == 50);
     assert(blocks.size() == 50);
     blocks.clear();
 
-    for (int i = 1; i <= 200; ++i) {
+    id = block_manager.ListBlocks(&blocks, 26, 100);
+    assert(id == 50);
+    assert(blocks.size() == 25);
+    blocks.clear();
+
+    for (int i = 1; i <= 50; ++i) {
         if (i % 4 == 0 || i % 5 == 0) {
             block_manager.RemoveBlock(i);
         }
     }
 
-    id = block_manager.ListBlocks(&blocks, 0, 1000);
-    assert(id == 199);
-    assert(blocks.size() == 120);
+    id = block_manager.ListBlocks(&blocks, 0, 100);
+    assert(id == 49);
+    assert(blocks.size() == 30);
     blocks.clear();
     system("rm -rf ./data1");
     system("rm -rf ./data2");
@@ -189,13 +194,7 @@ TEST_F(BlockManagerTest, RemoveDisk) {
     BlockManager* block_manager = new BlockManager(store_path);
     bool ret = block_manager->LoadStorage();
     ASSERT_TRUE(ret);
-    for (int i = 1; i <= 200; ++i) {
-        StatusCode status;
-        Block* block = block_manager->CreateBlock(i, &status);
-        ASSERT_TRUE(block != NULL);
-        block->Write(0, 0, "some data", 9, NULL);
-        block_manager->CloseBlock(block);
-    }
+    create_block(1, 50, block_manager);
     sleep(1);
 
     // reboost
@@ -204,9 +203,9 @@ TEST_F(BlockManagerTest, RemoveDisk) {
     ret = block_manager->LoadStorage();
     ASSERT_TRUE(ret);
     std::vector<BlockMeta> blocks;
-    int64_t id = block_manager->ListBlocks(&blocks, 0, 1000);
-    assert(id == 200);
-    assert(blocks.size() == 200);
+    int64_t id = block_manager->ListBlocks(&blocks, 0, 100);
+    assert(id == 50);
+    assert(blocks.size() == 50);
     blocks.clear();
 
     // lose one disk
@@ -215,18 +214,56 @@ TEST_F(BlockManagerTest, RemoveDisk) {
     block_manager = new BlockManager(store_path);
     ret = block_manager->LoadStorage();
     ASSERT_TRUE(ret);
-    id = block_manager->ListBlocks(&blocks, 0, 1000);
-    assert(id == 200);
-    assert(blocks.size() == 134);
+    id = block_manager->ListBlocks(&blocks, 0, 100);
+    assert(blocks.size() < 50);
     blocks.clear();
-    for (int i = 201; i <= 250; ++i) {
-        StatusCode status;
-        Block* block = block_manager->CreateBlock(i, &status);
-        ASSERT_TRUE(block != NULL);
-        block->Write(0, 0, "some data", 9, NULL);
-        block_manager->CloseBlock(block);
-    }
+    create_block(51, 60, block_manager);
     delete block_manager;
+    system("rm -rf ./data2");
+    system("rm -rf ./data3");
+}
+
+TEST_F(BlockManagerTest, WrongNsVersion) {
+    FLAGS_chunkserver_multi_path_on_one_disk = true;
+    std::string store_path = "./data1,./data2,./data3";
+    mkdir("./data1", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    mkdir("./data2", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    mkdir("./data3", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    BlockManager* block_manager = new BlockManager(store_path);
+    bool ret = block_manager->LoadStorage();
+    ASSERT_TRUE(ret);
+    block_manager->CleanUp(1);
+    block_manager->SetNameSpaceVersion(1);
+    create_block(1, 20, block_manager);
+    sleep(1);
+
+    delete block_manager;
+    std::string store_path2 = "./data1,./data2";
+    block_manager = new BlockManager(store_path2);
+    ret = block_manager->LoadStorage();
+    ASSERT_TRUE(ret);
+    block_manager->CleanUp(2);
+    block_manager->SetNameSpaceVersion(2);
+    create_block(21, 40, block_manager);
+    sleep(1);
+    std::vector<BlockMeta> blocks;
+    int64_t id = block_manager->ListBlocks(&blocks, 0, 100);
+    assert(id == 40);
+    assert(blocks.size() < 40);
+    blocks.clear();
+
+    delete block_manager;
+    block_manager = new BlockManager(store_path);
+    ret = block_manager->LoadStorage();
+    ASSERT_TRUE(ret);
+    block_manager->CleanUp(2);
+    block_manager->SetNameSpaceVersion(2);
+    id = block_manager->ListBlocks(&blocks, 0, 100);
+    assert(id == 40);
+    assert(blocks.size() == 20);
+    blocks.clear();
+
+    system("rm -rf ./data1");
     system("rm -rf ./data2");
     system("rm -rf ./data3");
 }

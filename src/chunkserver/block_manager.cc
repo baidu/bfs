@@ -273,7 +273,7 @@ StatusCode BlockManager::RemoveBlock(int64_t block_id) {
     Block* block = FindBlock(block_id);
     if (!block) {
         LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
-        return kNsNotFound;
+        return kCsNotFound;
     } else {
         MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
         block_map_.erase(block_id);

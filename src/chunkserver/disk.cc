@@ -212,7 +212,8 @@ bool Disk::CleanUp() {
     delete it;
     std::string meta_path = path_ + "meta/";
     delete metadb_;
-    remove(meta_path.c_str());
+    std::string cmd = "rm -rf " + meta_path;
+    system(cmd.c_str());
     leveldb::Options options;
     options.create_if_missing = true;
     leveldb::Status s = leveldb::DB::Open(options, path_ + "meta/", &metadb_);

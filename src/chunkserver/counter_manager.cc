@@ -13,7 +13,7 @@ namespace bfs {
 
 ChunkserverCounterManager::ChunkserverCounterManager() {
     last_gather_time_ = common::timer::get_micros();
-    memset(&stat_, 0,sizeof(stat_));
+    memset(&stat_, 0, sizeof(stat_));
 }
 
 void ChunkserverCounterManager::GatherCounters(ChunkserverCounters* counters) {
@@ -48,7 +48,7 @@ ChunkserverCounterManager::ChunkserverStat ChunkserverCounterManager::GetCounter
 
 DiskCounterManager::DiskCounterManager() {
     last_gather_time_ = common::timer::get_micros();
-    memset(&stat_, 0,sizeof(stat_));
+    memset(&stat_, 0, sizeof(stat_));
 }
 
 void DiskCounterManager::GatherCounters(DiskCounterManager::DiskCounters* counters) {

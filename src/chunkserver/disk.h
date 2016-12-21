@@ -51,9 +51,9 @@ public:
     DiskStat Stat();
 private:
     std::string BlockId2Str(int64_t block_id);
-public:
-    DCounters counters_;
 private:
+    friend class Block;
+    DCounters counters_;
     std::string path_;
     ThreadPool* thread_pool_;
     int64_t disk_quota_;
