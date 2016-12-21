@@ -20,7 +20,7 @@ DECLARE_string(master_slave_role);
 namespace baidu {
 namespace bfs {
 
-MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
+MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_only_(false),
                                      cond_(&mu_), log_done_(&mu_), current_idx_(-1),
                                      applied_idx_(-1), sync_idx_(-1) {
     std::vector<std::string> nodes;
