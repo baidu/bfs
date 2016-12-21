@@ -315,6 +315,17 @@ message DiskUsageResponse {
     optional uint64 du_size = 3;
 }
 
+message ChmodRequest {
+    optional int64 sequence_id = 1;
+    optional int32 mode = 2;
+    optional string path = 3;
+}
+
+message ChmodResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;	
+}
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
@@ -338,5 +349,6 @@ service NameServer {
     rpc PushBlockReport(PushBlockReportRequest) returns(PushBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
+    rpc Chmod(ChmodRequest) returns(ChmodResponse);
 }
 

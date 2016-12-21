@@ -121,16 +121,16 @@ private:
     bool IsChainsWrite();
     bool EnoughReplica();
 private:
-    FSImpl* fs_;                        ///< 文件系统
+    FSImpl* fs_;                        ///< fs
     RpcClient* rpc_client_;             ///< RpcClient
     ThreadPool* thread_pool_;           ///< ThreadPool
-    std::string name_;                  ///< 文件路径
-    int32_t open_flags_;                ///< 打开使用的flag
+    std::string name_;                  ///< file name
+    int32_t open_flags_;                ///< open flag
 
     /// for write
     volatile int64_t write_offset_;     ///< user write offset
-    LocatedBlock* block_for_write_;     ///< 正在写的block
-    WriteBuffer* write_buf_;            ///< 本地写缓冲
+    LocatedBlock* block_for_write_;     ///< current writing block
+    WriteBuffer* write_buf_;            ///< local writing buffer
     int32_t last_seq_;                  ///< last sequence number
     std::map<std::string, common::SlidingWindow<int>* > write_windows_;
     std::priority_queue<WriteBuffer*, std::vector<WriteBuffer*>, WriteBufferCmp>
@@ -140,11 +140,11 @@ private:
 
     /// for read
     LocatedBlocks located_blocks_;      ///< block meta for read
-    ChunkServer_Stub* chunkserver_;     ///< located chunkserver
+    ChunkServer_Stub* chunkserver_;     ///< chunkserver stub for read
     std::map<std::string, ChunkServer_Stub*> chunkservers_; ///< located chunkservers
     std::set<ChunkServer_Stub*> bad_chunkservers_;
     int32_t last_chunkserver_index_;
-    int64_t read_offset_;               ///< 读取的偏移
+    int64_t read_offset_;               ///< last read offset
     Mutex read_offset_mu_;
     char* reada_buffer_;                ///< Read ahead buffer
     int32_t reada_buf_len_;             ///< Read ahead buffer length
@@ -153,8 +153,8 @@ private:
     int64_t last_read_offset_;
     const ReadOptions r_options_;
 
-    bool closed_;                       ///< 是否关闭
-    bool synced_;                     ///< 是否调用过sync
+    bool closed_;                       ///< file is closed
+    bool synced_;                       ///< file is synced
     Mutex   mu_;
     CondVar sync_signal_;               ///< _sync_var
     bool bg_error_;                     ///< background write error

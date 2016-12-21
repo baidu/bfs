@@ -445,14 +445,14 @@ bool RaftNodeImpl::StoreContext(const std::string& context, const std::string& v
 
 void RaftNodeImpl::AppendLog(const std::string& log, std::function<void (bool)> callback) {
     MutexLock lock(&mu_);
-    int64_t index = ++log_index_;
+    int64_t index = log_index_ + 1;
     ///TODO: optimize lock
     if (!StoreLog(current_term_, index, log)) {
-        log_index_ --;
         thread_pool_->AddTask(std::bind(callback,false));
         return;
     }
     callback_map_.insert(std::make_pair(index, callback));
+    log_index_ ++;
     for (uint32_t i = 0; i < nodes_.size(); i++) {
         if (follower_context_[i]) {
             follower_context_[i]->condition.Signal();
@@ -464,12 +464,12 @@ bool RaftNodeImpl::AppendLog(const std::string& log, int timeout_ms) {
     int64_t index = 0;
     {
         MutexLock lock(&mu_);
-        index = ++log_index_;
+        index = log_index_ + 1;
         ///TODO: optimize lock
         if (!StoreLog(current_term_, index, log)) {
-            log_index_ --;
             return false;
         }
+        log_index_ ++;
     }
 
     for (uint32_t i = 0; i < nodes_.size(); i++) {
