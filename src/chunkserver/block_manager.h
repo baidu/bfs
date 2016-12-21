@@ -38,7 +38,7 @@ public:
     int64_t ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num);
     Block* CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status);
     Block* FindBlock(int64_t block_id);
-    bool CloseBlock(Block* block);
+    bool CloseBlock(Block* block, bool sync);
     bool RemoveBlock(int64_t block_id);
     bool RemoveAllBlocks();
 private:

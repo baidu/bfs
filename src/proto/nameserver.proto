@@ -323,7 +323,7 @@ message ChmodRequest {
 
 message ChmodResponse {
     optional int64 sequence_id = 1;
-    optional StatusCode status = 2;	
+    optional StatusCode status = 2;
 }
 
 service NameServer {

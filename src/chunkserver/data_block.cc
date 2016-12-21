@@ -290,7 +290,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
     return true;
 }
 /// Flush block to disk.
-bool Block::Close() {
+bool Block::Close(bool sync) {
     MutexLock lock(&mu_, "Block::Close", 1000);
     if (finished_) {
         return false;
@@ -306,8 +306,10 @@ bool Block::Close() {
     this->AddRef();
     thread_pool_->AddPriorityTask(std::bind(&Block::DiskWrite, this));
 
-    while (file_desc_ != kClosed) {
-        close_cv_.Wait();
+    if (sync) {
+        while (file_desc_ != kClosed) {
+            close_cv_.Wait();
+        }
     }
     if (meta_.version() == -1) {
         SetVersion(last_seq_);

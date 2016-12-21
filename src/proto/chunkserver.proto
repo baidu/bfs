@@ -15,6 +15,7 @@ message WriteBlockRequest {
     repeated string desc = 11;
     repeated int64 timestamp = 12;
     optional int32 recover_version = 13;
+    optional bool sync_on_close = 14;
 }
 
 message WriteBlockResponse {
