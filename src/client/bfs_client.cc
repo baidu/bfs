@@ -48,7 +48,7 @@ int BfsTouchz(baidu::bfs::FS* fs, int argc, char* argv[]) {
     }
     int32_t ret = 0;
     baidu::bfs::File* file;
-    for (int i = 0;i < argc; i++) {
+    for (int i = 0; i < argc; i++) {
         ret = fs->OpenFile(argv[i], O_WRONLY, 0644, &file, baidu::bfs::WriteOptions());
         if (ret != 0) {
             fprintf(stderr, "Open %s fail\n", argv[i]);
@@ -63,7 +63,7 @@ int BfsRm(baidu::bfs::FS* fs, int argc, char* argv[]) {
         return 1;
     }
     int32_t ret = 0;
-    for (int i = 0;i < argc; i++) {
+    for (int i = 0; i < argc; i++) {
         ret = fs->DeleteFile(argv[i]);
         if (!ret) {
             printf("%s Removed\n", argv[i]); 
@@ -81,13 +81,13 @@ int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
         return 1;
     }
     int32_t ret = 0;
-    for (int i = 0;i < argc; i++) {
+    for (int i = 0; i < argc; i++) {
         ret = fs->CreateDirectory(argv[i]);
         if (ret != 0) {
             fprintf(stderr, "Create dir %s fail\n", argv[i]);
         }
     }
-    return 0;
+    return ret;
 }
 
 int BfsRename(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -366,7 +366,7 @@ int BfsRmdir(baidu::bfs::FS* fs, int argc, char* argv[], bool recursive) {
             fprintf(stderr, "Remove dir %s fail\n", argv[i]);
         }
     }
-    return 0;
+    return ret;
 }
 
 int BfsChangeReplicaNum(baidu::bfs::FS* fs, int argc, char* argv[]) {
