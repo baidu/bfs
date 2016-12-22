@@ -68,7 +68,7 @@ void BlockManager::Stat(std::string* str) {
     str->append("<tr><td>Path</td><td>Blocks</td><td>Quota</td><td>Size</td><td>PendingBuf</td><td>WritingBlocks</td><td>Buffers</td></tr>");
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         const DiskStat& stat = it->first;
-        int64_t quota = it->second->Quota();
+        int64_t quota = it->second->GetQuota();
         int64_t size = stat.data_size;
         double ratio = size * 100.0 / quota;
         std::string ratio_str = common::NumToString(ratio);
@@ -166,7 +166,7 @@ bool BlockManager::LoadStorage() {
                                                       this, std::placeholders::_1,
                                                       std::placeholders::_2,
                                                       std::placeholders::_3));
-        disk_quota_ += disk->Quota();
+        disk_quota_ += disk->GetQuota();
     }
     return ret;
 }
@@ -331,7 +331,7 @@ Disk* BlockManager::PickDisk(int64_t block_id) {
     Disk* target = NULL;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
-        double load = disk->Load();
+        double load = disk->GetLoad();
         if (load < min_load) {
             min_load = load;
             target = disk;

@@ -256,6 +256,7 @@ TEST_F(BlockManagerTest, WrongNsVersion) {
     block_manager = new BlockManager(store_path);
     ret = block_manager->LoadStorage();
     ASSERT_TRUE(ret);
+    ASSERT_TRUE(block_manager->NameSpaceVersion() == -1);
     block_manager->CleanUp(2);
     block_manager->SetNameSpaceVersion(2);
     id = block_manager->ListBlocks(&blocks, 0, 100);

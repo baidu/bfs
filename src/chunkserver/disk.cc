@@ -23,7 +23,7 @@ namespace baidu {
 namespace bfs {
 
 Disk::Disk(const std::string& path, int64_t quota)
-    : path_(path), disk_quota_(quota) {
+    : path_(path), quota_(quota) {
     thread_pool_ = new ThreadPool(FLAGS_disk_io_thread_num);
 }
 
@@ -101,7 +101,7 @@ bool Disk::LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback)
     if (namespace_version_ == 0 && block_num > 0) {
         LOG(WARNING, "Namespace version lost!");
     }
-    disk_quota_ += counters_.data_size.Get();
+    quota_ += counters_.data_size.Get();
     return true;
 }
 
@@ -180,12 +180,12 @@ void Disk::AddTask(std::function<void ()> func, bool is_priority) {
     }
 }
 
-int64_t Disk::Quota() {
-    return disk_quota_;
+int64_t Disk::GetQuota() {
+    return quota_;
 }
 
-double Disk::Load() {
-    double disk_rate = counters_.data_size.Get() * 1.0 / disk_quota_;
+double Disk::GetLoad() {
+    double disk_rate = counters_.data_size.Get() * 1.0 / quota_;
     double pending_rate = counters_.pending_buf.Get() * 1.0 / FLAGS_chunkserver_disk_buf_size;
     return disk_rate * disk_rate + pending_rate;
 }
