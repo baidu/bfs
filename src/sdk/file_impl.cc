@@ -623,7 +623,7 @@ void FileImpl::DelayWriteChunkInternal(int delay_times, WriteBuffer* buffer,
                         buffer->Sequence(), cs_addr.c_str(),
                         delay_times);
                 thread_pool_->DelayTask(5000,
-                        std::bind(&FileImpl::DelayWriteChunk,
+                            std::bind(&FileImpl::DelayWriteChunk,
                             std::weak_ptr<FileImpl>(shared_from_this()),
                             delay_times, buffer, request,
                             retry_times, cs_addr));
