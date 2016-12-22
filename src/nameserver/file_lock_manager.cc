@@ -35,7 +35,7 @@ void FileLockManager::ReadLock(const std::string& file_path) {
     LOG(DEBUG, "Try get read lock for %s", file_path.c_str());
     std::vector<std::string> paths;
     common::SplitString(file_path, "/", &paths);
-    //first lock "/"
+    // first lock "/"
     LockInternal("/", kRead);
     std::string cur_path;
     for (size_t i = 0; i < paths.size(); i++) {
@@ -48,7 +48,7 @@ void FileLockManager::WriteLock(const std::string& file_path) {
     LOG(DEBUG, "Try get write lock for %s", file_path.c_str());
     std::vector<std::string> paths;
     common::SplitString(file_path, "/", &paths);
-    //first lock "/"
+    // first lock "/"
     if (paths.size() == 0) {
         LockInternal("/", kWrite);
         return;
@@ -68,7 +68,7 @@ void FileLockManager::Unlock(const std::string& file_path) {
     std::vector<std::string> paths;
     common::SplitString(file_path, "/", &paths);
     std::string path;
-    for (size_t i = 0; i < paths.size(); i++) {
+    for (ssze_t i = 0; i < paths.size(); i++) {
         path += ("/" + paths[i]);
     }
     LOG(DEBUG, "Release file lock for %s", file_path.c_str());
@@ -104,11 +104,11 @@ void FileLockManager::LockInternal(const std::string& path,
     }
 
     if (lock_type == kRead) {
-        //get read lock
+        // get read lock
         entry->rw_lock_.ReadLock();
         LOG(DEBUG, "Get read lock for %s", path.c_str());
     } else {
-        //get write lock
+        // get write lock
         entry->rw_lock_.WriteLock();
         LOG(DEBUG, "Get write lock for %s", path.c_str());
     }
@@ -122,7 +122,7 @@ void FileLockManager::UnlockInternal(const std::string& path) {
     auto it = lock_bucket->lock_map.find(path);
     assert(it != lock_bucket->lock_map.end());
     LockEntry* entry = it->second;
-    //release lock
+    // release lock
     entry->rw_lock_.Unlock();
     LOG(DEBUG, "Unlock for %s", path.c_str());
     if (entry->ref_.Dec() == 1) {
