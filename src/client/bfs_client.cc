@@ -499,11 +499,11 @@ int main(int argc, char* argv[]) {
         ret = BfsLocation(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "shutdownchunkserver") == 0) {
         ret = BfsShutdownChunkServer(fs, argc - 2, argv + 2);
-    } else if(strcmp(argv[1], "shutdownstat") == 0) {
+    } else if (strcmp(argv[1], "shutdownstat") == 0) {
         ret = BfsShutdownStat(fs);
-    } else if(strcmp(argv[1], "ln") == 0){
+    } else if (strcmp(argv[1], "ln") == 0) {
         ret = BfsLink(fs, argc - 2, argv + 2);
-    }else {
+    } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }
     return ret;

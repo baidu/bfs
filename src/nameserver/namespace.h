@@ -73,7 +73,7 @@ public:
 private:
     static bool IsDir(int type);
     static FileType GetFileType(int type);
-    bool GetLinkSrcPath(const FileInfo &info, FileInfo *src_info);
+    bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,
                           std::string* key_str);

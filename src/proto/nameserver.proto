@@ -319,8 +319,7 @@ message SymlinkRequest {
     optional int64 sequence_id = 1;
     optional string src = 2;
     optional string dst = 3;
-    optional int32 mode = 4;
-    optional string user = 5;
+    optional string user = 4;
 }
 
 message SymlinkResponse {

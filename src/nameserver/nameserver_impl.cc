@@ -770,8 +770,8 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
 void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
                             const SymlinkRequest* request,
                             SymlinkResponse* response,
-                            ::google::protobuf::Closure* done){
-    if(!is_leader_){
+                            ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
         return;
@@ -787,7 +787,7 @@ void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
             ctl->RemoteAddress().c_str(), dst.c_str(), src.c_str(), StatusCode_Name(status).c_str());
     response->set_status(status);
 
-    if(status != kOK){
+    if (status != kOK) {
         done->Run();
         return;
     }
