@@ -33,11 +33,12 @@ struct Buffer {
 
 
 class FileCache;
+class Disk;
 
 /// Data block
 class Block {
 public:
-    Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cache);
+    Block(const BlockMeta& meta, Disk* disk, FileCache* file_cache);
     ~Block();
     static std::string BuildFilePath(int64_t block_id);
     /// Getter
@@ -46,7 +47,7 @@ public:
     std::string GetFilePath() const;
     BlockMeta GetMeta() const;
     int64_t DiskUsed() const;
-    bool SetDeleted();
+    StatusCode SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion() const;
     int32_t GetLastSeq() const;
@@ -85,7 +86,7 @@ private:
         kNotCreated = -1,
         kClosed = -2
     };
-    ThreadPool* thread_pool_;
+    Disk*       disk_;
     BlockMeta   meta_;
     int32_t     last_seq_;
     int32_t     slice_num_;

@@ -5,6 +5,7 @@
 
 #include "chunkserver/data_block.h"
 #include "chunkserver/file_cache.h"
+#include "chunkserver/disk.h"
 #include "proto/block.pb.h"
 
 #include <gflags/gflags.h>
@@ -19,16 +20,22 @@ public:
 protected:
 };
 
+void AddBlock(int64_t block_id, Disk* disk, BlockMeta meta) {
+    // do nothing
+}
+
 TEST_F(DataBlockTest, CreateBlock) {
     mkdir("./block123", 0755);
+    std::string file_path("./block123");
+    Disk disk(file_path, 1000000);
+    disk.LoadStorage(std::bind(AddBlock, std::placeholders::_1,
+                               std::placeholders::_2, std::placeholders::_3));
     BlockMeta meta;
-    ThreadPool thread_pool;
     FileCache file_cache(10);
     int64_t block_id = 123;
     meta.set_block_id(block_id);
-    std::string file_path("./block123");
     meta.set_store_path(file_path);
-    Block* block = new Block(meta, &thread_pool, &file_cache);
+    Block* block = new Block(meta, &disk, &file_cache);
     ASSERT_TRUE(block != NULL);
     ASSERT_EQ(block->Id(), 123);
     ASSERT_EQ(block->Size(), 0);
@@ -41,14 +48,16 @@ TEST_F(DataBlockTest, CreateBlock) {
 
 TEST_F(DataBlockTest, WriteAndReadBlock) {
     BlockMeta meta;
-    ThreadPool thread_pool;
+    mkdir("./block123", 0755);
+    std::string file_path("./block123");
+    Disk disk(file_path, 1000000);
+    disk.LoadStorage(std::bind(AddBlock, std::placeholders::_1,
+                               std::placeholders::_2, std::placeholders::_3));
     FileCache file_cache(10);
     int64_t block_id = 123;
     meta.set_block_id(block_id);
-    mkdir("./block123", 0755);
-    std::string file_path("./block123");
     meta.set_store_path(file_path);
-    Block* block = new Block(meta, &thread_pool, &file_cache);
+    Block* block = new Block(meta, &disk, &file_cache);
     block->AddRef();
     bool ret = block->Write(0, 0, NULL, 0);
     ASSERT_EQ(ret, true);
@@ -75,7 +84,7 @@ TEST_F(DataBlockTest, WriteAndReadBlock) {
     meta = block->GetMeta();
     block->DecRef();
     //reopen this block for read
-    block = new Block(meta, &thread_pool, &file_cache);
+    block = new Block(meta, &disk, &file_cache);
     block->AddRef();
     ASSERT_TRUE(block != NULL);
     char buf[128];
