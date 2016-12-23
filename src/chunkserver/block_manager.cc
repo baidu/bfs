@@ -30,6 +30,8 @@ DECLARE_int32(chunkserver_disk_buf_size);
 namespace baidu {
 namespace bfs {
 
+extern common::Counter g_find_ops;
+
 BlockManager::BlockManager(const std::string& store_path)
     : thread_pool_(new ThreadPool(1)), disk_quota_(0), counter_manager_(new DiskCounterManager) {
     CheckStorePath(store_path);
@@ -65,7 +67,7 @@ DiskStat BlockManager::Stat() {
 
 void BlockManager::Stat(std::string* str) {
     str->append("<table class=dataintable>");
-    str->append("<tr><td>Path</td><td>Blocks</td><td>Quota</td><td>Size</td><td>PendingBuf</td><td>WritingBlocks</td><td>Buffers</td></tr>");
+    str->append("<tr><td>Path</td><td>Blocks</td><td>Quota</td><td>Size</td><td>PendingBuf</td><td>WritingBlocks</td></tr>");
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         const DiskStat& stat = it->first;
         int64_t quota = it->second->GetQuota();
@@ -78,7 +80,6 @@ void BlockManager::Stat(std::string* str) {
         str->append("<td>" + common::HumanReadableString(size) + "</td>");
         str->append("<td>" + common::NumToString(stat.pending_buf));
         str->append("<td>" + common::NumToString(stat.writing_blocks));
-        str->append("<td>" + common::NumToString(stat.block_buffers));
     }
     str->append("</table>");
 }
@@ -314,6 +315,7 @@ bool BlockManager::AddBlock(int64_t block_id, Disk* disk, BlockMeta meta) {
 }
 
 Block* BlockManager::FindBlock(int64_t block_id) {
+    g_find_ops.Inc();
     MutexLock lock(&mu_, "BlockManger::Find", 1000);
     auto it = block_map_.find(block_id);
     if (it == block_map_.end()) {
@@ -379,14 +381,11 @@ void BlockManager::LogStatus(int times) {
         DiskStat stat = disk->Stat();
         it->first = stat;
 
-        stat_.block_buffers += stat.block_buffers;
         stat_.blocks += stat.blocks;
         stat_.write_bytes += stat.write_bytes;
         stat_.writing_blocks += stat.writing_blocks;
         stat_.writing_bytes += stat.writing_bytes;
         stat_.data_size += stat.data_size;
-        stat_.buffers_new += stat.buffers_new;
-        stat_.buffers_delete += stat.buffers_delete;
         stat_.pending_buf += stat.pending_buf;
     }
     std::string str;

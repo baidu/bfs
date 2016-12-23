@@ -27,6 +27,10 @@ DECLARE_int32(write_buf_size);
 namespace baidu {
 namespace bfs {
 
+extern common::Counter g_block_buffers;
+extern common::Counter g_buffers_new;
+extern common::Counter g_buffers_delete;
+
 Block::Block(const BlockMeta& meta, Disk* disk, FileCache* file_cache) :
   disk_(disk), meta_(meta),
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
@@ -56,8 +60,8 @@ Block::~Block() {
     }
     if (blockbuf_) {
         delete[] blockbuf_;
-        disk_->counters_.block_buffers.Dec();
-        disk_->counters_.buffers_delete.Inc();
+        g_block_buffers.Dec();
+        g_buffers_delete.Inc();
         blockbuf_ = NULL;
     }
     buflen_ = 0;
@@ -75,9 +79,9 @@ Block::~Block() {
             LOG(INFO, "Release block_buf_list_ %d for #%ld ", len, meta_.block_id());
         }
         delete[] buf;
-        disk_->counters_.block_buffers.Dec();
+        g_block_buffers.Dec();
         disk_->counters_.pending_buf.Dec();
-        disk_->counters_.buffers_delete.Inc();
+        g_buffers_delete.Inc();
     }
     block_buf_list_.clear();
 
@@ -357,8 +361,8 @@ void Block::DiskWrite() {
                 block_buf_list_.erase(block_buf_list_.begin());
                 delete[] buf;
                 disk_->counters_.pending_buf.Dec();
-                disk_->counters_.block_buffers.Dec();
-                disk_->counters_.buffers_delete.Inc();
+                g_block_buffers.Dec();
+                g_buffers_delete.Inc();
                 disk_file_size_ += len;
             }
             disk_writing_ = false;
@@ -402,8 +406,8 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
     if (blockbuf_ == NULL) {
         buflen_ = FLAGS_write_buf_size;
         blockbuf_ = new char[buflen_];
-        disk_->counters_.block_buffers.Inc();
-        disk_->counters_.buffers_new.Inc();
+        g_block_buffers.Inc();
+        g_buffers_new.Inc();
     }
     int64_t ap_len = len;
     while (bufdatalen_ + ap_len > buflen_) {
@@ -415,8 +419,8 @@ StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
 
         blockbuf_ = new char[buflen_];
         disk_->counters_.pending_buf.Inc();
-        disk_->counters_.block_buffers.Inc();
-        disk_->counters_.buffers_new.Inc();
+        g_block_buffers.Inc();
+        g_buffers_new.Inc();
         bufdatalen_ = 0;
         buf += wlen;
         ap_len -= wlen;
