@@ -1,4 +1,4 @@
-# DiskManager
+# Disk Load Balance
 ## 名词介绍
 * DataBlock
 	* 负责文件块读写管理
@@ -8,21 +8,17 @@
 	* 文件元信息管理
 	* 磁盘负载统计
 	* 一个物理磁盘对应一个Disk对象
-* DiskManager
-	* 负责磁盘(Disk对象)管理
-	* 磁盘间负载均衡及调度
-	* 一个Chunkserver有一个DiskManager对象
 * BlockManager
 	* 维护Chunkserver上所有DataBlock的列表
 	* 提供DataBlock查找功能
 
 ## BlockManager
-维护Chunkserver上所有DataBlock的列表。
+维护Chunkserver上所有DataBlock的列表。负责DataBlock创建，删除，查找的管理。在新的DataBlock被创建是，BlockManager会收集各磁盘的负载情况，选择负载最低的磁盘负责该Block的读写。
 
 ## DataBlock
 * 写
 
-DataBlock中维护一个滑动窗口。写操作将`data`和对应的`sequence`提交掉滑动窗口，窗口根据`sequence`顺序地将`data`中的数据切分成小数据包，顺序放入任务队列。后台线程将任务队列里的数据包依次写到磁盘上。
+DataBlock中维护一个滑动窗口。写操作将`data`和对应的`sequence`提交到滑动窗口，窗口根据`sequence`顺序地将`data`中的数据切分成小数据包，顺序放入任务队列。后台线程将任务队列里的数据包依次写到磁盘上。
 
 * 读
 
@@ -35,8 +31,6 @@ DataBlock维护一个引用计数。删除操作会将`delete`标志置位。读
 ## Disk
 Disk管理磁盘上文件的元信息，包括文件大小，权限，版本等。除此之外Disk还负责负载的统计，如文件数量，内存占用量，打开文件数，文件访问频度等。
 
-## DiskManager
-当有新的文件创建时，DiskManager会汇总所有Disk的负载信息，挑选出负载最轻的Disk。当某一块磁盘下线时，DiskManager会将该磁盘对应的内存信息删除并析构对应的Disk结构。除此之外，DiskManager还负责一些策略调度，例如当某一文件访问频度很高的时候，DiskManager会将该文件缓存在SSD中。
 
 
 
