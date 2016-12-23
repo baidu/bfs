@@ -361,6 +361,12 @@ StatusCode NameSpace::Rename(const std::string& old_path,
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
             return kBadParameter;
         }
+        if (path_file.entry_id() == old_file.entry_id()) {
+            LOG(INFO, "Rename %s to %s fail: %s is the parent directory of %s",
+                    old_path.c_str(), new_path.c_str(), old_path.c_str(),
+                    new_path.c_str());
+            return kBadParameter;
+        }
         parent_id = path_file.entry_id();
     }
 
@@ -370,10 +376,12 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         /// dst_file maybe not exist, don't use it elsewhere.
         FileInfo dst_file;
         if (LookUp(parent_id, dst_name, &dst_file)) {
-            if (IsDir(dst_file.type())) {
-                LOG(INFO, "Rename %s to %s, target %o is a exist directory",
-                    old_path.c_str(), new_path.c_str(), dst_file.type());
-                return kTargetDirExists;
+            // if dst_file exists, type of both dst_file and old_file must be file
+            if (IsDir(dst_file.type()) || IsDir(old_file.type())) {
+                LOG(INFO, "Rename %s to %s, src %o or dst %o is not a file",
+                        old_path.c_str(), new_path.c_str(), old_file.type(),
+                        dst_file.type());
+                return kBadParameter;
             }
             *need_unlink = true;
             remove_file->CopyFrom(dst_file);

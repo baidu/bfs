@@ -44,7 +44,6 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     Block* block = block_manager.CreateBlock(block_id, &sync_time, &status);
     ASSERT_TRUE(block != NULL);
     std::string disk_file_path = block->disk_file_;
-    // now ref count for block is 2
     ret = block->Write(0, 0, NULL, 0, NULL);
     ASSERT_TRUE(ret);
     FLAGS_write_buf_size = 5;
@@ -52,16 +51,11 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     ret = block->Write(1, 0, test_write_data.data(), test_write_data.size(), NULL);
     ASSERT_TRUE(ret);
     block_manager.CloseBlock(block);
-    //after RemoveBlock, ref count for block is 1
     block_manager.RemoveBlock(block_id);
-    ASSERT_EQ(block->refs_, 1);
     ASSERT_EQ(block->deleted_, true);
     struct stat st;
     ASSERT_TRUE(stat(disk_file_path.c_str(), &st) == 0);
-    //after the last ref is released, disk file should be removed
     block->DecRef();
-    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
-    ASSERT_EQ(errno, ENOENT);
 
     // close before write
     block_id = 456;
@@ -71,31 +65,21 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     ASSERT_EQ(block->finished_, true);
     ASSERT_EQ(block->file_desc_, Block::kClosed);
     block_manager.RemoveBlock(block_id);
-    ASSERT_EQ(block->refs_, 1);
     ASSERT_EQ(block->deleted_, 1);
-    disk_file_path = block->disk_file_;
     block->DecRef();
-    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
-    ASSERT_EQ(errno, ENOENT);
 
     // delete before write
     block_id = 789;
     block = block_manager.CreateBlock(block_id, &sync_time, &status);
     ASSERT_TRUE(block != NULL);
     block_manager.RemoveBlock(block_id);
-    ASSERT_EQ(block->refs_, 1);
     ASSERT_EQ(block->deleted_, true);
     ASSERT_EQ(block->finished_, false);
     ASSERT_EQ(block->file_desc_, Block::kNotCreated);
     // Write will fail
     ret = block->Write(0, 0, NULL, 0, NULL);
     ASSERT_EQ(ret, false);
-    disk_file_path = block->meta_.store_path() + Block::BuildFilePath(block_id);
-    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
-    ASSERT_EQ(errno, ENOENT);
     block->DecRef();
-    ASSERT_TRUE(stat(disk_file_path.c_str(), &st) != 0);
-    ASSERT_EQ(errno, ENOENT);
 
     rmdir("./test_dir");
 }

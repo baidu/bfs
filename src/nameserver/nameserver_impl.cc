@@ -693,6 +693,13 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
 
     StatusCode status = namespace_->ListDirectory(path, response->mutable_files());
+    for (int i = 0; i < response->files_size(); i++) {
+        FileInfo* file = response->mutable_files(i);
+        if ((file->type() & (1 << 9)) == 0) {
+            //maybe it's an incomplete file
+            SetActualFileSize(file);
+        }
+    }
     response->set_status(status);
     done->Run();
 }
@@ -715,17 +722,8 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
         //maybe haven't been written info meta
-        if (!out_info->size()) {
-            int64_t file_size = 0;
-            for (int i = 0; i < out_info->blocks_size(); i++) {
-                int64_t block_id = out_info->blocks(i);
-                NSBlock nsblock;
-                if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
-                    continue;
-                }
-                file_size += nsblock.block_size;
-            }
-            out_info->set_size(file_size);
+        if ((out_info->type() & (1 << 9)) == 0) {
+            SetActualFileSize(out_info);
         }
         response->set_status(kOK);
         LOG(INFO, "Stat: %s return: %ld", path.c_str(), out_info->size());
@@ -852,6 +850,37 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     }
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done, removed, std::placeholders::_1));
+}
+
+void NameServerImpl::Chmod(::google::protobuf::RpcController* controller,
+                           const ChmodRequest* request,
+                           ChmodResponse* response,
+                           ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    response->set_sequence_id(request->sequence_id());
+    std::string path = NameSpace::NormalizePath(request->path());
+    int32_t mode = request->mode();
+    StatusCode ret_status = kOK;
+    FileInfo file_info;
+    if (namespace_->GetFileInfo(path, &file_info)) {
+        file_info.set_type(mode);
+        NameServerLog log;
+        bool ret = namespace_->UpdateFileInfo(file_info, &log);
+        assert(ret);
+        response->set_status(kOK);
+        LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, done,
+                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+    } else {
+        LOG(INFO, "Chmod file not found: %s\n", path.c_str());
+        ret_status = kNsNotFound;
+        response->set_status(ret_status);
+        done->Run();
+    }
 }
 
 void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,
@@ -1387,7 +1416,8 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("BlockReport", report_thread_pool_),
         std::make_pair("BlockReceived", work_thread_pool_),
         std::make_pair("PushBlockReport", work_thread_pool_),
-        std::make_pair("SysStat", read_thread_pool_)
+        std::make_pair("SysStat", read_thread_pool_),
+        std::make_pair("Chmod", work_thread_pool_),
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /
                             sizeof(std::pair<std::string, ThreadPool*>);
@@ -1405,6 +1435,22 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     } else {
         NameServer::CallMethod(method, controller, request, response, done);
     }
+}
+
+void NameServerImpl::SetActualFileSize(FileInfo* file) {
+    if (file->size() != 0) {
+        return;
+    }
+    int64_t file_size = 0;
+    for (int i = 0; i < file->blocks_size(); i++) {
+        int64_t block_id = file->blocks(i);
+        NSBlock nsblock;
+        if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
+            continue;
+        }
+        file_size += nsblock.block_size;
+    }
+    file->set_size(file_size);
 }
 
 } // namespace bfs

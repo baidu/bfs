@@ -27,7 +27,7 @@
 5. 使用SDK访问BFS  
    待完善...
 6. 使用bfs_mount把BFS挂载到本地文件系统  
-   安装fuse(2.6以上)  
+   安装fuse(版本2.6以上2.8及以下)  
    修改bfs文件夹下的Makefile，添加`FUSE_PATH=fuse安装路径`  
    `make`产生可执行文件`bfs_mount`  
    使用前面的步骤启动集群  

@@ -23,7 +23,7 @@
 
 DECLARE_int32(sdk_thread_num);
 DECLARE_string(nameserver_nodes);
-DECLARE_string(sdk_wirte_mode);
+DECLARE_string(sdk_write_mode);
 
 namespace baidu {
 namespace bfs {
@@ -296,6 +296,25 @@ int32_t FSImpl::GetFileLocation(const std::string& path,
     }
     return OK;
 }
+int32_t FSImpl::Chmod(int32_t mode, const char* path) {
+    ChmodRequest request;
+    ChmodResponse response;
+    request.set_sequence_id(0);
+    request.set_mode(mode&0777);
+    request.set_path(path);
+    bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Chmod,
+        &request, &response, 15, 1);
+    if (!ret) {
+        LOG(WARNING, "Chmod rpc fail: change %s mode to %u\n", path, mode);
+        return TIMEOUT;
+    }
+    if (response.status() != kOK) {
+        LOG(WARNING, "Chmod %s mode to %u return: %s\n",
+            path, mode, StatusCode_Name(response.status()).c_str());
+        return GetErrorCode(response.status());
+    }
+    return OK;
+}
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const WriteOptions& options) {
     return OpenFile(path, flags, 0, file, options);
 }
@@ -306,10 +325,13 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     }
     WriteOptions write_option = options;
     if (options.write_mode == kWriteDefault) {
-        if (FLAGS_sdk_wirte_mode == "fanout") {
+        if (FLAGS_sdk_write_mode == "fanout") {
             write_option.write_mode = kWriteFanout;
-        } else {
+        } else if (FLAGS_sdk_write_mode == "chains") {
             write_option.write_mode = kWriteChains;
+        } else {
+            LOG(FATAL, "wrong flag %s for sdk write mode",
+                    FLAGS_sdk_write_mode.c_str());
         }
     }
     common::timer::AutoTimer at(100, "OpenFile", path);
