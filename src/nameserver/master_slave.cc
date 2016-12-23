@@ -20,7 +20,7 @@ DECLARE_string(master_slave_role);
 namespace baidu {
 namespace bfs {
 
-MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
+MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_only_(false),
                                      cond_(&mu_), log_done_(&mu_), current_idx_(-1),
                                      applied_idx_(-1), sync_idx_(-1) {
     std::vector<std::string> nodes;
@@ -34,9 +34,17 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     } else {
         LOG(FATAL, "\033[32m[Sync]\033[0m Nameserver does not belong to this cluster");
     }
-    master_addr_ = FLAGS_master_slave_role == "master" ? this_server: another_server;
-    slave_addr_ = FLAGS_master_slave_role == "slave" ? this_server: another_server;
-    is_leader_ = FLAGS_master_slave_role == "master";
+    if (FLAGS_master_slave_role == "master") {
+        master_addr_ = this_server;
+        slave_addr_ = another_server;
+        is_leader_ = true;
+    } else if (FLAGS_master_slave_role == "slave") {
+        master_addr_ = another_server;
+        slave_addr_ = this_server;
+        is_leader_ = false;
+    } else {
+        LOG(FATAL, "Wrong role: %s", FLAGS_master_slave_role.c_str());
+    }
     if (IsLeader()) {
         LOG(INFO, "\033[32m[Sync]\033[0m I am Leader");
     } else {

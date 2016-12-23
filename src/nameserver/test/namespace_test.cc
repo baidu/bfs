@@ -195,13 +195,24 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(kOK, ns.Rename("/dir1/subdir2/file5", "/dir1/subdir3/file1", &need_unlink, &remove_file));
     ASSERT_TRUE(need_unlink);
     ASSERT_EQ(remove_file.entry_id(), 2);
-
+    /// file -> existing dir
+    std::vector<int64_t> blocks_to_remove;
+    ns.CreateFile("/home/file1", 0, 0755, -1, &blocks_to_remove, "");
+    ns.CreateFile("/home/dir1", 0, (0755) | (1 << 9), -1, &blocks_to_remove, "");
+    ASSERT_EQ(kBadParameter, ns.Rename("/home/file1", "/home/dir1",
+                &need_unlink, &remove_file));
+    /// existing dir -> existing dir
+    ns.CreateFile("/home/dir2", 0, (0755) | (1 << 9), -1, &blocks_to_remove, "");
+    ASSERT_EQ(kBadParameter, ns.Rename("/home/dir1", "/home/dir2",
+                &need_unlink, &remove_file));
+    /// dir -> existing file
+    ASSERT_EQ(kBadParameter, ns.Rename("/home/dir2", "/home/file1",
+                &need_unlink, &remove_file));
     /// Root dir to root dir
     ASSERT_NE(kOK, ns.Rename("/", "/dir2", &need_unlink, &remove_file));
     ASSERT_EQ(kOK, ns.Rename("/dir1", "/dir2", &need_unlink, &remove_file));
 
     /// Deep rename
-    std::vector<int64_t> blocks_to_remove;
     ASSERT_EQ(kOK, ns.CreateFile("/tera/meta/0/00000001.dbtmp", 0, 0, -1, &blocks_to_remove, ""));
     ASSERT_EQ(kOK, ns.Rename("/tera/meta/0/00000001.dbtmp", "/tera/meta/0/CURRENT", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);

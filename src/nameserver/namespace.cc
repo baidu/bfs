@@ -412,10 +412,12 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         /// dst_file maybe not exist, don't use it elsewhere.
         FileInfo dst_file;
         if (LookUp(parent_id, dst_name, &dst_file)) {
-            if (GetFileType(dst_file.type()) == kDir) {
-                LOG(INFO, "Rename %s to %s, target %o is a exist directory",
-                    old_path.c_str(), new_path.c_str(), dst_file.type());
-                return kTargetDirExists;
+            // if dst_file exists, type of both dst_file and old_file must be file
+            if ((GetFileType(dst_file.type()) == kDir) || (GetFileType(old_file.type()) == kDir)) {
+                LOG(INFO, "Rename %s to %s, src %o or dst %o is not a file",
+                        old_path.c_str(), new_path.c_str(), old_file.type(),
+                        dst_file.type());
+                return kBadParameter;
             }
             if (GetFileType(dst_file.type()) != kSymlink) {
                 *need_unlink = true;

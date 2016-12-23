@@ -35,6 +35,7 @@ public:
     int32_t DiskUsage(const char* path, int64_t* du_size);
     int32_t Access(const char* path, int32_t mode);
     int32_t Stat(const char* path, BfsFileInfo* fileinfo);
+    int32_t Chmod(int32_t mode, const char* path);
     int32_t GetFileSize(const char* path, int64_t* file_size);
     int32_t GetFileLocation(const std::string& path,
                             std::map<int64_t, std::vector<std::string> >* locations);

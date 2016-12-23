@@ -3,8 +3,8 @@
 ## 整体设计
 1. 在 FileInfo 中添加 sym_link，标识 软链接路径
       原字段 type，0表示普通文件，1表示目录，增加 2表示软链接
-2. 在创建软链接时，首先检查 old_path是否存在
-      >* 如果存在，则对new_path进行检查并对父目录不存在时进行创建，成功后ldb中增加kv；失败返回；
+2. 在创建软链接时，首先检查 src 是否存在
+      >* 如果存在，则对 dst 进行检查并对父目录不存在时进行创建，成功后ldb中增加kv；失败返回；
       >* 如果不存在，则返回；
 
 3. 读文件时，如果是“软链接”，则把路径重定向到“原路径”下，再进行后续步骤；
@@ -27,7 +27,7 @@ message FileInfo {
     optional int64 parent_entry_id = 9;
     optional int32 owner = 10;
     repeated string cs_addrs = 11;
-    optional string dst_path = 12; //新增字段
+    optional string sym_link = 12; //新增字段
 }
 ```
 ```
@@ -48,27 +48,31 @@ message SymlinkResponse {
 ### 创建软链接，需要增加接口
 ```
 @bfs_client
-int BfsCreateSymlink(baidu::bfs:FS*fs, int argc, char* argh[])
+int BfsCreateSymlink(baidu::bfs:FS*fs, int argc, char* argv[]);
+```
+```
+@bfs.h
+virtual int32_t Symlink(const char* src, const char* dst) = 0;
 ```
 ```
 @fs_impl
 int32_t Symlink(
-    const char* oldpath,
-    const char* newpath){}
+    const char* src,
+    const char* dst);
 ```
 ```
-@nameserver_impl:
+@nameserver_impl
 void Symlink(
     ::google::protobuf::RpcController* controller,
     const SymlinkRequest* request,
     SymlinkResponse* response,
-    ::google::protobuf::Closure* done) {}
+    ::google::protobuf::Closure* done);
 ```
 ```
 @namespace
-Symlink(
+StatusCode Symlink(
     const std:string& src,
     const std::string& dst,
     int mode,
-    NameServerLog *log){}
+    NameServerLog *log);
 ```
