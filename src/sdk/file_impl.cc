@@ -456,16 +456,15 @@ void FileImpl::StartWrite() {
 
 bool FileImpl::CheckWriteWindows() {
     mu_.AssertHeld();
-    common::SlidingWindow<int>* sld = NULL;
     WriteBuffer* write_buffer = write_queue_.top();
     if (IsChainsWrite()) {
-        sld = write_windows_.begin()->second;
+        common::SlidingWindow<int>* sld = write_windows_.begin()->second;
         return sld->UpBound() >= write_buffer->Sequence();
     }
     std::map<std::string, common::SlidingWindow<int>* >::iterator it;
     int count = 0;
     for (it = write_windows_.begin(); it != write_windows_.end(); ++it) {
-        sld = it->second;
+        common::SlidingWindow<int>* sld = it->second;
         if (sld->UpBound() >= write_buffer->Sequence()) {
             count++;
         }
