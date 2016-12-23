@@ -234,7 +234,19 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
 };
 
 bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
-    return LookUp(path, file_info);
+    if (!LookUp(path, file_info)) {
+        return false;
+    } else {
+        if (GetFileType(file_info->type()) == kSymlink) {
+            FileInfo src_info;
+            if (!GetLinkSrcPath(*file_info, &src_info)) {
+                return false;
+            } else {
+                *file_info = src_info;
+            }
+        }
+    }
+    return true;
 }
 
 StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num,
@@ -405,9 +417,11 @@ StatusCode NameSpace::Rename(const std::string& old_path,
                     old_path.c_str(), new_path.c_str(), dst_file.type());
                 return kTargetDirExists;
             }
-            *need_unlink = true;
-            remove_file->CopyFrom(dst_file);
-            remove_file->set_name(dst_name);
+            if (GetFileType(dst_file.type()) != kSymlink) {
+                *need_unlink = true;
+                remove_file->CopyFrom(dst_file);
+                remove_file->set_name(dst_name);
+            }
         }
     }
 
