@@ -456,13 +456,17 @@ void FileImpl::StartWrite() {
 
 bool FileImpl::CheckWriteWindows() {
     mu_.AssertHeld();
+    common::SlidingWindow<int>* sld = NULL;
+    WriteBuffer* write_buffer = write_queue_.top();
     if (IsChainsWrite()) {
-        return write_windows_.begin()->second->UpBound() > write_queue_.top()->Sequence();
+        sld = write_windows_.begin()->second;
+        return sld->UpBound() >= write_buffer->Sequence();
     }
     std::map<std::string, common::SlidingWindow<int>* >::iterator it;
     int count = 0;
     for (it = write_windows_.begin(); it != write_windows_.end(); ++it) {
-        if (it->second->UpBound() > write_queue_.top()->Sequence()) {
+        sld = it->second;
+        if (sld->UpBound() >= write_buffer->Sequence()) {
             count++;
         }
     }
@@ -602,7 +606,7 @@ void FileImpl::DelayWriteChunkInternal(int delay_times, WriteBuffer* buffer,
         MutexLock lock(&mu_);
         common::SlidingWindow<int>* sld = write_windows_[cs_addr];
         // check whether need to delay again
-        if (sld->UpBound() <= buffer->Sequence()) {
+        if (sld->UpBound() < buffer->Sequence()) {
             if (--delay_times == 0) {
                 LOG(WARNING, "Write file %s block #%ld seq %d to %s failed "
                         "out of sliding window upbound",
