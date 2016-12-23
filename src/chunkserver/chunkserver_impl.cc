@@ -558,7 +558,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
 
     // If complete, close block, and report only once(close block return true).
     int64_t report_start = write_end;
-    if (block->IsComplete() && block_manager_->CloseBlock(block)) {
+    if (block->IsComplete() && block_manager_->CloseBlock(block, request->sync_on_close())) {
         LOG(INFO, "[WriteBlock] block finish #%ld size:%ld", block_id, block->Size());
         report_start = common::timer::get_micros();
         ReportFinish(block);
@@ -600,7 +600,7 @@ void ChunkServerImpl::CloseIncompleteBlock(int64_t block_id) {
         }
         block->Write(0, 0, NULL, 0, NULL);
     }
-    block_manager_->CloseBlock(block);
+    block_manager_->CloseBlock(block, true);
     ReportFinish(block);
     block->DecRef();
 }

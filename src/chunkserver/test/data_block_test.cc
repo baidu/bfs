@@ -70,7 +70,7 @@ TEST_F(DataBlockTest, WriteAndReadBlock) {
     ASSERT_EQ(ret, true);
     block->SetSliceNum(2);
     ASSERT_TRUE(block->IsComplete());
-    block->Close();
+    block->Close(true);
     ASSERT_TRUE(block->IsFinished());
     //check version & size
     ASSERT_EQ(block->GetLastSeq(), 1);

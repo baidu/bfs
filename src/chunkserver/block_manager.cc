@@ -47,7 +47,7 @@ BlockManager::~BlockManager() {
     for (auto it = block_map_.begin(); it != block_map_.end(); ++it) {
         Block* block = it->second;
         if (!block->IsRecover()) {
-            CloseBlock(block);
+            CloseBlock(block, true);
         } else {
             LOG(INFO, "[~BlockManager] Do not close recovering block #%ld ", block->Id());
         }
@@ -266,8 +266,8 @@ Block* BlockManager::CreateBlock(int64_t block_id, StatusCode* status) {
     return block;
 }
 
-bool BlockManager::CloseBlock(Block* block) {
-    return block->Close();
+bool BlockManager::CloseBlock(Block* block, bool sync) {
+    return block->Close(sync);
 }
 
 StatusCode BlockManager::RemoveBlock(int64_t block_id) {
@@ -369,6 +369,9 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
         }
     }
     if (id == LLONG_MAX) {
+        if (iters.size() != 0) {
+            LOG(WARNING, "[FindSmallest] error iters is not empty");
+        }
         return -1;
     }
     return id;

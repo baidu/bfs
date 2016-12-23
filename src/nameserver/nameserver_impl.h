@@ -124,7 +124,11 @@ public:
             const DiskUsageRequest* request,
             DiskUsageResponse* response,
             ::google::protobuf::Closure* done);
-
+    void Chmod(::google::protobuf::RpcController* controller,
+            const ChmodRequest* request,
+            ChmodResponse* response,
+            ::google::protobuf::Closure* done);
+        
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
 private:
@@ -152,6 +156,7 @@ private:
     bool CheckFileHasBlock(const FileInfo& file_info,
                            const std::string& file_name,
                            int64_t block_id);
+    void SetActualFileSize(FileInfo* file);
 private:
     /// Global thread pool
     ThreadPool* read_thread_pool_;

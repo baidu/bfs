@@ -39,6 +39,7 @@ void print_usage() {
     printf("\t    rmr <path> : remove directory recursively\n");
     printf("\t    du <path> : count disk usage for path\n");
     printf("\t    stat : list current stat of the file system\n");
+    printf("\t    chmod <mode> <path> : change file mode bits\n");
 }
 
 int BfsMkdir(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -353,6 +354,28 @@ int BfsStat(baidu::bfs::FS* fs, int argc, char* argv[]) {
     return 0;
 }
 
+int BfsChmod(baidu::bfs::FS* fs, int argc, char* argv[]) {
+    if (argc < 2) {
+        print_usage();
+        return 1;
+    } else {
+        char *str_mode = argv[0];
+        while (*str_mode) {
+            if (!isdigit(*str_mode)) {
+                print_usage();
+                return 1;
+            }
+            str_mode++;
+        }
+    }
+    int32_t mode = strtol(argv[0], NULL, 8);
+    int32_t ret = fs->Chmod(mode, argv[1]);
+    if (ret != 0) {
+        fprintf(stderr, "Chmod mode %s u:%ufile %s fail\n", argv[0], mode, argv[1]);
+        return 1;
+    }
+    return 0;
+}
 int BfsLocation(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::map<int64_t, std::vector<std::string> > locations;
     int32_t ret = fs->GetFileLocation(argv[0], &locations);
@@ -438,7 +461,7 @@ int main(int argc, char* argv[]) {
             return ret;
         }
         baidu::bfs::File* file;
-        if (fs->OpenFile(argv[2], O_WRONLY, 644, &file, baidu::bfs::WriteOptions()) != 0) {
+        if (fs->OpenFile(argv[2], O_WRONLY, 0644, &file, baidu::bfs::WriteOptions()) != 0) {
             fprintf(stderr, "Open %s fail\n", argv[2]);
         } else {
             ret = 0;
@@ -476,6 +499,8 @@ int main(int argc, char* argv[]) {
         ret = BfsDu(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "stat") == 0) {
         ret = BfsStat(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "chmod") == 0) {
+        ret = BfsChmod(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "location") == 0) {
         ret = BfsLocation(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "shutdownchunkserver") == 0) {

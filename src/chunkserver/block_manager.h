@@ -39,7 +39,7 @@ public:
     bool SetNameSpaceVersion(int64_t version);
     int64_t ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, uint32_t num);
     Block* CreateBlock(int64_t block_id,  StatusCode* status);
-    bool CloseBlock(Block* block);
+    bool CloseBlock(Block* block, bool sync);
     StatusCode RemoveBlock(int64_t block_id);
     bool CleanUp(int64_t namespace_version);
 
@@ -48,7 +48,6 @@ public:
 
     DiskStat Stat();
     void Stat(std::string* str);
-
 private:
     void CheckStorePath(const std::string& store_path);
     void LoadOneDisk(Disk* disk);
