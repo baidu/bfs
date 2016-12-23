@@ -50,7 +50,7 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     std::string test_write_data("hello world");
     ret = block->Write(1, 0, test_write_data.data(), test_write_data.size(), NULL);
     ASSERT_TRUE(ret);
-    block_manager.CloseBlock(block);
+    block_manager.CloseBlock(block, true);
     block_manager.RemoveBlock(block_id);
     ASSERT_EQ(block->deleted_, true);
     struct stat st;
@@ -61,7 +61,7 @@ TEST_F(BlockManagerTest, RemoveBlock) {
     block_id = 456;
     block = block_manager.CreateBlock(block_id, &sync_time, &status);
     ASSERT_TRUE(block != NULL);
-    block_manager.CloseBlock(block);
+    block_manager.CloseBlock(block, true);
     ASSERT_EQ(block->finished_, true);
     ASSERT_EQ(block->file_desc_, Block::kClosed);
     block_manager.RemoveBlock(block_id);
@@ -116,7 +116,7 @@ TEST_F(BlockManagerTest, Out_of_order) {
         thread_pool.AddPriorityTask(write_data_task2);
     }
 
-    std::function<void()> close_task = std::bind(&BlockManager::CloseBlock, &block_manager, block);
+    std::function<void()> close_task = std::bind(&BlockManager::CloseBlock, &block_manager, block, true);
     r = rand() % 2;
     if (r == 0) {
         thread_pool.AddTask(close_task);

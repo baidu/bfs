@@ -539,6 +539,7 @@ void FileImpl::BackgroundWriteInternal() {
             request->set_offset(offset);
             request->set_is_last(buffer->IsLast());
             request->set_packet_seq(buffer->Sequence());
+            request->set_sync_on_close(w_options_.sync_on_close);
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
             if (IsChainsWrite()) {

@@ -66,7 +66,7 @@ public:
     void SetRecover();
     bool IsRecover() const;
     /// Flush block to disk.
-    bool Close();
+    bool Close(bool sync);
     void AddRef();
     void DecRef();
     int GetRef() const;

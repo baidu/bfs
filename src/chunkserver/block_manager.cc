@@ -47,7 +47,7 @@ BlockManager::~BlockManager() {
     for (BlockMap::iterator it = block_map_.begin(); it != block_map_.end(); ++it) {
         Block* block = it->second;
         if (!block->IsRecover()) {
-            CloseBlock(block);
+            CloseBlock(block, true);
         } else {
             LOG(INFO, "[~BlockManager] Do not close recovering block #%ld ", block->Id());
         }
@@ -350,8 +350,8 @@ bool BlockManager::SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
     }
     return true;
 }
-bool BlockManager::CloseBlock(Block* block) {
-    if (!block->Close()) {
+bool BlockManager::CloseBlock(Block* block, bool sync) {
+    if (!block->Close(sync)) {
         return false;
     }
 

@@ -41,8 +41,10 @@ struct WriteOptions {
     int close_timeout;  // in ms, <= 0 means do not timeout, == 0 means do not wait
     int replica;
     WriteMode write_mode;
+    bool sync_on_close; // flush data to disk when closing the file
     WriteOptions() : flush_timeout(-1), sync_timeout(-1),
-                     close_timeout(-1), replica(-1), write_mode(kWriteDefault) { }
+                     close_timeout(-1), replica(-1), write_mode(kWriteDefault),
+                     sync_on_close(false) { }
 };
 
 struct ReadOptions {
