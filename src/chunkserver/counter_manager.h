@@ -36,6 +36,9 @@ public:
         int64_t rpc_delay_all;
         int64_t rpc_count;
         ChunkserverStat() :
+            block_buffers(0),
+            buffers_new(0),
+            buffers_delete(0),
             unfinished_bytes(0),
             find_ops(0),
             read_ops(0),
