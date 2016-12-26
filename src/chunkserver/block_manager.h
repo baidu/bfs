@@ -50,7 +50,6 @@ public:
     void Stat(std::string* str);
 private:
     void CheckStorePath(const std::string& store_path);
-    void LoadOneDisk(Disk* disk);
     Disk* PickDisk(int64_t block_id);
     int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx);
     void LogStatus(int times);

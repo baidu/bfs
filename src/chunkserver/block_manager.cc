@@ -150,10 +150,6 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     assert(store_path_list.size() > 0);
 }
 
-void BlockManager::LoadOneDisk(Disk* disk) {
-
-}
-
 int64_t BlockManager::DiskQuota() const {
     return disk_quota_;
 }
