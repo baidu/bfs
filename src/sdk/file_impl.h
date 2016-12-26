@@ -120,6 +120,7 @@ private:
                                 int retry_times, std::string cs_addr);
     bool IsChainsWrite();
     bool EnoughReplica();
+    std::string GetSlowChunkserver();
 private:
     FSImpl* fs_;                        ///< fs
     RpcClient* rpc_client_;             ///< RpcClient

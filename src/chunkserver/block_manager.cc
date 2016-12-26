@@ -1,68 +1,87 @@
-// Copyright (c) 2015, Baidu.com, Inc. All Rights Reserved.
+// Copyright (c) 2016, Baidu.com, Inc. All Rights Reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// Author: yanshiguang02@baidu.com
 
 #include "chunkserver/block_manager.h"
 
-#include <errno.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
+#include <climits>
 #include <functional>
 #include <algorithm>
 
 #include <gflags/gflags.h>
 #include <leveldb/db.h>
-#include <leveldb/cache.h>
+#include <leveldb/iterator.h>
 #include <common/counter.h>
 #include <common/logging.h>
 #include <common/string_util.h>
 
+#include "chunkserver/disk.h"
 #include "chunkserver/data_block.h"
 #include "chunkserver/file_cache.h"
 
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_use_root_partition);
-DECLARE_int32(chunkserver_io_thread_num);
 DECLARE_bool(chunkserver_multi_path_on_one_disk);
+DECLARE_int32(chunkserver_disk_buf_size);
 
 namespace baidu {
 namespace bfs {
 
-extern common::Counter g_blocks;
-extern common::Counter g_data_size;
 extern common::Counter g_find_ops;
 
 BlockManager::BlockManager(const std::string& store_path)
-   : metadb_(NULL),
-     namespace_version_(0), disk_quota_(0) {
-     CheckStorePath(store_path);
-     thread_pool_ = new ThreadPool(FLAGS_chunkserver_io_thread_num);
-     file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
+    : thread_pool_(new ThreadPool(1)), disk_quota_(0), counter_manager_(new DiskCounterManager) {
+    CheckStorePath(store_path);
+    file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
+    LogStatus(1);
 }
+
 BlockManager::~BlockManager() {
+    thread_pool_->Stop(true);
+    delete thread_pool_;
+    delete counter_manager_;
     MutexLock lock(&mu_);
-    for (BlockMap::iterator it = block_map_.begin(); it != block_map_.end(); ++it) {
+    for (auto it = block_map_.begin(); it != block_map_.end(); ++it) {
         Block* block = it->second;
         if (!block->IsRecover()) {
-            CloseBlock(block);
+            CloseBlock(block, true);
         } else {
             LOG(INFO, "[~BlockManager] Do not close recovering block #%ld ", block->Id());
         }
         block->DecRef();
     }
-    thread_pool_->Stop(true);
-    delete thread_pool_;
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        delete it->second;
+    }
     block_map_.clear();
-    delete metadb_;
-    metadb_ = NULL;
     delete file_cache_;
     file_cache_ = NULL;
 }
-int64_t BlockManager::DiskQuota() const{
-    return disk_quota_;
+
+DiskStat BlockManager::Stat() {
+    return stat_;
+}
+
+void BlockManager::Stat(std::string* str) {
+    str->append("<table class=dataintable>");
+    str->append("<tr><td>Path</td><td>Blocks</td><td>Quota</td><td>Size</td><td>PendingBuf</td><td>WritingBlocks</td></tr>");
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        const DiskStat& stat = it->first;
+        int64_t quota = it->second->GetQuota();
+        int64_t size = stat.data_size;
+        double ratio = size * 100.0 / quota;
+        std::string ratio_str = common::NumToString(ratio);
+        str->append("<tr><td>" + it->second->Path() + "</td>");
+        str->append("<td>" + common::NumToString(stat.blocks) + "</td>");
+        str->append("<td>" + common::HumanReadableString(quota) + "</td>");
+        str->append("<td>" + common::HumanReadableString(size) + "</td>");
+        str->append("<td>" + common::NumToString(stat.pending_buf));
+        str->append("<td>" + common::NumToString(stat.writing_blocks));
+    }
+    str->append("</table>");
 }
 
 void BlockManager::CheckStorePath(const std::string& store_path) {
@@ -78,22 +97,23 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
         LOG(FATAL, "statfs(\"/\") fail: %s", strerror(errno));
     }
 
-    common::SplitString(store_path, ",", &store_path_list_);
-    for (uint32_t i = 0; i < store_path_list_.size(); ++i) {
-        std::string& disk_path = store_path_list_[i];
+    std::vector<std::string> store_path_list;
+    common::SplitString(store_path, ",", &store_path_list);
+    for (uint32_t i = 0; i < store_path_list.size(); ++i) {
+        std::string& disk_path = store_path_list[i];
         disk_path = common::TrimString(disk_path, " ");
         if (disk_path.empty() || disk_path[disk_path.size() - 1] != '/') {
             disk_path += "/";
         }
     }
-    std::sort(store_path_list_.begin(), store_path_list_.end());
-    auto it = std::unique(store_path_list_.begin(), store_path_list_.end());
-    store_path_list_.resize(std::distance(store_path_list_.begin(), it));
+    std::sort(store_path_list.begin(), store_path_list.end());
+    auto it = std::unique(store_path_list.begin(), store_path_list.end());
+    store_path_list.resize(std::distance(store_path_list.begin(), it));
 
     std::set<std::string> fsids;
     int64_t disk_quota = 0;
-    for (uint32_t i = 0; i < store_path_list_.size(); ++i) {
-        std::string& disk_path = store_path_list_[i];
+    for (uint32_t i = 0; i < store_path_list.size(); ++i) {
+        std::string& disk_path = store_path_list[i];
         int stat_ret = statfs(disk_path.c_str(), &fs_info);
         std::string fs_tmp((const char*)&fs_info.f_fsid, sizeof(fs_info.f_fsid));
         if (stat_ret != 0 ||
@@ -108,199 +128,128 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
             } else {
                 LOG(WARNING, "%s fsid has been used", disk_path.c_str());
             }
-            store_path_list_[i] = store_path_list_[store_path_list_.size() - 1];
-            store_path_list_.resize(store_path_list_.size() - 1);
+            store_path_list[i] = store_path_list[store_path_list.size() - 1];
+            store_path_list.resize(store_path_list.size() - 1);
             --i;
         } else {
-            if (fsids.insert(fs_tmp).second) {
-                int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
-                int64_t user_quota = fs_info.f_bavail * fs_info.f_bsize;
-                int64_t super_quota = fs_info.f_bfree * fs_info.f_bsize;
-                LOG(INFO, "Use store path: %s block: %ld disk: %s available %s quota: %s",
-                        disk_path.c_str(), fs_info.f_bsize,
-                        common::HumanReadableString(disk_size).c_str(),
-                        common::HumanReadableString(super_quota).c_str(),
-                        common::HumanReadableString(user_quota).c_str());
-                disk_quota += user_quota;
-            } else {
-                LOG(INFO, "Use store path: %s", disk_path.c_str());
-            }
+            int64_t disk_size = fs_info.f_blocks * fs_info.f_bsize;
+            int64_t user_quota = fs_info.f_bavail * fs_info.f_bsize;
+            int64_t super_quota = fs_info.f_bfree * fs_info.f_bsize;
+            LOG(INFO, "Use store path: %s block: %ld disk: %s available %s quota: %s",
+                    disk_path.c_str(), fs_info.f_bsize,
+                    common::HumanReadableString(disk_size).c_str(),
+                    common::HumanReadableString(super_quota).c_str(),
+                    common::HumanReadableString(user_quota).c_str());
+            disk_quota += user_quota;
+            Disk* disk = new Disk(store_path_list[i], user_quota);
+            disks_.push_back(std::make_pair(DiskStat(), disk));
+            fsids.insert(fs_tmp);
         }
     }
-    LOG(INFO, "%lu store path used.", store_path_list_.size());
-    assert(store_path_list_.size() > 0);
-    disk_quota_ = disk_quota;
+    LOG(INFO, "%lu store path used.", store_path_list.size());
+    assert(store_path_list.size() > 0);
 }
-const std::string& BlockManager::GetStorePath(int64_t block_id) {
-    return store_path_list_[block_id % store_path_list_.size()];
-}
-/// Load meta from disk
-bool BlockManager::LoadStorage() {
-    MutexLock lock(&mu_);
-    int64_t start_load_time = common::timer::get_micros();
-    leveldb::Options options;
-    options.create_if_missing = true;
-    leveldb::Status s = leveldb::DB::Open(options, store_path_list_[0] + "meta/", &metadb_);
-    if (!s.ok()) {
-        LOG(WARNING, "Load blocks fail: %s", s.ToString().c_str());
-        return false;
-    }
 
-    std::string version_key(8, '\0');
-    version_key.append("version");
-    std::string version_str;
-    s = metadb_->Get(leveldb::ReadOptions(), version_key, &version_str);
-    if (s.ok() && version_str.size() == 8) {
-        namespace_version_ = *(reinterpret_cast<int64_t*>(&version_str[0]));
-        LOG(INFO, "Load namespace %ld", namespace_version_);
+void BlockManager::LoadOneDisk(Disk* disk) {
+
+}
+
+int64_t BlockManager::DiskQuota() const {
+    return disk_quota_;
+}
+
+// TODO: concurrent load
+bool BlockManager::LoadStorage() {
+    bool ret = true;
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        Disk* disk = it->second;
+        ret = ret && disk->LoadStorage(std::bind(&BlockManager::AddBlock,
+                                                      this, std::placeholders::_1,
+                                                      std::placeholders::_2,
+                                                      std::placeholders::_3));
+        disk_quota_ += disk->GetQuota();
     }
-    int block_num = 0;
-    leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
-    for (it->Seek(version_key+'\0'); it->Valid(); it->Next()) {
-        int64_t block_id = 0;
-        if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
-            LOG(WARNING, "Unknown key: %s\n", it->key().ToString().c_str());
-            delete it;
+    return ret;
+}
+
+int64_t BlockManager::NameSpaceVersion() const {
+    int64_t version = -1;
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        Disk* disk = it->second;
+        int64_t tmp = disk->NameSpaceVersion();
+        if (version == -1) {
+            version = tmp;
+        }
+        if (tmp != version) {
+            return -1;
+        }
+    }
+    return version;
+}
+
+bool BlockManager::SetNameSpaceVersion(int64_t version) {
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        Disk* disk = it->second;
+        if (!disk->SetNameSpaceVersion(version)) {
             return false;
         }
-        BlockMeta meta;
-        if (!meta.ParseFromArray(it->value().data(), it->value().size())
-            || meta.block_id() != block_id) {
-            struct OldBlockMeta {
-                int64_t block_id;
-                int64_t block_size;
-                int64_t checksum;
-                int64_t version;
-            };
-            assert(it->value().size() == sizeof(struct OldBlockMeta));
-            OldBlockMeta oldmeta;
-            memcpy(&oldmeta, it->value().data(), it->value().size());
-            assert(oldmeta.block_id == block_id);
-            meta.set_block_id(oldmeta.block_id);
-            meta.set_block_size(oldmeta.block_size);
-            meta.set_checksum(oldmeta.checksum);
-            meta.set_version(oldmeta.version);
-            meta.set_store_path(GetStorePath(block_id));
-            std::string meta_buf;
-            meta.SerializeToString(&meta_buf);
-            metadb_->Put(leveldb::WriteOptions(), it->key(), meta_buf);
-            LOG(INFO, "Old meta info of #%ld has been trans to new meta info", oldmeta.block_id);
-        }
-        std::string file_path = meta.store_path() + Block::BuildFilePath(block_id);
-        if (meta.version() < 0) {
-            LOG(INFO, "Incomplete block #%ld V%ld %ld, drop it",
-                block_id, meta.version(), meta.block_size());
-            metadb_->Delete(leveldb::WriteOptions(), it->key());
-            remove(file_path.c_str());
-            continue;
-        } else {
-            if (std::find(store_path_list_.begin(), store_path_list_.end(), meta.store_path())
-                    == store_path_list_.end()) {
-                LOG(WARNING, "Block #%ld store path %s not in current store configuration, ignore it",
-                    block_id, file_path.c_str());
-                continue;
-            }
-            struct stat st;
-            if (stat(file_path.c_str(), &st) ||
-                st.st_size != meta.block_size() ||
-                access(file_path.c_str(), R_OK)) {
-                LOG(WARNING, "Corrupted block #%ld V%ld size %ld path %s can't access: %s'",
-                    block_id, meta.version(), meta.block_size(), file_path.c_str(),
-                    strerror(errno));
-                metadb_->Delete(leveldb::WriteOptions(), it->key());
-                remove(file_path.c_str());
-                continue;
-            } else {
-                LOG(DEBUG, "Load #%ld V%ld size %ld path %s",
-                    block_id, meta.version(), meta.block_size(), file_path.c_str());
-            }
-        }
-        Block* block = new Block(meta, thread_pool_, file_cache_);
-        block->AddRef();
-        block_map_[block_id] = block;
-        block_num ++;
     }
-    delete it;
-    int64_t end_load_time = common::timer::get_micros();
-    LOG(INFO, "Load %ld blocks, use %ld ms, namespace version: %ld",
-        block_num, (end_load_time - start_load_time) / 1000, namespace_version_);
-    if (namespace_version_ == 0 && block_num > 0) {
-        LOG(WARNING, "Namespace version lost!");
-    }
-    disk_quota_ += g_data_size.Get();
-    return true;
-}
-int64_t BlockManager::NameSpaceVersion() const {
-    return namespace_version_;
-}
-bool BlockManager::SetNameSpaceVersion(int64_t version) {
-    MutexLock lock(&mu_);
-    std::string version_key(8, '\0');
-    version_key.append("version");
-    std::string version_str(8, '\0');
-    *(reinterpret_cast<int64_t*>(&version_str[0])) = version;
-    leveldb::Status s = metadb_->Put(leveldb::WriteOptions(), version_key, version_str);
-    if (!s.ok()) {
-        LOG(WARNING, "SetNameSpaceVersion fail: %s", s.ToString().c_str());
-        return false;
-    }
-    namespace_version_ = version;
-    LOG(INFO, "Set namespace version: %ld", namespace_version_);
     return true;
 }
 
-int64_t BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, int32_t num) {
-    leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
+int64_t BlockManager::ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, uint32_t num) {
+    std::vector<leveldb::Iterator*> iters;
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        Disk* disk = it->second;
+        disk->Seek(offset, &iters);
+    }
+    if (iters.size() == 0) {
+        return 0;
+    }
+    int32_t idx = -1;
     int64_t largest_id = 0;
-    for (it->Seek(BlockId2Str(offset)); it->Valid(); it->Next()) {
-        int64_t block_id = 0;
-        if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
-            LOG(WARNING, "[ListBlocks] Unknown meta key: %s\n",
-                it->key().ToString().c_str());
-            break;
+    while (blocks->size() < num && iters.size() != 0) {
+        int64_t block_id = FindSmallest(iters, &idx);
+        if (block_id == -1) {
+            return largest_id;
         }
+        auto it = iters[idx];
         BlockMeta meta;
         bool ret = meta.ParseFromArray(it->value().data(), it->value().size());
         assert(ret);
-        //skip blocks not in current configuration
-        if (find(store_path_list_.begin(), store_path_list_.end(), meta.store_path())
-                  == store_path_list_.end()) {
-            continue;
-        }
-        assert(meta.block_id() == block_id);
+        assert(block_id == meta.block_id());
         blocks->push_back(meta);
         largest_id = block_id;
-        // LOG(DEBUG, "List block %ld", block_id);
-        if (--num <= 0) {
-            break;
-        }
+        iters[idx]->Next();
     }
-    delete it;
+    for (size_t i = 0; i < iters.size(); ++i) {
+        delete iters[i];
+    }
     return largest_id;
 }
 
-Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCode* status) {
+Block* BlockManager::CreateBlock(int64_t block_id, StatusCode* status) {
     BlockMeta meta;
     meta.set_block_id(block_id);
-    meta.set_store_path(GetStorePath(block_id));
-    Block* block = new Block(meta, thread_pool_, file_cache_);
+    Disk* disk = PickDisk(block_id);
+    meta.set_store_path(disk->Path());
+    Block* block = new Block(meta, disk, file_cache_);
+    // for block_map_
     MutexLock lock(&mu_, "BlockManger::AddBlock", 1000);
-    BlockMap::iterator it = block_map_.find(block_id);
-    if (it != block_map_.end()) {
+    auto ret = block_map_.insert(std::make_pair(block_id, block));
+    if (ret.second) {
+        block->AddRef();
+    } else {
         delete block;
-        if (it->second->IsFinished()) {
+        if (ret.first->second->IsFinished()) {
             *status = kReadOnly;
             return NULL;
         }
         *status = kBlockExist;
-        return it->second;
+        return ret.first->second;
     }
-    // for block_map
-    block->AddRef();
-    block_map_[block_id] = block;
-    // Unlock for write meta & sync
     mu_.Unlock();
-    if (!SyncBlockMeta(meta, sync_time)) {
+    if (!disk->SyncBlockMeta(meta)) {
         delete block;
         *status = kSyncMetaFailed;
         block = NULL;
@@ -313,13 +262,62 @@ Block* BlockManager::CreateBlock(int64_t block_id, int64_t* sync_time, StatusCod
         block->AddRef();
     }
     *status = kOK;
+    LOG(INFO, "CreateBlock #%ld on %s", block_id, disk->Path().c_str());
     return block;
+}
+
+bool BlockManager::CloseBlock(Block* block, bool sync) {
+    return block->Close(sync);
+}
+
+StatusCode BlockManager::RemoveBlock(int64_t block_id) {
+    Block* block = FindBlock(block_id);
+    if (!block) {
+        LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
+        return kCsNotFound;
+    } else {
+        MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
+        block_map_.erase(block_id);
+        block->DecRef();
+        LOG(INFO, "Remove #%ld meta info done, ref= %ld", block_id, block->GetRef());
+    }
+    StatusCode s = block->SetDeleted();
+    if (s != kOK) {
+        LOG(INFO, "Block #%ld deleted failed, %s", block_id, StatusCode_Name(s).c_str());
+        block->DecRef();
+        return s;
+    }
+    // disk file will be removed in block's deconstrucor
+    file_cache_->EraseFileCache(block->GetFilePath());
+    block->DecRef();
+    return kOK;
+}
+
+// TODO: concurrent & async cleanup
+bool BlockManager::CleanUp(int64_t namespace_version) {
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        Disk* disk = it->second;
+        if (disk->NameSpaceVersion() != namespace_version) {
+            if (!disk->CleanUp()) {
+                return false;
+            }
+        }
+    }
+    LOG(INFO, "CleanUp done");
+    return true;
+}
+
+bool BlockManager::AddBlock(int64_t block_id, Disk* disk, BlockMeta meta) {
+    Block* block = new Block(meta, disk, file_cache_);
+    block->AddRef();
+    MutexLock lock(&mu_);
+    return block_map_.insert(std::make_pair(block_id, block)).second;
 }
 
 Block* BlockManager::FindBlock(int64_t block_id) {
     g_find_ops.Inc();
     MutexLock lock(&mu_, "BlockManger::Find", 1000);
-    BlockMap::iterator it = block_map_.find(block_id);
+    auto it = block_map_.find(block_id);
     if (it == block_map_.end()) {
         // not found
         return NULL;
@@ -329,108 +327,78 @@ Block* BlockManager::FindBlock(int64_t block_id) {
     block->AddRef();
     return block;
 }
-std::string BlockManager::BlockId2Str(int64_t block_id) {
-    char idstr[64];
-    snprintf(idstr, sizeof(idstr), "%13ld", block_id);
-    return std::string(idstr);
-}
-bool BlockManager::SyncBlockMeta(const BlockMeta& meta, int64_t* sync_time) {
-    std::string idstr = BlockId2Str(meta.block_id());
-    leveldb::WriteOptions options;
-    // options.sync = true;
-    int64_t time_start = common::timer::get_micros();
-    std::string meta_buf;
-    meta.SerializeToString(&meta_buf);
-    leveldb::Status s = metadb_->Put(options, idstr, meta_buf);
-    int64_t time_use = common::timer::get_micros() - time_start;
-    if (sync_time) *sync_time = time_use;
-    if (!s.ok()) {
-        Log(WARNING, "Write to meta fail:%s", idstr.c_str());
-        return false;
-    }
-    return true;
-}
-bool BlockManager::CloseBlock(Block* block) {
-    if (!block->Close()) {
-        return false;
-    }
 
-    // Update meta
-    BlockMeta meta = block->GetMeta();
-    return SyncBlockMeta(meta, NULL);
-}
-
-bool BlockManager::RemoveBlockMeta(int64_t block_id) {
-    char idstr[14];
-    snprintf(idstr, sizeof(idstr), "%13ld", block_id);
-    leveldb::Status s = metadb_->Delete(leveldb::WriteOptions(), idstr);
-    if (!s.ok()) {
-        LOG(WARNING, "Remove #%ld meta info fails: %s", block_id, s.ToString().c_str());
-        return false;
-    }
-    return true;
-}
-bool BlockManager::RemoveBlock(int64_t block_id) {
-    bool meta_removed = RemoveBlockMeta(block_id);
-    Block* block = FindBlock(block_id);
-    if (block == NULL) {
-        LOG(INFO, "Try to remove block that does not exist: #%ld ", block_id);
-        return false;
-    }
-    if (!block->SetDeleted()) {
-        LOG(INFO, "Block #%ld deleted by other thread", block_id);
-        block->DecRef();
-        return false;
-    }
-
-    // disk file will be removed in block's deconstrucor
-    file_cache_->EraseFileCache(block->GetFilePath());
-
-    bool ret = false;
-    if (meta_removed) {
-        MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
-        block_map_.erase(block_id);
-        block->DecRef();
-        LOG(INFO, "Remove #%ld meta info done, ref= %ld", block_id, block->GetRef());
-        ret = true;
-    }
-    block->DecRef();
-    return ret;
-}
-
-bool BlockManager::RemoveAllBlocks() {
-    LOG(INFO, "RemoveAllBlocks...");
-    if (!RemoveAllBlocksAsync()) {
-        return false;
-    }
-    int count = 0;
-    while (g_blocks.Get() > 0) {
-        if (count++ %1000 == 0) {
-            LOG(INFO, "RemoveAllBlocks wait done now block num: %ld", g_blocks.Get());
+Disk* BlockManager::PickDisk(int64_t block_id) {
+    double min_load = 9999.9;
+    Disk* target = NULL;
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        Disk* disk = it->second;
+        double load = disk->GetLoad();
+        if (load < min_load) {
+            min_load = load;
+            target = disk;
         }
-        usleep(10000);
     }
-    LOG(INFO, "RemoveAllBlocks done");
-    return true;
+    return target;
 }
 
-bool BlockManager::RemoveAllBlocksAsync() {
-    leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
-    for (it->Seek(BlockId2Str(0)); it->Valid(); it->Next()) {
-        int64_t block_id = 0;
-        if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
-            LOG(FATAL, "[ListBlocks] Unknown meta key: %s\n",
-                it->key().ToString().c_str());
+int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx) {
+    int64_t id = LLONG_MAX;
+    for (size_t i = 0; i < iters.size(); ++i) {
+        auto it = iters[i];
+        if (!it->Valid()) {
             delete it;
-            return false;
+            iters[i] = iters[iters.size() - 1];
+            iters.resize(iters.size() - 1);
+            --i;
+            continue;
         }
-        thread_pool_->AddTask(std::bind(&BlockManager::RemoveBlock, this, block_id));
+        int64_t tmp;
+        if (1 != sscanf(it->key().data(), "%ld", &tmp)) {
+            delete it;
+            iters[i] = iters[iters.size() - 1];
+            iters.resize(iters.size() - 1);
+            --i;
+            LOG(WARNING, "[FindSmallest] Unknown meta key: %s\n",
+                it->key().ToString().c_str());
+            continue;
+        }
+        if (tmp < id) {
+            id = tmp;
+            *idx = i;
+        }
     }
-    delete it;
-    return true;
+    if (id == LLONG_MAX) {
+        if (iters.size() != 0) {
+            LOG(WARNING, "[FindSmallest] error iters is not empty");
+        }
+        return -1;
+    }
+    return id;
 }
 
-}
+void BlockManager::LogStatus(int times) {
+    memset(&stat_, 0,sizeof(stat_));
+    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+        Disk* disk = it->second;
+        DiskStat stat = disk->Stat();
+        it->first = stat;
+
+        stat_.blocks += stat.blocks;
+        stat_.write_bytes += stat.write_bytes;
+        stat_.writing_blocks += stat.writing_blocks;
+        stat_.writing_bytes += stat.writing_bytes;
+        stat_.data_size += stat.data_size;
+        stat_.pending_buf += stat.pending_buf;
+    }
+    std::string str;
+    stat_.ToString(&str);
+    if (times == 10) {
+        LOG(INFO, "[DiskStat] %s", str.c_str());
+        times = 0;
+    }
+    thread_pool_->DelayTask(100, std::bind(&BlockManager::LogStatus, this, ++times));
 }
 
-/* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
+} // namespace bfs
+} // namespace baidu

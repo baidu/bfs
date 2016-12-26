@@ -481,6 +481,19 @@ int32_t FileImpl::FinishedNum() {
     return count;
 }
 
+std::string FileImpl::GetSlowChunkserver() {
+    mu_.AssertHeld();
+    auto it = write_windows_.begin();
+    for (; it != write_windows_.end(); ++it) {
+        common::SlidingWindow<int>* sld = it->second;
+        if (sld->GetBaseOffset() != last_seq_ + 1) {
+            break;
+        }
+    }
+    assert(it != write_windows_.end());
+    return it->first;
+}
+
 bool FileImpl::ShouldSetError() {
     mu_.AssertHeld();
     std::map<std::string, bool>::iterator it = cs_errors_.begin();
@@ -539,6 +552,7 @@ void FileImpl::BackgroundWriteInternal() {
             request->set_offset(offset);
             request->set_is_last(buffer->IsLast());
             request->set_packet_seq(buffer->Sequence());
+            request->set_sync_on_close(w_options_.sync_on_close);
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
             if (IsChainsWrite()) {
@@ -807,7 +821,9 @@ int32_t FileImpl::Close() {
             }
             // TODO flag for wait_time?
             if (!chains_write && finished_num == replica_num - 1 && wait_time >= 3) {
-                LOG(WARNING, "Skip slow chunkserver");
+                std::string slow_cs = GetSlowChunkserver();
+                LOG(WARNING, "Skip slow chunkserver %s for file %s",
+                        slow_cs.c_str(), name_.c_str());
                 bg_error_ = true;
                 break;
             }

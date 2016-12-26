@@ -34,9 +34,17 @@ MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_
     } else {
         LOG(FATAL, "\033[32m[Sync]\033[0m Nameserver does not belong to this cluster");
     }
-    master_addr_ = FLAGS_master_slave_role == "master" ? this_server: another_server;
-    slave_addr_ = FLAGS_master_slave_role == "slave" ? this_server: another_server;
-    is_leader_ = FLAGS_master_slave_role == "master";
+    if (FLAGS_master_slave_role == "master") {
+        master_addr_ = this_server;
+        slave_addr_ = another_server;
+        is_leader_ = true;
+    } else if (FLAGS_master_slave_role == "slave") {
+        master_addr_ = another_server;
+        slave_addr_ = this_server;
+        is_leader_ = false;
+    } else {
+        LOG(FATAL, "Wrong role: %s", FLAGS_master_slave_role.c_str());
+    }
     if (IsLeader()) {
         LOG(INFO, "\033[32m[Sync]\033[0m I am Leader");
     } else {

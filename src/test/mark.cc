@@ -11,6 +11,7 @@
 
 #include <common/string_util.h>
 #include <common/thread_pool.h>
+#include <common/string_util.h>
 #include <gflags/gflags.h>
 
 #include "mark.h"
@@ -105,6 +106,7 @@ void Mark::Put(const std::string& filename, const std::string& base, int thread_
             return;
         }
         len += write_len;
+        put_size_.Add(write_len);
     }
     if (!FinishPut(file, thread_id)) {
         if (FLAGS_break_on_failure) {
@@ -247,10 +249,12 @@ void Mark::ReadWrapper(int thread_id) {
 
 void Mark::PrintStat() {
     std::cout << "Put\t" << put_counter_.Get() << "\tDel\t" << del_counter_.Get()
-              << "\tRead\t" << read_counter_.Get() << "\tAll\t" << all_counter_.Get() << std::endl;
+              << "\tRead\t" << read_counter_.Get() << "\tAll\t" << all_counter_.Get()
+              << "\tW\t" << common::HumanReadableString(put_size_.Get()) << std::endl;
     put_counter_.Set(0);
     del_counter_.Set(0);
     read_counter_.Set(0);
+    put_size_.Set(0);
     thread_pool_->DelayTask(1000, std::bind(&Mark::PrintStat, this));
 }
 

@@ -70,8 +70,10 @@ int main(int argc, char* argv[])
         sync = raft_impl;
         sync_service = raft_impl->GetService();
         LOG(baidu::common::INFO, "HA strategy: raft");
-    } else {
+    } else if (FLAGS_ha_strategy == "none") {
         LOG(baidu::common::INFO, "HA strategy: none");
+    } else {
+        LOG(baidu::common::FATAL, "Wrong HA strategy: %s", FLAGS_ha_strategy.c_str());
     }
 
     baidu::bfs::NameServerImpl* nameserver_service = new baidu::bfs::NameServerImpl(sync);

@@ -693,6 +693,13 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
 
     StatusCode status = namespace_->ListDirectory(path, response->mutable_files());
+    for (int i = 0; i < response->files_size(); i++) {
+        FileInfo* file = response->mutable_files(i);
+        if ((file->type() & (1 << 9)) == 0) {
+            //maybe it's an incomplete file
+            SetActualFileSize(file);
+        }
+    }
     response->set_status(status);
     done->Run();
 }
@@ -715,17 +722,8 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
         //maybe haven't been written info meta
-        if (!out_info->size()) {
-            int64_t file_size = 0;
-            for (int i = 0; i < out_info->blocks_size(); i++) {
-                int64_t block_id = out_info->blocks(i);
-                NSBlock nsblock;
-                if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
-                    continue;
-                }
-                file_size += nsblock.block_size;
-            }
-            out_info->set_size(file_size);
+        if ((out_info->type() & (1 << 9)) == 0) {
+            SetActualFileSize(out_info);
         }
         response->set_status(kOK);
         LOG(INFO, "Stat: %s return: %ld", path.c_str(), out_info->size());
@@ -1230,7 +1228,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     "style=\"width: "+ ratio_str + "%; color:#000;" + bg_color + "\">" + ratio_str + "%"
                "</div></div>";
         table_str += "</td><td>";
-        table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
+        table_str += common::NumToString(chunkserver.pending_buf()) + "/" +
                      common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
         table_str += chunkserver.tag();
@@ -1437,6 +1435,22 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     } else {
         NameServer::CallMethod(method, controller, request, response, done);
     }
+}
+
+void NameServerImpl::SetActualFileSize(FileInfo* file) {
+    if (file->size() != 0) {
+        return;
+    }
+    int64_t file_size = 0;
+    for (int i = 0; i < file->blocks_size(); i++) {
+        int64_t block_id = file->blocks(i);
+        NSBlock nsblock;
+        if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
+            continue;
+        }
+        file_size += nsblock.block_size;
+    }
+    file->set_size(file_size);
 }
 
 } // namespace bfs
