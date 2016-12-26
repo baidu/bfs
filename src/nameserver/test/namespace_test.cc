@@ -62,12 +62,12 @@ TEST_F(NameSpaceTest, SplitPath) {
 
 bool CreateTree(NameSpace* ns) {
     std::vector<int64_t> blocks_to_remove;
-    int ret = ns->CreateFile("/file1", 0, 0, -1, &blocks_to_remove, "");
-    ret |= ns->CreateFile("/file2", 0, 0, -1, &blocks_to_remove, "");
-    ret |= ns->CreateFile("/dir1/subdir1/file3", 0, 0, -1, &blocks_to_remove, "");
-    ret |= ns->CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove, "");
-    ret |= ns->CreateFile("/dir1/subdir2/file5", 0, 0, -1, &blocks_to_remove, "");
-    ret |= ns->CreateFile("/xdir", 0, 01755, -1, &blocks_to_remove, "");
+    int ret = ns->CreateFile("/file1", 0, 0, -1, &blocks_to_remove);
+    ret |= ns->CreateFile("/file2", 0, 0, -1, &blocks_to_remove);
+    ret |= ns->CreateFile("/dir1/subdir1/file3", 0, 0, -1, &blocks_to_remove);
+    ret |= ns->CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove);
+    ret |= ns->CreateFile("/dir1/subdir2/file5", 0, 0, -1, &blocks_to_remove);
+    ret |= ns->CreateFile("/xdir", 0, 01755, -1, &blocks_to_remove);
     ret |= ns->Symlink("/file1", "/link1");
     ret |= ns->Symlink("/dir1/subdir1/file3", "/link2");
 
@@ -122,15 +122,15 @@ TEST_F(NameSpaceTest, CreateFile) {
     system("rm -rf ./db");
     NameSpace ns;
     std::vector<int64_t> blocks_to_remove;
-    ASSERT_EQ(kOK, ns.CreateFile("/file1", 0, 0, -1, &blocks_to_remove, ""));
-    ASSERT_NE(kOK, ns.CreateFile("/file1", 0, 0, -1, &blocks_to_remove, ""));
-    ASSERT_EQ(kOK, ns.CreateFile("/file2", 0, 0, 0, &blocks_to_remove, ""));
-    ASSERT_EQ(kOK, ns.CreateFile("/file3", 0, 0, 2, &blocks_to_remove, ""));
-    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir1/file1", 0, 0, -1, &blocks_to_remove, ""));
-    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir1/file1", O_TRUNC, 0, -1, &blocks_to_remove, ""));
-    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file1", 0, 0, -1, &blocks_to_remove, ""));
-    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file2", 0, -1, -1, &blocks_to_remove, ""));
-    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file3", 0, 01755, -1, &blocks_to_remove, ""));
+    ASSERT_EQ(kOK, ns.CreateFile("/file1", 0, 0, -1, &blocks_to_remove));
+    ASSERT_NE(kOK, ns.CreateFile("/file1", 0, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.CreateFile("/file2", 0, 0, 0, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.CreateFile("/file3", 0, 0, 2, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir1/file1", 0, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir1/file1", O_TRUNC, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file1", 0, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file2", 0, -1, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file3", 0, 01755, -1, &blocks_to_remove));
 }
 
 TEST_F(NameSpaceTest, List) {
@@ -197,12 +197,12 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(remove_file.entry_id(), 2);
     /// file -> existing dir
     std::vector<int64_t> blocks_to_remove;
-    ns.CreateFile("/home/file1", 0, 0755, -1, &blocks_to_remove, "");
-    ns.CreateFile("/home/dir1", 0, (0755) | (1 << 9), -1, &blocks_to_remove, "");
+    ns.CreateFile("/home/file1", 0, 0755, -1, &blocks_to_remove);
+    ns.CreateFile("/home/dir1", 0, (0755) | (1 << 9), -1, &blocks_to_remove);
     ASSERT_EQ(kBadParameter, ns.Rename("/home/file1", "/home/dir1",
                 &need_unlink, &remove_file));
     /// existing dir -> existing dir
-    ns.CreateFile("/home/dir2", 0, (0755) | (1 << 9), -1, &blocks_to_remove, "");
+    ns.CreateFile("/home/dir2", 0, (0755) | (1 << 9), -1, &blocks_to_remove);
     ASSERT_EQ(kBadParameter, ns.Rename("/home/dir1", "/home/dir2",
                 &need_unlink, &remove_file));
     /// dir -> existing file
@@ -213,7 +213,7 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(kOK, ns.Rename("/dir1", "/dir2", &need_unlink, &remove_file));
 
     /// Deep rename
-    ASSERT_EQ(kOK, ns.CreateFile("/tera/meta/0/00000001.dbtmp", 0, 0, -1, &blocks_to_remove, ""));
+    ASSERT_EQ(kOK, ns.CreateFile("/tera/meta/0/00000001.dbtmp", 0, 0, -1, &blocks_to_remove));
     ASSERT_EQ(kOK, ns.Rename("/tera/meta/0/00000001.dbtmp", "/tera/meta/0/CURRENT", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
     ASSERT_TRUE(ns.LookUp("/tera/meta/0/CURRENT", &remove_file));
@@ -300,9 +300,9 @@ TEST_F(NameSpaceTest, DeleteDirectory2) {
     system("rm -rf ./db");
     NameSpace ns;
     std::vector<int64_t> blocks_to_remove;
-    ns.CreateFile("/tera", 0, 01755, -1, &blocks_to_remove, "");
-    ns.CreateFile("/file1", 0, 0, -1, &blocks_to_remove, "");
-    ns.CreateFile("/tera/file2", 0, 0, -1, &blocks_to_remove, "");
+    ns.CreateFile("/tera", 0, 01755, -1, &blocks_to_remove);
+    ns.CreateFile("/file1", 0, 0, -1, &blocks_to_remove);
+    ns.CreateFile("/tera/file2", 0, 0, -1, &blocks_to_remove);
     std::vector<FileInfo> files_removed;
     ns.DeleteDirectory("/", true, &files_removed);
     ASSERT_EQ(files_removed.size(), 2UL);

@@ -368,7 +368,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     int replica_num = request->replica_num();
     NameServerLog log;
     std::vector<int64_t> blocks_to_remove;
-    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove, "", &log);
+    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove, &log);
     for (size_t i = 0; i < blocks_to_remove.size(); i++) {
         block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
     }
@@ -1447,8 +1447,9 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("BlockReceived", work_thread_pool_),
         std::make_pair("PushBlockReport", work_thread_pool_),
         std::make_pair("SysStat", read_thread_pool_),
-        std::make_pair("Symlink", work_thread_pool_),
-        std::make_pair("Chmod", work_thread_pool_)
+        std::make_pair("Chmod", work_thread_pool_),
+        std::make_pair("Symlink", work_thread_pool_)
+
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /
                             sizeof(std::pair<std::string, ThreadPool*>);

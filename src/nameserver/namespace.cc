@@ -84,7 +84,7 @@ int64_t NameSpace::Version() const {
 }
 
 FileType NameSpace::GetFileType(int type) {
-    int mode = type>>9;
+    int mode = (type >> 9);
     return FileType(mode);
 }
 
@@ -97,7 +97,7 @@ bool NameSpace::GetLinkSrcPath(const FileInfo& info, FileInfo* src_info) {
         std::string sym_path = NormalizePath(sym_link);
         LOG(INFO, "GetLinkSrcPath sym_path %s", sym_path.c_str());
         if (!LookUp(sym_path, src_info)) {
-            LOG(INFO, "GetLinkSrcPath found %s", sym_link.c_str());
+            LOG(INFO, "GetLinkSrcPath not found %s", sym_link.c_str());
             return false;
         }
         LOG(INFO, "GetLinkSrcPath file_type:%d, file_name: %s", src_info->type(), src_info->name().c_str());
@@ -238,54 +238,61 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
         return false;
     } else {
         if (GetFileType(file_info->type()) == kSymlink) {
-            FileInfo src_info;
-            if (!GetLinkSrcPath(*file_info, &src_info)) {
+            if (!GetLinkSrcPath(*file_info, file_info)) {
                 return false;
-            } else {
-                *file_info = src_info;
             }
         }
     }
     return true;
 }
 
-StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, int replica_num,
-                                 std::vector<int64_t>* blocks_to_remove,
-                                 const std::string &sym_link, NameServerLog* log) {
+bool NameSpace::BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
+                    int64_t* parent_id ,NameServerLog* log) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
-        LOG(INFO, "CreateFile split fail %s", path.c_str());
+        LOG(INFO, "path split fail %s", path.c_str());
         return kBadParameter;
     }
 
     /// Find parent directory, create if not exist.
-    FileInfo file_info;
-    int64_t parent_id = kRootEntryid;
+    *parent_id = kRootEntryid;
     int depth = paths.size();
     std::string info_value;
     for (int i = 0; i < depth - 1; ++i) {
-        if (!LookUp(parent_id, paths[i], &file_info)) {
-            file_info.set_type((1 << 9) | 0755);
-            file_info.set_ctime(time(NULL));
-            file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
-            file_info.SerializeToString(&info_value);
+        if (!LookUp(*parent_id, paths[i], file_info)) {
+            file_info->set_type((1 << 9) | 0755);
+            file_info->set_ctime(time(NULL));
+            file_info->set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
+            file_info->SerializeToString(&info_value);
             std::string key_str;
-            EncodingStoreKey(parent_id, paths[i], &key_str);
+            EncodingStoreKey(*parent_id, paths[i], &key_str);
             leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
             assert(s.ok());
             EncodeLog(log, kSyncWrite, key_str, info_value);
-            LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info.entry_id());
+            LOG(INFO, "Create path recursively: %s E%ld ", paths[i].c_str(), file_info->entry_id());
         } else {
-            if (GetFileType(file_info.type()) != kDir) {
+            if (GetFileType(file_info->type()) != kDir) {
                 LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
                 return kBadParameter;
             }
         }
-        parent_id = file_info.entry_id();
+        *parent_id = file_info->entry_id();
     }
 
-    const std::string& fname = paths[depth - 1];
-    bool exist = LookUp(parent_id, fname, &file_info);
+    *fname = paths[depth - 1];
+    bool exist = LookUp(*parent_id, *fname, file_info);
+
+    return exist;
+}
+
+StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mode, int replica_num,
+                                 std::vector<int64_t>* blocks_to_remove, NameServerLog* log) {
+
+    FileInfo file_info;
+    std::string fname, info_value;
+    int64_t parent_id;
+
+    bool exist = BuildPath(file_name, &file_info, &fname, &parent_id, log);
     if (exist) {
         if ((flags & O_TRUNC) == 0) {
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
@@ -295,29 +302,58 @@ StatusCode NameSpace::CreateFile(const std::string& path, int flags, int mode, i
                 LOG(INFO, "CreateFile %s fail: directory with same name exist", fname.c_str());
                 return kFileExists;
             }
-            if (blocks_to_remove != NULL) {
-                 for (int i = 0; i < file_info.blocks_size(); i++) {
-                    blocks_to_remove->push_back(file_info.blocks(i));
-                 }
-             }
+             for (int i = 0; i < file_info.blocks_size(); i++) {
+                blocks_to_remove->push_back(file_info.blocks(i));
+            }
         }
     }
+
     file_info.set_type(((1 << 11) - 1) & mode);
-    file_info.set_sym_link(sym_link);
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_replicas(replica_num <= 0 ? FLAGS_default_replica_num : replica_num);
-    //file_info.add_blocks();
     file_info.SerializeToString(&info_value);
+
     std::string file_key;
     EncodingStoreKey(parent_id, fname, &file_key);
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
     if (s.ok()) {
-        LOG(INFO, "CreateFile %s E%ld ", path.c_str(), file_info.entry_id());
+        LOG(INFO, "CreateFile %s E%ld ", file_name.c_str(), file_info.entry_id());
         EncodeLog(log, kSyncWrite, file_key, info_value);
         return kOK;
     } else {
-        LOG(WARNING, "CreateFile %s fail: db put fail %s", path.c_str(), s.ToString().c_str());
+        LOG(WARNING, "CreateFile %s fail: db put fail %s", file_name.c_str(), s.ToString().c_str());
+        return kUpdateError;
+    }
+}
+
+StatusCode NameSpace::CreateSymlink(const std::string& symlink_name, int mode,
+                                const std::string& sym_link, NameServerLog* log) {
+
+    FileInfo file_info;
+    std::string fname, info_value;
+    int64_t parent_id;
+    bool exist = BuildPath(symlink_name, &file_info, &fname, &parent_id, log);
+    if (exist) {
+            LOG(INFO, "CreateSymlink %s fail: already exist!", fname.c_str());
+            return kFileExists;
+    }
+
+    file_info.set_type(((1 << 11) - 1) & mode);
+    file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
+    file_info.set_ctime(time(NULL));
+    file_info.set_sym_link(sym_link);
+    file_info.SerializeToString(&info_value);
+
+    std::string file_key;
+    EncodingStoreKey(parent_id, fname, &file_key);
+    leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, info_value);
+    if (s.ok()) {
+        LOG(INFO, "CreateSymlink %s E%ld ", symlink_name.c_str(), file_info.entry_id());
+        EncodeLog(log, kSyncWrite, file_key, info_value);
+        return kOK;
+    } else {
+        LOG(WARNING, "CreateSymlink %s fail: db put fail %s", symlink_name.c_str(), s.ToString().c_str());
         return kUpdateError;
     }
 }
@@ -463,16 +499,16 @@ StatusCode NameSpace::Symlink(const std::string& src, const std::string& dst, Na
     }
     FileInfo file_info;
     if (!LookUp(src, &file_info)) {
-        LOG(INFO, "CreateSymlink not found src_file: %s", src.c_str());
+        LOG(INFO, "Symlink not found src_file: %s", src.c_str());
         return kNsNotFound;
     }
     FileType src_type = GetFileType(file_info.type());
     if (src_type == kDir) {
-        LOG(INFO, "CreateSymlink not support directory, src_file:%s", src.c_str());
+        LOG(INFO, "Symlink not support directory, src_file:%s", src.c_str());
         return kBadParameter;
     }
-    LOG(INFO, "Use CreateFile to create dst: %s", dst.c_str());
-    StatusCode status = CreateFile(dst, 0,  02777, 0,  NULL, src, log);
+    LOG(DEBUG, "Use CreateSymlink to create dst: %s", dst.c_str());
+    StatusCode status = CreateSymlink(dst, 02777, src, log);
     return status;
 }
 

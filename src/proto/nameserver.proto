@@ -315,6 +315,17 @@ message DiskUsageResponse {
     optional uint64 du_size = 3;
 }
 
+message ChmodRequest {
+    optional int64 sequence_id = 1;
+    optional int32 mode = 2;
+    optional string path = 3;
+}
+
+message ChmodResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
 message SymlinkRequest {
     optional int64 sequence_id = 1;
     optional string src = 2;
@@ -323,17 +334,6 @@ message SymlinkRequest {
 }
 
 message SymlinkResponse {
-    optional int64 sequence_id = 1;
-    optional StatusCode status = 2;
-}
-
-message ChmodRequest {
-    optional int64 sequence_id = 1;
-    optional int32 mode = 2;
-    optional string path = 3;
-}
-
-message ChmodResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
 }
@@ -361,7 +361,7 @@ service NameServer {
     rpc PushBlockReport(PushBlockReportRequest) returns(PushBlockReportResponse);
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
-    rpc Symlink(SymlinkRequest) returns(SymlinkResponse);
     rpc Chmod(ChmodRequest) returns(ChmodResponse);
+    rpc Symlink(SymlinkRequest) returns(SymlinkResponse);
 }
 
