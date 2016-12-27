@@ -23,7 +23,7 @@ namespace baidu {
 namespace bfs {
 
 Disk::Disk(const std::string& path, int64_t quota)
-    : path_(path), quota_(quota) {
+    : path_(path), quota_(quota), namespace_version_(0) {
     thread_pool_ = new ThreadPool(FLAGS_disk_io_thread_num);
 }
 
