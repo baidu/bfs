@@ -150,10 +150,6 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     assert(store_path_list.size() > 0);
 }
 
-void BlockManager::LoadOneDisk(Disk* disk) {
-
-}
-
 int64_t BlockManager::DiskQuota() const {
     return disk_quota_;
 }
@@ -355,12 +351,12 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
         }
         int64_t tmp;
         if (1 != sscanf(it->key().data(), "%ld", &tmp)) {
+            LOG(WARNING, "[FindSmallest] Unknown meta key: %s\n",
+                    it->key().ToString().c_str());
             delete it;
             iters[i] = iters[iters.size() - 1];
             iters.resize(iters.size() - 1);
             --i;
-            LOG(WARNING, "[FindSmallest] Unknown meta key: %s\n",
-                it->key().ToString().c_str());
             continue;
         }
         if (tmp < id) {
