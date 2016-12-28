@@ -24,7 +24,7 @@ The Baidu File System (BFS) is a distributed file system designed to support rea
 #### Standalone BFS
     cd sandbox
     ./deploy.sh
-    ./start_bfs.sh
+    ./bfsServer.sh start
 
 ## How to Contribute
 1. Please read the [RoadMap](docs/en/roadmap.md) or source code.  
@@ -63,7 +63,7 @@ opensearch@baidu.com
 #### 单机版BFS
     cd sandbox
     ./deploy.sh
-    ./start_bfs.sh
+    ./bfsServer.sh start
 
 ## 如何参与开发
 1. 阅读[RoadMap](docs/cn/roadmap.md)文件或者源代码，了解我们当前的开发方向

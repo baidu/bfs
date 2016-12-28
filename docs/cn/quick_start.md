@@ -13,9 +13,9 @@
    `./deploy.sh`  
    deploy.sh 会自动部署一套有1个nameserver,4个chunkserver的模拟集群环境。  
 3. 启动BFS  
-   `./start_bfs.sh`  
-   start_bfs.sh会启动前面异步部署的模拟集群环境  
-   可以通过 `./bfs_client stat` 查看集群后启动情况，也可以通过`http://localhost:8828` 查看web页面信息  
+   `./bfsServer.sh start`  
+   bfsServer.sh会启动前面异步部署的模拟集群环境  
+   可以通过 `./bfs_client stat`或者`./bfsServer.sh stat` 查看集群后启动情况，也可以通过`http://localhost:8828` 查看web页面信息 ，通过bfsServer.sh stop可以关闭bfs 
    看到4个活的chunkserver, 说明集群启动成功.  
 4. 使用bfs_client体验BFS  
    可以使用bfs_client与集群交互，直接输入`./bfs_client`可以看到提示，  
