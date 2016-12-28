@@ -4,6 +4,8 @@
 //
 // Author: yanshiguang02@baidu.com
 
+#include <iostream>
+
 #include "chunkserver/counter_manager.h"
 
 #include <common/timer.h>
@@ -83,6 +85,9 @@ void DiskCounterManager::GatherCounters(DiskCounterManager::DiskCounters* counte
     s.writing_bytes = counters->writing_bytes.Get();
     s.data_size = counters->data_size.Get();
     s.pending_buf = counters->pending_buf.Get();
+    s.mem_read_ops = counters->mem_read_ops.Clear() * 1000000  / interval;
+    s.disk_read_ops = counters->disk_read_ops.Clear() * 1000000  / interval;
+
     MutexLock lock(&mu_);
     stat_ = s;
 }

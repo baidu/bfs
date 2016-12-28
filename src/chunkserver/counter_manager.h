@@ -80,6 +80,8 @@ public:
         // Inc when adding a buf to block_buf_list_
         // Dec when a buf is erased from block_buf_list_
         common::Counter pending_buf;
+        common::Counter mem_read_ops;
+        common::Counter disk_read_ops;
     };
     struct DiskStat {
         int64_t blocks;
@@ -88,6 +90,8 @@ public:
         int64_t writing_bytes;
         int64_t data_size;
         int64_t pending_buf;
+        int64_t mem_read_ops;
+        int64_t disk_read_ops;
         double load;
         DiskStat() :
             blocks(0),
@@ -96,14 +100,18 @@ public:
             writing_bytes(0),
             data_size(0),
             pending_buf(0),
+            mem_read_ops(0),
+            disk_read_ops(0),
             load(0.0) {}
         void ToString(std::string* str) {
-            str->append(" blocks=" + common::HumanReadableString(blocks));
+            str->append(" blocks=" + common::NumToString(blocks));
             str->append(" w_bytes=" + common::HumanReadableString(write_bytes));
             str->append(" wing_blocks=" + common::HumanReadableString(writing_blocks));
             str->append(" wing_bytes=" + common::HumanReadableString(writing_bytes));
             str->append(" size=" + common::HumanReadableString(data_size));
             str->append(" pending_w=" + common::HumanReadableString(pending_buf));
+            str->append(" mem_read_ops=" + common::NumToString(mem_read_ops));
+            str->append(" disk_read_ops=" + common::NumToString(disk_read_ops));
         }
         bool operator<(const DiskStat& s) const {
             return s.load < load;

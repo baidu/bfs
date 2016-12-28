@@ -212,7 +212,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_pending_recover(c_stat.recover_count);
     request.set_w_qps(c_stat.write_ops);
     request.set_w_speed(d_stat.write_bytes);
-    request.set_r_qps(g_read_ops.Get());
+    request.set_r_qps(c_stat.read_ops);
     request.set_r_speed(c_stat.read_bytes);
     request.set_recover_speed(c_stat.recover_bytes);
     HeartBeatResponse response;

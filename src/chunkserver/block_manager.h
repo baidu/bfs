@@ -52,7 +52,7 @@ private:
     void CheckStorePath(const std::string& store_path);
     Disk* PickDisk(int64_t block_id);
     int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx);
-    void LogStatus(int times);
+    void LogStatus();
 private:
     ThreadPool* thread_pool_;
     std::vector<std::pair<DiskStat, Disk*>> disks_;

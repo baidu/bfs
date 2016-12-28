@@ -73,6 +73,7 @@ public:
     int64_t AddBlockWithCheck(int32_t id, const std::set<int64_t>& blocks, int64_t start, int64_t end,
                               std::vector<int64_t>* lost, int64_t report_id);
     void SetParam(const Params& p);
+    Params GetParam();
 private:
     double GetChunkServerLoad(ChunkServerInfo* cs);
     void DeadCheck();
