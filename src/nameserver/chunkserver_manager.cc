@@ -641,6 +641,10 @@ void ChunkServerManager::SetParam(const Params& p) {
             params_.recover_size(), params_.keepalive_timeout());
 }
 
+Params ChunkServerManager::GetParam() {
+    return params_;
+}
+
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     Blocks* blocks = GetBlockMap(id);
     if (!blocks) {
