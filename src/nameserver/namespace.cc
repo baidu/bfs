@@ -246,8 +246,8 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return true;
 }
 
-bool NameSpace::BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
-                    int64_t* parent_id ,NameServerLog* log) {
+StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
+                                NameServerLog* log) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
         LOG(INFO, "path split fail %s", path.c_str());
@@ -255,17 +255,17 @@ bool NameSpace::BuildPath(const std::string& path, FileInfo* file_info, std::str
     }
 
     /// Find parent directory, create if not exist.
-    *parent_id = kRootEntryid;
+    int64_t parent_id = kRootEntryid;
     int depth = paths.size();
     std::string info_value;
     for (int i = 0; i < depth - 1; ++i) {
-        if (!LookUp(*parent_id, paths[i], file_info)) {
+        if (!LookUp(parent_id, paths[i], file_info)) {
             file_info->set_type((1 << 9) | 0755);
             file_info->set_ctime(time(NULL));
             file_info->set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
             file_info->SerializeToString(&info_value);
             std::string key_str;
-            EncodingStoreKey(*parent_id, paths[i], &key_str);
+            EncodingStoreKey(parent_id, paths[i], &key_str);
             leveldb::Status s = db_->Put(leveldb::WriteOptions(), key_str, info_value);
             assert(s.ok());
             EncodeLog(log, kSyncWrite, key_str, info_value);
@@ -276,13 +276,10 @@ bool NameSpace::BuildPath(const std::string& path, FileInfo* file_info, std::str
                 return kBadParameter;
             }
         }
-        *parent_id = file_info->entry_id();
+        parent_id = file_info->entry_id();
     }
-
     *fname = paths[depth - 1];
-    bool exist = LookUp(*parent_id, *fname, file_info);
-
-    return exist;
+    return kOK;
 }
 
 StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mode, int replica_num,
@@ -291,8 +288,13 @@ StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mo
     FileInfo file_info;
     std::string fname, info_value;
     int64_t parent_id;
+    StatusCode status = BuildPath(file_name, &file_info, &fname, log);
+    parent_id = (file_info.entry_id() == 0) ? kRootEntryid : file_info.entry_id();
+    if (status != kOK) {
+        return status;
+    }
+    bool exist = LookUp(parent_id, fname, &file_info);
 
-    bool exist = BuildPath(file_name, &file_info, &fname, &parent_id, log);
     if (exist) {
         if ((flags & O_TRUNC) == 0) {
             LOG(INFO, "CreateFile %s fail: already exist!", fname.c_str());
@@ -302,7 +304,7 @@ StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mo
                 LOG(INFO, "CreateFile %s fail: directory with same name exist", fname.c_str());
                 return kFileExists;
             }
-             for (int i = 0; i < file_info.blocks_size(); i++) {
+            for (int i = 0; i < file_info.blocks_size(); i++) {
                 blocks_to_remove->push_back(file_info.blocks(i));
             }
         }
@@ -327,19 +329,24 @@ StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mo
     }
 }
 
-StatusCode NameSpace::CreateSymlink(const std::string& symlink_name, int mode,
+StatusCode NameSpace::CreateSymlink(const std::string& symlink_name,
                                 const std::string& sym_link, NameServerLog* log) {
 
     FileInfo file_info;
     std::string fname, info_value;
     int64_t parent_id;
-    bool exist = BuildPath(symlink_name, &file_info, &fname, &parent_id, log);
+    StatusCode status = BuildPath(symlink_name, &file_info, &fname, log);
+    parent_id = (file_info.entry_id() == 0) ? kRootEntryid : file_info.entry_id();
+    if (status != kOK) {
+        return status;
+    }
+    bool exist = LookUp(parent_id, fname, &file_info);
     if (exist) {
             LOG(INFO, "CreateSymlink %s fail: already exist!", fname.c_str());
             return kFileExists;
     }
 
-    file_info.set_type(((1 << 11) - 1) & mode);
+    file_info.set_type(((1 << 11) - 1) & 02777);
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
     file_info.set_ctime(time(NULL));
     file_info.set_sym_link(sym_link);
@@ -508,7 +515,7 @@ StatusCode NameSpace::Symlink(const std::string& src, const std::string& dst, Na
         return kBadParameter;
     }
     LOG(DEBUG, "Use CreateSymlink to create dst: %s", dst.c_str());
-    StatusCode status = CreateSymlink(dst, 02777, src, log);
+    StatusCode status = CreateSymlink(dst, src, log);
     return status;
 }
 

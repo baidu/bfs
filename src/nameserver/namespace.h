@@ -38,10 +38,6 @@ public:
     StatusCode CreateFile(const std::string& file_name, int flags, int mode,
                           int replica_num, std::vector<int64_t>* blocks_to_remove,
                           NameServerLog* log = NULL);
-    /// Create symlink by symlink_name
-    StatusCode CreateSymlink(const std::string& symlink_name, int mode,
-                          const std::string& sym_link, NameServerLog* log = NULL);
-
     /// Remove file by name
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
@@ -77,8 +73,11 @@ public:
 private:
     static FileType GetFileType(int type);
     bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
-    bool BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
-                    int64_t* parent_id, NameServerLog* log = NULL);
+    StatusCode BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
+                                NameServerLog* log = NULL);
+    /// Create symlink by symlink_name
+    StatusCode CreateSymlink(const std::string& symlink_name, const std::string& sym_link,
+                                NameServerLog* log = NULL);
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,
                           std::string* key_str);
