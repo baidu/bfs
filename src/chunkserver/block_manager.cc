@@ -173,11 +173,11 @@ bool BlockManager::LoadStorage() {
     return ret;
 }
 
-int64_t BlockManager::NameSpaceVersion() const {
+int64_t BlockManager::NamespaceVersion() const {
     int64_t version = -1;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
-        int64_t tmp = disk->NameSpaceVersion();
+        int64_t tmp = disk->NamespaceVersion();
         if (version == -1) {
             version = tmp;
         }
@@ -188,10 +188,10 @@ int64_t BlockManager::NameSpaceVersion() const {
     return version;
 }
 
-bool BlockManager::SetNameSpaceVersion(int64_t version) {
+bool BlockManager::SetNamespaceVersion(int64_t version) {
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
-        if (!disk->SetNameSpaceVersion(version)) {
+        if (!disk->SetNamespaceVersion(version)) {
             return false;
         }
     }
@@ -296,12 +296,14 @@ StatusCode BlockManager::RemoveBlock(int64_t block_id) {
 
 // TODO: concurrent & async cleanup
 bool BlockManager::CleanUp(int64_t namespace_version) {
-    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        Disk* disk = it->second;
-        if (disk->NameSpaceVersion() != namespace_version) {
-            if (!disk->CleanUp()) {
-                return false;
-            }
+    for (auto it = block_map_.begin(); it != block_map_.end();) {
+        Block* block = it->second;
+        if (block->CleanUp(namespace_version)) {
+            file_cache_->EraseFileCache(block->GetFilePath());
+            block->DecRef();
+            block_map_.erase(it++);
+        } else {
+            ++it;
         }
     }
     LOG(INFO, "CleanUp done");

@@ -4,8 +4,6 @@
 //
 // Author: yanshiguang02@baidu.com
 
-#include <iostream>
-
 #include "chunkserver/counter_manager.h"
 
 #include <common/timer.h>

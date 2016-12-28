@@ -35,8 +35,8 @@ public:
     ~Disk();
     std::string Path() const;
     bool LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback);
-    int64_t NameSpaceVersion() const;
-    bool SetNameSpaceVersion(int64_t version);
+    int64_t NamespaceVersion() const;
+    bool SetNamespaceVersion(int64_t version);
     void Seek(int64_t block_id, std::vector<leveldb::Iterator*>* iters);
     bool SyncBlockMeta(const BlockMeta& meta);
     bool RemoveBlockMeta(int64_t block_id);
@@ -46,7 +46,6 @@ public:
 
     bool CloseBlock(Block* block);
     bool RemoveBlock(int64_t block_id);
-    bool CleanUp();
 
     DiskStat Stat();
 private:

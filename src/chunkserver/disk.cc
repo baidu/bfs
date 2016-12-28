@@ -109,11 +109,11 @@ std::string Disk::Path() const {
     return path_;
 }
 
-int64_t Disk::NameSpaceVersion() const {
+int64_t Disk::NamespaceVersion() const {
     return namespace_version_;
 }
 
-bool Disk::SetNameSpaceVersion(int64_t version) {
+bool Disk::SetNamespaceVersion(int64_t version) {
     MutexLock lock(&mu_);
     if (namespace_version_ == version) {
         return true;
@@ -188,37 +188,6 @@ double Disk::GetLoad() {
     double disk_rate = counters_.data_size.Get() * 1.0 / quota_;
     double pending_rate = counters_.pending_buf.Get() * 1.0 / FLAGS_chunkserver_disk_buf_size;
     return disk_rate * disk_rate + pending_rate;
-}
-
-bool Disk::CleanUp() {
-    leveldb::Iterator* it = metadb_->NewIterator(leveldb::ReadOptions());
-    for (it->Seek(BlockId2Str(0)); it->Valid(); it->Next()) {
-        int64_t block_id = 0;
-        if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
-            LOG(FATAL, "[ListBlocks] Unknown meta key: %s\n",
-                it->key().ToString().c_str());
-            delete it;
-            return false;
-        }
-        BlockMeta meta;
-        if (!meta.ParseFromArray(it->value().data(), it->value().size())) {
-            LOG(INFO, "Parse meta for #%ld failed", block_id);
-            delete it;
-            return false;
-        }
-        std::string file_path = meta.store_path() + Block::BuildFilePath(block_id);
-        remove(file_path.c_str());
-    }
-    delete it;
-    std::string meta_path = path_ + "meta/";
-    delete metadb_;
-    std::string cmd = "rm -rf " + meta_path;
-    system(cmd.c_str());
-    leveldb::Options options;
-    options.create_if_missing = true;
-    leveldb::Status s = leveldb::DB::Open(options, path_ + "meta/", &metadb_);
-    LOG(INFO, "CleanUp %s done", path_.c_str());
-    return true;
 }
 
 DiskStat Disk::Stat() {
