@@ -86,6 +86,20 @@ TEST_F(FileLockManagerTest, UnlockInAnotherThread) {
     Unlock(file_path);
 }
 
+TEST_F(FileLockManagerTest, NormailzeLockPath) {
+    baidu::common::ThreadPool thread_pool(1);
+    std::string lock_file_path = "/home/dir1/file1/";
+    std::string unlock_file_path = "//home//dir1//file1//";
+    thread_pool.AddTask(std::bind(WriteLock, lock_file_path, false));
+    // wait for task to be executed
+    thread_pool.Stop(true);
+    Unlock(unlock_file_path);
+    for (size_t i = 0; i < flm.locks_.size(); i++) {
+        FileLockManager::LockBucket* l = flm.locks_[i];
+        ASSERT_EQ(l->lock_map.size(), 0);
+    }
+}
+
 } // namespace bfs
 } // namespace baidu
 
