@@ -202,12 +202,6 @@ stop)
         fi
     done
     ;;
-restart)
-    shift
-    "$0" stop ${@}
-    sleep 3
-    "$0" start ${@}
-    ;;
 status)
     get_bfs_status print
     if [ ${#bfs_status[*]} -eq 0 ]; then
@@ -220,6 +214,6 @@ test)
     echo $?
     ;;
 *)
-    echo "Usage: $0 {start|stop|restart|status}" >&2
+    echo "Usage: $0 {start|stop|status}" >&2
 
 esac
