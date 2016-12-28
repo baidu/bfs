@@ -136,7 +136,7 @@ void ChunkServerImpl::Register() {
     RegisterRequest request;
     request.set_chunkserver_addr(data_server_addr_);
     request.set_disk_quota(block_manager_->DiskQuota());
-    request.set_namespace_version(block_manager_->NameSpaceVersion());
+    request.set_namespace_version(block_manager_->NamespaceVersion());
     request.set_tag(FLAGS_chunkserver_tag);
 
     LOG(INFO, "Send Register request with version %ld ", request.namespace_version());
@@ -158,7 +158,7 @@ void ChunkServerImpl::Register() {
         params_.set_report_size(response.report_size());
     }
     int64_t new_version = response.namespace_version();
-    if (block_manager_->NameSpaceVersion() != new_version) {
+    if (block_manager_->NamespaceVersion() != new_version) {
         // NameSpace change
         if (!FLAGS_chunkserver_auto_clean) {
             /// abort
@@ -169,8 +169,8 @@ void ChunkServerImpl::Register() {
         if (!block_manager_->CleanUp(new_version)) {
             LOG(FATAL, "Remove local blocks fail");
         }
-        if (!block_manager_->SetNameSpaceVersion(new_version)) {
-            LOG(FATAL, "SetNameSpaceVersion fail");
+        if (!block_manager_->SetNamespaceVersion(new_version)) {
+            LOG(FATAL, "SetNamespaceVersion fail");
         }
         work_thread_pool_->AddTask(std::bind(&ChunkServerImpl::Register, this));
         return;
@@ -182,7 +182,7 @@ void ChunkServerImpl::Register() {
     is_first_round_ = true;
     LOG(INFO, "Connect to nameserver version= %ld, cs_id = C%d report_interval = %d "
             "report_size = %d report_id = %ld",
-            block_manager_->NameSpaceVersion(), chunkserver_id_,
+            block_manager_->NamespaceVersion(), chunkserver_id_,
             params_.report_interval(), params_.report_size(), report_id_);
 
     work_thread_pool_->DelayTask(1, std::bind(&ChunkServerImpl::SendBlockReport, this));
@@ -203,7 +203,7 @@ void ChunkServerImpl::SendHeartbeat() {
     ChunkserverStat c_stat = counter_manager_.GetCounters();
     DiskStat d_stat = block_manager_->Stat();
     request.set_chunkserver_id(chunkserver_id_);
-    request.set_namespace_version(block_manager_->NameSpaceVersion());
+    request.set_namespace_version(block_manager_->NamespaceVersion());
     request.set_chunkserver_addr(data_server_addr_);
     request.set_block_num(d_stat.blocks);
     request.set_data_size(d_stat.data_size);
@@ -219,9 +219,9 @@ void ChunkServerImpl::SendHeartbeat() {
     if (!nameserver_->SendRequest(&NameServer_Stub::HeartBeat, &request, &response, 15)) {
         LOG(WARNING, "Heart beat fail\n");
     } else if (response.status() != kOK) {
-        if (block_manager_->NameSpaceVersion() != response.namespace_version()) {
+        if (block_manager_->NamespaceVersion() != response.namespace_version()) {
             LOG(INFO, "Namespace version mismatch self:%ld ns:%ld",
-                block_manager_->NameSpaceVersion(), response.namespace_version());
+                block_manager_->NamespaceVersion(), response.namespace_version());
         } else {
             LOG(INFO, "Nameserver restart!");
         }

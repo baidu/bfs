@@ -135,6 +135,15 @@ BlockMeta Block::GetMeta() const {
 int64_t Block::DiskUsed() const {
     return disk_file_size_;
 }
+
+bool Block::CleanUp(int64_t namespace_version) {
+    if (namespace_version != disk_->NamespaceVersion()) {
+        SetDeleted();
+        return true;
+    }
+    return false;
+}
+
 StatusCode Block::SetDeleted() {
     disk_->RemoveBlockMeta(meta_.block_id());
     int deleted = common::atomic_swap(&deleted_, 1);
