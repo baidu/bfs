@@ -131,6 +131,8 @@ TEST_F(NameSpaceTest, CreateFile) {
     ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file1", 0, 0, -1, &blocks_to_remove));
     ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file2", 0, -1, -1, &blocks_to_remove));
     ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file3", 0, 01755, -1, &blocks_to_remove));
+    ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 01755, -1, &blocks_to_remove));
+    ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 0, -1, &blocks_to_remove));
 }
 
 TEST_F(NameSpaceTest, List) {

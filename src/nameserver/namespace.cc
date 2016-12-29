@@ -90,7 +90,7 @@ NameSpace::FileType NameSpace::GetFileType(int type) {
 
 bool NameSpace::GetLinkSrcPath(const FileInfo& info, FileInfo* src_info) {
     *src_info = info;
-    FileType file_type = kSymlink;
+    FileType file_type = GetFileType(info.type());
 
     while (file_type == kSymlink) {
         std::string sym_link = src_info->sym_link() ;
@@ -261,10 +261,8 @@ StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info, st
     /// Find parent directory, create if not exist.
     int64_t parent_id = kRootEntryid;
     int depth = paths.size();
-    // parent directory is root
-    if (depth == 1) {
-        file_info->set_entry_id(kRootEntryid);
-    }
+    /// if parent is root,  set "file_info"
+    file_info->set_entry_id(kRootEntryid);
     std::string info_value;
     for (int i = 0; i < depth - 1; ++i) {
         if (!LookUp(parent_id, paths[i], file_info)) {
@@ -345,8 +343,7 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
     if (!LookUp(path, &info)) {
         return kNsNotFound;
     }
-    FileType file_type = GetFileType(info.type());
-    if (file_type != kDir) {
+    if (GetFileType(info.type()) != kDir) {
         FileInfo* file_info = outputs->Add();
         file_info->CopyFrom(info);
         //for a file, name should be empty because it's a relative path
@@ -407,8 +404,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
             LOG(INFO, "Rename to %s which not exist", new_paths[i].c_str());
             return kNsNotFound;
         }
-        FileType file_type = GetFileType(path_file.type());
-        if (file_type != kDir) {
+        if (GetFileType(path_file.type()) != kDir) {
             LOG(INFO, "Rename %s to %s fail: %s is not a directory",
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
             return kBadParameter;
@@ -473,7 +469,6 @@ StatusCode NameSpace::Rename(const std::string& old_path,
 }
 
 StatusCode NameSpace::Symlink(const std::string& src, const std::string& dst, NameServerLog* log) {
-
     if (src == "/" || dst == "/") {
         return kBadParameter;
     }
@@ -485,13 +480,11 @@ StatusCode NameSpace::Symlink(const std::string& src, const std::string& dst, Na
         LOG(INFO, "Symlink not found src_file: %s", src.c_str());
         return kNsNotFound;
     }
-    FileType src_type = GetFileType(file_info.type());
-    if (src_type == kDir) {
+    if (GetFileType(file_info.type()) == kDir) {
         LOG(INFO, "Symlink not support directory, src_file:%s", src.c_str());
         return kBadParameter;
     }
 
-    LOG(DEBUG, "Use CreateSymlink to create dst: %s", dst.c_str());
     std::string fname, info_value;
     StatusCode status = BuildPath(dst, &file_info, &fname, log);
     if (status != kOK) {
@@ -500,8 +493,8 @@ StatusCode NameSpace::Symlink(const std::string& src, const std::string& dst, Na
     int64_t parent_id = file_info.entry_id();
     bool exist = LookUp(parent_id, fname, &file_info);
     if (exist) {
-            LOG(INFO, "CreateSymlink %s fail: already exist!", fname.c_str());
-            return kFileExists;
+        LOG(INFO, "CreateSymlink %s->%s fail: dst already exist!", dst.c_str(), src.c_str());
+        return kFileExists;
     }
     file_info.set_type(((1 << 11) - 1) & 02777);
     file_info.set_entry_id(common::atomic_add64(&last_entry_id_, 1) + 1);
