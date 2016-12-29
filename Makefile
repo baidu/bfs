@@ -60,6 +60,7 @@ FUSE_LL_HEADER = $(wildcard fuse_lowlevel/*.h)
 
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
+UTIL_OJB = $(patsubst %.cc, %.o, $(wildcard src/utils/*.cc))
 
 FLAGS_OBJ = src/flags.o
 VERSION_OBJ = src/version.o
@@ -67,6 +68,7 @@ OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client raft_kv kv_client
+UTIL_BIN = bfs_dump logdb_dump
 
 ifdef FUSE_PATH
 	BIN += bfs_mount
@@ -125,7 +127,8 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
 
 block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping.o
-	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
+	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o \
+	src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
 
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
 	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
@@ -160,8 +163,12 @@ data_block_test: src/chunkserver/test/data_block_test.o \
 nameserver: $(NAMESERVER_OBJ) $(OBJS)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
-metaserver: $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o
-	$(CXX) $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o src/nameserver/location_provider.o -o $@ $(LDFLAGS)
+metaserver: $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o \
+	src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o \
+	src/nameserver/namespace.o
+	$(CXX) $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o \
+	src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o \
+	src/nameserver/namespace.o src/nameserver/location_provider.o -o $@ $(LDFLAGS)
 
 chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
 	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
@@ -204,9 +211,9 @@ src/version.cc: FORCE
 FORCE:
 
 clean:
-	rm -rf $(BIN) mark
+	rm -rf $(BIN) $(UTIL_BIN) mark
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ)  \
-		   $(OBJS) $(TEST_OBJS) $(MARK_OBJ)
+		   $(OBJS) $(TEST_OBJS) $(MARK_OBJ) $(UTIL_OJB)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
 	rm -rf $(LIBS)
