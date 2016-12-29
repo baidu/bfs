@@ -17,14 +17,10 @@
 #include "proto/nameserver.pb.h"
 #include "proto/status_code.pb.h"
 
+
+
 namespace baidu {
 namespace bfs {
-
-enum FileType {
-    kDefault = 0,
-    kDir = 1,
-    kSymlink = 2,
-};
 
 class NameSpace {
 public:
@@ -71,12 +67,14 @@ public:
     void TailLog(const std::string& log);
     int64_t GetNewBlockId();
 private:
+    enum FileType {
+        kDefault = 0,
+        kDir = 1,
+        kSymlink = 2,
+    };
     static FileType GetFileType(int type);
     bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
     StatusCode BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
-                                NameServerLog* log = NULL);
-    /// Create symlink by symlink_name
-    StatusCode CreateSymlink(const std::string& symlink_name, const std::string& sym_link,
                                 NameServerLog* log = NULL);
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,

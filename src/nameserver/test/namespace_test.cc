@@ -161,7 +161,7 @@ TEST_F(NameSpaceTest, Symlink) {
     /// link -> dir not support
     ASSERT_EQ(kBadParameter, ns.Symlink("/dir1", "/link5"));
     /// self -> self
-    ASSERT_EQ(kBadParameter, ns.Symlink("/file1", "/file1"));
+    ASSERT_EQ(kFileExists, ns.Symlink("/file1", "/file1"));
     /// none -> link
     ASSERT_EQ(kNsNotFound, ns.Symlink("/file000", "/link5"));
 }
