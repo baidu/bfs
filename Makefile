@@ -170,8 +170,8 @@ metaserver: $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o \
 	src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o \
 	src/nameserver/namespace.o src/nameserver/location_provider.o -o $@ $(LDFLAGS)
 
-chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
-	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
+chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) src/utils/meta_converter.o
+	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) src/utils/meta_converter.o -o $@ $(LDFLAGS)
 
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)

@@ -21,6 +21,7 @@
 #include "chunkserver/disk.h"
 #include "chunkserver/data_block.h"
 #include "chunkserver/file_cache.h"
+#include "utils/meta_converter.h"
 
 DECLARE_int32(chunkserver_file_cache_size);
 DECLARE_int32(chunkserver_use_root_partition);
@@ -148,6 +149,7 @@ void BlockManager::CheckStorePath(const std::string& store_path) {
     }
     LOG(INFO, "%lu store path used.", store_path_list.size());
     assert(store_path_list.size() > 0);
+    CheckChunkserverMeta(store_path_list);
 }
 
 int64_t BlockManager::DiskQuota() const {
