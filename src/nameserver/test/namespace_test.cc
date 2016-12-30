@@ -68,6 +68,9 @@ bool CreateTree(NameSpace* ns) {
     ret |= ns->CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove);
     ret |= ns->CreateFile("/dir1/subdir2/file5", 0, 0, -1, &blocks_to_remove);
     ret |= ns->CreateFile("/xdir", 0, 01755, -1, &blocks_to_remove);
+    ret |= ns->Symlink("/file1", "/link1");
+    ret |= ns->Symlink("/dir1/subdir1/file3", "/link2");
+
     return ret == kOK;
 }
 
@@ -128,6 +131,8 @@ TEST_F(NameSpaceTest, CreateFile) {
     ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file1", 0, 0, -1, &blocks_to_remove));
     ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file2", 0, -1, -1, &blocks_to_remove));
     ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file3", 0, 01755, -1, &blocks_to_remove));
+    ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 01755, -1, &blocks_to_remove));
+    ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 0, -1, &blocks_to_remove));
 }
 
 TEST_F(NameSpaceTest, List) {
@@ -140,6 +145,27 @@ TEST_F(NameSpaceTest, List) {
     ASSERT_EQ(2, outputs.size());
     ASSERT_EQ(std::string("subdir1"), outputs.Get(0).name());
     ASSERT_EQ(std::string("subdir2"), outputs.Get(1).name());
+
+    /// list symlink
+    ASSERT_EQ(kOK, ns.ListDirectory("/link1", &outputs));
+    ASSERT_EQ(std::string(""), outputs.Get(0).name());
+}
+
+TEST_F(NameSpaceTest, Symlink) {
+    NameSpace ns;
+    std::vector<int64_t> blocks_to_remove;
+    /// link -> file
+    ASSERT_EQ(kOK, ns.Symlink("/dir1/subdir1/file3", "/link3"));
+    /// link1 -> link2
+    ASSERT_EQ(kOK, ns.Symlink("/link2", "/link4"));
+    /// link -> file, link exits
+    ASSERT_EQ(kFileExists, ns.Symlink("/file1", "/link1"));
+    /// link -> dir not support
+    ASSERT_EQ(kBadParameter, ns.Symlink("/dir1", "/link5"));
+    /// self -> self
+    ASSERT_EQ(kFileExists, ns.Symlink("/file1", "/file1"));
+    /// none -> link
+    ASSERT_EQ(kNsNotFound, ns.Symlink("/file000", "/link5"));
 }
 
 TEST_F(NameSpaceTest, Rename) {
@@ -193,6 +219,15 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(kOK, ns.Rename("/tera/meta/0/00000001.dbtmp", "/tera/meta/0/CURRENT", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
     ASSERT_TRUE(ns.LookUp("/tera/meta/0/CURRENT", &remove_file));
+
+
+    ///  link A -> link B
+    ASSERT_EQ(kOK, ns.Rename("/link4", "/link", &need_unlink, &remove_file));
+    ASSERT_FALSE(need_unlink);
+    /// fileA -> fileB, B is link
+    ASSERT_EQ(kOK, ns.Rename("/file2", "/link", &need_unlink, &remove_file));
+    ASSERT_FALSE(need_unlink);
+
 }
 
 TEST_F(NameSpaceTest, RemoveFile) {
@@ -210,6 +245,11 @@ TEST_F(NameSpaceTest, RemoveFile) {
     ASSERT_EQ(2, file_removed.entry_id());
     ASSERT_EQ(kNsNotFound, ns.RemoveFile("/file2", &file_removed));
     ASSERT_EQ(kNsNotFound, ns.RemoveFile("/file3", &file_removed));
+
+    /// rm link
+    ASSERT_EQ(kOK, ns.RemoveFile("/link1", &file_removed));
+    ASSERT_EQ(11, file_removed.entry_id());
+
 }
 
 TEST_F(NameSpaceTest, DeleteDirectory) {
@@ -274,9 +314,15 @@ TEST_F(NameSpaceTest, DeleteDirectory2) {
 }
 
 TEST_F(NameSpaceTest, GetFileInfo) {
+    FLAGS_namedb_path = "./db";
+    system("rm -rf ./db");
     NameSpace ns;
+    ASSERT_TRUE(CreateTree(&ns));
+
     FileInfo info;
     ASSERT_TRUE(ns.GetFileInfo("/", &info));
+    ASSERT_TRUE(ns.GetFileInfo("/link1", &info));
+    ASSERT_EQ(2, info.entry_id());
 }
 
 TEST_F(NameSpaceTest, NormalizePath) {

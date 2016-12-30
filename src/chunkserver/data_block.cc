@@ -135,6 +135,15 @@ BlockMeta Block::GetMeta() const {
 int64_t Block::DiskUsed() const {
     return disk_file_size_;
 }
+
+bool Block::CleanUp(int64_t namespace_version) {
+    if (namespace_version != disk_->NamespaceVersion()) {
+        SetDeleted();
+        return true;
+    }
+    return false;
+}
+
 StatusCode Block::SetDeleted() {
     disk_->RemoveBlockMeta(meta_.block_id());
     int deleted = common::atomic_swap(&deleted_, 1);
@@ -208,6 +217,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
         mu_.Unlock();
         int64_t ret = file_cache_->ReadFile(disk_file_,
                         buf + readlen, pread_len, offset + readlen);
+        disk_->counters_.disk_read_ops.Inc();
         mu_.Lock("Block::Read relock", 1000);
         if (ret != pread_len) {
             LOG(WARNING, "ReadFile fail: pread_len: %ld offset: %ld ret: %ld %s",
@@ -227,6 +237,7 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
         int buf_len = block_buf_list_[buf_id].second;
         int mlen = std::min(len - readlen, buf_len - mem_offset);
         memcpy(buf + readlen, block_buf + mem_offset, mlen);
+        disk_->counters_.mem_read_ops.Inc();
         readlen += mlen;
         mem_offset = 0;
         buf_id ++;
@@ -237,9 +248,9 @@ int64_t Block::Read(char* buf, int64_t len, int64_t offset) {
     if (mem_offset < bufdatalen_) {
         int mlen = std::min(bufdatalen_ - mem_offset, len - readlen);
         memcpy(buf + readlen, blockbuf_ + mem_offset, mlen);
+        disk_->counters_.mem_read_ops.Inc();
         readlen += mlen;
     }
-
     return readlen;
 }
 /// Write operation.

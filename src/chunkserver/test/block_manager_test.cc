@@ -231,7 +231,7 @@ TEST_F(BlockManagerTest, WrongNsVersion) {
     bool ret = block_manager->LoadStorage();
     ASSERT_TRUE(ret);
     block_manager->CleanUp(1);
-    block_manager->SetNameSpaceVersion(1);
+    block_manager->SetNamespaceVersion(1);
     create_block(1, 20, block_manager);
     sleep(1);
 
@@ -241,7 +241,7 @@ TEST_F(BlockManagerTest, WrongNsVersion) {
     ret = block_manager->LoadStorage();
     ASSERT_TRUE(ret);
     block_manager->CleanUp(2);
-    block_manager->SetNameSpaceVersion(2);
+    block_manager->SetNamespaceVersion(2);
     create_block(21, 40, block_manager);
     sleep(1);
     std::vector<BlockMeta> blocks;
@@ -254,9 +254,9 @@ TEST_F(BlockManagerTest, WrongNsVersion) {
     block_manager = new BlockManager(store_path);
     ret = block_manager->LoadStorage();
     ASSERT_TRUE(ret);
-    ASSERT_TRUE(block_manager->NameSpaceVersion() == -1);
+    ASSERT_TRUE(block_manager->NamespaceVersion() == -1);
     block_manager->CleanUp(2);
-    block_manager->SetNameSpaceVersion(2);
+    block_manager->SetNamespaceVersion(2);
     id = block_manager->ListBlocks(&blocks, 0, 100);
     assert(id == 40);
     assert(blocks.size() == 20);

@@ -47,6 +47,7 @@ public:
     std::string GetFilePath() const;
     BlockMeta GetMeta() const;
     int64_t DiskUsed() const;
+    bool CleanUp(int64_t namespace_version);
     StatusCode SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion() const;

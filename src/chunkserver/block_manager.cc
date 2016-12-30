@@ -37,7 +37,7 @@ BlockManager::BlockManager(const std::string& store_path)
     : thread_pool_(new ThreadPool(1)), disk_quota_(0), counter_manager_(new DiskCounterManager) {
     CheckStorePath(store_path);
     file_cache_ = new FileCache(FLAGS_chunkserver_file_cache_size);
-    LogStatus(1);
+    LogStatus();
 }
 
 BlockManager::~BlockManager() {
@@ -68,7 +68,9 @@ DiskStat BlockManager::Stat() {
 
 void BlockManager::Stat(std::string* str) {
     str->append("<table class=dataintable>");
-    str->append("<tr><td>Path</td><td>Blocks</td><td>Quota</td><td>Size</td><td>PendingBuf</td><td>WritingBlocks</td></tr>");
+    str->append("<tr><td>Path</td><td>Blocks</td><td>Quota</td><td>Size</td>"
+                "<td>Write</td><td>Read m/d</td>"
+                "<td>PendingBuf</td><td>WritingBlocks</td></tr>");
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         const DiskStat& stat = it->first;
         int64_t quota = it->second->GetQuota();
@@ -79,6 +81,9 @@ void BlockManager::Stat(std::string* str) {
         str->append("<td>" + common::NumToString(stat.blocks) + "</td>");
         str->append("<td>" + common::HumanReadableString(quota) + "</td>");
         str->append("<td>" + common::HumanReadableString(size) + "</td>");
+        str->append("<td>" + common::HumanReadableString(stat.write_bytes) + "</td>");
+        str->append("<td>" + common::NumToString(stat.mem_read_ops) +"/" +
+                    common::NumToString(stat.disk_read_ops) + "</td>");
         str->append("<td>" + common::NumToString(stat.pending_buf));
         str->append("<td>" + common::NumToString(stat.writing_blocks));
     }
@@ -170,11 +175,11 @@ bool BlockManager::LoadStorage() {
     return ret;
 }
 
-int64_t BlockManager::NameSpaceVersion() const {
+int64_t BlockManager::NamespaceVersion() const {
     int64_t version = -1;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
-        int64_t tmp = disk->NameSpaceVersion();
+        int64_t tmp = disk->NamespaceVersion();
         if (version == -1) {
             version = tmp;
         }
@@ -185,10 +190,10 @@ int64_t BlockManager::NameSpaceVersion() const {
     return version;
 }
 
-bool BlockManager::SetNameSpaceVersion(int64_t version) {
+bool BlockManager::SetNamespaceVersion(int64_t version) {
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
-        if (!disk->SetNameSpaceVersion(version)) {
+        if (!disk->SetNamespaceVersion(version)) {
             return false;
         }
     }
@@ -293,12 +298,14 @@ StatusCode BlockManager::RemoveBlock(int64_t block_id) {
 
 // TODO: concurrent & async cleanup
 bool BlockManager::CleanUp(int64_t namespace_version) {
-    for (auto it = disks_.begin(); it != disks_.end(); ++it) {
-        Disk* disk = it->second;
-        if (disk->NameSpaceVersion() != namespace_version) {
-            if (!disk->CleanUp()) {
-                return false;
-            }
+    for (auto it = block_map_.begin(); it != block_map_.end();) {
+        Block* block = it->second;
+        if (block->CleanUp(namespace_version)) {
+            file_cache_->EraseFileCache(block->GetFilePath());
+            block->DecRef();
+            block_map_.erase(it++);
+        } else {
+            ++it;
         }
     }
     LOG(INFO, "CleanUp done");
@@ -375,8 +382,8 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
     return id;
 }
 
-void BlockManager::LogStatus(int times) {
-    memset(&stat_, 0,sizeof(stat_));
+void BlockManager::LogStatus() {
+    memset(&stat_, 0, sizeof(stat_));
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
         DiskStat stat = disk->Stat();
@@ -388,14 +395,13 @@ void BlockManager::LogStatus(int times) {
         stat_.writing_bytes += stat.writing_bytes;
         stat_.data_size += stat.data_size;
         stat_.pending_buf += stat.pending_buf;
+        stat_.mem_read_ops += stat.mem_read_ops;
+        stat_.disk_read_ops += stat.disk_read_ops;
     }
     std::string str;
     stat_.ToString(&str);
-    if (times == 10) {
-        LOG(INFO, "[DiskStat] %s", str.c_str());
-        times = 0;
-    }
-    thread_pool_->DelayTask(100, std::bind(&BlockManager::LogStatus, this, ++times));
+    LOG(INFO, "[DiskStat] %s", str.c_str());
+    thread_pool_->DelayTask(1000, std::bind(&BlockManager::LogStatus, this));
 }
 
 } // namespace bfs

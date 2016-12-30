@@ -144,7 +144,8 @@ location_provider_test: src/nameserver/test/location_provider_test.o src/nameser
 
 chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o src/chunkserver/block_manager.o \
-	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o src/chunkserver/disk.o
+	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o src/chunkserver/disk.o \
+	src/utils/meta_converter.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 file_cache_test: src/chunkserver/test/file_cache_test.o
@@ -152,7 +153,7 @@ file_cache_test: src/chunkserver/test/file_cache_test.o
 
 block_manager_test: src/chunkserver/test/block_manager_test.o src/chunkserver/block_manager.o \
 	src/chunkserver/disk.o src/chunkserver/data_block.o src/chunkserver/counter_manager.o \
-	src/chunkserver/file_cache.o
+	src/chunkserver/file_cache.o src/utils/meta_converter.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 data_block_test: src/chunkserver/test/data_block_test.o \

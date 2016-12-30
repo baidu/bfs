@@ -9,10 +9,16 @@
 namespace baidu {
 namespace bfs {
 
-void ChunkserverMetaV0(const std::map<std::string, leveldb::DB*>& meta_dbs);
-void SetChunkserverMetaVersion(const std::map<std::string, leveldb::DB*>& meta_dbs);
-void CleanUp(const std::map<std::string, leveldb::DB*>& meta_dbs);
+// Check wether the chunkserver meta is in valid format.
+// A meta store with an oloder version will be convert into current
+// meta version automatically.
 void CheckChunkserverMeta(const std::vector<std::string>& store_path_list);
+// Convert meta from version 0 to version 1.
+void ChunkserverMetaV02V1(const std::map<std::string, leveldb::DB*>& meta_dbs);
+// Set current version for all meta store.
+void SetChunkserverMetaVersion(const std::map<std::string, leveldb::DB*>& meta_dbs);
+// Close all meta store.
+void CloseMetaStore(const std::map<std::string, leveldb::DB*>& meta_dbs);
 
 } // namespace bfs
 } // namespace baidu

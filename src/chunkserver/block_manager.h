@@ -35,8 +35,8 @@ public:
     ~BlockManager();
     int64_t DiskQuota()  const;
     bool LoadStorage();
-    int64_t NameSpaceVersion() const;
-    bool SetNameSpaceVersion(int64_t version);
+    int64_t NamespaceVersion() const;
+    bool SetNamespaceVersion(int64_t version);
     int64_t ListBlocks(std::vector<BlockMeta>* blocks, int64_t offset, uint32_t num);
     Block* CreateBlock(int64_t block_id,  StatusCode* status);
     bool CloseBlock(Block* block, bool sync);
@@ -52,7 +52,7 @@ private:
     void CheckStorePath(const std::string& store_path);
     Disk* PickDisk(int64_t block_id);
     int64_t FindSmallest(std::vector<leveldb::Iterator*>& iters, int32_t* idx);
-    void LogStatus(int times);
+    void LogStatus();
 private:
     ThreadPool* thread_pool_;
     std::vector<std::pair<DiskStat, Disk*>> disks_;
