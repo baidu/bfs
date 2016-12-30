@@ -117,6 +117,8 @@ public:
     virtual int32_t Rename(const char* oldpath, const char* newpath) = 0;
     virtual int32_t Chmod(int32_t mode, const char* path) = 0;
     virtual int32_t ChangeReplicaNum(const char* file_name, int32_t replica_num) = 0;
+    /// Create symlink
+    virtual int32_t Symlink(const char* oldpath, const char* newpath) = 0;
 
     /// Show system status
     virtual int32_t SysStat(const std::string& stat_name, std::string* result) = 0;

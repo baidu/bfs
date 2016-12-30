@@ -765,6 +765,36 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
                                controller, request, response, done, removed, std::placeholders::_1));
 }
 
+void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
+                            const SymlinkRequest* request,
+                            SymlinkResponse* response,
+                            ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    response->set_sequence_id(request->sequence_id());
+    std::string src = NameSpace::NormalizePath(request->src());
+    std::string dst = NameSpace::NormalizePath(request->dst());
+
+    NameServerLog log;
+    StatusCode status = namespace_->Symlink(src, dst, &log);
+    sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    LOG(INFO, "SDK %s, dst:%s -> src:%s create symlink %s returns %s",
+            ctl->RemoteAddress().c_str(), dst.c_str(), src.c_str(), StatusCode_Name(status).c_str());
+    response->set_status(status);
+
+    if (status != kOK) {
+        done->Run();
+        return;
+    }
+
+    LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done,
+                               (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+}
+
 void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
                             const UnlinkRequest* request,
                             UnlinkResponse* response,
@@ -1450,6 +1480,8 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("PushBlockReport", work_thread_pool_),
         std::make_pair("SysStat", read_thread_pool_),
         std::make_pair("Chmod", work_thread_pool_),
+        std::make_pair("Symlink", work_thread_pool_)
+
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /
                             sizeof(std::pair<std::string, ThreadPool*>);

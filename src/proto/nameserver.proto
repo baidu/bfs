@@ -326,6 +326,18 @@ message ChmodResponse {
     optional StatusCode status = 2;
 }
 
+message SymlinkRequest {
+    optional int64 sequence_id = 1;
+    optional string src = 2;
+    optional string dst = 3;
+    optional string user = 4;
+}
+
+message SymlinkResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
@@ -350,5 +362,6 @@ service NameServer {
 
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
     rpc Chmod(ChmodRequest) returns(ChmodResponse);
+    rpc Symlink(SymlinkRequest) returns(SymlinkResponse);
 }
 

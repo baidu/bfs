@@ -39,6 +39,7 @@ void print_usage() {
     printf("\t    rmr <path>... : remove directory recursively\n");
     printf("\t    du <path>... : count disk usage for path\n");
     printf("\t    stat : list current stat of the file system\n");
+    printf("\t    ln <src> <dst>: create symlink\n");
     printf("\t    chmod <mode> <path> : change file mode bits\n");
 }
 
@@ -99,6 +100,19 @@ int BfsRename(baidu::bfs::FS* fs, int argc, char* argv[]) {
     int32_t ret = fs->Rename(argv[0], argv[1]);
     if (ret != 0) {
         fprintf(stderr, "Rename %s to %s fail\n", argv[0], argv[1]);
+        return 1;
+    }
+    return 0;
+}
+
+int BfsLink(baidu::bfs::FS* fs, int argc, char* argv[]) {
+    if (argc < 2) {
+        print_usage();
+        return 1;
+    }
+    int32_t ret = fs->Symlink(argv[0], argv[1]);
+    if (ret != 0) {
+        fprintf(stderr, "CreateSymlink %s to %s fail\n", argv[0], argv[1]);
         return 1;
     }
     return 0;
@@ -311,6 +325,7 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
 
 int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
     std::string path("/");
+    char file_types[10] ={'-', 'd', 'l'};
     if (argc == 3) {
         path = argv[2];
         if (path.size() && path[path.size()-1] != '/') {
@@ -325,11 +340,15 @@ int BfsList(baidu::bfs::FS* fs, int argc, char* argv[]) {
         return 1;
     }
     printf("Found %d items\n", num);
+
     for (int i = 0; i < num; i++) {
-        int32_t type = files[i].mode;
-        char statbuf[16] = "drwxrwxrwx";
-        for (int j = 0; j < 10; j++) {
-            if ((type & (1<<(9-j))) == 0) {
+        char statbuf[16] = "-rwxrwxrwx";
+        int32_t file_type = files[i].mode >> 9;
+        int32_t file_perm = files[i].mode & 0777;
+        statbuf[0] = file_types[file_type];
+
+        for (int j = 1; j < 10; j++) {
+            if ((file_perm & (1<<(9-j))) == 0) {
                 statbuf[j] = '-';
             }
         }
@@ -532,8 +551,10 @@ int main(int argc, char* argv[]) {
         ret = BfsLocation(fs, argc - 2, argv + 2);
     } else if (strcmp(argv[1], "shutdownchunkserver") == 0) {
         ret = BfsShutdownChunkServer(fs, argc - 2, argv + 2);
-    } else if(strcmp(argv[1], "shutdownstat") == 0) {
+    } else if (strcmp(argv[1], "shutdownstat") == 0) {
         ret = BfsShutdownStat(fs);
+    } else if (strcmp(argv[1], "ln") == 0) {
+        ret = BfsLink(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknow common: %s\n", argv[1]);
     }
