@@ -12,8 +12,8 @@ install:
     - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
     - sudo apt-get update
     - sudo apt-get install -qq g++-4.8 lcov
-    - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 20
-    - sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-4.8 20
+    - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 20 
+    - sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-4.8 20 
     - sudo update-alternatives --config g++
     - sudo update-alternatives --config gcov
 
@@ -60,14 +60,5 @@ before_script:
 
 script: make -j4 && make check && make test
 
-addons:
-    coverity_scan:
-        project:
-            name: "bluebore/bfs"
-        notification_email: yanshiguang02@baidu.com
-        build_command_prepend: "make clean"
-        build_command: "make -j4"
-        branch_pattern: master
-
 after_script:
-     - COVERALLS_REPO_TOKEN=TnLIOj8lpAgN6CjpeGSDpXsu5IF5Bmluo find . -name *.gc* | xargs rm -f && make clean && make -j4 && make check && sudo ~/.local/bin/cpp-coveralls -e src/chunkserver/test -e src/nameserver/test -e thirdparty/ -e thirdsrc/ -e ut/ -e src/proto --gcov-options '\-lpr'
+     - COVERALLS_REPO_TOKEN=TnLIOj8lpAgN6CjpeGSDpXsu5IF5Bmluo find . -name *.gc* | xargs rm -f && make clean && make -j4 && make check && ~/.local/bin/cpp-coveralls -e src/chunkserver/test -e src/nameserver/test -e thirdparty/ -e thirdsrc/ -e ut/ -e src/proto --gcov-options '\-lpr'
