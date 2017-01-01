@@ -61,4 +61,4 @@ before_script:
 script: make -j4 && make check && make test
 
 after_script:
-     - COVERALLS_REPO_TOKEN=TnLIOj8lpAgN6CjpeGSDpXsu5IF5Bmluo find . -name *.gc* | xargs rm -f && make clean && make -j4 && make check && ~/.local/bin/cpp-coveralls -e src/chunkserver/test -e src/nameserver/test -e thirdparty/ -e thirdsrc/ -e ut/ -e src/proto --gcov-options '\-lpr'
+     - COVERALLS_REPO_TOKEN=TnLIOj8lpAgN6CjpeGSDpXsu5IF5Bmluo find . -name *.gc* | xargs rm -f && make clean && make -j4 && make check && sudo ~/.local/bin/cpp-coveralls -e src/chunkserver/test -e src/nameserver/test -e thirdparty/ -e thirdsrc/ -e ut/ -e src/proto --gcov-options '\-lpr'
