@@ -57,6 +57,7 @@ before_script:
     - echo "TCMALLOC_PATH=$WORK_DIR/thirdparty" >> depends.mk
     - echo "COMMON_PATH=$WORK_DIR/common/output" >> depends.mk
     - echo "LEVELDB_PATH=$WORK_DIR/thirdparty" >> depends.mk
+    - cat depends.mk
 
 script: make -j4 && make check && make test
 
