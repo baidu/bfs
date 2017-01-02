@@ -57,7 +57,8 @@ before_script:
     - echo "TCMALLOC_PATH=$WORK_DIR/thirdparty" >> depends.mk
     - echo "COMMON_PATH=$WORK_DIR/common/output" >> depends.mk
     - echo "LEVELDB_PATH=$WORK_DIR/thirdparty" >> depends.mk
-    - cat depends.mk
+    - sed -i "/-lpthread -lz -lrt/s/$/ -lgcov/g" Makefile
+    - sed -i "/CXXFLAGS =/s/$/ -fprofile-arcs -ftest-coverage/g" Makefile
 
 script: make -j4 && make check && make test
 
