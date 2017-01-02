@@ -20,9 +20,9 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(GFLAG_PATH)/lib -lgflags \
           -L$(GTEST_PATH)/lib -lgtest \
           -L$(TCMALLOC_PATH)/lib -ltcmalloc_minimal \
-          -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt -lgcov
+          -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
-CXXFLAGS = -std=c++11 -Wall -fPIC $(OPT) -fprofile-arcs -ftest-coverage
+CXXFLAGS = -std=c++11 -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_PATH)/include
 FUSE_LL_FLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_LL_PATH)/include
 
