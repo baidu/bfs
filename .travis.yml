@@ -62,5 +62,14 @@ before_script:
 
 script: make -j4 && make check && make test
 
+addons:
+    coverity_scan:
+        project:
+            name: "bluebore/bfs"
+        notification_email: yanshiguang02@baidu.com
+        build_command_prepend: "make clean"
+        build_command: "make -j4"
+        branch_pattern: master
+
 after_script:
      - COVERALLS_REPO_TOKEN=TnLIOj8lpAgN6CjpeGSDpXsu5IF5Bmluo find . -name *.gc* | xargs rm -f && make clean && make -j4 && make check && sudo ~/.local/bin/cpp-coveralls -e src/chunkserver/test -e src/nameserver/test -e thirdparty/ -e thirdsrc/ -e ut/ -e src/proto --gcov-options '\-lpr'
