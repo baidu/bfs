@@ -45,6 +45,8 @@ void CheckChunkserverMeta(const std::vector<std::string>& store_path_list) {
         if (s.IsNotFound()) {
             LOG(INFO, "[MetaCheck] Load empty meta %s", path.c_str());
         } else {
+            int64_t ns_v = *(reinterpret_cast<int64_t*>(&version_str[0]));
+            LOG(INFO, "[MetaCheck] Load namespace %ld on %s", ns_v, path.c_str());
             std::string meta_key(8, '\0');
             meta_key.append("meta");
             std::string meta_str;
@@ -88,14 +90,19 @@ void ChunkserverMetaV02V1(const std::map<std::string, leveldb::DB*>& meta_dbs) {
     leveldb::DB* src_meta = NULL;
     std::string src_meta_path;
     std::string version_key(8, '\0');
+    version_key.append("version");
     std::string version_str;
     for (auto it = meta_dbs.begin(); it != meta_dbs.end(); ++it) {
-        version_key.append("version");
-        leveldb::Status s = it->second->Get(leveldb::ReadOptions(), version_key, &version_str);
+        leveldb::DB* cur_db = it->second;
+        const std::string& cur_path = it->first;
+        leveldb::Status s = cur_db->Get(leveldb::ReadOptions(), version_key, &version_str);
         if (s.ok()) {
-            src_meta = it->second;
+            src_meta = cur_db;
             src_meta_path = it->first;
+            LOG(INFO, "[MetaCheck] Source meta store %s", cur_path.c_str());
             break;
+        } else {
+            LOG(INFO, "[MetaCheck] No namespace version on %s, %s", cur_path.c_str(), s.ToString().c_str());
         }
     }
     if (!src_meta) {
