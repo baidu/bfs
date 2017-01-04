@@ -338,6 +338,7 @@ int32_t FileImpl::AddBlock() {
         write_windows_[addr] = new common::SlidingWindow<int>(100,
                                std::bind(&FileImpl::OnWriteCommit,
                                 std::placeholders::_1, std::placeholders::_2));
+        cs_write_queue_[addr] = new WriteBufferQueue;
         cs_errors_[addr] = false;
         WriteBlockRequest create_request;
         int64_t seq = common::timer::get_micros();
@@ -365,9 +366,12 @@ int32_t FileImpl::AddBlock() {
                 const std::string& cs_addr = block_for_write_->chains(j).address();
                 delete write_windows_[cs_addr];
                 delete chunkservers_[cs_addr];
+                delete cs_write_queue_[cs_addr];
             }
             write_windows_.clear();
+            cs_write_queue_.clear();
             chunkservers_.clear();
+            cs_errors_.clear();
             delete block_for_write_;
             block_for_write_ = NULL;
             if (!ret) {
@@ -443,30 +447,27 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
 void FileImpl::StartWrite() {
     common::timer::AutoTimer at(5, "StartWrite", name_.c_str());
     mu_.AssertHeld();
-    write_queue_.push(write_buf_);
-    block_for_write_->set_block_size(block_for_write_->block_size() + write_buf_->Size());
+    WriteBuffer* cur_buf = write_buf_;
     write_buf_ = NULL;
-    std::function<void ()> task =
-        std::bind(&FileImpl::BackgroundWrite, std::weak_ptr<FileImpl>(shared_from_this()));
-    common::atomic_inc(&back_writing_);
+    // add ref first to prevent deconstruct
+    cur_buf->AddRefBy(cs_write_queue_.size());
+    block_for_write_->set_block_size(block_for_write_->block_size() +
+                                     cur_buf->Size());
     mu_.Unlock();
-    thread_pool_->AddTask(task);
-    mu_.Lock("StartWrite relock", 1000);
-}
-
-bool FileImpl::CheckWriteWindows() {
-    mu_.AssertHeld();
-    if (IsChainsWrite()) {
-        return write_windows_.begin()->second->UpBound() > write_queue_.top()->Sequence();
-    }
-    std::map<std::string, common::SlidingWindow<int>* >::iterator it;
-    int count = 0;
-    for (it = write_windows_.begin(); it != write_windows_.end(); ++it) {
-        if (it->second->UpBound() > write_queue_.top()->Sequence()) {
-            count++;
+    for (auto it = cs_write_queue_.begin(); it != cs_write_queue_.end(); ++it) {
+        const std::string& cs_addr = it->first;
+        WriteBufferQueue* buffer_queue = it->second;
+        {
+            MutexLock lock(&(buffer_queue->mu));
+            buffer_queue->buffers.push(cur_buf);
         }
+        std::function<void ()> task =
+            std::bind(&FileImpl::BackgroundWrite,
+                    std::weak_ptr<FileImpl>(shared_from_this()), cs_addr);
+        thread_pool_->AddTask(task);
+        common::atomic_inc(&back_writing_);
     }
-    return count >= (int)write_windows_.size() - 1;
+    mu_.Lock("StartWrite relock", 1000);
 }
 
 int32_t FileImpl::FinishedNum() {
@@ -490,8 +491,11 @@ std::string FileImpl::GetSlowChunkserver() {
             break;
         }
     }
-    assert(it != write_windows_.end());
-    return it->first;
+    if (it == write_windows_.end()) {
+        return "";
+    } else {
+        return it->first;
+    }
 }
 
 bool FileImpl::ShouldSetError() {
@@ -511,80 +515,68 @@ bool FileImpl::ShouldSetError() {
 }
 
 /// Send local buffer to chunkserver
-void FileImpl::BackgroundWrite(std::weak_ptr<FileImpl> wk_fp) {
+void FileImpl::BackgroundWrite(std::weak_ptr<FileImpl> wk_fp,
+                               const std::string& cs_addr) {
     std::shared_ptr<FileImpl> fp(wk_fp.lock());
     if (!fp) {
         LOG(DEBUG, "FileImpl has been destroied, ignore backgroud write");
         return;
     }
-    fp->BackgroundWriteInternal();
+    fp->BackgroundWriteInternal(cs_addr);
 }
 
-void FileImpl::BackgroundWriteInternal() {
-    MutexLock lock(&mu_, "BackgroundWrite", 1000);
-    while(!write_queue_.empty() && CheckWriteWindows()) {
-        WriteBuffer* buffer = write_queue_.top();
-        write_queue_.pop();
-        mu_.Unlock();
+void FileImpl::BackgroundWriteInternal(const std::string& cs_addr) {
+    {
+        MutexLock lock(&mu_);
+        if (cs_errors_[cs_addr] == true) {
+            common::atomic_dec(&back_writing_);    // for AddTask
+            return;
+        }
+    }
+    WriteBufferQueue* buffer_queue = cs_write_queue_[cs_addr];
+    MutexLock lock(&(buffer_queue->mu), "BackgroundWrite", 1000);
+    while(!buffer_queue->buffers.empty()) {
+        WriteBuffer* buffer = buffer_queue->buffers.front();
+        if (write_windows_[cs_addr]->UpBound() < buffer->Sequence()) {
+            break;
+        }
+        buffer_queue->buffers.pop();
+        buffer_queue->mu.Unlock();
 
-        buffer->AddRefBy(chunkservers_.size());
-        for (size_t i = 0; i < chunkservers_.size(); i++) {
-            std::string cs_addr = block_for_write_->chains(i).address();
-            bool delay = false;
-            if (write_windows_[cs_addr]->UpBound() < buffer->Sequence()) {
-                delay = true;
-            }
-            {
-                // skip bad chunkserver
-                ///TODO improve here?
-                MutexLock lock(&mu_);
-                if (cs_errors_[cs_addr]) {
-                    buffer->DecRef();
-                    continue;
-                }
-            }
-            WriteBlockRequest* request = new WriteBlockRequest;
-            int64_t offset = buffer->offset();
-            int64_t seq = common::timer::get_micros();
-            request->set_sequence_id(seq);
-            request->set_block_id(buffer->block_id());
-            request->set_databuf(buffer->Data(), buffer->Size());
-            request->set_offset(offset);
-            request->set_is_last(buffer->IsLast());
-            request->set_packet_seq(buffer->Sequence());
-            request->set_sync_on_close(w_options_.sync_on_close);
-            //request->add_desc("start");
-            //request->add_timestamp(common::timer::get_micros());
-            if (IsChainsWrite()) {
-                for (int i = 0; i < block_for_write_->chains_size(); i++) {
-                    std::string addr = block_for_write_->chains(i).address();
-                    request->add_chunkservers(addr);
-                }
-            }
-            const int max_retry_times = FLAGS_sdk_write_retry_times;
-            ChunkServer_Stub* stub = chunkservers_[cs_addr];
-            std::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
-                = std::bind(&FileImpl::WriteBlockCallback,
-                        std::weak_ptr<FileImpl>(shared_from_this()),
-                        std::placeholders::_1, std::placeholders::_2,
-                        std::placeholders::_3, std::placeholders::_4,
-                        max_retry_times, buffer, cs_addr);
-
-            LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
-                    buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
-            common::atomic_inc(&back_writing_);
-            if (delay) {
-                thread_pool_->DelayTask(5,
-                        std::bind(&FileImpl::DelayWriteChunk,
-                            std::weak_ptr<FileImpl>(shared_from_this()),
-                            buffer, request, max_retry_times, cs_addr));
-            } else {
-                WriteBlockResponse* response = new WriteBlockResponse;
-                rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
-                        request, response, callback, 60, 1);
+        WriteBlockRequest* request = new WriteBlockRequest;
+        int64_t offset = buffer->offset();
+        int64_t seq = common::timer::get_micros();
+        request->set_sequence_id(seq);
+        request->set_block_id(buffer->block_id());
+        request->set_databuf(buffer->Data(), buffer->Size());
+        request->set_offset(offset);
+        request->set_is_last(buffer->IsLast());
+        request->set_packet_seq(buffer->Sequence());
+        request->set_sync_on_close(w_options_.sync_on_close);
+        //request->add_desc("start");
+        //request->add_timestamp(common::timer::get_micros());
+        if (IsChainsWrite()) {
+            for (int i = 0; i < block_for_write_->chains_size(); i++) {
+                std::string addr = block_for_write_->chains(i).address();
+                request->add_chunkservers(addr);
             }
         }
-        mu_.Lock("BackgroundWriteRelock", 1000);
+        const int max_retry_times = FLAGS_sdk_write_retry_times;
+        ChunkServer_Stub* stub = chunkservers_[cs_addr];
+        std::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
+            = std::bind(&FileImpl::WriteBlockCallback,
+                    std::weak_ptr<FileImpl>(shared_from_this()),
+                    std::placeholders::_1, std::placeholders::_2,
+                    std::placeholders::_3, std::placeholders::_4,
+                    max_retry_times, buffer, cs_addr);
+
+        LOG(DEBUG, "BackgroundWrite start [block:#%ld, seq:%d, offset:%ld, len:%d]\n",
+                buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
+        common::atomic_inc(&back_writing_);
+        WriteBlockResponse* response = new WriteBlockResponse;
+        rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
+                request, response, callback, 60, 1);
+        buffer_queue->mu.Lock("BackgroundWriteRelock", 1000);
     }
     common::atomic_dec(&back_writing_);    // for AddTask
     if (back_writing_ == 0) {
@@ -633,7 +625,7 @@ void FileImpl::WriteBlockCallback(std::weak_ptr<FileImpl> wk_fp,
                                   bool failed, int error,
                                   int retry_times,
                                   WriteBuffer* buffer,
-                                  std::string cs_addr) {
+                                  const std::string& cs_addr) {
     std::shared_ptr<FileImpl> fp(wk_fp.lock());
     if (!fp) {
         LOG(DEBUG, "FileImpl has been destroied, ignore this callback");
@@ -642,7 +634,8 @@ void FileImpl::WriteBlockCallback(std::weak_ptr<FileImpl> wk_fp,
         delete response;
         return;
     }
-    fp->WriteBlockCallbackInternal(request, response, failed, error, retry_times, buffer, cs_addr);
+    fp->WriteBlockCallbackInternal(request, response, failed, error,
+                                   retry_times, buffer, cs_addr);
 }
 
 void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
@@ -650,7 +643,7 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
                                      bool failed, int error,
                                      int retry_times,
                                      WriteBuffer* buffer,
-                                     std::string cs_addr) {
+                                     const std::string& cs_addr) {
     if (failed || response->status() != kOK) {
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
                 && response->status() != kCsTooMuchPendingBuffer
@@ -708,8 +701,7 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
 
     {
         MutexLock lock(&mu_, "WriteBlockCallback", 1000);
-        if (write_queue_.empty() ||
-                bg_error_ || EnoughReplica()) {
+        if (bg_error_ || EnoughReplica()) {
             common::atomic_dec(&back_writing_);    // for AsyncRequest
             sync_signal_.Broadcast();
             return;
@@ -717,7 +709,9 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
     }
 
     std::function<void ()> task =
-        std::bind(&FileImpl::BackgroundWrite, std::weak_ptr<FileImpl>(shared_from_this()));
+        std::bind(&FileImpl::BackgroundWrite,
+                  std::weak_ptr<FileImpl>(shared_from_this()),
+                  cs_addr);
     thread_pool_->AddTask(task);
 }
 
