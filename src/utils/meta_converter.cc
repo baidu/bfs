@@ -120,6 +120,7 @@ void ChunkserverMetaV02V1(const std::map<std::string, leveldb::DB*>& meta_dbs) {
         const std::string& path = meta.store_path();
         auto db_it = meta_dbs.find(path);
         if (db_it == meta_dbs.end()) {
+            src_meta->Delete(leveldb::WriteOptions(), it->key());
             LOG(WARNING, "[MetaCheck] Cannot find store_path %s", path.c_str());
             continue;
         }
