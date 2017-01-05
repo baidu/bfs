@@ -642,7 +642,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
-            LOG(INFO, "ReadBlock #%ld offset: %ld len: %ld return: %ld "
+            LOG(INFO, "ReadBlock #%ld offset: %ld len: %d return: %ld "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
                 (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time
