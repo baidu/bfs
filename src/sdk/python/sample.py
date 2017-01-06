@@ -5,14 +5,12 @@ import time
 if __name__ == '__main__':
     try:
         fs = FS()
-        '''
         fs.ListDirectory("/")
+
         fs.Rmdir("/", True)
         fs.ListDirectory("/")
 
-
         fs.CreateDirectory("/test")
-
         print "touch", fs.Touchz(["file0", "file1", "file2"])
         time.sleep(1)
 
@@ -51,7 +49,7 @@ if __name__ == '__main__':
 
         fs.Location("/bfs.flag")
         time.sleep(1)
-'''
+
         fs.ChangeReplicaNum("/bfs.flag", "4")
         fs.Location("/bfs.flag")
 

@@ -50,10 +50,8 @@ bfs_fs_t* bfs_open_file_system() {
     argv[2] = NULL;
     ::google::ParseCommandLineFlags(&argc, &argv, false);
     delete[] argv;
-
     bfs_fs_t* fs = new bfs_fs_t;
     std::string ns_address = FLAGS_nameserver_nodes;
-    //printf("ns_address%s\n", ns_address.c_str());
     bool responce = baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &(fs->rep), baidu::bfs::FSOptions());
     if (!responce || !(fs->rep)) {
         delete fs;

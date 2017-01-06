@@ -4,8 +4,6 @@
  *
  **************************************************************************/
 
-
-
 /**
  * @file bfs_c.h
  * @author sunjinjin01(com@baidu.com)
@@ -13,7 +11,6 @@
  * @brief
  *
  **/
-
 #ifndef  __BFS_C_H_
 #define  __BFS_C_H_
 #include "bfs.h"
@@ -21,7 +18,6 @@
 #ifdef __cplusplus
 extern "C"{
 #endif
-
 typedef struct bfs_fs_t bfs_fs_t;
 
 bfs_fs_t* bfs_open_file_system();
@@ -40,6 +36,7 @@ int bfs_rm_dir(bfs_fs_t* fs,  const char* path, bool recursive);
 int bfs_change_replica_num(bfs_fs_t* fs,  const char* path, const char* replica_num);
 int bfs_chmod(bfs_fs_t* fs, const char* str_mode, const char* path);
 int bfs_location(bfs_fs_t* fs, const char* path);
+
 
 #ifdef __cplusplus
 }/*end extern "C" */
