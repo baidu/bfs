@@ -61,11 +61,6 @@ FUSE_LL_SRC = $(wildcard fuse_lowlevel/*.cc)
 FUSE_LL_OBJ = $(patsubst %.cc, %.o, $(FUSE_LL_SRC))
 FUSE_LL_HEADER = $(wildcard fuse_lowlevel/*.h)
 
-
-#BFS_C_SRC := src/bfs_c.cc
-#BFS_C_OBJ := $(BFS_C_SRC:.cc=.o)
-#BFS_C_HEADER := src/sdk/bfs_c.h
-
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
 
