@@ -29,8 +29,8 @@ void print_usage() {
     printf("\t commond:\n");
     printf("\t    ls <path> : list the directory\n");
     printf("\t    cat <path>... : cat the file\n");
-    printf("\t    mkdir <path>... : make director\n");
-    printf("\t    mv <srcpath> <destpath> : rename director or file\n");
+    printf("\t    mkdir <path>... : make directory\n");
+    printf("\t    mv <srcpath> <destpath> : rename directory or file\n");
     printf("\t    touchz <path>... : create a new file\n");
     printf("\t    rm <path>... : remove a file\n");
     printf("\t    get <bfsfile> <localfile> : copy file to local\n");
