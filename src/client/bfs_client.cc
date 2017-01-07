@@ -556,7 +556,7 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[1], "ln") == 0) {
         ret = BfsLink(fs, argc - 2, argv + 2);
     } else {
-        fprintf(stderr, "Unknow common: %s\n", argv[1]);
+        fprintf(stderr, "Unknown commond: %s\n", argv[1]);
     }
     return ret;
 }
