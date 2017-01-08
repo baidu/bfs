@@ -20,7 +20,7 @@ public:
     void EraseFileCache(const std::string& file_path);
 private:
     FileCache(const FileCache&) {}
-    const FileCache& operator=() {}
+    void operator=() {}
 private:
     common::Cache::Handle* FindFile(const std::string& file_path);
 private:
