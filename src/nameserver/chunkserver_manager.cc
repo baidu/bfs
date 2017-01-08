@@ -343,6 +343,7 @@ double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
 
 void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads,
                                       int num) {
+    mu_.Unlock();
     std::sort(loads->begin(), loads->end());
     // Add random factor
     int scope = loads->size() - (loads->size() % num);
@@ -354,6 +355,7 @@ void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerI
             std::swap((*loads)[i % num], (*loads)[i]);
         }
     }
+    mu_.Lock();
 }
 
 bool ChunkServerManager::GetChunkServerChains(int num,
