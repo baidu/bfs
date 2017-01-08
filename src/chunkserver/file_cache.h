@@ -19,6 +19,9 @@ public:
     int64_t ReadFile(const std::string& file_path, char* buf, int64_t count, int64_t offset);
     void EraseFileCache(const std::string& file_path);
 private:
+    FileCache(const FileCache&) {}
+    const FileCache& operator=() {}
+private:
     common::Cache::Handle* FindFile(const std::string& file_path);
 private:
     common::Cache* cache_;
