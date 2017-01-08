@@ -90,7 +90,7 @@ public:
                             int retry_times,
                             WriteBuffer* buffer,
                             std::string cs_addr);
-    /// When rpc buffer full deley send write reqeust
+    /// When rpc buffer full delay send write request
     static void DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
                                 WriteBuffer* buffer, const WriteBlockRequest* request,
                                 int retry_times, std::string cs_addr);
@@ -136,7 +136,7 @@ private:
     std::map<std::string, common::SlidingWindow<int>* > write_windows_;
     std::priority_queue<WriteBuffer*, std::vector<WriteBuffer*>, WriteBufferCmp>
         write_queue_;                   ///< Write buffer list
-    volatile int back_writing_;         ///< Async write running backgroud
+    volatile int back_writing_;         ///< Async write running background
     const WriteOptions w_options_;
 
     /// for read
