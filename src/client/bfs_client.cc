@@ -25,8 +25,8 @@ DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
 
 void print_usage() {
-    printf("Use:\nbfs_client <commond> path\n");
-    printf("\t commond:\n");
+    printf("Use:\nbfs_client <command> path\n");
+    printf("\t command:\n");
     printf("\t    ls <path> : list the directory\n");
     printf("\t    cat <path>... : cat the file\n");
     printf("\t    mkdir <path>... : make directory\n");
@@ -556,7 +556,7 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[1], "ln") == 0) {
         ret = BfsLink(fs, argc - 2, argv + 2);
     } else {
-        fprintf(stderr, "Unknow common: %s\n", argv[1]);
+        fprintf(stderr, "Unknown command: %s\n", argv[1]);
     }
     return ret;
 }
