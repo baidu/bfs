@@ -58,6 +58,42 @@ TEST_F(BlockMappingTest, Basic) {
     }
 }
 
+TEST_F(BlockMappingTest, DoNotRemoteHigherVersionBlock) {
+    int64_t block_id = 1;
+    int64_t block_version = 2;
+    int64_t block_size = 3;
+    int32_t replica = 3;
+    BlockMapping* bm = new BlockMapping(&thread_pool);
+    bm->RebuildBlock(block_id, replica, block_version, block_size);
+    BlockMapping::NSBlockMap::iterator it = bm->block_map_.find(block_id);
+    ASSERT_TRUE(it != bm->block_map_.end());
+    NSBlock* block = it->second;
+    ASSERT_TRUE(block != NULL);
+    int32_t cs1 = 23;
+    int32_t cs2 = 45;
+    int32_t cs3 = 67;
+    int32_t cs4 = 89;
+    bool ret =
+        bm->UpdateBlockInfo(block_id, cs1, block_size, block_version) &&
+        bm->UpdateBlockInfo(block_id, cs2, block_size, block_version) &&
+        bm->UpdateBlockInfo(block_id, cs3, block_size, block_version);
+    ASSERT_TRUE(ret);
+    ASSERT_EQ(block->version, block_version);
+    ASSERT_EQ(block->block_size, block_size);
+    int64_t new_block_size = 4;
+    int64_t new_block_version = 5;
+    ret = bm->UpdateBlockInfo(block_id, cs4, new_block_size, new_block_version);
+    ASSERT_TRUE(ret);
+    ASSERT_EQ(block->version, new_block_version);
+    ASSERT_EQ(block->block_size, new_block_size);
+    ret = bm->UpdateBlockInfo(block_id, cs1, block_size, block_version) ||
+          bm->UpdateBlockInfo(block_id, cs2, block_size, block_version);
+    ASSERT_FALSE(ret);
+    ret = bm->UpdateBlockInfo(block_id, cs3, block_size, block_version) &&
+          bm->UpdateBlockInfo(block_id, cs4, block_size, block_version);
+    ASSERT_TRUE(ret);
+}
+
 
 } // namespace bfs
 } // namespace baidu
