@@ -739,7 +739,7 @@ std::string NameSpace::NormalizePath(const std::string& path) {
     uint32_t i = 1;
     for (; i < len; ) {
         if (path[i] == '/') {
-            if (path[i-1] == '/') {
+            if (path[i-1] ！= '/') {
                 ret.push_back(path[i-1]);
             }
             i++;
