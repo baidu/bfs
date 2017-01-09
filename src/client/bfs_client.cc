@@ -54,6 +54,7 @@ int BfsTouchz(baidu::bfs::FS* fs, int argc, char* argv[]) {
         ret = fs->OpenFile(argv[i], O_WRONLY, 0644, &file, baidu::bfs::WriteOptions());
         if (ret != 0) {
             fprintf(stderr, "Open %s fail\n", argv[i]);
+            return 1;
         }
     }
     return 0;
@@ -68,7 +69,7 @@ int BfsRm(baidu::bfs::FS* fs, int argc, char* argv[]) {
     for (int i = 0; i < argc; i++) {
         ret = fs->DeleteFile(argv[i]);
         if (!ret) {
-            printf("%s Removed\n", argv[i]); 
+            printf("%s Removed\n", argv[i]);
         } else {
             fprintf(stderr, "Remove file fail %s\n", argv[i]);
             ret = 1;
@@ -295,10 +296,12 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
         path = argv[i];
         assert(path.size() > 0);
         if (path[path.size() - 1] != '*') {
-            BfsDuV2(fs, path);
+            if (BfsDuV2(fs, path) == -1) {
+                return 1;
+            }
             continue;
         }
- 
+
         // Wildcard
         path.resize(path.size() - 1);
         ppath = path.substr(0, path.rfind('/') + 1);
@@ -309,13 +312,17 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
         ret = fs->ListDirectory(ppath.c_str(), &files, &num);
         if (ret != 0) {
             fprintf(stderr, "Path not found: %s\n", ppath.c_str());
-            continue;
+            return 1;
         }
         for (int j = 0; j < num; j++) {
             std::string name(files[j].name);
             if (name.find(prefix) != std::string::npos) {
                 int64_t sz = BfsDuV2(fs, ppath + name);
-                if (sz > 0) total_size += sz;
+                if (sz > 0) {
+                    total_size += sz;
+                } else {
+                    return 1;
+                }
             }
         }
         printf("%s Total: %s\n", argv[i], baidu::common::HumanReadableString(total_size).c_str());
