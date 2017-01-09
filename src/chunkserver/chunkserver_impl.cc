@@ -840,6 +840,7 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />"
             "<link rel=\"stylesheet\" type=\"text/css\" "
                 "href=\"http://www.w3school.com.cn/c5.css\"/>"
+            "<link rel=\"shortcut icon\" href=\"\" type=\"image/x-icon\" />"
             "<style> body { background: #f9f9f9;}"
             "</style>"
             "</head>";

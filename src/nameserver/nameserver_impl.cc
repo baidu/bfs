@@ -1217,6 +1217,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
             "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" "
                 "rel=\"stylesheet\">\n"
+            "<link rel=\"shortcut icon\" href=\"\" type=\"image/x-icon\" />"
             "</head>\n";
     str += "<body><div class=\"col-sm-12  col-md-12\">";
 
