@@ -74,14 +74,13 @@ void CheckChunkserverMeta(const std::vector<std::string>& store_path_list) {
         LOG(INFO, "[MetaCheck] Chunkserver meta check pass");
     } else if (meta_version == EMPTY_META) {
         LOG(INFO, "[MetaCheck] Chunkserver empty");
-        SetChunkserverMetaVersion(meta_dbs);
     } else if (meta_version == 0) {
         ChunkserverMetaV02V1(meta_dbs);
-        SetChunkserverMetaVersion(meta_dbs);
     } else {
         LOG(ERROR, "[MetaCheck] Cannot handle this situation!!!");
         exit(EXIT_FAILURE);
     }
+    SetChunkserverMetaVersion(meta_dbs);
     CloseMetaStore(meta_dbs);
 }
 
