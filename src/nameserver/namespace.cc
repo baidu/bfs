@@ -743,8 +743,7 @@ std::string NameSpace::NormalizePath(const std::string& path) {
                 ret.push_back(path[i-1]);
             }
             i++;
-        }
-        else {
+        } else {
             ret.push_back(path[i-1]);
             ret.push_back(path[i]);
             i += 2;
