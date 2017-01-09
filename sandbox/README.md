@@ -28,12 +28,9 @@ To tear down the cluster and cleanup the environment:
 
 # Sandbox
 用于DFS的单机部署测试。
-## 部署
+## 部署并启动
 `bash deploy.sh  `
 会创建Nameserver和Chunkserver运行环境
-
-## 启动
-`bash start_bfs.sh  `
 启动Nameserver与多个Chunkserver，形成一个单机（模拟）集群。
 日志会被打印在nameserver0/log和chunkserver[id]/log
 
