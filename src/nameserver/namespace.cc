@@ -731,7 +731,7 @@ bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) 
 }
 
 std::string NameSpace::NormalizePath(const std::string& path) {
-    string ret;
+    std::string ret;
     if (path.empty() || path[0] != '/') {
         ret = "/";
     }
