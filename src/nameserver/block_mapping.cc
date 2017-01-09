@@ -206,6 +206,7 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
                                       int32_t cs_id, int64_t block_size,
                                       int64_t block_version) {
     int64_t block_id = nsblock->id;
+    int64_t old_version = nsblock->version;
     std::set<int32_t>& inc_replica = nsblock->incomplete_replica;
     std::set<int32_t>& replica = nsblock->replica;
     if (block_version < 0) {
@@ -274,7 +275,9 @@ bool BlockMapping::UpdateNormalBlock(NSBlock* nsblock,
     }
 
     TryRecover(nsblock);
-    if (FLAGS_clean_redundancy && replica.size() > nsblock->expect_replica_num) {
+    if (FLAGS_clean_redundancy &&
+        replica.size() > nsblock->expect_replica_num &&
+        block_version == old_version) {
         LOG(INFO, "Too much replica #%ld R%lu expect=%d C%d ",
             block_id, replica.size(), nsblock->expect_replica_num, cs_id);
         replica.erase(cs_id);
