@@ -32,8 +32,10 @@ void CheckChunkserverMeta(const std::vector<std::string>& store_path_list) {
         options.create_if_missing = true;
         leveldb::DB* metadb;
         leveldb::Status s = leveldb::DB::Open(options, path + "/meta/", &metadb);
+        meta_dbs[path] = metadb;
         if (!s.ok()) {
             LOG(ERROR, "[MetaCheck] Open meta on %s failed: %s", path.c_str(), s.ToString().c_str());
+            CloseMetaStore(meta_dbs);
             exit(EXIT_FAILURE);
             return;
         }
@@ -56,19 +58,20 @@ void CheckChunkserverMeta(const std::vector<std::string>& store_path_list) {
                 LOG(INFO, "[MetaCheck] %s Load meta version %d", path.c_str(), cur_version);
                 if (meta_version != EMPTY_META && cur_version != meta_version) {
                     LOG(ERROR, "Cannot handle this situation!!!");
+                    CloseMetaStore(meta_dbs);
                     exit(EXIT_FAILURE);
                 }
                 meta_version = cur_version;
             } else if (s.IsNotFound()) {
                 if (meta_version != EMPTY_META && meta_version != 0) {
                     LOG(ERROR, "Cannot handle this situation!!!");
+                    CloseMetaStore(meta_dbs);
                     exit(EXIT_FAILURE);
                 }
                 meta_version = 0;
                 LOG(INFO, "No meta version %s", path.c_str());
             }
         }
-        meta_dbs[path] = metadb;
     }
     if (meta_version == CHUNKSERVER_META_VERSION) {
         LOG(INFO, "[MetaCheck] Chunkserver meta check pass");
@@ -78,6 +81,7 @@ void CheckChunkserverMeta(const std::vector<std::string>& store_path_list) {
         ChunkserverMetaV02V1(meta_dbs);
     } else {
         LOG(ERROR, "[MetaCheck] Cannot handle this situation!!!");
+        CloseMetaStore(meta_dbs);
         exit(EXIT_FAILURE);
     }
     SetChunkserverMetaVersion(meta_dbs);
@@ -106,6 +110,7 @@ void ChunkserverMetaV02V1(const std::map<std::string, leveldb::DB*>& meta_dbs) {
     }
     if (!src_meta) {
         LOG(ERROR, "[MetaCheck] Cannot find a valid meta store");
+        CloseMetaStore(meta_dbs);
         exit(EXIT_FAILURE);
     }
 
@@ -114,6 +119,7 @@ void ChunkserverMetaV02V1(const std::map<std::string, leveldb::DB*>& meta_dbs) {
         BlockMeta meta;
         if (!meta.ParseFromArray(it->value().data(), it->value().size())) {
             LOG(ERROR, "[MetaCheck] Parse BlockMeta failed: key = %s", it->key().ToString().c_str());
+            CloseMetaStore(meta_dbs);
             exit(EXIT_FAILURE);
         }
         const std::string& path = meta.store_path();
@@ -146,6 +152,7 @@ void SetChunkserverMetaVersion(const std::map<std::string, leveldb::DB*>& meta_d
         leveldb::Status s = ldb->Put(leveldb::WriteOptions(), meta_key, meta_str);
         if (!s.ok()) {
             LOG(ERROR, "[MetaCheck] Put meta failed %s", it->first.c_str());
+            CloseMetaStore(meta_dbs);
             exit(EXIT_FAILURE);
         }
         LOG(INFO, "[MetaCheck] Set meta version %s = %d", it->first.c_str(), CHUNKSERVER_META_VERSION);
