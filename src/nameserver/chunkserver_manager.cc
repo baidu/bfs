@@ -33,8 +33,11 @@ int64_t Blocks::GetReportId() {
 }
 
 void Blocks::Insert(int64_t block_id) {
+    common::timer::TimeChecker checker;
     MutexLock lock(&new_blocks_mu_);
+    checker.Check(30 * 1000, "Blocks::Insert::LOCK");
     new_blocks_.insert(block_id);
+    checker.Check(30 * 1000, "Blocks::Insert");
 }
 
 void Blocks::Remove(int64_t block_id) {
@@ -390,7 +393,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
             if (cs->status() == kCsReadonly) {
-                LOG(INFO, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
+                LOG(DEBUG, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
                 continue;
             }
             double load = cs->load();
@@ -780,11 +783,14 @@ bool ChunkServerManager::GetShutdownChunkServerStat() {
 }
 
 Blocks* ChunkServerManager::GetBlockMap(int32_t cs_id) {
+    common::timer::TimeChecker checker;
     MutexLock lock(&mu_);
+    checker.Check(30 * 1000, "GetBlockMap::LOCK");
     auto it = block_map_.find(cs_id);
     if (it == block_map_.end()) {
         return NULL;
     }
+    checker.Check(30 * 1000, "GetBlockMap");
     return it->second;
 }
 
