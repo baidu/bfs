@@ -835,9 +835,19 @@ void BlockMapping::TryRecover(NSBlock* block) {
                 SetState(block, kLost);
                 lo_pri_recover_.erase(block_id);
                 hi_pri_recover_.erase(block_id);
-            } else if (block->block_size == 0 && block->recover_stat == kLost) {
-                lost_blocks_.erase(block_id);
-                LOG(WARNING, "[TryRecover] empty block #%ld remove from lost", block_id);
+            } else if (block->block_size == 0) {
+                if (block->recover_stat == kLost) {
+                    lost_blocks_.erase(block_id);
+                    LOG(WARNING, "[TryRecover] empty block #%ld ",
+                                 "remove from lost", block_id);
+                } else {
+                    LOG(INFO, "[TryRecover] don't recover lost ",
+                              "empty block #%ld ",
+                               block_id);
+                    SetState(block, kLost);
+                    lo_pri_recover_.erase(block_id);
+                    hi_pri_recover_.erase(block_id);
+                }
             }
         } else if (block->replica.size() == 1 && block->recover_stat != kHiRecover) {
             hi_pri_recover_.insert(block_id);

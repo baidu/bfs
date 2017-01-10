@@ -94,6 +94,37 @@ TEST_F(BlockMappingTest, DoNotRemoteHigherVersionBlock) {
     ASSERT_TRUE(ret);
 }
 
+TEST_F(BlockMappingTest, NotRecoverEmptyBlock) {
+    int64_t block_id = 1;
+    int64_t block_version = 0;
+    int64_t block_size = 0;
+    int32_t replica = 3;
+    BlockMapping* bm = new BlockMapping(&thread_pool);
+    bm->RebuildBlock(block_id, replica, block_version, block_size);
+    BlockMapping::NSBlockMap::iterator it = bm->block_map_.find(block_id);
+    ASSERT_TRUE(it != bm->block_map_.end());
+    NSBlock* block = it->second;
+    ASSERT_TRUE(block != NULL);
+    int32_t cs1 = 23;
+    int32_t cs2 = 45;
+    int32_t cs3 = 67;
+    bool ret =
+        bm->UpdateBlockInfo(block_id, cs1, block_size, block_version) &&
+        bm->UpdateBlockInfo(block_id, cs2, block_size, block_version) &&
+        bm->UpdateBlockInfo(block_id, cs3, block_size, block_version);
+    ASSERT_TRUE(ret);
+    ASSERT_EQ(block->version, block_version);
+    ASSERT_EQ(block->block_size, block_size);
+    bm->DealWithDeadBlock(cs1, block_id);
+    ASSERT_TRUE(block->recover_stat == kLoRecover);
+    bm->DealWithDeadBlock(cs2, block_id);
+    ASSERT_TRUE(block->recover_stat == kHiRecover);
+    bm->DealWithDeadBlock(cs3, block_id);
+    ASSERT_TRUE(block->recover_stat == kLost);
+    ASSERT_TRUE(bm->lo_pri_recover_.empty());
+    ASSERT_TRUE(bm->hi_pri_recover_.empty());
+    ASSERT_TRUE(bm->lost_blocks_.empty());
+}
 
 } // namespace bfs
 } // namespace baidu
