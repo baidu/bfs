@@ -515,8 +515,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
                     block_id, StatusCode_Name(s).c_str());
             if (s == kBlockExist) {
                 int64_t expected_size = block->GetExpectedSize();
-                if (request->has_total_size() &&
-                        expected_size != request->total_size()) {
+                if (expected_size != request->total_size()) {
                     LOG(INFO, "[LocalWriteBlock] Recover source with ",
                               "different size: expected %ld, now %ld",
                               expected_size, request->total_size());
@@ -533,10 +532,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
             done->Run();
             return;
         } else {
-            if (request->has_recover_version()) {
-                assert(request->has_total_size());
-                block->SetExpectedSize(request->total_size());
-            }
+            block->SetExpectedSize(request->total_size());
         }
     } else {
         block = block_manager_->FindBlock(block_id);
@@ -546,7 +542,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
             g_unfinished_bytes.Sub(databuf.size());
             done->Run();
             return;
-        } else if (request->has_total_size()) {
+        } else {
             int64_t expected_size = block->GetExpectedSize();
             if (expected_size != request->total_size()) {
                 LOG(INFO, "[LocalWriteBlock] Recover source with ",
