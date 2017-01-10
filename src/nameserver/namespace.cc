@@ -733,8 +733,9 @@ bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) 
 std::string NameSpace::NormalizePath(const std::string& path) {
     // Is there a better implementation?
     std::string ret;
+    uint32_t cnt = 0;
     if (path.empty() || path[0] != '/') {
-        ret = "/";
+        ret[cnt++] = '/';
     }
     bool slash = false;
     for (uint32_t i = 0; i < path.size(); i++) {
@@ -744,7 +745,7 @@ std::string NameSpace::NormalizePath(const std::string& path) {
         } else {
             slash = false;
         }
-        ret.push_back(path[i]);
+        ret[cnt++] = path[i];
     }
     if (ret.size() > 1U && ret[ret.size() - 1] == '/') {
         ret.resize(ret.size() - 1);
