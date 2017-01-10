@@ -66,8 +66,10 @@ public:
     struct DiskCounters {
         // block number
         common::Counter blocks;
-        // size of buf written a period of time (stat)
-        common::Counter write_bytes;
+        // size of buf written in a period of time (stat)
+        common::Counter buf_write_bytes;
+        // size of data writting to disk (stat)
+        common::Counter disk_write_bytes;
         // number of blocks are being writing
         common::Counter writing_blocks;
         // size of buf writing to blocks
@@ -85,7 +87,8 @@ public:
     };
     struct DiskStat {
         int64_t blocks;
-        int64_t write_bytes;
+        int64_t buf_write_bytes;
+        int64_t disk_write_bytes;
         int64_t writing_blocks;
         int64_t writing_bytes;
         int64_t data_size;
@@ -95,7 +98,8 @@ public:
         double load;
         DiskStat() :
             blocks(0),
-            write_bytes(0),
+            buf_write_bytes(0),
+            disk_write_bytes(0),
             writing_blocks(0),
             writing_bytes(0),
             data_size(0),
@@ -105,7 +109,8 @@ public:
             load(0.0) {}
         void ToString(std::string* str) {
             str->append(" blocks=" + common::NumToString(blocks));
-            str->append(" w_bytes=" + common::HumanReadableString(write_bytes));
+            str->append(" bw_bytes=" + common::HumanReadableString(buf_write_bytes));
+            str->append(" dw_bytes=" + common::HumanReadableString(disk_write_bytes));
             str->append(" wing_blocks=" + common::HumanReadableString(writing_blocks));
             str->append(" wing_bytes=" + common::HumanReadableString(writing_bytes));
             str->append(" size=" + common::HumanReadableString(data_size));

@@ -77,7 +77,8 @@ void DiskCounterManager::GatherCounters(DiskCounterManager::DiskCounters* counte
     last_gather_time_ = now;
 
     DiskCounterManager::DiskStat s;
-    s.write_bytes = counters->write_bytes.Clear() * 1000000 / interval;
+    s.buf_write_bytes = counters->buf_write_bytes.Clear() * 1000000 / interval;
+    s.disk_write_bytes = counters->disk_write_bytes.Clear() * 1000000 / interval;
     s.blocks = counters->blocks.Get();
     s.writing_blocks = counters->writing_blocks.Get();
     s.writing_bytes = counters->writing_bytes.Get();

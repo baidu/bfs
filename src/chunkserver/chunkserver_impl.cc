@@ -211,7 +211,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_pending_buf(d_stat.pending_buf);
     request.set_pending_recover(c_stat.recover_count);
     request.set_w_qps(c_stat.write_ops);
-    request.set_w_speed(d_stat.write_bytes);
+    request.set_w_speed(d_stat.buf_write_bytes);
     request.set_r_qps(c_stat.read_ops);
     request.set_r_speed(c_stat.read_bytes);
     request.set_recover_speed(c_stat.recover_bytes);
@@ -853,7 +853,7 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<tr><td>" + common::NumToString(d_stat.blocks) + "</td>";
     str += "<td>" + common::HumanReadableString(d_stat.data_size) + "</td>";
     str += "<td>" + common::NumToString(c_stat.write_ops);
-    str += "/" + common::HumanReadableString(d_stat.write_bytes) + "</td>";
+    str += "/" + common::HumanReadableString(d_stat.buf_write_bytes) + "</td>";
     str += "<td>" + common::NumToString(c_stat.read_ops);
     str += "/" + common::HumanReadableString(c_stat.read_bytes) + "</td>";
     str += "<td>" + common::HumanReadableString(c_stat.recover_bytes) + "</td>";

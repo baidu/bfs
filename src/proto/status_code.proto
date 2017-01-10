@@ -17,7 +17,7 @@ enum StatusCode {
     kNsNotFound = 107;
     kCsNotFound = 108;
     kNoPermission = 200;
-    kNoEnoughQuota = 300;
+    kNotEnoughQuota = 300;
     kNetworkUnavailable = 400;
     kTimeout = 500;
     kWriteError = 501;
