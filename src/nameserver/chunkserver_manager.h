@@ -4,6 +4,7 @@
 
 #include <set>
 #include <map>
+#include <unordered_map>
 #include <functional>
 
 #include <common/thread_pool.h>
@@ -90,11 +91,11 @@ private:
     BlockMappingManager* block_mapping_manager_;
     Mutex mu_;      /// chunkserver_s list mutext;
     Stats stats_;
-    typedef std::map<int32_t, ChunkServerInfo*> ServerMap;
+    typedef std::unordered_map<int32_t, ChunkServerInfo*> ServerMap;
     ServerMap chunkservers_;
     std::map<std::string, int32_t> address_map_;
     std::map<int32_t, std::set<ChunkServerInfo*> > heartbeat_list_;
-    std::map<int32_t, Blocks*> block_map_;
+    std::unordered_map<int32_t, Blocks*> block_map_;
     int32_t chunkserver_num_;
     int32_t next_chunkserver_id_;
 
