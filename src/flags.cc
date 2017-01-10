@@ -72,6 +72,7 @@ DEFINE_int32(chunkserver_use_root_partition, 1, "Should chunkserver use root par
 DEFINE_bool(chunkserver_multi_path_on_one_disk, false, "Allow multi data path on one disk");
 DEFINE_bool(chunkserver_auto_clean, true, "If namespace version mismatch, chunkserver clean itself");
 DEFINE_int32(chunkserver_disk_buf_size, 100, "Base number of buffers which are in the waiting list. Used to computer disk wordload");
+DEFINE_int64(chunkserver_disk_safe_space, 5120, "If space left on a disk is less then this value, the disk will be concidered full. In MB");
 // SDK
 DEFINE_string(sdk_write_mode, "chains", "Sdk write strategy, choose from [chains, fanout]");
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
