@@ -320,7 +320,6 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Wri
 }
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
                          File** file, const WriteOptions& options) {
-    int32_t ret = OK;
     *file = NULL;
     if (!(flags & O_WRONLY)) {
         return BAD_PARAMETER;
@@ -351,14 +350,14 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         LOG(WARNING, "Open file for write fail: %s, rpc_ret= %d, status= %s\n",
             path, rpc_ret, StatusCode_Name(response.status()).c_str());
         if (!rpc_ret) {
-            ret = TIMEOUT;
+            return TIMEOUT;
         } else {
-            ret = GetErrorCode(response.status());
+            return GetErrorCode(response.status());
         }
     } else {
         *file = new FileImplWrapper(this, rpc_client_, path, flags, write_option);
     }
-    return ret;
+    return OK;
 }
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const ReadOptions& options) {
     if (flags != O_RDONLY) {
