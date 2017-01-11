@@ -334,7 +334,6 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         } else {
             LOG(FATAL, "wrong flag %s for sdk write mode",
                     FLAGS_sdk_write_mode.c_str());
-            return BAD_PARAMETER;
         }
     }
     common::timer::AutoTimer at(100, "OpenFile", path);
