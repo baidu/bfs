@@ -182,7 +182,7 @@ int32_t FSImpl::Access(const char* path, int32_t mode) {
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Stat,
         &request, &response, 15, 1);
     if (!ret) {
-        LOG(WARNING, "Stat fail: %s\n", path);
+        LOG(WARNING, "Access fail: %s\n", path);
         return TIMEOUT;
     }
     return response.status() == kOK ? 0 : GetErrorCode(response.status());
@@ -239,7 +239,7 @@ int32_t FSImpl::GetFileSize(const char* path, int64_t* file_size) {
             std::string addr = block.chains(j).address();
             ret = rpc_client_->GetStub(addr, &chunkserver);
             if (!ret) {
-                LOG(INFO, "GetFileSize(%s) connect chunkserver fail %s",
+                LOG(WARNING, "GetFileSize(%s) connect chunkserver fail %s",
                     path, addr.c_str());
             } else {
                 GetBlockInfoRequest gbi_request;
@@ -249,8 +249,8 @@ int32_t FSImpl::GetFileSize(const char* path, int64_t* file_size) {
                 ret = rpc_client_->SendRequest(chunkserver,
                     &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
                 delete chunkserver;
-                if (!ret || gbi_response.status() != kOK) {
-                    LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail, ret= %d, status= %s",
+                if (gbi_response.status() != kOK) {
+                    LOG(WARNING, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail, ret= %d, status= %s",
                         path, addr.c_str(), ret, StatusCode_Name(gbi_response.status()).c_str());
                     continue;
                 }
@@ -320,6 +320,8 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Wri
 }
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
                          File** file, const WriteOptions& options) {
+    int32_t ret = OK;
+    *file = NULL;
     if (!(flags & O_WRONLY)) {
         return BAD_PARAMETER;
     }
@@ -332,11 +334,10 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         } else {
             LOG(FATAL, "wrong flag %s for sdk write mode",
                     FLAGS_sdk_write_mode.c_str());
+            return BAD_PARAMETER;
         }
     }
     common::timer::AutoTimer at(100, "OpenFile", path);
-    int32_t ret = OK;
-    *file = NULL;
 
     CreateFileRequest request;
     CreateFileResponse response;
@@ -379,7 +380,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Rea
         f->located_blocks_.CopyFrom(response.blocks());
         *file = new FileImplWrapper(f);
     } else {
-        LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
+        LOG(WARNING, "OpenFile return %d, %s\n", rpc_ret, StatusCode_Name(response.status()).c_str());
         if (!rpc_ret) {
             ret = TIMEOUT;
         } else {
@@ -535,11 +536,17 @@ int32_t FSImpl::ShutdownChunkServerStat() {
     ShutdownChunkServerStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServerStat,
                                                &request, &response, 15, 1);
-    if (!ret) {
-        LOG(WARNING, "Get shutdown chunnkserver stat fail");
-        return TIMEOUT;
+    if (ret && response.status() == kOK) {
+        return response.in_offline_progress();
+    } else {
+        LOG(WARNING, "Get shutdown chunnkserver stat fail. ret: %d, status: %s\n",
+                ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        } else {
+            return GetErrorCode(response.status());
+        }
     }
-    return response.in_offline_progress();
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
