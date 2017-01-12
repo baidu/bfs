@@ -390,7 +390,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
             if (cs->status() == kCsReadonly) {
-                LOG(INFO, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
+                LOG(DEBUG, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
                 continue;
             }
             double load = cs->load();
