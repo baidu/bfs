@@ -23,6 +23,8 @@ class Iterator;
 namespace baidu {
 namespace bfs {
 
+const double kDiskMaxLoad = 9999999.9;
+
 class BlockMeta;
 class Block;
 class FileCache;

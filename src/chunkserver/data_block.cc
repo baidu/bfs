@@ -288,7 +288,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
         }
     }
     if (ret == 0) {
-        disk_->counters_.write_bytes.Add(len);
+        disk_->counters_.buf_write_bytes.Add(len);
     }
     return true;
 }
@@ -367,6 +367,7 @@ void Block::DiskWrite() {
                         assert(0);
                         break;
                     }
+                    disk_->counters_.disk_write_bytes.Add(w);
                     wlen += w;
                 }
                 // Re-Lock for commit

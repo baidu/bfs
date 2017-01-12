@@ -69,8 +69,8 @@ DiskStat BlockManager::Stat() {
 void BlockManager::Stat(std::string* str) {
     str->append("<table class=dataintable>");
     str->append("<tr><td>Path</td><td>Blocks</td><td>Quota</td><td>Size</td>"
-                "<td>Write</td><td>Read m/d</td>"
-                "<td>PendingBuf</td><td>WritingBlocks</td></tr>");
+                "<td>BufWrite</td><td>DiskWrite</td><td>Read m/d</td>"
+                "<td>PenBuf</td><td>WritingBlocks</td></tr>");
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         const DiskStat& stat = it->first;
         int64_t quota = it->second->GetQuota();
@@ -81,7 +81,8 @@ void BlockManager::Stat(std::string* str) {
         str->append("<td>" + common::NumToString(stat.blocks) + "</td>");
         str->append("<td>" + common::HumanReadableString(quota) + "</td>");
         str->append("<td>" + common::HumanReadableString(size) + "</td>");
-        str->append("<td>" + common::HumanReadableString(stat.write_bytes) + "</td>");
+        str->append("<td>" + common::HumanReadableString(stat.buf_write_bytes) + "</td>");
+        str->append("<td>" + common::HumanReadableString(stat.disk_write_bytes) + "</td>");
         str->append("<td>" + common::NumToString(stat.mem_read_ops) +"/" +
                     common::NumToString(stat.disk_read_ops) + "</td>");
         str->append("<td>" + common::NumToString(stat.pending_buf));
@@ -235,6 +236,11 @@ Block* BlockManager::CreateBlock(int64_t block_id, StatusCode* status) {
     BlockMeta meta;
     meta.set_block_id(block_id);
     Disk* disk = PickDisk(block_id);
+    if (!disk) {
+        *status = kNotEnoughQuota;
+        LOG(WARNING, "Not enough space on disk");
+        return NULL;
+    }
     meta.set_store_path(disk->Path());
     Block* block = new Block(meta, disk, file_cache_);
     // for block_map_
@@ -334,7 +340,7 @@ Block* BlockManager::FindBlock(int64_t block_id) {
 }
 
 Disk* BlockManager::PickDisk(int64_t block_id) {
-    double min_load = 9999.9;
+    double min_load = kDiskMaxLoad - 1;
     Disk* target = NULL;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
@@ -390,7 +396,8 @@ void BlockManager::LogStatus() {
         it->first = stat;
 
         stat_.blocks += stat.blocks;
-        stat_.write_bytes += stat.write_bytes;
+        stat_.buf_write_bytes += stat.buf_write_bytes;
+        stat_.disk_write_bytes += stat.disk_write_bytes;
         stat_.writing_blocks += stat.writing_blocks;
         stat_.writing_bytes += stat.writing_bytes;
         stat_.data_size += stat.data_size;
