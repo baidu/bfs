@@ -559,7 +559,7 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
         block->SetRecover();
     }
     LOG(INFO, "[LocalWriteBlock] local write #%ld %d recover=%d",
-               block_id, packet_seq, block->IsRecover());
+        block_id, packet_seq, block->IsRecover());
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
     if (!block->Write(packet_seq, offset, databuf.data(),
