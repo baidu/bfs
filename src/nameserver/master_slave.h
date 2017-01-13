@@ -26,7 +26,7 @@ class MasterSlaveImpl : public Sync, public master_slave::MasterSlave {
 public:
     MasterSlaveImpl();
     virtual ~MasterSlaveImpl() {};
-    virtual void Init(std::function<void (const std::string& log)> callback);
+    virtual void Init(LogCallback callback, SnapshotCallback snapshot_callback);
     virtual bool IsLeader(std::string* leader_addr = NULL);
     virtual bool Log(const std::string& entry, int timeout_ms = 10000);
     virtual void Log(const std::string& entry, std::function<void (bool)> callback);
@@ -44,12 +44,14 @@ private:
     void ReplicateLog();
     void LogStatus();
     void PorcessCallbck(int64_t index, bool timeout_check);
+    void LogCleanUp();
 
 private:
     RpcClient* rpc_client_;
     master_slave::MasterSlave_Stub* slave_stub_;
 
-    std::function<void (const std::string& log)> log_callback_;
+    LogCallback log_callback_;
+    SnapshotCallback snapshot_callback_;
     bool exiting_;
     bool master_only_;
     bool is_leader_;

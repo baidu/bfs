@@ -16,6 +16,7 @@
 DECLARE_string(nameserver_nodes);
 DECLARE_int32(node_index);
 DECLARE_string(master_slave_role);
+DECLARE_int64(master_slave_log_limit);
 
 namespace baidu {
 namespace bfs {
@@ -59,18 +60,20 @@ MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_
     if (logdb_ == NULL) {
         LOG(FATAL, "%s init logdb failed", kLogPrefix.c_str());
     }
+    thread_pool_->DelayTask(30 * 60 * 1000, std::bind(&MasterSlaveImpl::LogCleanUp, this));
 }
 
-void MasterSlaveImpl::Init(std::function<void (const std::string& log)> callback) {
+void MasterSlaveImpl::Init(LogCallback callback, SnapshotCallback snapshot_callback) {
     log_callback_ = callback;
+    snapshot_callback_ = snapshot_callback;
     if (logdb_->GetLargestIdx(&current_idx_) == kReadError) {
-        LOG(FATAL, "%s  Read current_idx_ failed", kLogPrefix.c_str());
+        LOG(FATAL, "%s Read current_idx_ failed", kLogPrefix.c_str());
     }
     if (logdb_->ReadMarker("applied_idx", &applied_idx_) == kReadError) {
-        LOG(FATAL, "%s  ReadMarker applied_idx_ failed", kLogPrefix.c_str());
+        LOG(FATAL, "%s ReadMarker applied_idx_ failed", kLogPrefix.c_str());
     }
     if (logdb_->ReadMarker("sync_idx", &sync_idx_) == kReadError) {
-        LOG(FATAL, "%s  ReadMarker sync_idx_ failed", kLogPrefix.c_str());
+        LOG(FATAL, "%s ReadMarker sync_idx_ failed", kLogPrefix.c_str());
     }
     LOG(INFO, "%s set current_idx_ = %ld, applied_idx_ = %ld, sync_idx_ = %ld ",
         kLogPrefix.c_str(), current_idx_, applied_idx_, sync_idx_);
@@ -329,6 +332,9 @@ void MasterSlaveImpl::LogStatus() {
             kLogPrefix.c_str(), applied_idx_, sync_idx_);
     }
     thread_pool_->DelayTask(5000, std::bind(&MasterSlaveImpl::LogStatus, this));
+}
+
+void MasterSlaveImpl::LogCleanUp() {
 }
 
 std::string MasterSlaveImpl::GetStatus() {

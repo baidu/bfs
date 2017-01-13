@@ -587,7 +587,8 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
 }
 
 
-void RaftNodeImpl::Init(std::function<void (const std::string& log)> callback) {
+void RaftNodeImpl::Init(std::function<void (const std::string& log)> callback,
+                        std::function<void (int32_t, int32_t, std::string*)> /*snapshot_callback*/) {
     log_callback_ = callback;
     ApplyLog();
 }

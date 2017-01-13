@@ -16,12 +16,15 @@ namespace bfs {
 
 class RpcClient;
 
+typedef std::function<void (const std::string& log)> LogCallback;
+typedef std::function<void (int32_t, int32_t, std::string*)> SnapshotCallback;
+
 class Sync {
 public:
     virtual ~Sync() {}
     // Description: Register 'callback' to Sync and redo log.
     // NOTICE: Sync does not work until Init is called.
-    virtual void Init(std::function<void (const std::string& log)> callback) = 0;
+    virtual void Init(LogCallback callback, SnapshotCallback snapshot_callback) = 0;
     // Description: Return true if this server is Leader.
     // TODO: return 'leader_addr' which points to the current leader.
     virtual bool IsLeader(std::string* leader_addr = NULL) = 0;

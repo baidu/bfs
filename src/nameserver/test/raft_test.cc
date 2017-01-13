@@ -31,7 +31,8 @@ namespace raft {
 class KvServer : public RaftKv {
 public:
     KvServer(RaftNodeImpl* raft_node) : raft_node_(raft_node), applied_index_(0) {
-        raft_node_->Init(std::bind(&KvServer::LogCallback, this, std::placeholders::_1));
+        raft_node_->Init(std::bind(&KvServer::LogCallback, this, std::placeholders::_1),
+                         std::function<void (int32_t, int32_t, std::string*)>());
     }
     void LogCallback(const std::string& log) {
         PutRequest request;

@@ -45,6 +45,7 @@ DEFINE_bool(check_orphan, false, "Check orphan entry in RebuildBlockMap");
 DEFINE_string(ha_strategy, "master_slave", "[master_slave, raft, none]");
 DEFINE_string(nameserver_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 DEFINE_int32(node_index, 0, "Nameserver node index");
+DEFINE_int64(master_slave_log_limit, 20000000, "Master will keep at most x log entries");
 // ha - master_slave
 DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
 // ha - raft

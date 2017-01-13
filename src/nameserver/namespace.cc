@@ -772,6 +772,8 @@ void NameSpace::TailLog(const std::string& logstr) {
     }
 }
 
+void NameSpace::TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr) {}
+
 uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
                               const std::string& key, const std::string& value) {
     if (log == NULL) {
