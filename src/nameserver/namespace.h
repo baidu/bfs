@@ -73,6 +73,10 @@ private:
         kDir = 1,
         kSymlink = 2,
     };
+    struct SnapshotTask {
+        int64_t snpashot_id;
+        leveldb::Iterator* iter;
+    };
     FileType GetFileType(int type);
     bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
     StatusCode BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
@@ -106,8 +110,7 @@ private:
     Mutex mu_;
 
     /// HA module
-    //Sync* sync_;
-    //Mutex mu_;
+    std::map<int64_t, SnapshotTask*> snapshot_tasks_;
 };
 
 } // namespace bfs

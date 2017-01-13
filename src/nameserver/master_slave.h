@@ -42,6 +42,8 @@ public:
 private:
     void BackgroundLog();
     void ReplicateLog();
+    void EmptyLog();
+    bool SendSnapshot();
     void LogStatus();
     void PorcessCallbck(int64_t index, bool timeout_check);
     void LogCleanUp();
@@ -68,6 +70,7 @@ private:
     int64_t current_idx_;   // last log's index
     int64_t applied_idx_;   // last applied entry index
     int64_t sync_idx_;      // last entry index which slave has received
+    int64_t gc_idx_;        // smallest index in logdb should be gc_idx + 1
 
     std::map<int64_t, std::function<void (bool)> > callbacks_;
 };

@@ -23,6 +23,7 @@ DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(block_id_allocation_size);
+DECLARE_int32(snapshot_step);
 DECLARE_bool(check_orphan);
 
 const int64_t kRootEntryid = 1;
@@ -772,7 +773,35 @@ void NameSpace::TailLog(const std::string& logstr) {
     }
 }
 
-void NameSpace::TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr) {}
+void NameSpace::TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr) {
+    SnapshotTask* task;
+    auto it = snapshot_tasks_.find(ns_id);
+    if (it == snapshot_tasks_.end()) {
+        task = new SnapshotTask();
+        task->iter = db_->NewIterator(leveldb::ReadOptions());
+        snapshot_tasks_[ns_id] = task;
+    } else {
+        task = it->second;
+    }
+    if (it->Valid() || logstr == NULL) {
+        delete it->iter;
+        delete task;
+        snapshot_tasks_.erase(it);
+        return;
+    } else if (id != task->snapshot_id) {
+        delete it->iter;
+        task->iter = db_->NewIterator(leveldb::ReadOptions());
+        task->snapshot_id = id;
+    }
+    NameServerLog log;
+    int count = 0;
+    leveldb::Iterator* iter = task->iter;
+    for (iter->Seek(std::string(7, '\0') + '\1'); iter->Valid(); iter->Next() && count <= FLAGS_snapshot_step) {
+        EncodeLog(&log, kSyncWrite, iter->key().data(), iter->value.data());
+        ++count;
+    }
+    log.SerializeToString(logstr);
+}
 
 uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
                               const std::string& key, const std::string& value) {

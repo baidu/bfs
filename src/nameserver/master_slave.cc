@@ -25,7 +25,7 @@ const std::string kLogPrefix = "\033[32m[Sync]\033[0m";
 
 MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_only_(false),
                                      cond_(&mu_), log_done_(&mu_), current_idx_(-1),
-                                     applied_idx_(-1), sync_idx_(-1) {
+                                     applied_idx_(-1), sync_idx_(-1), gc_idx_(-1) {
     std::vector<std::string> nodes;
     common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);
     std::string this_server = nodes[FLAGS_node_index];
@@ -203,6 +203,11 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    if (request->index() == -1) {
+        response->set_success(true);
+        done->Run();
+        return;
+    }
     // expect index to be current_idx_ + 1
     if (request->index() > current_idx_ + 1) {
         LOG(INFO, "%s out-date log request %ld, current_idx_ %ld",
@@ -268,17 +273,22 @@ void MasterSlaveImpl::ReplicateLog() {
         master_slave::AppendLogResponse response;
         request.set_log_data(entry);
         request.set_index(sync_idx_ + 1);
-        while (!rpc_client_->SendRequest(slave_stub_,
-                                         &master_slave::MasterSlave_Stub::AppendLog,
-                                         &request, &response, 15, 1)) {
+        if (!rpc_client_->SendRequest(slave_stub_,
+                                      &master_slave::MasterSlave_Stub::AppendLog,
+                                      &request, &response, 15, 1)) {
             LOG(WARNING, "%s Replicate log failed index = %d, current_idx_ = %d",
                 kLogPrefix.c_str(), sync_idx_ + 1, current_idx_);
-            sleep(5);
+            EmptyLog();
         }
         if (!response.success()) { // log mismatch
             MutexLock lock(&mu_);
             sync_idx_ = response.index() - 1;
-            LOG(INFO, "[Sync] set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
+            LOG(INFO, "%s set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
+            if (sync_idx_ <= gc_idx_) {
+                if (!SendSnapshot()) {
+                    LOG(INFO, "%s Send snapshot failed", kLogPrefix.c_str());
+                }
+            }
             continue;
         }
         thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,
@@ -291,6 +301,22 @@ void MasterSlaveImpl::ReplicateLog() {
     }
     applied_idx_ = current_idx_;
     log_done_.Signal();
+}
+
+void MasterSlaveImpl::EmptyLog() {
+    master_slave::AppendLogRequest request;
+    master_slave::AppendLogResponse response;
+    request.set_index(-1);
+    while (!rpc_client_->SendRequest(slave_stub_,
+                                     &master_slave::MasterSlave_Stub::AppendLog,
+                                     &request, &response, 15, 1)) {
+        sleep(5);
+    }
+}
+
+bool MasterSlaveImpl::SendSnapshot() {
+    int64_t current_index = current_idx_ - 1; // minus one to make sure slave does not get one entry short
+    // snapshot_callback_(0, )
 }
 
 void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
