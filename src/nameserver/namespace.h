@@ -38,18 +38,18 @@ public:
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
     StatusCode DeleteDirectory(const std::string& path, bool recursive,
-                        std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
+                               std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
     StatusCode DiskUsage(const std::string& path, uint64_t* du_size);
     /// File rename
     StatusCode Rename(const std::string& old_path,
-               const std::string& new_path,
-               bool* need_unlink,
-               FileInfo* remove_file,
-               NameServerLog* log = NULL);
+                      const std::string& new_path,
+                      bool* need_unlink,
+                      FileInfo* remove_file,
+                      NameServerLog* log = NULL);
     /// Symlink: dst -> src
     StatusCode Symlink(const std::string& src,
-                const std::string& dst,
-                NameServerLog* log = NULL);
+                       const std::string& dst,
+                       NameServerLog* log = NULL);
 
     /// Get file
     bool GetFileInfo(const std::string& path, FileInfo* file_info);
