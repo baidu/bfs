@@ -154,6 +154,9 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
             }
         }
         delete file;
+        if (len_write != len_read) {
+            fprintf(stderr, "Can't cat bfs file %s. len_read: %ld, len_write: %ld\n", argv[i], len_read, len_write);
+        }
     }
     return len_read;
 }
