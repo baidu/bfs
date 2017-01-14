@@ -145,20 +145,20 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
                 break;
             }
             bytes += len_read;
-            len_write = write(1, buf, len_read);
-            if (len_write <= 0) {
-                if (len_write < 0) {
-                    fprintf(stderr, "Write fail: %s\n", strerror(errno));
+            while (len_read > 0) {
+                len_write = write(1, buf, len_read);
+                if (len_write <= 0) {
+                    if (len_write < 0) {
+                        fprintf(stderr, "Write fail: %s\n", strerror(errno));
+                    }
+                    return 1;
                 }
-                break;
+                len_read -= len_write;
             }
         }
         delete file;
-        if (len_write != len_read) {
-            fprintf(stderr, "Can't cat bfs file %s. len_read: %d, len_write: %d\n", argv[i], len_read, len_write);
-        }
     }
-    return len_read;
+    return bytes;
 }
 
 int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
