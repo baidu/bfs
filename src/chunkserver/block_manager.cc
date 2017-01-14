@@ -62,7 +62,7 @@ BlockManager::~BlockManager() {
     file_cache_ = NULL;
 }
 
-DiskStat BlockManager::Stat() {
+DiskStat BlockManager::Stat() const {
     return stat_;
 }
 
