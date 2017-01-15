@@ -38,6 +38,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
+        delete db_;
         db_ = NULL;
         LOG(ERROR, "Open leveldb fail: %s", s.ToString().c_str());
         exit(EXIT_FAILURE);
