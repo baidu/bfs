@@ -7,12 +7,15 @@ env:
         - PROTOBUF_VERSION=2.6.0
 
 install:
+    - sudo pip install --user cpp-coveralls
     - echo | sudo apt-add-repository ppa:boost-latest/ppa
     - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
     - sudo apt-get update
-    - sudo apt-get install -qq g++-4.8
+    - sudo apt-get install -qq g++-4.8 lcov
     - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 20 
+    - sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-4.8 20 
     - sudo update-alternatives --config g++
+    - sudo update-alternatives --config gcov
 
     - sudo apt-get install libboost-dev
     - wget https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-$PROTOBUF_VERSION.tar.gz
@@ -44,22 +47,29 @@ install:
 
 
 before_script:
-    - echo 'SNAPPY_PATH=./thirdparty/snappy' > depends.mk
-    - echo 'PROTOBUF_PATH=./thirdparty/protobuf' >> depends.mk
-    - echo 'PROTOC=protoc' >> depends.mk
-    - echo 'PBRPC_PATH=./thirdparty/sofa-pbrpc/output' >> depends.mk
-    - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
-    - echo 'COMMON_PATH=./common/output' >> depends.mk
-    - echo 'LEVELDB_PATH=./thirdparty' >> depends.mk
+    - export WORK_DIR=`pwd`
+    - echo $WORK_DIR
+    - echo "WORK_PATH=$WORK_DIR" > depends.mk
+    - echo "SNAPPY_PATH=$WORK_DIR/thirdparty/snappy" >> depends.mk
+    - echo "PROTOBUF_PATH=$WORK_DIR/thirdparty/protobuf" >> depends.mk
+    - echo "PROTOC=protoc" >> depends.mk
+    - echo "PBRPC_PATH=$WORK_DIR/thirdparty/sofa-pbrpc/output" >> depends.mk
+    - echo "TCMALLOC_PATH=$WORK_DIR/thirdparty" >> depends.mk
+    - echo "COMMON_PATH=$WORK_DIR/common/output" >> depends.mk
+    - echo "LEVELDB_PATH=$WORK_DIR/thirdparty" >> depends.mk
+    - sed -i "/-lpthread -lz -lrt/s/$/ -lgcov/g" Makefile
+    - sed -i "/CXXFLAGS =/s/$/ -fprofile-arcs -ftest-coverage/g" Makefile
 
 script: make -j4 && make check && make test
 
 addons:
-   coverity_scan:
-       project:
-           name: "bluebore/bfs"
-       notification_email: yanshiguang02@baidu.com
-       build_command_prepend: "make clean"
-       build_command: "make -j4"
-       branch_pattern: master
+    coverity_scan:
+        project:
+            name: "bluebore/bfs"
+        notification_email: yanshiguang02@baidu.com
+        build_command_prepend: "make clean"
+        build_command: "make -j4"
+        branch_pattern: master
 
+after_script:
+     - COVERALLS_REPO_TOKEN=TnLIOj8lpAgN6CjpeGSDpXsu5IF5Bmluo find . -name *.gc* | xargs rm -f && make clean && make -j4 && make check && sudo ~/.local/bin/cpp-coveralls -e src/chunkserver/test -e src/nameserver/test -e thirdparty/ -e thirdsrc/ -e ut/ -e src/proto --gcov-options '\-lpr'

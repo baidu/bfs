@@ -174,15 +174,18 @@ cd ${WORK_DIR}
 # config depengs.mk
 ########################################
 
-echo "PBRPC_PATH=./thirdparty" > depends.mk
-echo "PROTOBUF_PATH=./thirdparty" >> depends.mk
-echo "PROTOC_PATH=./thirdparty/bin/" >> depends.mk
+echo "WORK_PATH=${WORK_DIR}" > depends.mk
+echo "PBRPC_PATH=${WORK_DIR}/thirdparty" >> depends.mk
+echo "PROTOBUF_PATH=${WORK_DIR}/thirdparty" >> depends.mk
+echo "PROTOC_PATH=${WORK_DIR}/thirdparty/bin/" >> depends.mk
 echo 'PROTOC=$(PROTOC_PATH)protoc' >> depends.mk
-echo "PBRPC_PATH=./thirdparty" >> depends.mk
-echo "GFLAG_PATH=./thirdparty" >> depends.mk
-echo "GTEST_PATH=./thirdparty" >> depends.mk
-echo "COMMON_PATH=./thirdparty" >> depends.mk
-echo "TCMALLOC_PATH=./thirdparty" >> depends.mk
+echo "PBRPC_PATH=${WORK_DIR}/thirdparty" >> depends.mk
+echo "GFLAG_PATH=${WORK_DIR}/thirdparty" >> depends.mk
+echo "GTEST_PATH=${WORK_DIR}/thirdparty" >> depends.mk
+echo "COMMON_PATH=${WORK_DIR}/thirdparty" >> depends.mk
+echo "TCMALLOC_PATH=${WORK_DIR}/thirdparty" >> depends.mk
+echo "SNAPPY_PATH=${WORK_DIR}/thirdparty" >> depends.mk
+echo "LEVELDB_PATH=${WORK_DIR}/thirdparty" >> depends.mk
 
 ########################################
 # build bfs

@@ -6,7 +6,7 @@ OPT ?= -g2 -Werror # (B) Debug mode, w/ full line-level debugging symbols
 include depends.mk
 #CXX=/opt/compiler/gcc-4.8.2/bin/g++
 
-INCLUDE_PATH = -I./src -I$(PROTOBUF_PATH)/include \
+INCLUDE_PATH = -I$(WORK_PATH)/src -I$(PROTOBUF_PATH)/include \
                -I$(PBRPC_PATH)/include \
                -I$(LEVELDB_PATH)/include \
                -I$(SNAPPY_PATH)/include \
