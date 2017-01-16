@@ -25,7 +25,8 @@ const std::string kLogPrefix = "\033[32m[Sync]\033[0m";
 
 MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_only_(false),
                                      cond_(&mu_), log_done_(&mu_), current_idx_(-1),
-                                     applied_idx_(-1), sync_idx_(-1), gc_idx_(-1) {
+                                     applied_idx_(-1), sync_idx_(-1), gc_idx_(-1),
+                                     snapshot_id_(0), snapshot_seq_(0) {
     std::vector<std::string> nodes;
     common::SplitString(FLAGS_nameserver_nodes, ",", &nodes);
     std::string this_server = nodes[FLAGS_node_index];
@@ -237,6 +238,40 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+///     Snapshot    ///
+void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
+                                const master_slave::SnapshotRequest* request,
+                                master_slave::SnapshotResponse* response,
+                                ::google::protobuf::Closure* done) {
+    if (IsLeader()) { // already switched to leader, does not accept snapshot
+        LOG(WARNING, "%s Leader got a snapshot request", kLogPrefix.c_str());
+        response->set_success(false);
+        done->Run();
+        return;
+    }
+    int64_t id = request->id();
+    int64_t seq = request->seq();
+    if (seq == 0) {
+        // TODO cleanup namespace
+        snapshot_id_ = id;
+        snapshot_seq_ = 0;
+    } else if (id != snapshot_id_ || seq != snapshot_seq_) {
+        LOG(INFO, "%s snapshot mismatch reqeust id = %ld seq = %ld, slave id = %ld seq = %ld",
+            kLogPrefix.c_str(), id, seq, snapshot_id_, snapshot_seq_);
+    }
+    const std::string& data = request->data();
+    if (data.empty()) {
+        current_idx_ = request->index();
+        applied_idx_ = request->index();
+        response->set_success(true);
+        done->Run();
+        return;
+    }
+    log_callback_(data);
+    response->set_success(true);
+    done->Run();
+}
+
 void MasterSlaveImpl::BackgroundLog() {
     while (true) {
         MutexLock lock(&mu_);
@@ -316,7 +351,39 @@ void MasterSlaveImpl::EmptyLog() {
 
 bool MasterSlaveImpl::SendSnapshot() {
     int64_t current_index = current_idx_ - 1; // minus one to make sure slave does not get one entry short
-    // snapshot_callback_(0, )
+    bool ret = false;
+    LOG(INFO, "%s Start sending snapshot id = %ld", kLogPrefix.c_str(), snapshot_id_);
+    while (true) {
+        std::string logstr;
+        snapshot_callback_(0, snapshot_id_, &logstr);
+        master_slave::SnapshotRequest request;
+        master_slave::SnapshotResponse response;
+        request.set_data(logstr);
+        request.set_id(snapshot_id_);
+        request.set_seq(snapshot_seq_);
+        request.set_index(current_index);
+        if (!rpc_client_->SendRequest(slave_stub_,
+                                      &master_slave::MasterSlave_Stub::Snapshot,
+                                      &request, &response, 15, 1)) {
+            LOG(WARNING, "%s Send snapshot failed id = %ld, seq = %ld",
+                kLogPrefix.c_str(), snapshot_id_, snapshot_seq_);
+            break;
+        }
+        if (!response.success()) {
+            break;
+        }
+        if (logstr.empty()) {
+            LOG(INFO, "%s Send snapshot done id = %ld seq = %ld",
+                kLogPrefix.c_str(), snapshot_id_, snapshot_seq_);
+            ++snapshot_id_;
+            sync_idx_ = current_index;
+            ret = true;
+            break;
+        }
+        ++snapshot_seq_;
+    }
+    snapshot_callback_(0, snapshot_id_, NULL);
+    return ret;
 }
 
 void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {

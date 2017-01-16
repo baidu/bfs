@@ -74,7 +74,7 @@ private:
         kSymlink = 2,
     };
     struct SnapshotTask {
-        int64_t snpashot_id;
+        int64_t snapshot_id;
         leveldb::Iterator* iter;
     };
     FileType GetFileType(int type);

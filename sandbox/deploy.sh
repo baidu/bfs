@@ -29,6 +29,7 @@ echo "--ha_strategy=$strategy" >> bfs.flag
 echo '--nameserver_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829' >> bfs.flag
 echo '--sdk_wirte_mode=fanout' >> bfs.flag
 echo '--chunkserver_multi_path_on_one_disk=true' >> bfs.flag
+echo '--master_slave_log_limit=0' >> bfs.flag
 
 for((i=0;i<$ns_num;i++));
 do
