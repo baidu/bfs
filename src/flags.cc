@@ -65,14 +65,16 @@ DEFINE_int64(chunkserver_max_unfinished_bytes, 2147483648, "Max unfinished write
 DEFINE_int32(chunkserver_work_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_read_thread_num, 20, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_write_thread_num, 10, "Chunkserver work thread num");
-DEFINE_int32(chunkserver_io_thread_num, 10, "Chunkserver io thread num");
+DEFINE_int32(disk_io_thread_num, 3, "Chunkserver io thread num");
 DEFINE_int32(chunkserver_recover_thread_num, 10, "Chunkserver work thread num");
 DEFINE_int32(chunkserver_file_cache_size, 1000, "Chunkserver file cache size");
 DEFINE_int32(chunkserver_use_root_partition, 1, "Should chunkserver use root partition, 0: forbidden");
 DEFINE_bool(chunkserver_multi_path_on_one_disk, false, "Allow multi data path on one disk");
 DEFINE_bool(chunkserver_auto_clean, true, "If namespace version mismatch, chunkserver clean itself");
+DEFINE_int32(chunkserver_disk_buf_size, 100, "Base number of buffers which are in the waiting list. Used to computer disk wordload");
+DEFINE_int64(chunkserver_disk_safe_space, 5120, "If space left on a disk is less then this value, the disk will be concidered full. In MB");
 // SDK
-DEFINE_string(sdk_wirte_mode, "chains", "Sdk write strategy, choose from [chains, fanout]");
+DEFINE_string(sdk_write_mode, "chains", "Sdk write strategy, choose from [chains, fanout]");
 DEFINE_int32(sdk_thread_num, 10, "Sdk thread num");
 DEFINE_int32(sdk_file_reada_len, 1024*1024, "Read ahead buffer len");
 DEFINE_int32(sdk_createblock_retry, 5, "Create block retry times before fail");

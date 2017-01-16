@@ -4,7 +4,7 @@
 百度的核心数据库Tera将数据持久化在分布式文件系统上，分布式文件系统的性能、可用性和扩展性对整个上层搜索业务的稳定性与效果有着至关重要的影响。现有的分布式文件系统无法很好地满足这几方面的要求，所以我们从Tera需求出发，开发了百度自己的分布式文件系统。
 
 ## 系统架构
-系统主要由Nameserver，Chunkserver和ClientSDk三部分构成。其中Nameserver是BFS的“大脑”，负责整个文件系统的目录树及每个文件的元信息的持久化存储和更新；Chunkserver是提供文件读写服务的实体；ClientSDk包括提供给管理员使用的管理命令工具bfs_client和给用户使用的SDK。除此之外，BFS还提用一个可视化Web界面用于实时反映集群的状态。
+系统主要由Nameserver，Chunkserver和ClientSDK三部分构成。其中Nameserver是BFS的“大脑”，负责整个文件系统的目录树及每个文件的元信息的持久化存储和更新；Chunkserver是提供文件读写服务的实体；ClientSDK包括提供给管理员使用的管理命令工具bfs_client和给用户使用的SDK。除此之外，BFS还提用一个可视化Web界面用于实时反映集群的状态。
 
 ## Nameserver
 Nameserver是BFS的“大脑”，负责存储及更新目录树及每个文件的元信息，所有需要读取或更新元信息的操作都需要通过Nameserver，而Nameserver的不可用将导致整个文件系统瘫痪。因此，在BFS的设计中，我们重点关注Nameserver的性能和可用性。
@@ -16,7 +16,7 @@ Nameserver中主要维护三个类，目录树，BlockMapping以及ChunkserverMa
 BFS的设计目标是存储海量文件，因此目录树结构可能无法全部存在内存中。而如前面所说，作为全局元信息的唯一管理者，目录树结构需要支持大吞吐的访问。因此，我们选择leveldb来存储BFS的目录树。
 
 ##### 目录树存储
-在BFS的目录树中，每一个目录或文件的存储格式为 `父目录 entry_id + 目录/文件名 -> 目录/文件元信息`。其中`entry_id`是用来唯一标识某个目录或文件的id，根目录的`entry_id`为1，`父目录entry_id`为1，目录的元信息包括目录的`entry_id`、读写权限及创建时间等；文件的元信息还会包括文件的大小，版本，副本数量，及文件对应的所有block的`block_id`等。例如形如`/home/dir/file`的一个目录结构在BFS中的实际存储如下：
+在BFS的目录树中，每一个目录或文件的存储格式为 `父目录 entry_id + 目录/文件名 -> 目录/文件元信息`。其中`entry_id`是用来唯一标识某个目录或文件的id，根目录的`entry_id`为1，目录的元信息包括目录的`entry_id`、读写权限及创建时间等；文件的元信息还会包括文件的大小，版本，副本数量，及文件对应的所有block的`block_id`等。例如形如`/home/dir/file`的一个目录结构在BFS中的实际存储如下：
 > 0/  
 > 1home -> meta(`entry_id`=2, ctime=...)  
 > 2dir -> meta(`entry_id`=3, ctime=...)  

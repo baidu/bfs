@@ -300,7 +300,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
     info->set_data_size(request->data_size());
     info->set_block_num(request->block_num());
     info->set_buffers(request->buffers());
-    info->set_pending_writes(request->pending_writes());
+    info->set_pending_buf(request->pending_buf());
     info->set_pending_recover(request->pending_recover());
     info->set_w_qps(request->w_qps());
     info->set_w_speed(request->w_speed());
@@ -343,6 +343,7 @@ double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
 
 void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads,
                                       int num) {
+    mu_.Unlock();
     std::sort(loads->begin(), loads->end());
     // Add random factor
     int scope = loads->size() - (loads->size() % num);
@@ -354,6 +355,7 @@ void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerI
             std::swap((*loads)[i % num], (*loads)[i]);
         }
     }
+    mu_.Lock();
 }
 
 bool ChunkServerManager::GetChunkServerChains(int num,
@@ -388,7 +390,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
             if (cs->status() == kCsReadonly) {
-                LOG(INFO, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
+                LOG(DEBUG, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
                 continue;
             }
             double load = cs->load();
@@ -641,6 +643,10 @@ void ChunkServerManager::SetParam(const Params& p) {
             params_.recover_size(), params_.keepalive_timeout());
 }
 
+Params ChunkServerManager::GetParam() {
+    return params_;
+}
+
 void ChunkServerManager::RemoveBlock(int32_t id, int64_t block_id) {
     Blocks* blocks = GetBlockMap(id);
     if (!blocks) {
@@ -757,9 +763,9 @@ void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_
 StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>&
                                                   chunkserver_address) {
     MutexLock lock(&mu_);
-    if (!chunkservers_to_offline_.empty()) {
-        return kInShutdownProgress;
-    }
+    //if (!chunkservers_to_offline_.empty()) {
+    //    return kInShutdownProgress;
+    //}
     for (int i = 0; i < chunkserver_address.size(); i++) {
         chunkservers_to_offline_.push_back(chunkserver_address.Get(i));
         MarkChunkServerReadonly(chunkservers_to_offline_.back());

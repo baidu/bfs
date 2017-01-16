@@ -60,6 +60,7 @@ FUSE_LL_HEADER = $(wildcard fuse_lowlevel/*.h)
 
 CLIENT_OBJ = $(patsubst %.cc, %.o, $(wildcard src/client/*.cc))
 MARK_OBJ = $(patsubst %.cc, %.o, $(wildcard src/test/*.cc))
+UTIL_OJB = $(patsubst %.cc, %.o, $(wildcard src/utils/*.cc))
 
 FLAGS_OBJ = src/flags.o
 VERSION_OBJ = src/version.o
@@ -67,6 +68,7 @@ OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
 BIN = nameserver chunkserver bfs_client raft_kv kv_client
+UTIL_BIN = bfs_dump logdb_dump
 
 ifdef FUSE_PATH
 	BIN += bfs_mount
@@ -80,6 +82,9 @@ TEST_OBJS = src/nameserver/test/namespace_test.o \
 			src/nameserver/test/block_mapping_test.o \
 			src/nameserver/test/logdb_test.o \
 			src/nameserver/test/location_provider_test.o \
+			src/nameserver/test/kv_client.o \
+			src/nameserver/test/raft_test.o \
+			src/nameserver/test/nameserver_impl_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o \
 			src/chunkserver/test/block_manager_test.o \
@@ -122,7 +127,8 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 	src/nameserver/raft_node.o $(OBJS) -o $@ $(LDFLAGS)
 
 block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping.o
-	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
+	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o \
+	src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
 
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
 	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)
@@ -138,29 +144,35 @@ location_provider_test: src/nameserver/test/location_provider_test.o src/nameser
 
 chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o src/chunkserver/block_manager.o \
-	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
+	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o src/chunkserver/disk.o \
+	src/utils/meta_converter.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 file_cache_test: src/chunkserver/test/file_cache_test.o
 	$(CXX) src/chunkserver/file_cache.o src/chunkserver/test/file_cache_test.o $(OBJS) -o $@ $(LDFLAGS)
 
 block_manager_test: src/chunkserver/test/block_manager_test.o src/chunkserver/block_manager.o \
-	src/chunkserver/data_block.o src/chunkserver/counter_manager.o src/chunkserver/file_cache.o
+	src/chunkserver/disk.o src/chunkserver/data_block.o src/chunkserver/counter_manager.o \
+	src/chunkserver/file_cache.o src/utils/meta_converter.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 data_block_test: src/chunkserver/test/data_block_test.o \
 	src/chunkserver/data_block.o src/chunkserver/counter_manager.o \
-   	src/chunkserver/file_cache.o
+	src/chunkserver/file_cache.o src/chunkserver/disk.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 nameserver: $(NAMESERVER_OBJ) $(OBJS)
 	$(CXX) $(NAMESERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
 
-metaserver: $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o
-	$(CXX) $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o src/nameserver/namespace.o src/nameserver/location_provider.o -o $@ $(LDFLAGS)
+metaserver: $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o \
+	src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o \
+	src/nameserver/namespace.o
+	$(CXX) $(METASERVER_OBJ) $(OBJS) src/nameserver/block_mapping_manager.o \
+	src/nameserver/chunkserver_manager.o src/nameserver/block_mapping.o \
+	src/nameserver/namespace.o src/nameserver/location_provider.o -o $@ $(LDFLAGS)
 
-chunkserver: $(CHUNKSERVER_OBJ) $(OBJS)
-	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) -o $@ $(LDFLAGS)
+chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) src/utils/meta_converter.o
+	$(CXX) $(CHUNKSERVER_OBJ) $(OBJS) src/utils/meta_converter.o -o $@ $(LDFLAGS)
 
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)
@@ -200,8 +212,9 @@ src/version.cc: FORCE
 FORCE:
 
 clean:
-	rm -rf $(BIN) mark
-	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ) $(OBJS) $(TEST_OBJS)
+	rm -rf $(BIN) $(UTIL_BIN) mark
+	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ)  \
+		   $(OBJS) $(TEST_OBJS) $(MARK_OBJ) $(UTIL_OJB)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
 	rm -rf $(LIBS)

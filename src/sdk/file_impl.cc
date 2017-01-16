@@ -34,7 +34,7 @@ WriteBuffer::~WriteBuffer() {
     delete[] buf_;
     buf_ = NULL;
 }
-int WriteBuffer::Available() {
+int WriteBuffer::Available() const {
     return buf_size_ - data_size_;
 }
 int WriteBuffer::Append(const char* buf, int len) {
@@ -43,7 +43,7 @@ int WriteBuffer::Append(const char* buf, int len) {
     data_size_ += len;
     return data_size_;
 }
-const char* WriteBuffer::Data() {
+const char* WriteBuffer::Data() const {
     return buf_;
 }
 int WriteBuffer::Size() const {
@@ -273,8 +273,8 @@ int32_t FileImpl::Pread(char* buf, int32_t read_len, int64_t offset, bool reada)
 int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
     //printf("Seek[%s:%d:%ld]\n", _name.c_str(), whence, offset);
     if (open_flags_ != O_RDONLY) {
-        if (offset == 0 && whence == SEEK_CUR) {
-            return common::atomic_add64(&write_offset_, 0);
+        if (offset == 0 && (whence == SEEK_CUR || whence == SEEK_END)) {
+            return write_offset_;
         }
         return BAD_PARAMETER;
     }
@@ -283,6 +283,13 @@ int64_t FileImpl::Seek(int64_t offset, int32_t whence) {
         read_offset_ = offset;
     } else if (whence == SEEK_CUR) {
         read_offset_ += offset;
+    } else if (whence == SEEK_END) {
+        int64_t file_size = 0;
+        int32_t ret = fs_->GetFileSize(name_.c_str(), &file_size);
+        if (ret != OK) {
+            return ret;
+        }
+        read_offset_ = file_size + offset;
     } else {
         return BAD_PARAMETER;
     }
@@ -474,6 +481,19 @@ int32_t FileImpl::FinishedNum() {
     return count;
 }
 
+std::string FileImpl::GetSlowChunkserver() {
+    mu_.AssertHeld();
+    auto it = write_windows_.begin();
+    for (; it != write_windows_.end(); ++it) {
+        common::SlidingWindow<int>* sld = it->second;
+        if (sld->GetBaseOffset() != last_seq_ + 1) {
+            break;
+        }
+    }
+    assert(it != write_windows_.end());
+    return it->first;
+}
+
 bool FileImpl::ShouldSetError() {
     mu_.AssertHeld();
     std::map<std::string, bool>::iterator it = cs_errors_.begin();
@@ -532,6 +552,7 @@ void FileImpl::BackgroundWriteInternal() {
             request->set_offset(offset);
             request->set_is_last(buffer->IsLast());
             request->set_packet_seq(buffer->Sequence());
+            request->set_sync_on_close(w_options_.sync_on_close);
             //request->add_desc("start");
             //request->add_timestamp(common::timer::get_micros());
             if (IsChainsWrite()) {
@@ -773,6 +794,9 @@ int32_t FileImpl::Sync() {
 int32_t FileImpl::Close() {
     common::timer::AutoTimer at(500, "Close", name_.c_str());
     MutexLock lock(&mu_, "Close", 1000);
+    if (closed_) {
+        return OK;
+    }
     bool need_report_finish = false;
     int64_t block_id = -1;
     int32_t finished_num = 0;
@@ -797,7 +821,9 @@ int32_t FileImpl::Close() {
             }
             // TODO flag for wait_time?
             if (!chains_write && finished_num == replica_num - 1 && wait_time >= 3) {
-                LOG(WARNING, "Skip slow chunkserver");
+                std::string slow_cs = GetSlowChunkserver();
+                LOG(WARNING, "Skip slow chunkserver %s for file %s",
+                        slow_cs.c_str(), name_.c_str());
                 bg_error_ = true;
                 break;
             }

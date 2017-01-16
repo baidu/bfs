@@ -693,6 +693,13 @@ void NameServerImpl::ListDirectory(::google::protobuf::RpcController* controller
     common::timer::AutoTimer at(100, "ListDirectory", path.c_str());
 
     StatusCode status = namespace_->ListDirectory(path, response->mutable_files());
+    for (int i = 0; i < response->files_size(); i++) {
+        FileInfo* file = response->mutable_files(i);
+        if ((file->type() & (1 << 9)) == 0) {
+            //maybe it's an incomplete file
+            SetActualFileSize(file);
+        }
+    }
     response->set_status(status);
     done->Run();
 }
@@ -715,17 +722,8 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
         FileInfo* out_info = response->mutable_file_info();
         out_info->CopyFrom(info);
         //maybe haven't been written info meta
-        if (!out_info->size()) {
-            int64_t file_size = 0;
-            for (int i = 0; i < out_info->blocks_size(); i++) {
-                int64_t block_id = out_info->blocks(i);
-                NSBlock nsblock;
-                if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
-                    continue;
-                }
-                file_size += nsblock.block_size;
-            }
-            out_info->set_size(file_size);
+        if ((out_info->type() & (1 << 9)) == 0) {
+            SetActualFileSize(out_info);
         }
         response->set_status(kOK);
         LOG(INFO, "Stat: %s return: %ld", path.c_str(), out_info->size());
@@ -765,6 +763,36 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     }
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done, removed, std::placeholders::_1));
+}
+
+void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
+                            const SymlinkRequest* request,
+                            SymlinkResponse* response,
+                            ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    response->set_sequence_id(request->sequence_id());
+    std::string src = NameSpace::NormalizePath(request->src());
+    std::string dst = NameSpace::NormalizePath(request->dst());
+
+    NameServerLog log;
+    StatusCode status = namespace_->Symlink(src, dst, &log);
+    sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    LOG(INFO, "SDK %s, dst:%s -> src:%s create symlink %s returns %s",
+            ctl->RemoteAddress().c_str(), dst.c_str(), src.c_str(), StatusCode_Name(status).c_str());
+    response->set_status(status);
+
+    if (status != kOK) {
+        done->Run();
+        return;
+    }
+
+    LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                               controller, request, response, done,
+                               (std::vector<FileInfo>*)NULL, std::placeholders::_1));
 }
 
 void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
@@ -852,6 +880,37 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     }
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done, removed, std::placeholders::_1));
+}
+
+void NameServerImpl::Chmod(::google::protobuf::RpcController* controller,
+                           const ChmodRequest* request,
+                           ChmodResponse* response,
+                           ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    response->set_sequence_id(request->sequence_id());
+    std::string path = NameSpace::NormalizePath(request->path());
+    int32_t mode = request->mode();
+    StatusCode ret_status = kOK;
+    FileInfo file_info;
+    if (namespace_->GetFileInfo(path, &file_info)) {
+        file_info.set_type(mode);
+        NameServerLog log;
+        bool ret = namespace_->UpdateFileInfo(file_info, &log);
+        assert(ret);
+        response->set_status(kOK);
+        LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                                   controller, request, response, done,
+                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+    } else {
+        LOG(INFO, "Chmod file not found: %s\n", path.c_str());
+        ret_status = kNsNotFound;
+        response->set_status(ret_status);
+        done->Run();
+    }
 }
 
 void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* controller,
@@ -1022,6 +1081,25 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     } else if (path == "/dfs/details") {
         ListRecover(&response);
         return true;
+    } else if (path == "/dfs/config") {
+        Params params = chunkserver_manager_->GetParam();
+        std::string str =
+            "<html><head><title>BFS console</title>"
+            "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />"
+            "<link rel=\"stylesheet\" type=\"text/css\" "
+                "href=\"http://www.w3school.com.cn/c5.css\"/>"
+            "<style> body { background: #f9f9f9;}</style>"
+            "</head>";
+        str += "<body> <h1>Nameserver Configuration</h1>";
+        str += "<table class=dataintable>";
+        str += "<tr><td>report_interval</td><td>" + common::NumToString(params.report_interval()) + "</td></tr>";
+        str += "<tr><td>report_size</td><td>" + common::NumToString(params.report_size()) + "</td></tr>";
+        str += "<tr><td>recover_size</td><td>" + common::NumToString(params.recover_size()) + "</td></tr>";
+        str += "<tr><td>keepalive_timeout</td><td>" + common::NumToString(params.keepalive_timeout()) + "</td></tr>";
+        str += "<tr><td>clean_redundancy</td><td>" + common::NumToString(FLAGS_clean_redundancy) + "</td></tr></table>";
+        str += "</body></html>";
+        response.content->Append(str);
+        return true;
     } else if (path == "/dfs/hi_only") {
         recover_timeout_ = 0;
         LOG(INFO, "ChangeRecoverMode hi_only");
@@ -1139,6 +1217,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             "<script src=\"http://libs.baidu.com/jquery/1.8.3/jquery.min.js\"></script>\n"
             "<link href=\"http://apps.bdimg.com/libs/bootstrap/3.2.0/css/bootstrap.min.css\" "
                 "rel=\"stylesheet\">\n"
+            "<link rel=\"shortcut icon\" href=\"\" type=\"image/x-icon\" />"
             "</head>\n";
     str += "<body><div class=\"col-sm-12  col-md-12\">";
 
@@ -1199,7 +1278,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                     "style=\"width: "+ ratio_str + "%; color:#000;" + bg_color + "\">" + ratio_str + "%"
                "</div></div>";
         table_str += "</td><td>";
-        table_str += common::NumToString(chunkserver.pending_writes()) + "/" +
+        table_str += common::NumToString(chunkserver.pending_buf()) + "/" +
                      common::NumToString(chunkserver.buffers());
         table_str += "</td><td>";
         table_str += chunkserver.tag();
@@ -1243,82 +1322,95 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<h1 style=\"margin-top: 10px; margin-bottom: 0px;\">分布式文件系统控制台 - NameServer</h1>";
 
     str += "<div class=\"row\">";
-    str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "<h4 align=left>Nameserver status</h4>";
 
-    str += "<div class=\"col-sm-4 col-md-4\">";
-    str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
-    str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
-    str += "Pending: (r/w/rp/h)<br>"
-        + common::NumToString(read_thread_pool_->PendingNum()) + " "
-        + common::NumToString(work_thread_pool_->PendingNum()) + " "
-        + common::NumToString(report_thread_pool_->PendingNum()) + " "
-        + common::NumToString(heartbeat_thread_pool_->PendingNum()) + "</br>";
-    std::string ha_status = sync_ ? sync_->GetStatus() : "none";
-    str += "HA status: " + ha_status + "</br>";
-    str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc status</a>";
-    str += "</div>"; // <div class="col-sm-6 col-md-6">
+    {
+        str += "<div class=\"col-sm-6 col-md-6\">";
+        str += "<h4 align=left>Nameserver status</h4>";
 
-    str += "<div class=\"col-sm-4 col-md-4\">";
-    str += "Status: ";
-    if (readonly_) {
-        str += "<font color=\"red\">Read Only</font></br> <a href=\"/dfs/leave_read_only\">LeaveReadOnly</a>";
-    } else {
-        str += "Normal</br> <a href=\"/dfs/entry_read_only\">EnterReadOnly</a>";
+        {
+            str += "<div class=\"col-sm-4 col-md-4\">";
+            str += "Total: " + common::HumanReadableString(total_quota) + "B</br>";
+            str += "Used: " + common::HumanReadableString(total_data) + "B</br>";
+            str += "Pending: (r/w/rp/h)<br>"
+                + common::NumToString(read_thread_pool_->PendingNum()) + " "
+                + common::NumToString(work_thread_pool_->PendingNum()) + " "
+                + common::NumToString(report_thread_pool_->PendingNum()) + " "
+                + common::NumToString(heartbeat_thread_pool_->PendingNum()) + "</br>";
+            std::string ha_status = sync_ ? sync_->GetStatus() : "none";
+            str += "HA status: " + ha_status + "</br>";
+            str += "<a href=\"/service?name=baidu.bfs.NameServer\">Rpc</a><a href=\"/dfs/config\"> Config</a>";
+            str += "</div>"; // <div class="col-sm-4 col-md-4">
+        }
+
+        {
+            str += "<div class=\"col-sm-4 col-md-4\">";
+            str += "Status: ";
+            if (readonly_) {
+                str += "<font color=\"red\">Read Only</font></br> <a href=\"/dfs/leave_read_only\">LeaveReadOnly</a>";
+            } else {
+                str += "Normal</br> <a href=\"/dfs/entry_read_only\">EnterReadOnly</a>";
+            }
+            str += "</br>";
+            if (recover_timeout_ > 1) {
+                str += "Recover: " + common::NumToString(recover_timeout_) + "<a href=\"/dfs/stop_recover\"> Stop</a></br>";
+            }
+            str += "RecoverMode: ";
+            if (recover_mode_ == kRecoverAll) {
+                str += "RecoverAll</br>";
+                str += "<a href=\"/dfs/stop_recover\">StopRecover </a>";
+                str += "<a href=\"/dfs/hi_only\">HighOnly</a>";
+            } else if (recover_mode_ == kHiOnly) {
+                str += "HighOnly</br>";
+                str += "<a href=\"/dfs/recover_all\">RecoverAll </a>";
+                str += "<a href=\"/dfs/stop_recover\">StopRecover</a>";
+            } else {
+                str += "<font color=\"red\">NoRecover</font></br>";
+                str += " <a href=\"/dfs/hi_only\">HighOnly </a>";
+                str += "<a href=\"/dfs/recover_all\">RecoverAll</a>";
+            }
+
+            str += "</div>"; // <div class="col-sm-4 col-md-4">
+        }
+
+        {
+            str += "<div class=\"col-sm-4 col-md-4\">";
+            str += "Blocks: " + common::NumToString(g_blocks_num.Get()) + "</br>";
+            str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" +
+                    common::NumToString(recover_num.lo_recover_num) + "</br>";
+            str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" +
+                    common::NumToString(recover_num.lo_pending) + "</br>";
+            str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
+            str += "Incomplete: " + common::NumToString(recover_num.incomplete_num) + "</br>";
+            str += "<a href=\"/dfs/details\">Details</a>";
+            str += "</div>"; // <div class="col-sm-4 col-md-4">
+        }
+        str += "</div>"; // <div class="col-sm-6 col-md-6">
     }
-    str += "</br>";
-    if (recover_timeout_ > 1) {
-        str += "Recover: " + common::NumToString(recover_timeout_) + "<a href=\"/dfs/stop_recover\"> Stop</a></br>";
-    }
-    str += "RecoverMode: ";
-    if (recover_mode_ == kRecoverAll) {
-        str += "RecoverAll</br>";
-        str += "<a href=\"/dfs/stop_recover\">StopRecover </a>";
-        str += "<a href=\"/dfs/hi_only\">HighOnly</a>";
-    } else if (recover_mode_ == kHiOnly) {
-        str += "HighOnly</br>";
-        str += "<a href=\"/dfs/recover_all\">RecoverAll </a>";
-        str += "<a href=\"/dfs/stop_recover\">StopRecover</a>";
-    } else {
-        str += "<font color=\"red\">NoRecover</font></br>";
-        str += " <a href=\"/dfs/hi_only\">HighOnly </a>";
-        str += "<a href=\"/dfs/recover_all\">RecoverAll</a>";
-    }
-
-    str += "</div>"; // <div class="col-sm-6 col-md-6">
-
-    str += "<div class=\"col-sm-4 col-md-4\">";
-    str += "Blocks: " + common::NumToString(g_blocks_num.Get()) + "</br>";
-    str += "Recover(hi/lo): " + common::NumToString(recover_num.hi_recover_num) + "/" +
-            common::NumToString(recover_num.lo_recover_num) + "</br>";
-    str += "Pending: " + common::NumToString(recover_num.hi_pending) + "/" +
-            common::NumToString(recover_num.lo_pending) + "</br>";
-    str += "Lost: " + common::NumToString(recover_num.lost_num) + "</br>";
-    str += "Incomplete: " + common::NumToString(recover_num.incomplete_num) + "</br>";
-    str += "<a href=\"/dfs/details\">Details</a>";
-    str += "</div>"; // <div class="col-sm-6 col-md-6">
-    str += "</div>"; // <div class="col-sm-6 col-md-6">
 
     str += "<div class=\"col-sm-6 col-md-6\">";
     str += "<h4 align=left>ChunkServer status</h4>";
-    str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
-    str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
-    str += "Dead: " + common::NumToString(dead_num)+"</br>";
-    str += "Overload: " + common::NumToString(overladen_num)+"</br>";
-    str += "<a href=\"/dfs/alive\">Alive</a>";
-    str += "<a href=\"/dfs/dead\"> Dead</a>";
-    str += "<a href=\"/dfs/overload\"> Overload</a>";
-    str += "<a href=\"/dfs/\"> All</a>";
-    str += "</div>"; // <div class="col-sm-6 col-md-6">
+    {
+        str += "<div class=\"col-sm-6 col-md-6\">";
+        str += "Total: " + common::NumToString(chunkservers->size())+"</br>";
+        str += "Alive: " + common::NumToString(chunkservers->size() - dead_num)+"</br>";
+        str += "Dead: " + common::NumToString(dead_num)+"</br>";
+        str += "Overload: " + common::NumToString(overladen_num)+"</br>";
+        str += "<a href=\"/dfs/alive\">Alive</a>";
+        str += "<a href=\"/dfs/dead\"> Dead</a>";
+        str += "<a href=\"/dfs/overload\"> Overload</a>";
+        str += "<a href=\"/dfs/\"> All</a>";
+        str += "</div>"; // <div class="col-sm-6 col-md-6">
+    }
 
-    str += "<div class=\"col-sm-6 col-md-6\">";
-    str += "w_qps: " + common::NumToString(w_qps)+"</br>";
-    str += "w_speed: " + common::HumanReadableString(w_speed)+"</br>";
-    str += "r_qps: " + common::NumToString(r_qps)+"</br>";
-    str += "r_speed: " + common::HumanReadableString(r_speed)+"</br>";
-    str += "recover_speed: " + common::HumanReadableString(recover_speed)+"</p>";
-    str += "</div>"; // <div class="col-sm-6 col-md-6">
+    {
+        str += "<div class=\"col-sm-6 col-md-6\">";
+        str += "w_qps: " + common::NumToString(w_qps)+"</br>";
+        str += "w_speed: " + common::HumanReadableString(w_speed)+"</br>";
+        str += "r_qps: " + common::NumToString(r_qps)+"</br>";
+        str += "r_speed: " + common::HumanReadableString(r_speed)+"</br>";
+        str += "recover_speed: " + common::HumanReadableString(recover_speed)+"</p>";
+        str += "</div>"; // <div class="col-sm-6 col-md-6">
+    }
     str += "</div>"; // <div class="col-sm-6 col-md-6">
     str += "</div>"; // <div class="row">
 
@@ -1387,7 +1479,10 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("BlockReport", report_thread_pool_),
         std::make_pair("BlockReceived", work_thread_pool_),
         std::make_pair("PushBlockReport", work_thread_pool_),
-        std::make_pair("SysStat", read_thread_pool_)
+        std::make_pair("SysStat", read_thread_pool_),
+        std::make_pair("Chmod", work_thread_pool_),
+        std::make_pair("Symlink", work_thread_pool_)
+
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /
                             sizeof(std::pair<std::string, ThreadPool*>);
@@ -1405,6 +1500,22 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
     } else {
         NameServer::CallMethod(method, controller, request, response, done);
     }
+}
+
+void NameServerImpl::SetActualFileSize(FileInfo* file) {
+    if (file->size() != 0) {
+        return;
+    }
+    int64_t file_size = 0;
+    for (int i = 0; i < file->blocks_size(); i++) {
+        int64_t block_id = file->blocks(i);
+        NSBlock nsblock;
+        if (!block_mapping_manager_->GetBlock(block_id, &nsblock)) {
+            continue;
+        }
+        file_size += nsblock.block_size;
+    }
+    file->set_size(file_size);
 }
 
 } // namespace bfs

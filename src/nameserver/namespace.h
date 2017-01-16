@@ -17,6 +17,8 @@
 #include "proto/nameserver.pb.h"
 #include "proto/status_code.pb.h"
 
+
+
 namespace baidu {
 namespace bfs {
 
@@ -36,14 +38,19 @@ public:
     StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
     /// Remove director.
     StatusCode DeleteDirectory(const std::string& path, bool recursive,
-                        std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
+                               std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
     StatusCode DiskUsage(const std::string& path, uint64_t* du_size);
     /// File rename
     StatusCode Rename(const std::string& old_path,
-               const std::string& new_path,
-               bool* need_unlink,
-               FileInfo* remove_file,
-               NameServerLog* log = NULL);
+                      const std::string& new_path,
+                      bool* need_unlink,
+                      FileInfo* remove_file,
+                      NameServerLog* log = NULL);
+    /// Symlink: dst -> src
+    StatusCode Symlink(const std::string& src,
+                       const std::string& dst,
+                       NameServerLog* log = NULL);
+
     /// Get file
     bool GetFileInfo(const std::string& path, FileInfo* file_info);
     /// Update file
@@ -60,7 +67,15 @@ public:
     void TailLog(const std::string& log);
     int64_t GetNewBlockId();
 private:
-    static bool IsDir(int type);
+    enum FileType {
+        kDefault = 0,
+        kDir = 1,
+        kSymlink = 2,
+    };
+    FileType GetFileType(int type);
+    bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
+    StatusCode BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
+                                NameServerLog* log = NULL);
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,
                           std::string* key_str);

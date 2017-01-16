@@ -15,7 +15,7 @@
 3. 启动BFS  
    `./start_bfs.sh`  
    start_bfs.sh会启动前面异步部署的模拟集群环境  
-   可以通过 `./bfs_client stat` 查看集群后启动情况，也可以通过`http://localhost:8828` 查看web页面信息  
+   可以通过 `./bfs_client stat` 查看集群后chunkserver启动情况，也可以通过`http://localhost:8827` 查看web页面信息  
    看到4个活的chunkserver, 说明集群启动成功.  
 4. 使用bfs_client体验BFS  
    可以使用bfs_client与集群交互，直接输入`./bfs_client`可以看到提示，  
@@ -36,7 +36,7 @@
    
 ## 从入门到精通
 ### 为什么使用BFS
-传统的分布式文件系统(如HDFS)Namenode是一个单点，容量和吞吐量都不以扩展，同时使用外部的日志同步工具（如QJM、ZooKeeper）failover时间是分钟级的。  
+传统的分布式文件系统(如HDFS)Namenode是一个单点，容量和吞吐量都不可以扩展，同时使用外部的日志同步工具（如QJM、ZooKeeper）failover时间是分钟级的。  
 BFS主要从扩展性和持续可用两个方面做了改进，采用分布式的NameServer，多NameServer之间使用内置的Raft协议做日志同步，保证failover时，新主一定有最新的状态不需要额外日志同步，解决了扩展性和可用性问题。  
 ### BFS部署
 #### 依赖

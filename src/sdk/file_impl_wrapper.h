@@ -24,7 +24,7 @@ public:
     FileImplWrapper(FSImpl* fs, RpcClient* rpc_client,
             const std::string& name, int32_t flags, const ReadOptions& options);
     FileImplWrapper(FileImpl* file_impl);
-    virtual ~FileImplWrapper() {}
+    virtual ~FileImplWrapper();
     virtual int32_t Pread(char* buf, int32_t read_size, int64_t offset, bool reada = false);
     virtual int64_t Seek(int64_t offset, int32_t whence);
     virtual int32_t Read(char* buf, int32_t read_size);

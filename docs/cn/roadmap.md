@@ -5,13 +5,13 @@
 - [x] 自动副本恢复
 - [x] Nameserver高可用
 - [ ] 拆分MetaServer
-- [ ] 磁盘间负载均衡
+- [x] 磁盘间负载均衡
 - [ ] chunkserver间动态负载均衡
 - [ ] 文件锁和目录锁
 - [x] 简单的跨地域副本放置
 - [ ] SDK lease
 - [ ] 读时慢节点规避
-- [ ] 扇出写
+- [x] 扇出写
 
 ## Posix接口
 - [x] Mount支持

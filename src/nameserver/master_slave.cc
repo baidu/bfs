@@ -20,7 +20,9 @@ DECLARE_string(master_slave_role);
 namespace baidu {
 namespace bfs {
 
-MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
+const std::string kLogPrefix = "\033[32m[Sync]\033[0m";
+
+MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_only_(false),
                                      cond_(&mu_), log_done_(&mu_), current_idx_(-1),
                                      applied_idx_(-1), sync_idx_(-1) {
     std::vector<std::string> nodes;
@@ -32,44 +34,53 @@ MasterSlaveImpl::MasterSlaveImpl() : exiting_(false), master_only_(false),
     } else if (FLAGS_node_index == 1) {
         another_server = nodes[0];
     } else {
-        LOG(FATAL, "\033[32m[Sync]\033[0m Nameserver does not belong to this cluster");
+        LOG(FATAL, "%s Nameserver does not belong to this cluster", kLogPrefix.c_str());
     }
-    master_addr_ = FLAGS_master_slave_role == "master" ? this_server: another_server;
-    slave_addr_ = FLAGS_master_slave_role == "slave" ? this_server: another_server;
-    is_leader_ = FLAGS_master_slave_role == "master";
-    if (IsLeader()) {
-        LOG(INFO, "\033[32m[Sync]\033[0m I am Leader");
+    if (FLAGS_master_slave_role == "master") {
+        master_addr_ = this_server;
+        slave_addr_ = another_server;
+        is_leader_ = true;
+    } else if (FLAGS_master_slave_role == "slave") {
+        master_addr_ = another_server;
+        slave_addr_ = this_server;
+        is_leader_ = false;
     } else {
-        LOG(INFO, "\033[32m[Sync]\033[0m I am Slave");
+        LOG(FATAL, "%s Wrong role: %s", kLogPrefix.c_str(),
+            FLAGS_master_slave_role.c_str());
+    }
+    if (IsLeader()) {
+        LOG(INFO, "%s I am Leader", kLogPrefix.c_str());
+    } else {
+        LOG(INFO, "%s I am Slave", kLogPrefix.c_str());
     }
     thread_pool_ = new common::ThreadPool(10);
     DBOption option;
     LogDB::Open("./logdb", option, &logdb_);
     if (logdb_ == NULL) {
-        LOG(FATAL, "init logdb failed");
+        LOG(FATAL, "%s init logdb failed", kLogPrefix.c_str());
     }
 }
 
 void MasterSlaveImpl::Init(std::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
     if (logdb_->GetLargestIdx(&current_idx_) == kReadError) {
-        LOG(FATAL, "\033[32m[Sync]\033[0m  Read current_idx_ failed");
+        LOG(FATAL, "%s  Read current_idx_ failed", kLogPrefix.c_str());
     }
     if (logdb_->ReadMarker("applied_idx", &applied_idx_) == kReadError) {
-        LOG(FATAL, "\033[32m[Sync]\033[0m  ReadMarker applied_idx_ failed");
+        LOG(FATAL, "%s  ReadMarker applied_idx_ failed", kLogPrefix.c_str());
     }
     if (logdb_->ReadMarker("sync_idx", &sync_idx_) == kReadError) {
-        LOG(FATAL, "\033[32m[Sync]\033[0m  ReadMarker sync_idx_ failed");
+        LOG(FATAL, "%s  ReadMarker sync_idx_ failed", kLogPrefix.c_str());
     }
-    LOG(INFO, "\033[32m[Sync]\033[0m set current_idx_ = %ld, applied_idx_ = %ld, sync_idx_ = %ld ",
-            current_idx_, applied_idx_, sync_idx_);
+    LOG(INFO, "%s set current_idx_ = %ld, applied_idx_ = %ld, sync_idx_ = %ld ",
+        kLogPrefix.c_str(), current_idx_, applied_idx_, sync_idx_);
     assert(applied_idx_ <= current_idx_ && sync_idx_ <= current_idx_);
     while (applied_idx_ < current_idx_) {
         std::string entry;
         StatusCode ret = logdb_->Read(applied_idx_ + 1, &entry);
         if (ret != kOK) {
-            LOG(FATAL, "\033[32m[Sync]\033[0m read logdb failed index %ld %s",
-                    applied_idx_ + 1, StatusCode_Name(ret).c_str());
+            LOG(FATAL, "%s read logdb failed index %ld %s", kLogPrefix.c_str(),
+                applied_idx_ + 1, StatusCode_Name(ret).c_str());
         }
         if (!entry.empty()) {
             log_callback_(entry);
@@ -96,14 +107,15 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
     }
     mu_.Lock();
     if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
-        LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld", current_idx_ + 1);
+        LOG(FATAL, "%s write logdb failed index %ld",
+            kLogPrefix.c_str(), current_idx_ + 1);
     }
     current_idx_++;
     cond_.Signal();
     mu_.Unlock();
     // slave is way behind, do no wait
     if (master_only_ && sync_idx_ < current_idx_ - 1) {
-        LOG(WARNING, "\033[32m[Sync]\033[0m Sync in maset-only mode, do not wait");
+        LOG(WARNING, "%s Sync in master-only mode, do not wait", kLogPrefix.c_str());
         applied_idx_ = current_idx_;
         return true;
     }
@@ -118,18 +130,18 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
                 continue;
             }
             if (master_only_) {
-                LOG(INFO, "\033[32m[Sync]\033[0m leaves master-only mode");
+                LOG(INFO, "%s leaves master-only mode", kLogPrefix.c_str());
                 master_only_ = false;
             }
-            LOG(INFO, "\033[32m[Sync]\033[0m sync log takes %ld ms",
-                    (common::timer::get_micros() - start_point) / 1000);
+            LOG(INFO, "%s sync log takes %ld ms", kLogPrefix.c_str(),
+                (common::timer::get_micros() - start_point) / 1000);
             return true;
         } else {
             break;
         }
     }
     // log replicate time out
-    LOG(WARNING, "\033[32m[Sync]\033[0m Sync log timeout, Sync is in master-only mode");
+    LOG(WARNING, "%s Sync log timeout, Sync is in master-only mode", kLogPrefix.c_str());
     master_only_ = true;
     return true;
 }
@@ -139,19 +151,25 @@ void MasterSlaveImpl::Log(const std::string& entry, std::function<void (bool)> c
         return;
     }
     MutexLock lock(&mu_);
-    if (logdb_->Write(current_idx_ + 1, entry) != kOK) {
-        LOG(FATAL, "\033[32m[Sync]\033[0m write logdb failed index %ld ", current_idx_ + 1);
+    StatusCode s = logdb_->Write(current_idx_ + 1, entry);
+    if (s != kOK) {
+        if (s != kWriteError) {
+            LOG(INFO, "%s write logdb failed index %ld reason %s",
+                kLogPrefix.c_str(), current_idx_, StatusCode_Name(s).c_str());
+        } else {
+            LOG(FATAL, "%s write logdb failed index %ld ",
+                kLogPrefix.c_str(), current_idx_ + 1);
+        }
     }
     current_idx_++;
+    callbacks_.insert(std::make_pair(current_idx_, callback));
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
-        callbacks_.insert(std::make_pair(current_idx_, callback));
         thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,this,
-                                            current_idx_, true));
+                                        current_idx_, true));
     } else {
-        callbacks_.insert(std::make_pair(current_idx_, callback));
-        LOG(DEBUG, "\033[32m[Sync]\033[0m insert callback index = %d", current_idx_);
+        LOG(DEBUG, "%s insert callback index = %d", kLogPrefix.c_str(), current_idx_);
         thread_pool_->DelayTask(10000, std::bind(&MasterSlaveImpl::PorcessCallbck,
-                                                   this, current_idx_, true));
+                                                 this, current_idx_, true));
         cond_.Signal();
     }
     return;
@@ -169,7 +187,7 @@ void MasterSlaveImpl::SwitchToLeader() {
     worker_.Start(std::bind(&MasterSlaveImpl::BackgroundLog, this));
     is_leader_ = true;
     master_only_ = true;
-    LOG(INFO, "\033[32m[Sync]\033[0m node switch to leader");
+    LOG(INFO, "%s node switch to leader", kLogPrefix.c_str());
 }
 
 ///    Slave    ///
@@ -184,15 +202,15 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     }
     // expect index to be current_idx_ + 1
     if (request->index() > current_idx_ + 1) {
-        LOG(INFO, "\033[32m[Sync]\033[0m out-date log request %ld, current_idx_ %ld",
-            request->index(), current_idx_);
+        LOG(INFO, "%s out-date log request %ld, current_idx_ %ld",
+            kLogPrefix.c_str(), request->index(), current_idx_);
         response->set_index(current_idx_ + 1);
         response->set_success(false);
         done->Run();
         return;
     } else if (request->index() <= current_idx_) {
-        LOG(INFO, "\033[32m[Sync]\033[0m out-date log request %ld, current_idx_ %ld",
-            request->index(), current_idx_);
+        LOG(INFO, "%s out-date log request %ld, current_idx_ %ld",
+            kLogPrefix.c_str(), request->index(), current_idx_);
         response->set_index(current_idx_ + 1);
         response->set_success(false);
         done->Run();
@@ -200,7 +218,8 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     }
     mu_.Lock();
     if (logdb_->Write(current_idx_ + 1, request->log_data()) != kOK) {
-        LOG(FATAL, "\033[32m[Sync]\033[0m Write logdb_ failed current_idx_ = %ld ", current_idx_ + 1);
+        LOG(FATAL, "%s Write logdb_ failed current_idx_ = %ld ",
+            kLogPrefix.c_str(), current_idx_ + 1);
     }
     current_idx_++;
     mu_.Unlock();
@@ -214,13 +233,13 @@ void MasterSlaveImpl::BackgroundLog() {
     while (true) {
         MutexLock lock(&mu_);
         while (!exiting_ && sync_idx_ == current_idx_) {
-            LOG(DEBUG, "\033[32m[Sync]\033[0m BackgroundLog waiting...");
+            LOG(DEBUG, "%s BackgroundLog waiting...", kLogPrefix.c_str());
             cond_.Wait();
         }
         if (exiting_) {
             return;
         }
-        LOG(DEBUG, "\033[32m[Sync]\033[0m BackgroundLog logging...");
+        LOG(DEBUG, "%s BackgroundLog logging...", kLogPrefix.c_str());
         mu_.Unlock();
         ReplicateLog();
         mu_.Lock();
@@ -234,34 +253,37 @@ void MasterSlaveImpl::ReplicateLog() {
             mu_.Unlock();
             break;
         }
-        LOG(DEBUG, "\033[32m[Sync]\033[0m ReplicateLog sync_idx_ = %d, current_idx_ = %d",
-                sync_idx_, current_idx_);
+        LOG(DEBUG, "%s ReplicateLog sync_idx_ = %d, current_idx_ = %d",
+            kLogPrefix.c_str(), sync_idx_, current_idx_);
         mu_.Unlock();
         std::string entry;
         if (logdb_->Read(sync_idx_ + 1, &entry) != kOK) {
-            LOG(FATAL, "\033[32m[Sync]\033[0m Read logdb_ failed sync_idx_ = %ld ", sync_idx_ + 1);
+            LOG(FATAL, "%s Read logdb_ failed sync_idx_ = %ld ",
+                kLogPrefix.c_str(), sync_idx_ + 1);
         }
         master_slave::AppendLogRequest request;
         master_slave::AppendLogResponse response;
         request.set_log_data(entry);
         request.set_index(sync_idx_ + 1);
-        while (!rpc_client_->SendRequest(slave_stub_, &master_slave::MasterSlave_Stub::AppendLog,
-                &request, &response, 15, 1)) {
-            LOG(WARNING, "\033[32m[Sync]\033[0m Replicate log failed index = %d, current_idx_ = %d",
-                sync_idx_ + 1, current_idx_);
+        while (!rpc_client_->SendRequest(slave_stub_,
+                                         &master_slave::MasterSlave_Stub::AppendLog,
+                                         &request, &response, 15, 1)) {
+            LOG(WARNING, "%s Replicate log failed index = %d, current_idx_ = %d",
+                kLogPrefix.c_str(), sync_idx_ + 1, current_idx_);
             sleep(5);
         }
         if (!response.success()) { // log mismatch
             MutexLock lock(&mu_);
             sync_idx_ = response.index() - 1;
-            LOG(INFO, "[Sync] set sync_idx_ to %d", sync_idx_);
+            LOG(INFO, "[Sync] set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
             continue;
         }
-        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck, this, sync_idx_ + 1, false));
+        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,
+                                        this, sync_idx_ + 1, false));
         mu_.Lock();
         sync_idx_++;
-        LOG(DEBUG, "\033[32m[Sync]\033[0m Replicate log done. sync_idx_ = %d, current_idx_ = %d",
-                sync_idx_ , current_idx_);
+        LOG(DEBUG, "%s Replicate log done. sync_idx_ = %d, current_idx_ = %d",
+            kLogPrefix.c_str(), sync_idx_ , current_idx_);
         mu_.Unlock();
     }
     applied_idx_ = current_idx_;
@@ -274,7 +296,7 @@ void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
     std::map<int64_t, std::function<void (bool)> >::iterator it = callbacks_.find(index);
     if (it != callbacks_.end()) {
         callback = it->second;
-        LOG(DEBUG, "\033[32m[Sync]\033[0m calling callback %d", it->first);
+        LOG(DEBUG, "%s calling callback %d", kLogPrefix.c_str(), it->first);
         callbacks_.erase(it);
         mu_.Unlock();
         callback(true);
@@ -284,27 +306,27 @@ void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
         }
         if (timeout_check) {
             if (!master_only_) {
-                LOG(WARNING, "\033[32m[Sync]\033[0m ReplicateLog sync_idx_ = %d timeout, enter master-only mode",
-                    index);
+                LOG(WARNING, "%s ReplicateLog sync_idx_ = %d timeout, enter master-only mode",
+                    kLogPrefix.c_str(), index);
             }
             master_only_ = true;
             return;
         }
     }
     if (master_only_ && index == current_idx_) {
-        LOG(INFO, "\033[32m[Sync]\033[0m leaves master-only mode");
+        LOG(INFO, "%s leaves master-only mode", kLogPrefix.c_str());
         master_only_ = false;
     }
 }
 
 void MasterSlaveImpl::LogStatus() {
-    LOG(INFO, "\033[32m[Sync]\033[0m sync_idx_ = %d, current_idx_ = %d, applied_idx_ = %d, callbacks_ size = %d",
-        sync_idx_, current_idx_, applied_idx_, callbacks_.size());
+    LOG(INFO, "%s sync_idx_ = %d, current_idx_ = %d, applied_idx_ = %d, callbacks_ size = %d",
+        kLogPrefix.c_str(), sync_idx_, current_idx_, applied_idx_, callbacks_.size());
     StatusCode ret_a = logdb_->WriteMarker("applied_idx", applied_idx_);
     StatusCode ret_s = logdb_->WriteMarker("sync_idx", sync_idx_);
     if ((ret_a != kOK) || (ret_s != kOK)) {
-        LOG(WARNING, "\033[32m[Sync]\033[0m WriteMarker failed applied_idx_ = %ld sync_idx_ = %ld ",
-                applied_idx_, sync_idx_);
+        LOG(WARNING, "%s WriteMarker failed applied_idx_ = %ld sync_idx_ = %ld ",
+            kLogPrefix.c_str(), applied_idx_, sync_idx_);
     }
     thread_pool_->DelayTask(5000, std::bind(&MasterSlaveImpl::LogStatus, this));
 }

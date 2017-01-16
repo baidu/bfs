@@ -16,16 +16,16 @@
 namespace baidu {
 namespace bfs {
 
-#define OK 0
-#define BAD_PARAMETER -1
-#define PERMISSION_DENIED -2
-#define NOT_ENOUGH_QUOTA -3
-#define NETWORK_UNAVAILABLE -4
-#define TIMEOUT -5
-#define NOT_ENOUGH_SPACE -6
-#define OVERLOAD -7
-#define META_NOT_AVAILABLE -8
-#define UNKNOWN_ERROR -9
+const int OK = 0;
+const int BAD_PARAMETER = -1;
+const int PERMISSION_DENIED = -2;
+const int NOT_ENOUGH_QUOTA = -3;
+const int NETWORK_UNAVAILABLE = -4;
+const int TIMEOUT = -5;
+const int NOT_ENOUGH_SPACE = -6;
+const int OVERLOAD = -7;
+const int META_NOT_AVAILABLE = -8;
+const int UNKNOWN_ERROR = -9;
 
 const char* StrError(int error_code);
 
@@ -41,8 +41,10 @@ struct WriteOptions {
     int close_timeout;  // in ms, <= 0 means do not timeout, == 0 means do not wait
     int replica;
     WriteMode write_mode;
+    bool sync_on_close; // flush data to disk when closing the file
     WriteOptions() : flush_timeout(-1), sync_timeout(-1),
-                     close_timeout(-1), replica(-1), write_mode(kWriteDefault) { }
+                     close_timeout(-1), replica(-1), write_mode(kWriteDefault),
+                     sync_on_close(false) { }
 };
 
 struct ReadOptions {
@@ -113,7 +115,10 @@ public:
     virtual int32_t CloseFile(File* file) = 0;
     virtual int32_t DeleteFile(const char* path) = 0;
     virtual int32_t Rename(const char* oldpath, const char* newpath) = 0;
+    virtual int32_t Chmod(int32_t mode, const char* path) = 0;
     virtual int32_t ChangeReplicaNum(const char* file_name, int32_t replica_num) = 0;
+    /// Create symlink
+    virtual int32_t Symlink(const char* oldpath, const char* newpath) = 0;
 
     /// Show system status
     virtual int32_t SysStat(const std::string& stat_name, std::string* result) = 0;

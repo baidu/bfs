@@ -35,6 +35,7 @@ public:
     int32_t DiskUsage(const char* path, int64_t* du_size);
     int32_t Access(const char* path, int32_t mode);
     int32_t Stat(const char* path, BfsFileInfo* fileinfo);
+    int32_t Chmod(int32_t mode, const char* path);
     int32_t GetFileSize(const char* path, int64_t* file_size);
     int32_t GetFileLocation(const std::string& path,
                             std::map<int64_t, std::vector<std::string> >* locations);
@@ -48,6 +49,7 @@ public:
     int32_t DeleteFile(const char* path);
     int32_t Rename(const char* oldpath, const char* newpath);
     int32_t ChangeReplicaNum(const char* file_name, int32_t replica_num);
+    int32_t Symlink(const char* src, const char* dst);
     int32_t SysStat(const std::string& stat_name, std::string* result);
     int32_t ShutdownChunkServer(const std::vector<std::string>& cs_addr);
     int32_t ShutdownChunkServerStat();

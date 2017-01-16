@@ -33,11 +33,12 @@ struct Buffer {
 
 
 class FileCache;
+class Disk;
 
 /// Data block
 class Block {
 public:
-    Block(const BlockMeta& meta, ThreadPool* thread_pool, FileCache* file_cache);
+    Block(const BlockMeta& meta, Disk* disk, FileCache* file_cache);
     ~Block();
     static std::string BuildFilePath(int64_t block_id);
     /// Getter
@@ -46,7 +47,8 @@ public:
     std::string GetFilePath() const;
     BlockMeta GetMeta() const;
     int64_t DiskUsed() const;
-    bool SetDeleted();
+    bool CleanUp(int64_t namespace_version);
+    StatusCode SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion() const;
     int32_t GetLastSeq() const;
@@ -65,8 +67,10 @@ public:
     StatusCode Append(int32_t seq, const char*buf, int64_t len);
     void SetRecover();
     bool IsRecover() const;
+    int64_t GetExpectedSize() const;
+    void SetExpectedSize(int64_t expected_size);
     /// Flush block to disk.
-    bool Close();
+    bool Close(bool sync);
     void AddRef();
     void DecRef();
     int GetRef() const;
@@ -85,7 +89,7 @@ private:
         kNotCreated = -1,
         kClosed = -2
     };
-    ThreadPool* thread_pool_;
+    Disk*       disk_;
     BlockMeta   meta_;
     int32_t     last_seq_;
     int32_t     slice_num_;
@@ -102,6 +106,7 @@ private:
     CondVar     close_cv_;
     common::SlidingWindow<Buffer>* recv_window_;
     bool        is_recover_;
+    int64_t     expected_size_; // only used by recover
     bool        finished_;
     volatile int deleted_;
 
