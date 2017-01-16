@@ -315,8 +315,9 @@ void MasterSlaveImpl::EmptyLog() {
 }
 
 bool MasterSlaveImpl::SendSnapshot() {
-    int64_t current_index = current_idx_ - 1; // minus one to make sure slave does not get one entry short
+    // int64_t current_index = current_idx_ - 1; // minus one to make sure slave does not get one entry short
     // snapshot_callback_(0, )
+    return false;
 }
 
 void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
