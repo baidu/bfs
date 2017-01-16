@@ -149,10 +149,12 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
             while (len_read > 0) {
                 len_write = write(1, buf + offset, len_read);
                 if (len_write <= 0) {
-                    if (len_write < 0) {
+                    if (len_write < 0 && errno == EINTR) {
+                        len_write = 0;    
+                    } else {
                         fprintf(stderr, "Write fail: %s\n", strerror(errno));
+                        return 1;
                     }
-                    return 1;
                 }
                 len_read -= len_write;
                 offset += len_write;
