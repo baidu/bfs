@@ -145,8 +145,9 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
                 break;
             }
             bytes += len_read;
+            int32_t offset = 0;
             while (len_read > 0) {
-                len_write = write(1, buf, len_read);
+                len_write = write(1, buf + offset, len_read);
                 if (len_write <= 0) {
                     if (len_write < 0) {
                         fprintf(stderr, "Write fail: %s\n", strerror(errno));
@@ -154,6 +155,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
                     return 1;
                 }
                 len_read -= len_write;
+                offset += len_write;
             }
         }
         delete file;
