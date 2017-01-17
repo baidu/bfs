@@ -575,9 +575,7 @@ int32_t FSImpl::ShutdownChunkServerStat() {
     ShutdownChunkServerStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServerStat,
                                                &request, &response, 15, 1);
-    if (ret && response.status() == kOK) {
-        return response.in_offline_progress();
-    } else {
+    if (!ret || response.status() != kOK) {
         LOG(WARNING, "Get shutdown chunnkserver stat fail. ret: %d, status: %s\n",
             ret, StatusCode_Name(response.status()).c_str());
         if (!ret) {
@@ -587,6 +585,7 @@ int32_t FSImpl::ShutdownChunkServerStat() {
             return GetErrorCode(response.status());
         }
     }
+    return response.in_offline_progress();
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
