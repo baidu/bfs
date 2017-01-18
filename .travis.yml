@@ -31,14 +31,14 @@ install:
     - sudo apt-get install zlib1g-dev
 
     - git clone https://github.com/baidu/sofa-pbrpc
-    - ( cd sofa-pbrpc && echo "PREFIX=$DEPS_PREFIX" >> depends.mk  && make -j4 && make install);
+    - ( cd sofa-pbrpc && echo "PROTOBUF_DIR=$DEPS_PREFIX" >> depends.mk && echo "PREFIX=$DEPS_PREFIX" >> depends.mk  && make -j4 && sudo make install);
 
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz
-    - ( cd gflags-2.1.2 && cmake -DEMAKE_INSTALL_PREFIX=$DEPS_PREFIX -DGFLAGS_NAMESPACE=google && -DCMAKE_CXX_FLAGS=-fPIC && make -j4 && sudo make install )
+    - ( cd gflags-2.1.2 && cmake -DEMAKE_INSTALL_PREFIX=$DEPS_PREFIX -DGFLAGS_NAMESPACE=google -DCMAKE_CXX_FLAGS=-fPIC && make -j4 && sudo make install )
 
     - git clone -b cpp11 https://github.com/baidu/common
-    - ( cd common && sed -i 's/^PREFIX=.*/PREFIX=..\/..\/thirdparty/' config.mk && make -j4 && make install)
+    - ( cd common && sed -i 's/^PREFIX=.*/PREFIX=$DEPS_PREFIX\' config.mk && make -j4 && sudo make install)
 
     - git clone https://github.com/yvxiang/gtest.git
     - ( cd gtest && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
@@ -52,13 +52,15 @@ install:
     - ( cd gperftools-2.2.1 && ./configure --with-pic && make -j4 && sudo make install && sudo ldconfig )
 
     - git clone --depth=1 https://github.com/lylei/leveldb.git leveldb
-    - ( cd leveldb && echo "PREFIX=../thirdparty" > config.mk && make -j4 && make install)
+    - ( cd leveldb && echo "PREFIX=$DEPS_PREFIX" > config.mk && make -j4 && sudo make install)
 
 
 before_script:
     - echo 'SNAPPY_PATH=./thirdparty/snappy' > depends.mk
     - echo 'PROTOBUF_PATH=./thirdparty/protobuf' >> depends.mk
-    - echo 'PROTOC=protoc' >> depends.mk
+    - echo 'PROTOBUF_PATH=./thirdparty' >> depends.mk
+    - echo 'PBRPC_PATH=./thirdparty/bin/' >> depends.mk
+    - echo 'PROTOC=./thirdparty/bin/protoc' >> depends.mk
     - echo 'PBRPC_PATH=./thirdparty/sofa-pbrpc/output' >> depends.mk
     - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
     - echo 'COMMON_PATH=./common/output' >> depends.mk
