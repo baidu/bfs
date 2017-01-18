@@ -38,7 +38,7 @@ install:
     - ( cd gflags-2.1.2 && cmake -DEMAKE_INSTALL_PREFIX=$DEPS_PREFIX -DGFLAGS_NAMESPACE=google -DCMAKE_CXX_FLAGS=-fPIC && make -j4 && sudo make install )
 
     - git clone -b cpp11 https://github.com/baidu/common
-    - ( cd common && sed -i 's/^PREFIX=.*/PREFIX=$DEPS_PREFIX\' config.mk && make -j4 && sudo make install)
+    - ( cd common && sed -i 's/^PREFIX=.*/d' config.mk && echo "PREFIX=$DEPS_PREFIX" >> config.mk && make -j4 && sudo make install)
 
     - git clone https://github.com/yvxiang/gtest.git
     - ( cd gtest && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
