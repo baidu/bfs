@@ -124,6 +124,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
+    int ret = 0;
     int64_t bytes = 0;
     int32_t len_read;
     int32_t len_write;
@@ -131,7 +132,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
         baidu::bfs::File* file;
         if (fs->OpenFile(argv[i], O_RDONLY, &file, baidu::bfs::ReadOptions()) != 0) {
             fprintf(stderr, "Can't Open bfs file %s\n", argv[i]);
-            return 1;
+            ret = 1;
         }
         char buf[10240];
         len_read = 0;
@@ -141,8 +142,9 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
             if (len_read <= 0) {
                 if (len_read < 0) {
                     fprintf(stderr, "Read from %s fail.\n", argv[i]);
+                    ret = 1;
+                    break;
                 }
-                break;
             }
             bytes += len_read;
             int32_t offset = 0;
@@ -151,9 +153,10 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
                 if (len_write <= 0) {
                     if (len_write < 0 && errno == EINTR) {
                         len_write = 0;    
-                    } else {
+                    } else if (len_write < 0){
                         fprintf(stderr, "Write fail: %s\n", strerror(errno));
-                        return 1;
+                        ret = 1;
+                        break;
                     }
                 }
                 len_read -= len_write;
@@ -162,7 +165,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
         }
         delete file;
     }
-    return bytes;
+    return ret;
 }
 
 int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
