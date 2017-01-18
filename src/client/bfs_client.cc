@@ -124,7 +124,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    int ret = 0;
+    int32_t ret = 0;
     int64_t bytes = 0;
     int32_t len_read;
     int32_t len_write;
