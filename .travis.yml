@@ -3,31 +3,43 @@ compiler: gcc
 env:
     global:
         - secure: "BTWd5JMj+Asg9e9Fg7jJ2i1MDpko0+jMN6WqsbKwa0nq5IcdcnKQp9JNdMr25VIpYS9/E8ys+ha0M00QZE/1O4xkX7tlSq/Ex0knqEpXZjLpwA+c3d+4Nuw+u/WZG+Q8YPSvJocFBrCNTpD3wTue0nR9gpw79c+iclQWHXeuziM="
+        - WORK_DIR=`pwd`
+        - DEPS_PREFIX=$WORK_DIR/thirdparty
+        - DEPS_CONFIG="--prefix=`pwd`/thirdparty --disable-shared --with-pic"
     matrix:
         - PROTOBUF_VERSION=2.6.0
 
+before_install:
+    - echo $WORK_DIR
+    - echo $DEPS_PREFIX
+    - echo $DEPS_CONFIG
 install:
     - echo | sudo apt-add-repository ppa:boost-latest/ppa
     - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
     - sudo apt-get update
     - sudo apt-get install -qq g++-4.8
-    - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 20 
+    - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 20
     - sudo update-alternatives --config g++
 
     - sudo apt-get install libboost-dev
     - wget https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-$PROTOBUF_VERSION.tar.gz
     - tar xf protobuf-$PROTOBUF_VERSION.tar.gz
-    - ( cd protobuf-$PROTOBUF_VERSION && ./configure && make -j4 && sudo make install)
+    - ( cd protobuf-$PROTOBUF_VERSION && ./configure $DEPS_CONFIG && make -j4 && sudo make install)
+
     - git clone https://github.com/google/snappy
-    - ( cd snappy && sh ./autogen.sh && ./configure && make -j2 && sudo make install && sudo ldconfig )
+    - ( cd snappy && sh ./autogen.sh && ./configure $DEPS_CONFIG && make -j2 && sudo make install && sudo ldconfig )
     - sudo apt-get install zlib1g-dev
-    - git clone https://github.com/baidu/sofa-pbrpc ./thirdparty/sofa-pbrpc
-    - ( cd thirdparty/sofa-pbrpc && make -j4 && make install);
+
+    - git clone https://github.com/baidu/sofa-pbrpc
+    - ( cd sofa-pbrpc && echo "PROTOBUF_DIR=$DEPS_PREFIX" >> depends.mk && echo "PREFIX=$DEPS_PREFIX" >> depends.mk  && make -j4 && sudo make install);
+
     - wget https://github.com/gflags/gflags/archive/v2.1.2.tar.gz
     - tar xf v2.1.2.tar.gz
-    - ( cd gflags-2.1.2 && cmake -DGFLAGS_NAMESPACE=google && make -j4 && sudo make install )
+    - ( cd gflags-2.1.2 && cmake -DEMAKE_INSTALL_PREFIX=$DEPS_PREFIX -DGFLAGS_NAMESPACE=google -DCMAKE_CXX_FLAGS=-fPIC && make -j4 && sudo make install )
+
     - git clone -b cpp11 https://github.com/baidu/common
-    - ( cd common && make -j4 && make install)
+    - ( cd common && sed -i '/^PREFIX=.*/d' config.mk && echo "PREFIX=$DEPS_PREFIX" >> config.mk && make -j4 && sudo make install)
+
     - git clone https://github.com/yvxiang/gtest.git
     - ( cd gtest && ./configure --disable-shared --with-pic && make -j4 && sudo cp -a lib/.libs/* /usr/lib && sudo cp -a include/gtest /usr/include )
 
@@ -40,13 +52,15 @@ install:
     - ( cd gperftools-2.2.1 && ./configure --with-pic && make -j4 && sudo make install && sudo ldconfig )
 
     - git clone --depth=1 https://github.com/lylei/leveldb.git leveldb
-    - ( cd leveldb && echo "PREFIX=../thirdparty" > config.mk && make -j4 && make install)
+    - ( cd leveldb && echo "PREFIX=$DEPS_PREFIX" > config.mk && make -j4 && sudo make install)
 
 
 before_script:
     - echo 'SNAPPY_PATH=./thirdparty/snappy' > depends.mk
     - echo 'PROTOBUF_PATH=./thirdparty/protobuf' >> depends.mk
-    - echo 'PROTOC=protoc' >> depends.mk
+    - echo 'PROTOBUF_PATH=./thirdparty' >> depends.mk
+    - echo 'PBRPC_PATH=./thirdparty/bin/' >> depends.mk
+    - echo 'PROTOC=./thirdparty/bin/protoc' >> depends.mk
     - echo 'PBRPC_PATH=./thirdparty/sofa-pbrpc/output' >> depends.mk
     - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
     - echo 'COMMON_PATH=./common/output' >> depends.mk
