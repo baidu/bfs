@@ -67,6 +67,7 @@ MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_
 void MasterSlaveImpl::Init(SyncCallbacks callbacks) {
     log_callback_ = callbacks.log_callback;
     snapshot_callback_ = callbacks.snapshot_callback;
+    erase_callback_ = callbacks.erase_callback;
     if (logdb_->GetLargestIdx(&current_idx_) == kReadError) {
         LOG(FATAL, "%s Read current_idx_ failed", kLogPrefix.c_str());
     }
@@ -252,7 +253,9 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
     int64_t id = request->id();
     int64_t seq = request->seq();
     if (seq == 0) {
-        // TODO cleanup namespace
+        LOG(INFO, "%s Start to clean up the old namespace...", kLogPrefix.c_str());
+        erase_callback_();
+        LOG(INFO, "%s Done clean up the old namespace...", kLogPrefix.c_str());
         snapshot_id_ = id;
         snapshot_seq_ = 0;
     } else if (id != snapshot_id_ || seq != snapshot_seq_) {

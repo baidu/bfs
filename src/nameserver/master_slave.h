@@ -58,6 +58,7 @@ private:
 
     LogCallback log_callback_;
     SnapshotCallback snapshot_callback_;
+    EraseCallback erase_callback_;
     bool exiting_;
     bool master_only_;
     bool is_leader_;
