@@ -321,7 +321,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Wri
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
                          File** file, const WriteOptions& options) {
     *file = NULL;
-    if (!(flags & O_WRONLY)) {
+    if (flags ^ O_WRONLY) {
         return BAD_PARAMETER;
     }
     WriteOptions write_option = options;
