@@ -26,7 +26,7 @@ class MasterSlaveImpl : public Sync, public master_slave::MasterSlave {
 public:
     MasterSlaveImpl();
     virtual ~MasterSlaveImpl() {};
-    virtual void Init(LogCallback callback, SnapshotCallback snapshot_callback);
+    virtual void Init(SyncCallbacks callbacks);
     virtual bool IsLeader(std::string* leader_addr = NULL);
     virtual bool Log(const std::string& entry, int timeout_ms = 10000);
     virtual void Log(const std::string& entry, std::function<void (bool)> callback);

@@ -66,6 +66,7 @@ public:
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
     void TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr);
+    void EraseNamespace();
     int64_t GetNewBlockId();
 private:
     enum FileType {

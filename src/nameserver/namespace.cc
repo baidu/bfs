@@ -814,6 +814,39 @@ void NameSpace::TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr) {
     log.SerializeToString(logstr);
 }
 
+void NameSpace::EraseNamespace() {
+    /*
+    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
+    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+        FileInfo file_info;
+        bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
+        assert(ret);
+        if (last_entry_id_ < file_info.entry_id()) {
+            last_entry_id_ = file_info.entry_id();
+        }
+        FileType file_type = GetFileType(file_info.type());
+        if (file_type == kDefault) {
+            //a file
+            for (int i = 0; i < file_info.blocks_size(); i++) {
+                if (file_info.blocks(i) >= next_block_id_) {
+                    next_block_id_ = file_info.blocks(i) + 1;
+                    block_id_upbound_ = next_block_id_;
+                }
+                ++block_num;
+            }
+            ++file_num;
+            if (callback) {
+                callback(file_info);
+            }
+        } else if (file_type == kSymlink) {
+            ++link_num;
+        } else {
+            entry_id_set.insert(file_info.entry_id());
+        }
+    }
+    */
+}
+
 uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
                               const std::string& key, const std::string& value) {
     if (log == NULL) {

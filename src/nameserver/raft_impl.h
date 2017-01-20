@@ -26,7 +26,7 @@ class RaftImpl : public Sync {
 public:
     RaftImpl();
     ~RaftImpl();
-    void Init(LogCallback callback, SnapshotCallback snapshot_callback);
+    void Init(SyncCallbacks callbacks);
     bool IsLeader(std::string* leader_addr = NULL);
     bool Log(const std::string& entry, int timeout_ms = 10000);
     void Log(const std::string& entry, std::function<void (bool)> callback);

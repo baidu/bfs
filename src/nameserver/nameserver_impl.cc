@@ -63,9 +63,13 @@ NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
     if (sync_) {
-        sync_->Init(std::bind(&NameSpace::TailLog, namespace_, std::placeholders::_1),
-                    std::bind(&NameSpace::TailSnapshot, namespace_,
-                              std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+        SyncCallbacks callbacks(std::bind(&NameSpace::TailLog, namespace_,
+                                          std::placeholders::_1),
+                                std::bind(&NameSpace::TailSnapshot, namespace_,
+                                          std::placeholders::_1, std::placeholders::_2,
+                                          std::placeholders::_3),
+                                std::bind(&NameSpace::EraseNamespace, namespace_));
+        sync_->Init(callbacks);
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();

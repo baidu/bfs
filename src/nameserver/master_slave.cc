@@ -64,9 +64,9 @@ MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_
     thread_pool_->DelayTask(30 * 60 * 1000, std::bind(&MasterSlaveImpl::LogCleanUp, this));
 }
 
-void MasterSlaveImpl::Init(LogCallback callback, SnapshotCallback snapshot_callback) {
-    log_callback_ = callback;
-    snapshot_callback_ = snapshot_callback;
+void MasterSlaveImpl::Init(SyncCallbacks callbacks) {
+    log_callback_ = callbacks.log_callback;
+    snapshot_callback_ = callbacks.snapshot_callback;
     if (logdb_->GetLargestIdx(&current_idx_) == kReadError) {
         LOG(FATAL, "%s Read current_idx_ failed", kLogPrefix.c_str());
     }
@@ -428,6 +428,14 @@ void MasterSlaveImpl::LogStatus() {
 }
 
 void MasterSlaveImpl::LogCleanUp() {
+    int64_t gc_index = std::min(sync_idx_ - 1, current_idx_ - FLAGS_master_slave_log_limit);
+    StatusCode s = logdb_->DeleteUpTo(gc_index);
+    if (s == kOK) {
+        gc_idx_ = gc_index;
+    } else {
+        LOG(INFO, "%s logdb gc failed %ld reason %s", kLogPrefix.c_str(),
+            gc_index, StatusCode_Name(s).c_str());
+    }
 }
 
 std::string MasterSlaveImpl::GetStatus() {
