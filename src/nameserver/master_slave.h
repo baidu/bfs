@@ -77,7 +77,7 @@ private:
     int64_t sync_idx_;      // last entry index which slave has received
     int64_t gc_idx_;        // smallest index in logdb should be gc_idx + 1
 
-    int64_t snapshot_seq_;
+    int64_t slave_snapshot_seq_;
 
     std::map<int64_t, std::function<void (bool)> > callbacks_;
 };
