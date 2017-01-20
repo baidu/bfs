@@ -66,8 +66,7 @@ NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
         SyncCallbacks callbacks(std::bind(&NameSpace::TailLog, namespace_,
                                           std::placeholders::_1),
                                 std::bind(&NameSpace::TailSnapshot, namespace_,
-                                          std::placeholders::_1, std::placeholders::_2,
-                                          std::placeholders::_3),
+                                          std::placeholders::_1, std::placeholders::_2),
                                 std::bind(&NameSpace::EraseNamespace, namespace_));
         sync_->Init(callbacks);
     }

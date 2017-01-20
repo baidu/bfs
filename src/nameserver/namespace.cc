@@ -773,7 +773,7 @@ void NameSpace::TailLog(const std::string& logstr) {
     }
 }
 
-void NameSpace::TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr) {
+void NameSpace::TailSnapshot(int32_t ns_id, std::string* logstr) {
     SnapshotTask* task = NULL;
     auto it = snapshot_tasks_.find(ns_id);
     if (it != snapshot_tasks_.end()) {
@@ -781,12 +781,9 @@ void NameSpace::TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr) {
     } else if (logstr != NULL) {
         task = new SnapshotTask();
         task->iter = db_->NewIterator(leveldb::ReadOptions());
-        task->snapshot_id = id;
         snapshot_tasks_[ns_id] = task;
     } else {
-        LOG(WARNING, "TailSnapshot closed a nonexistent snapshot: %d %d",
-            ns_id, id);
-        // close a nonexistent
+        LOG(WARNING, "TailSnapshot closed a nonexist snapshot: ns %d", ns_id);
         return;
     }
 
@@ -794,13 +791,8 @@ void NameSpace::TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr) {
         delete task->iter;
         delete task;
         snapshot_tasks_.erase(it);
-        LOG(INFO, "TailSnapshot closed snapshot: %d %d", ns_id, id);
+        LOG(INFO, "TailSnapshot closed snapshot: %d", ns_id);
         return;
-    }
-    if (id != task->snapshot_id) {
-        delete task->iter;
-        task->iter = db_->NewIterator(leveldb::ReadOptions());
-        task->snapshot_id = id;
     }
     NameServerLog log;
     int count = 0;

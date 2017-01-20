@@ -14,9 +14,8 @@ message AppendLogResponse {
 
 message SnapshotRequest {
     optional bytes data = 1;
-    optional int64 id = 2;
-    optional int64 seq = 3;
-    optional int64 index = 4;
+    optional int64 seq = 2;
+    optional int64 index = 3;
 }
 
 message SnapshotResponse {

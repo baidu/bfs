@@ -65,7 +65,7 @@ public:
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
-    void TailSnapshot(int32_t ns_id, int32_t id, std::string* logstr);
+    void TailSnapshot(int32_t ns_id, std::string* logstr);
     void EraseNamespace();
     int64_t GetNewBlockId();
 private:
@@ -75,7 +75,6 @@ private:
         kSymlink = 2,
     };
     struct SnapshotTask {
-        int64_t snapshot_id;
         leveldb::Iterator* iter;
     };
     FileType GetFileType(int type);

@@ -17,7 +17,7 @@ namespace bfs {
 class RpcClient;
 
 typedef std::function<void (const std::string& log)> LogCallback;
-typedef std::function<void (int32_t, int32_t, std::string*)> SnapshotCallback;
+typedef std::function<void (int32_t, std::string*)> SnapshotCallback;
 typedef std::function<void ()> EraseCallback;
 
 struct SyncCallbacks {
