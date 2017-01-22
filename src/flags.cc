@@ -49,6 +49,7 @@ DEFINE_int32(snapshot_step, 1000, "Number of entries in one package");
 // ha - master_slave
 DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
 DEFINE_int64(master_slave_log_limit, 20000000, "Master will keep at most x log entries");
+DEFINE_int32(master_log_gc_interval, 30 * 60, "Master's logdb gc interval, in seconds");
 // ha - raft
 DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
 

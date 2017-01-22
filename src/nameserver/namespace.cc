@@ -807,9 +807,21 @@ void NameSpace::TailSnapshot(int32_t ns_id, std::string* logstr) {
 }
 
 void NameSpace::EraseNamespace() {
-    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
-    for (it->SeekToFirst(); it->Valid(); it->Next()) {
-        db_->Delete(leveldb::WriteOptions(), it->key());
+    delete db_;
+    db_ = NULL;
+    leveldb::Options options;
+    leveldb::Status s = leveldb::DestroyDB(FLAGS_namedb_path, options);
+    if (!s.ok()) {
+        LOG(ERROR, "DestroyDB fail: %s", s.ToString().c_str());
+        exit(EXIT_FAILURE);
+    }
+    options.create_if_missing = true;
+    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
+    if (!s.ok()) {
+        db_ = NULL;
+        LOG(ERROR, "Open leveldb fail: %s", s.ToString().c_str());
+        exit(EXIT_FAILURE);
     }
 }
 

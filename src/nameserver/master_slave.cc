@@ -17,6 +17,7 @@ DECLARE_string(nameserver_nodes);
 DECLARE_int32(node_index);
 DECLARE_string(master_slave_role);
 DECLARE_int64(master_slave_log_limit);
+DECLARE_int32(master_log_gc_interval);
 
 namespace baidu {
 namespace bfs {
@@ -61,7 +62,8 @@ MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_
     if (logdb_ == NULL) {
         LOG(FATAL, "%s init logdb failed", kLogPrefix.c_str());
     }
-    thread_pool_->DelayTask(30 * 60 * 1000, std::bind(&MasterSlaveImpl::LogCleanUp, this));
+    thread_pool_->DelayTask(FLAGS_master_log_gc_interval * 1000,
+                            std::bind(&MasterSlaveImpl::LogCleanUp, this));
 }
 
 void MasterSlaveImpl::Init(SyncCallbacks callbacks) {
@@ -318,6 +320,7 @@ void MasterSlaveImpl::ReplicateLog() {
             LOG(WARNING, "%s Replicate log failed index = %d, current_idx_ = %d",
                 kLogPrefix.c_str(), sync_idx_ + 1, current_idx_);
             EmptyLog();
+            continue;
         }
         if (!response.success()) { // log mismatch
             MutexLock lock(&mu_);
@@ -430,7 +433,7 @@ void MasterSlaveImpl::LogStatus() {
 }
 
 void MasterSlaveImpl::LogCleanUp() {
-    int64_t gc_index = std::min(sync_idx_ - 1, current_idx_ - FLAGS_master_slave_log_limit);
+    int64_t gc_index = std::max(sync_idx_ - 1, current_idx_ - FLAGS_master_slave_log_limit);
     StatusCode s = logdb_->DeleteUpTo(gc_index);
     if (s == kOK) {
         gc_idx_ = gc_index;
@@ -438,6 +441,8 @@ void MasterSlaveImpl::LogCleanUp() {
         LOG(INFO, "%s logdb gc failed %ld reason %s", kLogPrefix.c_str(),
             gc_index, StatusCode_Name(s).c_str());
     }
+    thread_pool_->DelayTask(FLAGS_master_log_gc_interval * 1000,
+                            std::bind(&MasterSlaveImpl::LogCleanUp, this));
 }
 
 std::string MasterSlaveImpl::GetStatus() {
