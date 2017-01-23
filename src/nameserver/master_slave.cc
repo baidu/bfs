@@ -82,7 +82,7 @@ void MasterSlaveImpl::Init(SyncCallbacks callbacks) {
     LOG(INFO, "%s set current_idx_ = %ld, applied_idx_ = %ld, sync_idx_ = %ld ",
         kLogPrefix.c_str(), current_idx_, applied_idx_, sync_idx_);
     assert(applied_idx_ <= current_idx_ && sync_idx_ <= current_idx_);
-    while (applied_idx_ < current_idx_) {
+    while (IsLeader() && applied_idx_ < current_idx_) {
         std::string entry;
         StatusCode ret = logdb_->Read(applied_idx_ + 1, &entry);
         if (ret != kOK) {
@@ -229,10 +229,6 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         return;
     }
     mu_.Lock();
-    if (logdb_->Write(current_idx_ + 1, request->log_data()) != kOK) {
-        LOG(FATAL, "%s Write logdb_ failed current_idx_ = %ld ",
-            kLogPrefix.c_str(), current_idx_ + 1);
-    }
     current_idx_++;
     mu_.Unlock();
     log_callback_(request->log_data());
