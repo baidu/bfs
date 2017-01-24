@@ -18,6 +18,7 @@ DECLARE_int32(node_index);
 DECLARE_string(master_slave_role);
 DECLARE_int64(master_slave_log_limit);
 DECLARE_int32(master_log_gc_interval);
+DECLARE_int32(logdb_log_size);
 
 namespace baidu {
 namespace bfs {
@@ -58,6 +59,7 @@ MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_
     }
     thread_pool_ = new common::ThreadPool(10);
     DBOption option;
+    option.log_size = FLAGS_logdb_log_size;
     LogDB::Open("./logdb", option, &logdb_);
     if (logdb_ == NULL) {
         LOG(FATAL, "%s init logdb failed", kLogPrefix.c_str());
