@@ -78,6 +78,7 @@ private:
 };
 
 struct BfsFileInfo {
+    uint64_t ino;
     int64_t size;
     uint32_t ctime;
     uint32_t mode;
@@ -103,6 +104,8 @@ public:
     virtual int32_t Access(const char* path, int32_t mode) = 0;
     /// Stat
     virtual int32_t Stat(const char* path, BfsFileInfo* fileinfo) = 0;
+    /// Get fileinfo by ino
+    virtual int32_t IGet(int64_t ino, BfsFileInfo* fileinfo) = 0;
     /// GetFileSize: get real file size
     virtual int32_t GetFileSize(const char* path, int64_t* file_size) = 0;
     /// Open file for read or write, flags: O_WRONLY or O_RDONLY

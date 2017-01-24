@@ -17,6 +17,7 @@ DEFINE_int32(block_report_timeout, 600, "BlockReport rpc timeout");
 
 // nameserver
 DEFINE_string(namedb_path, "./db", "Namespace database");
+DEFINE_string(namedb_i_path, "./db_i", "Namespace database_i");
 DEFINE_int64(namedb_cache_size, 1024L, "Namespace datebase memery cache size");
 DEFINE_int32(expect_chunkserver_num, 3, "Read only threshtrold");
 DEFINE_int32(keepalive_timeout, 10, "Chunkserver keepalive timeout");
