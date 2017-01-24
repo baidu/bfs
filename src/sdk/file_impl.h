@@ -91,7 +91,7 @@ public:
                             int retry_times,
                             WriteBuffer* buffer,
                             const std::string& cs_addr);
-    /// When rpc buffer full deley send write reqeust
+    /// When rpc buffer full delay send write reqeust
     static void DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
                                 WriteBuffer* buffer,
                                 const WriteBlockRequest* request,
