@@ -67,6 +67,8 @@ public:
     StatusCode Append(int32_t seq, const char*buf, int64_t len);
     void SetRecover();
     bool IsRecover() const;
+    int64_t GetExpectedSize() const;
+    void SetExpectedSize(int64_t expected_size);
     /// Flush block to disk.
     bool Close(bool sync);
     void AddRef();
@@ -104,6 +106,7 @@ private:
     CondVar     close_cv_;
     common::SlidingWindow<Buffer>* recv_window_;
     bool        is_recover_;
+    int64_t     expected_size_; // only used by recover
     bool        finished_;
     volatile int deleted_;
 

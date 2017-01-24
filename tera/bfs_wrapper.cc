@@ -127,8 +127,17 @@ int32_t BfsImpl::DeleteDirectory(const std::string& path) {
 int32_t BfsImpl::Exists(const std::string& filename) {
     common::timer::AutoTimer ac;
     LOG(INFO, "Exists(%s)", filename.c_str());
-    if (fs_->Access(filename.c_str(), 0) != 0) {
-        LOG(INFO, "Exists(%s) return false", filename.c_str());
+    int32_t ret = fs_->Access(filename.c_str(), 0);
+    if (ret != 0) {
+        if (ret == TIMEOUT) {
+            errno = ETIMEDOUT;
+        } else if (ret == BAD_PARAMETER) {
+            errno = ENOENT;
+        } else {
+            errno = EAGAIN;
+        }
+        LOG(INFO, "Exists(%s) return false, ret = %s, errno = %s",
+                filename.c_str(), StrError(ret), strerror(errno));
         return -1;
     }
     LOG(INFO, "Exists(%s) return true use %.3f ms",

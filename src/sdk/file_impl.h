@@ -29,9 +29,9 @@ class WriteBuffer {
 public:
     WriteBuffer(int32_t seq, int32_t buf_size, int64_t block_id, int64_t offset);
     ~WriteBuffer();
-    int Available();
+    int Available() const;
     int Append(const char* buf, int len);
-    const char* Data();
+    const char* Data() const;
     int Size() const;
     int Sequence() const;
     void Clear();

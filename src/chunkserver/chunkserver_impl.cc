@@ -211,7 +211,7 @@ void ChunkServerImpl::SendHeartbeat() {
     request.set_pending_buf(d_stat.pending_buf);
     request.set_pending_recover(c_stat.recover_count);
     request.set_w_qps(c_stat.write_ops);
-    request.set_w_speed(d_stat.write_bytes);
+    request.set_w_speed(d_stat.buf_write_bytes);
     request.set_r_qps(c_stat.read_ops);
     request.set_r_speed(c_stat.read_bytes);
     request.set_recover_speed(c_stat.recover_bytes);
@@ -514,33 +514,56 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
             LOG(INFO, "[LocalWriteBlock] #%ld created failed, reason %s",
                     block_id, StatusCode_Name(s).c_str());
             if (s == kBlockExist) {
-                response->set_current_size(block->Size());
-                response->set_current_seq(block->GetLastSeq());
-                LOG(INFO, "[LocalWriteBlock] #%ld exist block size = %ld", block_id, block->Size());
+                int64_t expected_size = block->GetExpectedSize();
+                if (expected_size != request->total_size()) {
+                    LOG(INFO, "[LocalWriteBlock] Recover source with ",
+                              "different size: expected %ld, now %ld",
+                              expected_size, request->total_size());
+                    s = kWriteError;
+                } else {
+                    response->set_current_size(block->Size());
+                    response->set_current_seq(block->GetLastSeq());
+                    LOG(INFO, "[LocalWriteBlock] #%ld exist block size = %ld",
+                               block_id, block->Size());
+                }
             }
             response->set_status(s);
             g_unfinished_bytes.Sub(databuf.size());
             done->Run();
             return;
+        } else {
+            block->SetExpectedSize(request->total_size());
         }
     } else {
         block = block_manager_->FindBlock(block_id);
         if (!block) {
-            LOG(WARNING, "[WriteBlock] Block not found: #%ld ", block_id);
+            LOG(WARNING, "[LocalWriteBlock] Block not found: #%ld ", block_id);
             response->set_status(kCsNotFound);
             g_unfinished_bytes.Sub(databuf.size());
             done->Run();
             return;
+        } else {
+            int64_t expected_size = block->GetExpectedSize();
+            if (expected_size != request->total_size()) {
+                LOG(INFO, "[LocalWriteBlock] Recover source with ",
+                        "different size: expected  %ld, now %ld",
+                        expected_size, request->total_size());
+                response->set_status(kWriteError);
+                g_unfinished_bytes.Sub(databuf.size());
+                done->Run();
+                return;
+            }
         }
     }
     if (request->has_recover_version()) {
         block->SetRecover();
     }
-    LOG(INFO, "[WriteBlock] local write #%ld %d recover=%d",
+    LOG(INFO, "[LocalWriteBlock] local write #%ld %d recover=%d",
         block_id, packet_seq, block->IsRecover());
     int64_t add_used = 0;
     int64_t write_start = common::timer::get_micros();
-    if (!block->Write(packet_seq, offset, databuf.data(), databuf.size(), &add_used)) {
+    if (!block->Write(packet_seq, offset, databuf.data(),
+                      databuf.size(), &add_used)) {
         block->DecRef();
         response->set_status(kWriteError);
         g_unfinished_bytes.Sub(databuf.size());
@@ -551,21 +574,24 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
     if (request->is_last()) {
         if (request->has_recover_version()) {
             block->SetVersion(request->recover_version());
-            LOG(INFO, "Recover block set version #%ld V%d ", block_id, request->recover_version());
+            LOG(INFO, "[LocalWriteBlock] Recover block set version #%ld V%d ",
+                       block_id, request->recover_version());
         }
         block->SetSliceNum(packet_seq + 1);
     }
 
     // If complete, close block, and report only once(close block return true).
     int64_t report_start = write_end;
-    if (block->IsComplete() && block_manager_->CloseBlock(block, request->sync_on_close())) {
-        LOG(INFO, "[WriteBlock] block finish #%ld size:%ld", block_id, block->Size());
+    if (block->IsComplete() &&
+            block_manager_->CloseBlock(block, request->sync_on_close())) {
+        LOG(INFO, "[LocalWriteBlock] block finish #%ld size:%ld",
+                   block_id, block->Size());
         report_start = common::timer::get_micros();
         ReportFinish(block);
     }
 
     int64_t time_end = common::timer::get_micros();
-    LOG(INFO, "[WriteBlock] done #%ld seq:%d, offset:%ld, len:%lu "
+    LOG(INFO, "[LocalWriteBlock] done #%ld seq:%d, offset:%ld, len:%lu "
               "use %ld %ld %ld %ld %ld %ld %ld %ld ms",
         block_id, packet_seq, offset, databuf.size(),
         (response->timestamp(0) - request->sequence_id()) / 1000, // recv
@@ -642,7 +668,7 @@ void ChunkServerImpl::ReadBlock(::google::protobuf::RpcController* controller,
         int64_t read_end = common::timer::get_micros();
         if (len >= 0) {
             response->mutable_databuf()->assign(buf, len);
-            LOG(INFO, "ReadBlock #%ld offset: %ld len: %ld return: %ld "
+            LOG(INFO, "ReadBlock #%ld offset: %ld len: %d return: %ld "
                       "use %ld %ld %ld %ld %ld",
                 block_id, offset, read_len, len,
                 (response->timestamp(0) - request->sequence_id()) / 1000, // rpc time
@@ -762,6 +788,7 @@ StatusCode ChunkServerImpl::WriteRecoverBlock(Block* block, ChunkServer_Stub* ch
         request.set_packet_seq(seq);
         request.set_offset(offset);
         request.set_recover_version(block->GetVersion());
+        request.set_total_size(block->Size());
         bool ret = rpc_client_->SendRequest(chunkserver, &ChunkServer_Stub::WriteBlock,
                                  &request, &response, 60, 1);
         if (!ret || (response.status() != kOK && response.status() != kBlockExist)) {
@@ -840,6 +867,7 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />"
             "<link rel=\"stylesheet\" type=\"text/css\" "
                 "href=\"http://www.w3school.com.cn/c5.css\"/>"
+            "<link rel=\"shortcut icon\" href=\"\" type=\"image/x-icon\" />"
             "<style> body { background: #f9f9f9;}"
             "</style>"
             "</head>";
@@ -852,7 +880,7 @@ bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
     str += "<tr><td>" + common::NumToString(d_stat.blocks) + "</td>";
     str += "<td>" + common::HumanReadableString(d_stat.data_size) + "</td>";
     str += "<td>" + common::NumToString(c_stat.write_ops);
-    str += "/" + common::HumanReadableString(d_stat.write_bytes) + "</td>";
+    str += "/" + common::HumanReadableString(d_stat.buf_write_bytes) + "</td>";
     str += "<td>" + common::NumToString(c_stat.read_ops);
     str += "/" + common::HumanReadableString(c_stat.read_bytes) + "</td>";
     str += "<td>" + common::HumanReadableString(c_stat.recover_bytes) + "</td>";

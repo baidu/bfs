@@ -25,12 +25,12 @@ DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
 
 void print_usage() {
-    printf("Use:\nbfs_client <commond> path\n");
-    printf("\t commond:\n");
+    printf("Use:\nbfs_client <command> path\n");
+    printf("\t command:\n");
     printf("\t    ls <path> : list the directory\n");
     printf("\t    cat <path>... : cat the file\n");
-    printf("\t    mkdir <path>... : make director\n");
-    printf("\t    mv <srcpath> <destpath> : rename director or file\n");
+    printf("\t    mkdir <path>... : make directory\n");
+    printf("\t    mv <srcpath> <destpath> : rename directory or file\n");
     printf("\t    touchz <path>... : create a new file\n");
     printf("\t    rm <path>... : remove a file\n");
     printf("\t    get <bfsfile> <localfile> : copy file to local\n");
@@ -54,6 +54,7 @@ int BfsTouchz(baidu::bfs::FS* fs, int argc, char* argv[]) {
         ret = fs->OpenFile(argv[i], O_WRONLY, 0644, &file, baidu::bfs::WriteOptions());
         if (ret != 0) {
             fprintf(stderr, "Open %s fail\n", argv[i]);
+            return 1;
         }
     }
     return 0;
@@ -68,7 +69,7 @@ int BfsRm(baidu::bfs::FS* fs, int argc, char* argv[]) {
     for (int i = 0; i < argc; i++) {
         ret = fs->DeleteFile(argv[i]);
         if (!ret) {
-            printf("%s Removed\n", argv[i]); 
+            printf("%s Removed\n", argv[i]);
         } else {
             fprintf(stderr, "Remove file fail %s\n", argv[i]);
             ret = 1;
@@ -295,10 +296,12 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
         path = argv[i];
         assert(path.size() > 0);
         if (path[path.size() - 1] != '*') {
-            BfsDuV2(fs, path);
+            if (BfsDuV2(fs, path) == -1) {
+                return 1;
+            }
             continue;
         }
- 
+
         // Wildcard
         path.resize(path.size() - 1);
         ppath = path.substr(0, path.rfind('/') + 1);
@@ -309,13 +312,17 @@ int BfsDu(baidu::bfs::FS* fs, int argc, char* argv[]) {
         ret = fs->ListDirectory(ppath.c_str(), &files, &num);
         if (ret != 0) {
             fprintf(stderr, "Path not found: %s\n", ppath.c_str());
-            continue;
+            return 1;
         }
         for (int j = 0; j < num; j++) {
             std::string name(files[j].name);
             if (name.find(prefix) != std::string::npos) {
                 int64_t sz = BfsDuV2(fs, ppath + name);
-                if (sz > 0) total_size += sz;
+                if (sz > 0) {
+                    total_size += sz;
+                } else {
+                    return 1;
+                }
             }
         }
         printf("%s Total: %s\n", argv[i], baidu::common::HumanReadableString(total_size).c_str());
@@ -556,7 +563,7 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[1], "ln") == 0) {
         ret = BfsLink(fs, argc - 2, argv + 2);
     } else {
-        fprintf(stderr, "Unknow common: %s\n", argv[1]);
+        fprintf(stderr, "Unknown command: %s\n", argv[1]);
     }
     return ret;
 }

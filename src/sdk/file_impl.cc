@@ -34,7 +34,7 @@ WriteBuffer::~WriteBuffer() {
     delete[] buf_;
     buf_ = NULL;
 }
-int WriteBuffer::Available() {
+int WriteBuffer::Available() const {
     return buf_size_ - data_size_;
 }
 int WriteBuffer::Append(const char* buf, int len) {
@@ -43,7 +43,7 @@ int WriteBuffer::Append(const char* buf, int len) {
     data_size_ += len;
     return data_size_;
 }
-const char* WriteBuffer::Data() {
+const char* WriteBuffer::Data() const {
     return buf_;
 }
 int WriteBuffer::Size() const {

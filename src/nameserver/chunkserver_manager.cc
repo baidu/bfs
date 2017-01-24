@@ -343,6 +343,7 @@ double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
 
 void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerInfo*> >* loads,
                                       int num) {
+    mu_.Unlock();
     std::sort(loads->begin(), loads->end());
     // Add random factor
     int scope = loads->size() - (loads->size() % num);
@@ -354,6 +355,7 @@ void ChunkServerManager::RandomSelect(std::vector<std::pair<double, ChunkServerI
             std::swap((*loads)[i % num], (*loads)[i]);
         }
     }
+    mu_.Lock();
 }
 
 bool ChunkServerManager::GetChunkServerChains(int num,
@@ -388,7 +390,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
             if (cs->status() == kCsReadonly) {
-                LOG(INFO, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
+                LOG(DEBUG, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
                 continue;
             }
             double load = cs->load();
@@ -761,9 +763,9 @@ void ChunkServerManager::MarkChunkServerReadonly(const std::string& chunkserver_
 StatusCode ChunkServerManager::ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>&
                                                   chunkserver_address) {
     MutexLock lock(&mu_);
-    if (!chunkservers_to_offline_.empty()) {
-        return kInShutdownProgress;
-    }
+    //if (!chunkservers_to_offline_.empty()) {
+    //    return kInShutdownProgress;
+    //}
     for (int i = 0; i < chunkserver_address.size(); i++) {
         chunkservers_to_offline_.push_back(chunkserver_address.Get(i));
         MarkChunkServerReadonly(chunkservers_to_offline_.back());

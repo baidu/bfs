@@ -36,7 +36,7 @@ Block::Block(const BlockMeta& meta, Disk* disk, FileCache* file_cache) :
   last_seq_(-1), slice_num_(-1), blockbuf_(NULL), buflen_(0),
   bufdatalen_(0), disk_writing_(false),
   disk_file_size_(meta.block_size()), file_desc_(kNotCreated), refs_(0),
-  close_cv_(&mu_), is_recover_(false), deleted_(false),
+  close_cv_(&mu_), is_recover_(false), expected_size_(-1), deleted_(false),
   file_cache_(file_cache) {
     assert(meta_.block_id() < (1L<<40));
     disk_->counters_.data_size.Add(meta.block_size());
@@ -48,7 +48,8 @@ Block::Block(const BlockMeta& meta, Disk* disk, FileCache* file_cache) :
     } else {
         finished_ = false;
         recv_window_ = new common::SlidingWindow<Buffer>(100,
-                       std::bind(&Block::WriteCallback, this, std::placeholders::_1, std::placeholders::_2));
+                       std::bind(&Block::WriteCallback, this,
+                       std::placeholders::_1, std::placeholders::_2));
     }
 }
 Block::~Block() {
@@ -288,7 +289,7 @@ bool Block::Write(int32_t seq, int64_t offset, const char* data,
         }
     }
     if (ret == 0) {
-        disk_->counters_.write_bytes.Add(len);
+        disk_->counters_.buf_write_bytes.Add(len);
     }
     return true;
 }
@@ -367,6 +368,7 @@ void Block::DiskWrite() {
                         assert(0);
                         break;
                     }
+                    disk_->counters_.disk_write_bytes.Add(w);
                     wlen += w;
                 }
                 // Re-Lock for commit
@@ -412,6 +414,12 @@ void Block::SetRecover() {
 }
 bool Block::IsRecover() const {
     return is_recover_;
+}
+int64_t Block::GetExpectedSize() const {
+    return expected_size_;
+}
+void Block::SetExpectedSize(int64_t expected_size) {
+    expected_size_ = expected_size;
 }
 /// Append to block buffer
 StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {

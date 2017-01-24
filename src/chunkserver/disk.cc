@@ -18,6 +18,7 @@
 
 DECLARE_int32(disk_io_thread_num);
 DECLARE_int32(chunkserver_disk_buf_size);
+DECLARE_int64(chunkserver_disk_safe_space);
 
 namespace baidu {
 namespace bfs {
@@ -185,7 +186,12 @@ int64_t Disk::GetQuota() {
 }
 
 double Disk::GetLoad() {
-    double disk_rate = counters_.data_size.Get() * 1.0 / quota_;
+    int64_t data_size = counters_.data_size.Get();
+    if (quota_ - data_size < (FLAGS_chunkserver_disk_safe_space << 20) || data_size * 1.0 > quota_ * 0.98) {
+        LOG(WARNING, "disk %s is full", path_.c_str());
+        return kDiskMaxLoad;
+    }
+    double disk_rate = data_size * 1.0 / quota_;
     double pending_rate = counters_.pending_buf.Get() * 1.0 / FLAGS_chunkserver_disk_buf_size;
     return disk_rate * disk_rate + pending_rate;
 }
