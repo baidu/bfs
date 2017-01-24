@@ -205,7 +205,7 @@ bool NameSpace::DeleteFileInfo(const std::string file_key, NameServerLog* log) {
     if (!s.ok()) {
         return false;
     }
-    EncodeLog(log,kSyncDelete, file_key, "");
+    EncodeLog(log, kSyncDelete, file_key, "");
     return true;
 }
 bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
@@ -224,9 +224,8 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
 
     std::string file_key;
     EncodingStoreKey(file_info_for_ldb.parent_entry_id(), file_info_for_ldb.name(), &file_key);
-    std::string infobuf_for_ldb, infobuf_for_sync;
+    std::string infobuf_for_ldb;
     file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
-    file_info.SerializeToString(&infobuf_for_sync);
 
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf_for_ldb);
     if (!s.ok()) {
@@ -235,7 +234,7 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     }
     EncodeLog(log, kSyncWrite, file_key, infobuf_for_ldb);
     return true;
-};
+}
 
 bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     if (!LookUp(path, file_info)) {
@@ -444,8 +443,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     std::string new_key;
     EncodingStoreKey(parent_id, dst_name, &new_key);
     std::string value;
-    old_file.clear_parent_entry_id();
-    old_file.clear_name();
+    old_file.set_parent_entry_id(parent_id);
+    old_file.set_name(dst_name);
     old_file.SerializeToString(&value);
 
     // Write to persistent storage
