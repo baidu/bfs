@@ -141,6 +141,7 @@ private:
     void CheckRecoverMode();
     void LeaveReadOnly();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
+    void ListDirForWeb(const std::string& path, std::string* str);
     bool LogRemote(const NameServerLog& log, std::function<void (bool)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,
