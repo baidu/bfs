@@ -174,7 +174,7 @@ TEST_F(NameSpaceTest, Rename) {
     FileInfo remove_file;
     /// self -> self
     ASSERT_EQ(kOK, ns.Rename("/dir1", "/dir1", &need_unlink, &remove_file));
-    ASSERT_EQ(Kok, ns.Rename("/", "/", &need_unlink, &remove_file));
+    ASSERT_EQ(KOK, ns.Rename("/", "/", &need_unlink, &remove_file));
     /// dir -> none
     ASSERT_EQ(kOK, ns.Rename("/dir1/subdir1", "/dir1/subdir3", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
