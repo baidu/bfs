@@ -382,10 +382,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
                              FileInfo* remove_file,
                              NameServerLog* log) {
     *need_unlink = false;
-    if (old_path == new_path) {
-        return kOK;
-    }
-    if (old_path == "/" || new_path == "/") {
+    if (old_path == "/" || new_path == "/" || old_path == new_path) {
         return kBadParameter;
     }
     FileInfo old_file;
