@@ -72,7 +72,7 @@ private:
         kDir = 1,
         kSymlink = 2,
     };
-    FileType GetFileType(int type);
+    FileType GetFileType(int type) const;
     bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
     StatusCode BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
                                 NameServerLog* log = NULL);
