@@ -107,6 +107,10 @@ private:
     /// HA module
     //Sync* sync_;
     //Mutex mu_;
+private:
+    // NameSpace should be noncopyable
+    NameSpace(const NameSpace&);
+    NameSpace& operator=(const NameSpace&);
 };
 
 } // namespace bfs
