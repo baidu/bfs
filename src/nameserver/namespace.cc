@@ -83,7 +83,7 @@ int64_t NameSpace::Version() const {
     return version_;
 }
 
-NameSpace::FileType NameSpace::GetFileType(int type) {
+NameSpace::FileType NameSpace::GetFileType(int type) const {
     int mode = (type >> 9);
     return static_cast<FileType>(mode);
 }
