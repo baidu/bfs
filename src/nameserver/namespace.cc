@@ -337,7 +337,7 @@ StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mo
 }
 
 StatusCode NameSpace::ListDirectory(const std::string& path,
-                             google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
+                                    google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
@@ -377,10 +377,10 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
 }
 
 StatusCode NameSpace::Rename(const std::string& old_path,
-                      const std::string& new_path,
-                      bool* need_unlink,
-                      FileInfo* remove_file,
-                      NameServerLog* log) {
+                             const std::string& new_path,
+                             bool* need_unlink,
+                             FileInfo* remove_file,
+                             NameServerLog* log) {
     *need_unlink = false;
     if (old_path == "/" || new_path == "/" || old_path == new_path) {
         return kBadParameter;
@@ -427,8 +427,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
             // if dst_file exists, type of both dst_file and old_file must be file
             if ((GetFileType(dst_file.type()) == kDir) || (GetFileType(old_file.type()) == kDir)) {
                 LOG(INFO, "Rename %s to %s, src %o or dst %o is not a file",
-                        old_path.c_str(), new_path.c_str(), old_file.type(),
-                        dst_file.type());
+                    old_path.c_str(), new_path.c_str(), old_file.type(),
+                    dst_file.type());
                 return kBadParameter;
             }
             if (GetFileType(dst_file.type()) != kSymlink) {
@@ -592,7 +592,7 @@ StatusCode NameSpace::InternalComputeDiskUsage(const FileInfo& info, uint64_t* d
 }
 
 StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
-                               std::vector<FileInfo>* files_removed, NameServerLog* log) {
+                                      std::vector<FileInfo>* files_removed, NameServerLog* log) {
     files_removed->clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
@@ -606,9 +606,9 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
 }
 
 StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
-                                       bool recursive,
-                                       std::vector<FileInfo>* files_removed,
-                                       NameServerLog* log) {
+                                              bool recursive,
+                                              std::vector<FileInfo>* files_removed,
+                                              NameServerLog* log) {
     int64_t entry_id = dir_info.entry_id();
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
