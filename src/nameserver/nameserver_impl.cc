@@ -1069,6 +1069,19 @@ void NameServerImpl::ListRecover(sofa::pbrpc::HTTPResponse* response) {
     return;
 }
 
+void NameServerImpl::ListDirForWeb(const std::string& path, std::string* str) {
+    google::protobuf::RepeatedPtrField<FileInfo> outputs;
+    namespace_->ListDirectory(path, &outputs);
+    for (int64_t i = 0; i < outputs.size(); ++i) {
+        const FileInfo& file = outputs.Get(i);
+        if (file.type() >> 9 == 1) {
+            str->append("<a href=\"/dfs/namespace?path=" + path + "/" + file.name() + "\">" + file.name() + "</a><br>");
+        } else {
+            str->append(file.name() + "<br>");
+        }
+    }
+}
+
 bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     const std::string& path = request.path;
@@ -1200,6 +1213,20 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             response.content->Append("<body onload=\"history.back()\"></body>");
             return true;
         }
+    } else if (path == "/dfs/namespace") {
+        std::map<const std::string, std::string>::const_iterator it = request.query_params->begin();
+        std::string path;
+        if (it == request.query_params->end()) {
+            path = "/";
+        } else if (it->first == "path") {
+            path = it->second;
+        } else {
+            path = "/";
+        }
+        std::string str;
+        ListDirForWeb(path, &str);
+        response.content->Append(str);
+        return true;
     }
 
     ::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers
@@ -1368,6 +1395,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                 str += " <a href=\"/dfs/hi_only\">HighOnly </a>";
                 str += "<a href=\"/dfs/recover_all\">RecoverAll</a>";
             }
+            str += "</br><a href=\"/dfs/namespace\">Namespace</a>";
 
             str += "</div>"; // <div class="col-sm-4 col-md-4">
         }
