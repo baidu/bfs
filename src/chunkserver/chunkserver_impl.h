@@ -49,6 +49,10 @@ public:
                               const GetBlockInfoRequest* request,
                               GetBlockInfoResponse* response,
                               ::google::protobuf::Closure* done);
+    virtual void PrepareForWrite(::google::protobuf::RpcController* controller,
+                                 const PrepareForWriteRequest* request,
+                                 PrepareForWriteResponse* response,
+                                 ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest& request,
                     sofa::pbrpc::HTTPResponse& response);
 private:

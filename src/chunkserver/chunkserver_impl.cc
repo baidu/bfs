@@ -858,6 +858,15 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
 
 }
 
+void ChunkServerImpl::PrepareForWrite(::google::protobuf::RpcController* controller,
+                             const PrepareForWriteRequest* request,
+                             PrepareForWriteResponse* response,
+                             ::google::protobuf::Closure* done)
+
+{
+
+}
+
 bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
                                 sofa::pbrpc::HTTPResponse& response) {
     ChunkserverStat c_stat = counter_manager_.GetCounters();

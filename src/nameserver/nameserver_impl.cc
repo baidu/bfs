@@ -1015,6 +1015,23 @@ void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* 
     done->Run();
 }
 
+
+void NameServerImpl::GetChunkServer(::google::protobuf::RpcController* controller,
+                                    const GetChunkServerRequest* request,
+                                    GetChunkServerResponse* response,
+                                    ::google::protobuf::Closure* done)
+{
+
+}
+
+void NameServerImpl::StartRecoverBlock(::google::protobuf::RpcController* controller,
+                                       const StartRecoverBlockRequest* request,
+                                       StartRecoverBlockResponse* response,
+                                       ::google::protobuf::Closure* done)
+{
+
+}
+
 void NameServerImpl::TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
                                    std::string* output) {
     for (std::map<int32_t, std::set<int64_t> >::const_iterator it =
