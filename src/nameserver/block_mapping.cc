@@ -67,8 +67,12 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, in
     if (replica->empty()) {
         LOG(DEBUG, "Block #%ld lost all replica", id);
     }
-    *size = block->block_size;
-    *status = block->recover_stat;
+    if (size) {
+        *size = block->block_size;
+    }
+    if (status) {
+        *status = block->recover_stat;
+    }
     return true;
 }
 

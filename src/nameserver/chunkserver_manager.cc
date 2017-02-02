@@ -428,7 +428,8 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 }
 
 bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
-                                          std::vector<std::string>* chains) {
+                                          std::vector<std::string>* chains,
+                                          int32_t select_num) {
     mu_.AssertHeld();
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<double, ChunkServerInfo*> > loads;
@@ -490,8 +491,12 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
             return false;
         }
     }
-    RandomSelect(&loads, FLAGS_recover_dest_limit);
-    for (int i = 0; i < static_cast<int>(loads.size()) && i < FLAGS_recover_dest_limit; ++i) {
+    if (select_num == -1) {
+        select_num = FLAGS_recover_dest_limit;
+    }
+    RandomSelect(&loads, select_num);
+    for (int i = 0; i < static_cast<int>(loads.size()) &&
+            i < FLAGS_recover_dest_limit; ++i) {
         ChunkServerInfo* cs = loads[i].second;
         chains->push_back(cs->address());
     }
