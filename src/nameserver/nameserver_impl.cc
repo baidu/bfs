@@ -1019,16 +1019,14 @@ void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* 
 void NameServerImpl::GetChunkServer(::google::protobuf::RpcController* controller,
                                     const GetChunkServerRequest* request,
                                     GetChunkServerResponse* response,
-                                    ::google::protobuf::Closure* done)
-{
+                                    ::google::protobuf::Closure* done) {
 
 }
 
 void NameServerImpl::StartRecoverBlock(::google::protobuf::RpcController* controller,
                                        const StartRecoverBlockRequest* request,
                                        StartRecoverBlockResponse* response,
-                                       ::google::protobuf::Closure* done)
-{
+                                       ::google::protobuf::Closure* done) {
 
 }
 

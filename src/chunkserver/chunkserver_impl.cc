@@ -861,9 +861,7 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
 void ChunkServerImpl::PrepareForWrite(::google::protobuf::RpcController* controller,
                              const PrepareForWriteRequest* request,
                              PrepareForWriteResponse* response,
-                             ::google::protobuf::Closure* done)
-
-{
+                             ::google::protobuf::Closure* done) {
 
 }
 
