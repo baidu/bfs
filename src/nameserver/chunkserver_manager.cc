@@ -491,12 +491,9 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
             return false;
         }
     }
-    if (select_num == -1) {
-        select_num = FLAGS_recover_dest_limit;
-    }
     RandomSelect(&loads, select_num);
     for (int i = 0; i < static_cast<int>(loads.size()) &&
-            i < FLAGS_recover_dest_limit; ++i) {
+            i < select_num; ++i) {
         ChunkServerInfo* cs = loads[i].second;
         chains->push_back(cs->address());
     }
@@ -679,7 +676,9 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id, RecoverVec* recover_blocks
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
         recover_blocks->push_back(std::make_pair((*it).first, std::vector<std::string>()));
-        if (GetRecoverChains((*it).second, &(recover_blocks->back().second))) {
+        if (GetRecoverChains((*it).second,
+                             &(recover_blocks->back().second),
+                             FLAGS_recover_dest_limit)) {
             //
         } else {
             block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first, kGetChunkServerError);
