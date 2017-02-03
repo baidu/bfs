@@ -421,6 +421,9 @@ int64_t Block::GetExpectedSize() const {
 void Block::SetExpectedSize(int64_t expected_size) {
     expected_size_ = expected_size;
 }
+void Block::SeekReceiveWindow(int32_t seq) {
+    recv_window_->SeekToOffset(seq);
+}
 /// Append to block buffer
 StatusCode Block::Append(int32_t seq, const char* buf, int64_t len) {
     mu_.AssertHeld();

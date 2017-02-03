@@ -55,7 +55,7 @@ message GetBlockInfoResponse {
 message PrepareForWriteRequest {
     optional int64 sequence_id = 1;
     optional int64 block_id = 2;
-    optional int64 sliding_window_start_seq = 3;
+    optional int32 sliding_window_start_seq = 3;
 }
 message PrepareForWriteResponse {
     optional int64 sequence_id = 1;

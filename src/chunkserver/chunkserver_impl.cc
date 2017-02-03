@@ -859,10 +859,24 @@ void ChunkServerImpl::GetBlockInfo(::google::protobuf::RpcController* controller
 }
 
 void ChunkServerImpl::PrepareForWrite(::google::protobuf::RpcController* controller,
-                             const PrepareForWriteRequest* request,
-                             PrepareForWriteResponse* response,
-                             ::google::protobuf::Closure* done) {
+                                      const PrepareForWriteRequest* request,
+                                      PrepareForWriteResponse* response,
+                                      ::google::protobuf::Closure* done) {
+    response->set_sequence_id(request->sequence_id());
+    int64_t block_id = request->block_id();
+    int32_t seq = request->sliding_window_start_seq();
 
+    LOG(INFO, "Prepare write for block #%ld from seq %d", block_id, seq);
+    StatusCode s;
+    Block* block = block_manager_->CreateBlock(block_id, &s);
+    if (s != kOK) {
+        LOG(INFO, "[PrepareForWrite] block #%ld created failed, reason %s",
+                block_id, StatusCode_Name(s).c_str());
+    } else {
+        block->SeekReceiveWindow(seq);
+    }
+    response->set_status(s);
+    done->Run();
 }
 
 bool ChunkServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
