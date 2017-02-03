@@ -38,6 +38,7 @@ DECLARE_int32(hi_recover_timeout);
 DECLARE_int32(lo_recover_timeout);
 DECLARE_int32(block_report_timeout);
 DECLARE_bool(clean_redundancy);
+DECLARE_int32(log_replicate_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -405,7 +406,7 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, std::function<void (boo
         sync_->Log(logstr, callback);
         return true;
     } else {
-        return sync_->Log(logstr);
+        return sync_->Log(logstr, FLAGS_log_replicate_timeout * 1000);
     }
 }
 

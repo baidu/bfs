@@ -19,6 +19,7 @@ DECLARE_string(master_slave_role);
 DECLARE_int64(master_slave_log_limit);
 DECLARE_int32(master_log_gc_interval);
 DECLARE_int32(logdb_log_size);
+DECLARE_int32(log_replicate_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -171,14 +172,16 @@ void MasterSlaveImpl::Log(const std::string& entry, std::function<void (bool)> c
         }
     }
     current_idx_++;
+    applied_idx_ = current_idx_; // already updated namespace, applied_idx does not have actually meaning
     callbacks_.insert(std::make_pair(current_idx_, callback));
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
         thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,this,
                                         current_idx_, true));
     } else {
         LOG(DEBUG, "%s insert callback index = %d", kLogPrefix.c_str(), current_idx_);
-        thread_pool_->DelayTask(10000, std::bind(&MasterSlaveImpl::PorcessCallbck,
-                                                 this, current_idx_, true));
+        thread_pool_->DelayTask(FLAGS_log_replicate_timeout * 1000,
+                                std::bind(&MasterSlaveImpl::PorcessCallbck,
+                                          this, current_idx_, true));
         cond_.Signal();
     }
     return;
@@ -234,7 +237,6 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
     current_idx_++;
     mu_.Unlock();
     log_callback_(request->log_data());
-    applied_idx_ = current_idx_;
     response->set_success(true);
     done->Run();
 }
@@ -266,6 +268,7 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
     if (data.empty()) {
         current_idx_ = request->index();
         response->set_success(true);
+        LOG(INFO, "%s Rceive snapshot, done seq = %ld", kLogPrefix.c_str(), seq);
         done->Run();
         return;
     }
@@ -302,6 +305,15 @@ void MasterSlaveImpl::ReplicateLog() {
         LOG(DEBUG, "%s ReplicateLog sync_idx_ = %d, current_idx_ = %d",
             kLogPrefix.c_str(), sync_idx_, current_idx_);
         mu_.Unlock();
+
+        if (sync_idx_ <= gc_idx_ && gc_idx_ != -1) {
+            if (!SendSnapshot()) {
+                LOG(INFO, "%s Send snapshot failed", kLogPrefix.c_str());
+                EmptyLog();
+            }
+            continue;
+        }
+
         std::string entry;
         if (logdb_->Read(sync_idx_ + 1, &entry) != kOK) {
             LOG(FATAL, "%s Read logdb_ failed sync_idx_ = %ld ",
@@ -323,11 +335,6 @@ void MasterSlaveImpl::ReplicateLog() {
             MutexLock lock(&mu_);
             sync_idx_ = response.index() - 1;
             LOG(INFO, "%s set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
-            if (sync_idx_ <= gc_idx_) {
-                if (!SendSnapshot()) {
-                    LOG(INFO, "%s Send snapshot failed", kLogPrefix.c_str());
-                }
-            }
             continue;
         }
         thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,
@@ -342,6 +349,7 @@ void MasterSlaveImpl::ReplicateLog() {
 }
 
 void MasterSlaveImpl::EmptyLog() {
+    LOG(INFO, "%s Sending empty log", kLogPrefix.c_str());
     master_slave::AppendLogRequest request;
     master_slave::AppendLogResponse response;
     request.set_index(-1);
@@ -350,6 +358,7 @@ void MasterSlaveImpl::EmptyLog() {
                                      &request, &response, 15, 1)) {
         sleep(5);
     }
+    LOG(INFO, "%s Slave re-connected", kLogPrefix.c_str());
 }
 
 bool MasterSlaveImpl::SendSnapshot() {
@@ -430,6 +439,7 @@ void MasterSlaveImpl::LogCleanUp() {
     StatusCode s = logdb_->DeleteUpTo(gc_index);
     if (s == kOK) {
         gc_idx_ = gc_index;
+        LOG(INFO, "%s logdb gc upto %ld", kLogPrefix.c_str(), gc_idx_);
     } else {
         LOG(INFO, "%s logdb gc failed %ld reason %s", kLogPrefix.c_str(),
             gc_index, StatusCode_Name(s).c_str());
@@ -441,12 +451,12 @@ void MasterSlaveImpl::LogCleanUp() {
 std::string MasterSlaveImpl::GetStatus() {
     if (is_leader_) {
         if (master_only_) {
-            return "master_only";
+            return "<font color=\"red\">MasterOnly</font>";
         } else {
-            return "master_slave";
+            return "Master <a href=" + slave_addr_ + "/dfs>Slave</a>";
         }
     } else {
-        return "slave";
+        return "Slave <a href=" + master_addr_ + "/dfs>Master</a>";
     }
 }
 

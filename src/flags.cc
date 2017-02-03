@@ -47,6 +47,7 @@ DEFINE_string(nameserver_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver clu
 DEFINE_int32(node_index, 0, "Nameserver node index");
 DEFINE_int32(snapshot_step, 1000, "Number of entries in one package");
 DEFINE_int32(logdb_log_size, 128, "Logdb log size, in MB");
+DEFINE_int32(log_replicate_timeout, 10, "Syncronized log replication timeout, in seconds");
 // ha - master_slave
 DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
 DEFINE_int64(master_slave_log_limit, 20000000, "Master will keep at most x log entries");

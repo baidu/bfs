@@ -774,36 +774,35 @@ void NameSpace::TailLog(const std::string& logstr) {
 }
 
 void NameSpace::TailSnapshot(int32_t ns_id, std::string* logstr) {
-    SnapshotTask* task = NULL;
+    leveldb::Iterator* iter = NULL;
     auto it = snapshot_tasks_.find(ns_id);
     if (it != snapshot_tasks_.end()) {
-        task = it->second;
+        iter = it->second;
     } else if (logstr != NULL) {
-        task = new SnapshotTask();
-        task->iter = db_->NewIterator(leveldb::ReadOptions());
-        snapshot_tasks_[ns_id] = task;
+        iter = db_->NewIterator(leveldb::ReadOptions());
+        iter->SeekToFirst();
+        snapshot_tasks_[ns_id] = iter;
     } else {
         LOG(WARNING, "TailSnapshot closed a nonexist snapshot: ns %d", ns_id);
         return;
     }
 
     if (logstr == NULL) {
-        delete task->iter;
-        delete task;
+        delete iter;
         snapshot_tasks_.erase(it);
         LOG(INFO, "TailSnapshot closed snapshot: %d", ns_id);
         return;
     }
     NameServerLog log;
     int count = 0;
-    leveldb::Iterator* iter = task->iter;
-    for (iter->Seek(std::string(7, '\0') + '\1'); iter->Valid(); iter->Next()) {
-        EncodeLog(&log, kSyncWrite, iter->key().data(), iter->value().data());
-        if (++count > FLAGS_snapshot_step) {
+    for (; iter->Valid(); iter->Next()) {
+        EncodeLog(&log, kSyncWrite, iter->key().ToString(), iter->value().ToString());
+        if (++count > FLAGS_snapshot_step - 1) {
             break;
         }
     }
     log.SerializeToString(logstr);
+    LOG(INFO, "LL: Sync log size = %u", logstr->size());
 }
 
 void NameSpace::EraseNamespace() {
