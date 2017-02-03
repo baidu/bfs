@@ -120,12 +120,12 @@ bool MasterSlaveImpl::Log(const std::string& entry, int timeout_ms) {
             kLogPrefix.c_str(), current_idx_ + 1);
     }
     current_idx_++;
+    applied_idx_ = current_idx_; // already updated namespace, applied_idx does not have actually meaning
     cond_.Signal();
     mu_.Unlock();
     // slave is way behind, do no wait
     if (master_only_ && sync_idx_ < current_idx_ - 1) {
         LOG(WARNING, "%s Sync in master-only mode, do not wait", kLogPrefix.c_str());
-        applied_idx_ = current_idx_;
         return true;
     }
 
@@ -265,7 +265,6 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
     const std::string& data = request->data();
     if (data.empty()) {
         current_idx_ = request->index();
-        applied_idx_ = request->index();
         response->set_success(true);
         done->Run();
         return;
@@ -339,7 +338,6 @@ void MasterSlaveImpl::ReplicateLog() {
             kLogPrefix.c_str(), sync_idx_ , current_idx_);
         mu_.Unlock();
     }
-    applied_idx_ = current_idx_;
     log_done_.Signal();
 }
 
@@ -400,9 +398,6 @@ void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
         mu_.Unlock();
         callback(true);
         mu_.Lock();
-        if (index > applied_idx_) {
-            applied_idx_ = index;
-        }
         if (timeout_check) {
             if (!master_only_) {
                 LOG(WARNING, "%s ReplicateLog sync_idx_ = %d timeout, enter master-only mode",
