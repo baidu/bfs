@@ -34,7 +34,8 @@ enum NodeState {
 
 class RaftNodeImpl : public RaftNode {
 public:
-    RaftNodeImpl(const std::string& raft_nodes, int node_index, const std::string& db_path);
+    RaftNodeImpl(const std::string& raft_nodes, int node_index,
+                 int election_timeout, const std::string& db_path);
     ~RaftNodeImpl();
     void Vote(::google::protobuf::RpcController* controller,
               const ::baidu::bfs::VoteRequest* request,
@@ -105,6 +106,7 @@ private:
     std::set<std::string> voted_;   /// À≠Õ∂Œ“¡À
     std::string leader_;
     int64_t election_taskid_;
+    int32_t election_timeout_;
 
     std::function<void (const std::string& log)> log_callback_;
     std::map<int64_t, std::function<void (bool)> > callback_map_;

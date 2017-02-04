@@ -49,6 +49,7 @@ DEFINE_int32(node_index, 0, "Nameserver node index");
 DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
 // ha - raft
 DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
+DEFINE_int32(nameserver_election_timeout, 10000, "Nameserver election timeout in ms");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");

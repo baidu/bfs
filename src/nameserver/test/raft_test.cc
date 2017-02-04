@@ -18,6 +18,7 @@
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
 DECLARE_int32(node_index);
+DECLARE_int32(nameserver_election_timeout);
 DECLARE_int32(nameserver_log_level);
 DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
@@ -117,8 +118,8 @@ int main(int argc, char* argv[])
 
     // Service
     baidu::bfs::RaftNodeImpl* raft_service =
-        new baidu::bfs::RaftNodeImpl(FLAGS_nameserver_nodes,
-                                     FLAGS_node_index, FLAGS_raftdb_path);
+        new baidu::bfs::RaftNodeImpl(FLAGS_nameserver_nodes, FLAGS_node_index,
+                                     FLAGS_nameserver_election_timeout, FLAGS_raftdb_path);
     baidu::bfs::raft::KvServer* kv_service =
         new baidu::bfs::raft::KvServer(raft_service);
     // rpc_server

@@ -11,13 +11,15 @@
 
 DECLARE_string(nameserver_nodes);
 DECLARE_int32(node_index);
+DECLARE_int32(nameserver_election_timeout);
 DECLARE_string(raftdb_path);
 
 namespace baidu {
 namespace bfs {
 
 RaftImpl::RaftImpl() {
-    raft_node_ = new RaftNodeImpl(FLAGS_nameserver_nodes, FLAGS_node_index, FLAGS_raftdb_path);
+    raft_node_ = new RaftNodeImpl(FLAGS_nameserver_nodes, FLAGS_node_index,
+                                  FLAGS_nameserver_election_timeout, FLAGS_raftdb_path);
 }
 
 RaftImpl::~RaftImpl() {

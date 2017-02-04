@@ -20,18 +20,21 @@ namespace baidu {
 namespace bfs {
 
 RaftNodeImpl::RaftNodeImpl(const std::string& raft_nodes,
-                           int node_index,
+                           int node_index, int election_timeout,
                            const std::string& db_path)
     : current_term_(0), log_index_(0), log_term_(0), commit_index_(0),
       last_applied_(0), applying_(false), node_stop_(false), election_taskid_(-1),
-      node_state_(kFollower) {
+      election_timeout_(election_timeout), node_state_(kFollower) {
     common::SplitString(raft_nodes, ",", &nodes_);
     if (nodes_.size() < 1U || static_cast<int>(nodes_.size()) <= node_index) {
         LOG(FATAL, "Wrong flags raft_nodes: %s %d", raft_nodes.c_str(),
             node_index);
     }
     self_ = nodes_[node_index];
-
+    if (election_timeout_ < 10) {
+        election_timeout_ = 10;
+        LOG(WARNING, "Reset raft election_timeout to 10 ms");
+    }
     LoadStorage(db_path);
     LOG(INFO, "Start RaftNode %s (%s)", self_.c_str(), raft_nodes.c_str());
 
@@ -131,7 +134,8 @@ void RaftNodeImpl::Election() {
         delete raft_node;
     }
     election_taskid_ =
-        thread_pool_->DelayTask(150 + rand() % 150, std::bind(&RaftNodeImpl::Election, this));
+        thread_pool_->DelayTask(election_timeout_ + rand() % election_timeout_,
+                                std::bind(&RaftNodeImpl::Election, this));
 }
 
 bool RaftNodeImpl::CheckTerm(int64_t term) {
@@ -220,7 +224,8 @@ void RaftNodeImpl::ResetElection() {
         CancelElection();
     }
     election_taskid_ =
-        thread_pool_->DelayTask(150 + rand() % 150, std::bind(&RaftNodeImpl::Election, this));
+        thread_pool_->DelayTask(election_timeout_ + rand() % election_timeout_,
+                                std::bind(&RaftNodeImpl::Election, this));
     //LOG(INFO, "Reset election %ld", election_taskid_);
 }
 void RaftNodeImpl::Vote(::google::protobuf::RpcController* controller,
@@ -405,7 +410,7 @@ void RaftNodeImpl::ReplicateLogWorker(uint32_t id) {
         }
         int64_t s = common::timer::get_micros();
         ReplicateLogForNode(id);
-        int64_t d = 100 - (common::timer::get_micros() - s) / 1000;
+        int64_t d = election_timeout_ / 2 - (common::timer::get_micros() - s) / 1000;
         if (d > 0) {
             follower->condition.TimeWait(d);
         }
