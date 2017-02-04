@@ -124,7 +124,7 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
         print_usage();
         return 1;
     }
-    int64_t bytes = 0;
+    int32_t ret = 0;
     int32_t len;
     for (int i = 0; i < argc; i++) {
         baidu::bfs::File* file;
@@ -139,15 +139,15 @@ int BfsCat(baidu::bfs::FS* fs, int argc, char* argv[]) {
             if (len <= 0) {
                 if (len < 0) {
                     fprintf(stderr, "Read from %s fail.\n", argv[i]);
+                    ret = 1;
                 }
                 break;
             }
-            bytes += len;
             write(1, buf, len);
         }
         delete file;
     }
-    return len;
+    return ret;
 }
 
 int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -189,11 +189,13 @@ int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
     char buf[10240];
     int64_t bytes = 0;
     int32_t len = 0;
+    int32_t ret = 0;
     while (1) {
         len = file->Read(buf, sizeof(buf));
         if (len <= 0) {
             if (len < 0) {
                 fprintf(stderr, "Read from %s fail.\n", source.c_str());
+                ret = 1;
             }
             break;
         }
@@ -203,13 +205,13 @@ int BfsGet(baidu::bfs::FS* fs, int argc, char* argv[]) {
     printf("Read %ld bytes from %s\n", bytes, source.c_str());
     delete file;
     fclose(fp);
-    return len;
+    return ret;
 }
 
 int BfsPut(baidu::bfs::FS* fs, int argc, char* argv[]) {
     if (argc != 4) {
         print_usage();
-        return 0;
+        return 1;
     }
 
     std::string source = argv[2];
