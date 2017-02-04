@@ -72,6 +72,7 @@ private:
     ThreadPool* thread_pool_;
 
     LogDB* logdb_;
+    int64_t term_;          // if slave's term is behind, it should cleanup itself
     int64_t current_idx_;   // last log's index
     int64_t applied_idx_;   // last applied entry index
     int64_t sync_idx_;      // last entry index which slave has received

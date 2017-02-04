@@ -295,6 +295,28 @@ StatusCode LogDB::DeleteFrom(int64_t index) {
     return kOK;
 }
 
+StatusCode LogDB::DestroyDB() {
+    MutexLock lock(&mu_);
+    for (auto it = read_log_.begin(); it != read_log_.end();) {
+        fclose((it->second).first);
+        fclose((it->second).second);
+        std::string log_name, idx_name;
+        FormLogName(it->first, &log_name, &idx_name);
+        remove(log_name.c_str());
+        remove(idx_name.c_str());
+        read_log_.erase(it++);
+    }
+    fclose(marker_log_);
+    int ret = remove((dbpath_ + "/marker.mak").c_str());
+    if (ret != 0) {
+        LOG(FATAL, "LL: remove failed %d", errno);
+    }
+    marker_log_ = NULL;
+    write_log_ = NULL;
+    write_index_ = NULL;
+    return kOK;
+}
+
 bool LogDB::BuildFileCache() {
     // build log file cache
     struct dirent *entry = NULL;

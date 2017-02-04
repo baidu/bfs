@@ -27,7 +27,7 @@ namespace bfs {
 const std::string kLogPrefix = "\033[32m[Sync]\033[0m";
 
 MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_only_(false),
-                                     cond_(&mu_), log_done_(&mu_), current_idx_(-1),
+                                     cond_(&mu_), log_done_(&mu_), term_(0), current_idx_(-1),
                                      applied_idx_(-1), sync_idx_(-1), gc_idx_(-1),
                                      slave_snapshot_seq_(0) {
     std::vector<std::string> nodes;
@@ -65,8 +65,10 @@ MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_
     if (logdb_ == NULL) {
         LOG(FATAL, "%s init logdb failed", kLogPrefix.c_str());
     }
-    thread_pool_->DelayTask(FLAGS_master_log_gc_interval * 1000,
-                            std::bind(&MasterSlaveImpl::LogCleanUp, this));
+    if (IsLeader()) {
+        thread_pool_->DelayTask(FLAGS_master_log_gc_interval * 1000,
+                                std::bind(&MasterSlaveImpl::LogCleanUp, this));
+    }
 }
 
 void MasterSlaveImpl::Init(SyncCallbacks callbacks) {
@@ -81,6 +83,9 @@ void MasterSlaveImpl::Init(SyncCallbacks callbacks) {
     }
     if (logdb_->ReadMarker("sync_idx", &sync_idx_) == kReadError) {
         LOG(FATAL, "%s ReadMarker sync_idx_ failed", kLogPrefix.c_str());
+    }
+    if (logdb_->ReadMarker("term", &term_) == kReadError) {
+        LOG(FATAL, "%s ReadMarker term_ failed", kLogPrefix.c_str());
     }
     LOG(INFO, "%s set current_idx_ = %ld, applied_idx_ = %ld, sync_idx_ = %ld ",
         kLogPrefix.c_str(), current_idx_, applied_idx_, sync_idx_);
@@ -188,6 +193,7 @@ void MasterSlaveImpl::Log(const std::string& entry, std::function<void (bool)> c
 }
 
 void MasterSlaveImpl::SwitchToLeader() {
+    MutexLock lock(&mu_);
     if (IsLeader()) {
         return;
     }
@@ -196,9 +202,29 @@ void MasterSlaveImpl::SwitchToLeader() {
     master_addr_ = slave_addr_;
     slave_addr_ = old_master_addr;
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
-    worker_.Start(std::bind(&MasterSlaveImpl::BackgroundLog, this));
+
+    StatusCode s = logdb_->DestroyDB();
+    if (s != kOK) {
+        LOG(FATAL, "%s DestroyDB failed", kLogPrefix.c_str());
+    }
+    DBOption option;
+    option.log_size = FLAGS_logdb_log_size;
+    LogDB::Open("./logdb", option, &logdb_);
+    if (logdb_ == NULL) {
+        LOG(FATAL, "%s init logdb failed", kLogPrefix.c_str());
+    }
+
+    ++term_;
+    s = logdb_->WriteMarker("term", term_);
+    if (s != kOK) {
+        LOG(FATAL, "%s Write marker term %ld failed", kLogPrefix.c_str(), term_);
+    }
+    gc_idx_ = current_idx_ - 1;
     is_leader_ = true;
     master_only_ = true;
+    worker_.Start(std::bind(&MasterSlaveImpl::BackgroundLog, this));
+    thread_pool_->DelayTask(FLAGS_master_log_gc_interval * 1000,
+                            std::bind(&MasterSlaveImpl::LogCleanUp, this));
     LOG(INFO, "%s node switch to leader", kLogPrefix.c_str());
 }
 
@@ -216,6 +242,19 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         response->set_success(true);
         done->Run();
         return;
+    }
+    // if term is behind, it is a retired master, may has dirty data
+    if (term_ < request->term()) {
+        LOG(INFO, "%s master term %ld slave term %ld, cleanup namespace",
+            kLogPrefix.c_str(), request->term(), term_);
+        erase_callback_();
+        LOG(INFO, "%s cleanup namespace done", kLogPrefix.c_str());
+        response->set_index(0);
+        response->set_success(false);
+        done->Run();
+        return;
+    } else if (term_ > request->term()) {
+        LOG(WARNING, "%s should not happend", kLogPrefix.c_str());
     }
     // expect index to be current_idx_ + 1
     if (request->index() > current_idx_ + 1) {
@@ -253,6 +292,7 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
         return;
     }
     int64_t seq = request->seq();
+    LOG(INFO, "%s Got snapshot seq %ld", kLogPrefix.c_str(), seq);
     if (seq == 0) {
         LOG(INFO, "%s Start to clean up the old namespace...", kLogPrefix.c_str());
         erase_callback_();
@@ -268,7 +308,7 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
     if (data.empty()) {
         current_idx_ = request->index();
         response->set_success(true);
-        LOG(INFO, "%s Rceive snapshot, done seq = %ld", kLogPrefix.c_str(), seq);
+        LOG(INFO, "%s Rceive snapshot complete seq = %ld", kLogPrefix.c_str(), seq);
         done->Run();
         return;
     }
@@ -377,15 +417,16 @@ bool MasterSlaveImpl::SendSnapshot() {
         if (!rpc_client_->SendRequest(slave_stub_,
                                       &master_slave::MasterSlave_Stub::Snapshot,
                                       &request, &response, 15, 1)) {
-            LOG(WARNING, "%s Send snapshot failed seq = %ld",
+            LOG(WARNING, "%s Send snapshot failed seq %ld",
                 kLogPrefix.c_str(), seq);
             break;
         }
+        LOG(INFO, "%s Send snapshot seq %ld done", kLogPrefix.c_str(), seq);
         if (!response.success()) {
             break;
         }
         if (logstr.empty()) {
-            LOG(INFO, "%s Send snapshot done seq = %ld", kLogPrefix.c_str(), seq);
+            LOG(INFO, "%s Send snapshot complete seq %ld", kLogPrefix.c_str(), seq);
             sync_idx_ = current_index;
             ret = true;
             break;

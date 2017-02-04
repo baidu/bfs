@@ -5,6 +5,7 @@ option cc_generic_services = true;
 message AppendLogRequest {
     optional bytes log_data = 1;
     optional int64 index = 2;
+    optional int64 term = 3;
 }
 
 message AppendLogResponse {
