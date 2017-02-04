@@ -25,7 +25,7 @@ class RpcClient;
 class MasterSlaveImpl : public Sync, public master_slave::MasterSlave {
 public:
     MasterSlaveImpl();
-    virtual ~MasterSlaveImpl() {};
+    virtual ~MasterSlaveImpl();
     virtual void Init(std::function<void (const std::string& log)> callback);
     virtual bool IsLeader(std::string* leader_addr = NULL);
     virtual bool Log(const std::string& entry, int timeout_ms = 10000);

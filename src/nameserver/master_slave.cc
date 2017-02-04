@@ -61,6 +61,17 @@ MasterSlaveImpl::MasterSlaveImpl() : slave_stub_(NULL), exiting_(false), master_
     }
 }
 
+
+MasterSlaveImpl::~MasterSlaveImpl() {
+    // Wait for threads done task.
+    if (thread_pool_) {
+        thread_pool_->Stop(true);
+    }
+    delete thread_pool_;
+    delete rpc_client_;
+    delete logdb_;
+}
+
 void MasterSlaveImpl::Init(std::function<void (const std::string& log)> callback) {
     log_callback_ = callback;
     if (logdb_->GetLargestIdx(&current_idx_) == kReadError) {
@@ -167,7 +178,7 @@ void MasterSlaveImpl::Log(const std::string& entry, std::function<void (bool)> c
         thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,this,
                                         current_idx_, true));
     } else {
-        LOG(DEBUG, "%s insert callback index = %d", kLogPrefix.c_str(), current_idx_);
+        LOG(DEBUG, "%s insert callback index = %ld", kLogPrefix.c_str(), current_idx_);
         thread_pool_->DelayTask(10000, std::bind(&MasterSlaveImpl::PorcessCallbck,
                                                  this, current_idx_, true));
         cond_.Signal();
@@ -253,7 +264,7 @@ void MasterSlaveImpl::ReplicateLog() {
             mu_.Unlock();
             break;
         }
-        LOG(DEBUG, "%s ReplicateLog sync_idx_ = %d, current_idx_ = %d",
+        LOG(DEBUG, "%s ReplicateLog sync_idx_ = %ld, current_idx_ = %ld",
             kLogPrefix.c_str(), sync_idx_, current_idx_);
         mu_.Unlock();
         std::string entry;
@@ -268,21 +279,21 @@ void MasterSlaveImpl::ReplicateLog() {
         while (!rpc_client_->SendRequest(slave_stub_,
                                          &master_slave::MasterSlave_Stub::AppendLog,
                                          &request, &response, 15, 1)) {
-            LOG(WARNING, "%s Replicate log failed index = %d, current_idx_ = %d",
+            LOG(WARNING, "%s Replicate log failed index = %ld, current_idx_ = %ld",
                 kLogPrefix.c_str(), sync_idx_ + 1, current_idx_);
             sleep(5);
         }
         if (!response.success()) { // log mismatch
             MutexLock lock(&mu_);
             sync_idx_ = response.index() - 1;
-            LOG(INFO, "[Sync] set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
+            LOG(INFO, "%s set sync_idx_ to %ld", kLogPrefix.c_str(), sync_idx_);
             continue;
         }
         thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,
                                         this, sync_idx_ + 1, false));
         mu_.Lock();
         sync_idx_++;
-        LOG(DEBUG, "%s Replicate log done. sync_idx_ = %d, current_idx_ = %d",
+        LOG(DEBUG, "%s Replicate log done. sync_idx_ = %ld, current_idx_ = %ld",
             kLogPrefix.c_str(), sync_idx_ , current_idx_);
         mu_.Unlock();
     }
@@ -296,7 +307,7 @@ void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
     std::map<int64_t, std::function<void (bool)> >::iterator it = callbacks_.find(index);
     if (it != callbacks_.end()) {
         callback = it->second;
-        LOG(DEBUG, "%s calling callback %d", kLogPrefix.c_str(), it->first);
+        LOG(DEBUG, "%s calling callback %ld", kLogPrefix.c_str(), it->first);
         callbacks_.erase(it);
         mu_.Unlock();
         callback(true);
@@ -306,7 +317,7 @@ void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
         }
         if (timeout_check) {
             if (!master_only_) {
-                LOG(WARNING, "%s ReplicateLog sync_idx_ = %d timeout, enter master-only mode",
+                LOG(WARNING, "%s ReplicateLog sync_idx_ = %ld timeout, enter master-only mode",
                     kLogPrefix.c_str(), index);
             }
             master_only_ = true;
@@ -320,7 +331,7 @@ void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
 }
 
 void MasterSlaveImpl::LogStatus() {
-    LOG(INFO, "%s sync_idx_ = %d, current_idx_ = %d, applied_idx_ = %d, callbacks_ size = %d",
+    LOG(INFO, "%s sync_idx_ = %ld, current_idx_ = %ld, applied_idx_ = %ld, callbacks_ size = %d",
         kLogPrefix.c_str(), sync_idx_, current_idx_, applied_idx_, callbacks_.size());
     StatusCode ret_a = logdb_->WriteMarker("applied_idx", applied_idx_);
     StatusCode ret_s = logdb_->WriteMarker("sync_idx", sync_idx_);

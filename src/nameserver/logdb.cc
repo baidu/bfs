@@ -22,6 +22,7 @@ LogDB::~LogDB() {
     if (thread_pool_) {
         thread_pool_->Stop(true);
     }
+    delete thread_pool_;
     if (write_log_) fclose(write_log_);
     for (FileCache::iterator it = read_log_.begin(); it != read_log_.end(); ++it) {
         fclose((it->second).first);
