@@ -37,8 +37,8 @@ public:
     void Clear();
     void SetLast();
     bool IsLast() const;
-    int64_t offset() const;
-    int64_t block_id() const;
+    int64_t Offset() const;
+    int64_t BlockId() const;
     void AddRefBy(int counter);
     void AddRef();
     void DecRef();
@@ -92,7 +92,8 @@ public:
                             std::string cs_addr);
     /// When rpc buffer full delay send write request
     static void DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
-                                WriteBuffer* buffer, const WriteBlockRequest* request,
+                                int delay_times, WriteBuffer* buffer,
+                                const WriteBlockRequest* request,
                                 int retry_times, std::string cs_addr);
     int32_t Flush();
     int32_t Sync();
@@ -116,8 +117,9 @@ private:
                             int retry_times,
                             WriteBuffer* buffer,
                             std::string cs_addr);
-    void DelayWriteChunkInternal(WriteBuffer* buffer, const WriteBlockRequest* request,
-                                int retry_times, std::string cs_addr);
+    void DelayWriteChunkInternal(int delay_times, WriteBuffer* buffer,
+                                 const WriteBlockRequest* request,
+                                 int retry_times, std::string cs_addr);
     bool IsChainsWrite();
     bool EnoughReplica();
     std::string GetSlowChunkserver();

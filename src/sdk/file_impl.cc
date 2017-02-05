@@ -61,10 +61,10 @@ void WriteBuffer::SetLast() {
 bool WriteBuffer::IsLast() const {
     return is_last_;
 }
-int64_t WriteBuffer::offset() const {
+int64_t WriteBuffer::Offset() const {
     return offset_;
 }
-int64_t WriteBuffer::block_id() const {
+int64_t WriteBuffer::BlockId() const {
     return block_id_;
 }
 void WriteBuffer::AddRefBy(int counter) {
@@ -456,13 +456,16 @@ void FileImpl::StartWrite() {
 
 bool FileImpl::CheckWriteWindows() {
     mu_.AssertHeld();
+    WriteBuffer* write_buffer = write_queue_.top();
     if (IsChainsWrite()) {
-        return write_windows_.begin()->second->UpBound() > write_queue_.top()->Sequence();
+        common::SlidingWindow<int>* sld = write_windows_.begin()->second;
+        return sld->UpBound() >= write_buffer->Sequence();
     }
     std::map<std::string, common::SlidingWindow<int>* >::iterator it;
     int count = 0;
     for (it = write_windows_.begin(); it != write_windows_.end(); ++it) {
-        if (it->second->UpBound() > write_queue_.top()->Sequence()) {
+        common::SlidingWindow<int>* sld = it->second;
+        if (sld->UpBound() >= write_buffer->Sequence()) {
             count++;
         }
     }
@@ -544,10 +547,10 @@ void FileImpl::BackgroundWriteInternal() {
                 }
             }
             WriteBlockRequest* request = new WriteBlockRequest;
-            int64_t offset = buffer->offset();
+            int64_t offset = buffer->Offset();
             int64_t seq = common::timer::get_micros();
             request->set_sequence_id(seq);
-            request->set_block_id(buffer->block_id());
+            request->set_block_id(buffer->BlockId());
             request->set_databuf(buffer->Data(), buffer->Size());
             request->set_offset(offset);
             request->set_is_last(buffer->IsLast());
@@ -571,13 +574,13 @@ void FileImpl::BackgroundWriteInternal() {
                         max_retry_times, buffer, cs_addr);
 
             LOG(DEBUG, "BackgroundWrite start [bid:%ld, seq:%d, offset:%ld, len:%d]\n",
-                    buffer->block_id(), buffer->Sequence(), buffer->offset(), buffer->Size());
+                    buffer->BlockId(), buffer->Sequence(), buffer->Offset(), buffer->Size());
             common::atomic_inc(&back_writing_);
             if (delay) {
                 thread_pool_->DelayTask(5,
-                        std::bind(&FileImpl::DelayWriteChunk,
+                            std::bind(&FileImpl::DelayWriteChunk,
                             std::weak_ptr<FileImpl>(shared_from_this()),
-                            buffer, request, max_retry_times, cs_addr));
+                            5, buffer, request, max_retry_times, cs_addr));
             } else {
                 WriteBlockResponse* response = new WriteBlockResponse;
                 rpc_client_->AsyncRequest(stub, &ChunkServer_Stub::WriteBlock,
@@ -593,7 +596,7 @@ void FileImpl::BackgroundWriteInternal() {
 }
 
 void FileImpl::DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
-                               WriteBuffer* buffer,
+                               int delay_times, WriteBuffer* buffer,
                                const WriteBlockRequest* request,
                                int retry_times, std::string cs_addr) {
     std::shared_ptr<FileImpl> fp(wk_fp.lock());
@@ -603,12 +606,48 @@ void FileImpl::DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
         delete request;
         return;
     }
-    fp->DelayWriteChunkInternal(buffer, request, retry_times, cs_addr);
+    fp->DelayWriteChunkInternal(delay_times, buffer, request, retry_times, cs_addr);
 }
 
-void FileImpl::DelayWriteChunkInternal(WriteBuffer* buffer,
+void FileImpl::DelayWriteChunkInternal(int delay_times, WriteBuffer* buffer,
                                const WriteBlockRequest* request,
                                int retry_times, std::string cs_addr) {
+
+    if (delay_times == -1) {
+        // do not delay
+    } else {
+        MutexLock lock(&mu_);
+        common::SlidingWindow<int>* sld = write_windows_[cs_addr];
+        // check whether need to delay again
+        if (sld->UpBound() < buffer->Sequence()) {
+            if (--delay_times == 0) {
+                LOG(WARNING, "Write file %s block #%ld seq %d to %s failed "
+                        "out of sliding window upbound",
+                        name_.c_str(), buffer->BlockId(),
+                        buffer->Sequence(), cs_addr.c_str());
+                buffer->DecRef();
+                delete request;
+                cs_errors_[cs_addr] = true;
+                if (ShouldSetError()) {
+                    bg_error_ = true;
+                    sync_signal_.Broadcast();
+                    common::atomic_dec(&back_writing_);
+                }
+            } else {
+                LOG(INFO, "Delay write file %s block %ld seq %d to %s "
+                        "delay times %d",
+                        name_.c_str(), buffer->BlockId(),
+                        buffer->Sequence(), cs_addr.c_str(),
+                        delay_times);
+                thread_pool_->DelayTask(5000,
+                            std::bind(&FileImpl::DelayWriteChunk,
+                            std::weak_ptr<FileImpl>(shared_from_this()),
+                            delay_times, buffer, request,
+                            retry_times, cs_addr));
+            }
+            return;
+        }
+    }
     WriteBlockResponse* response = new WriteBlockResponse;
     std::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
         = std::bind(&FileImpl::WriteBlockCallback,
@@ -655,44 +694,47 @@ void FileImpl::WriteBlockCallbackInternal(const WriteBlockRequest* request,
         if (sofa::pbrpc::RPC_ERROR_SEND_BUFFER_FULL != error
                 && response->status() != kCsTooMuchPendingBuffer
                 && response->status() != kCsTooMuchUnfinishedWrite) {
-            if (retry_times < FLAGS_sdk_write_retry_times) {
-                LOG(INFO, "BackgroundWrite failed %s"
-                    " #%ld seq:%d, offset:%ld, len:%d"
-                    " status: %s, retry_times: %d",
-                    name_.c_str(),
-                    buffer->block_id(), buffer->Sequence(),
-                    buffer->offset(), buffer->Size(),
-                    StatusCode_Name(response->status()).c_str(), retry_times);
-            }
             if (--retry_times == 0) {
                 LOG(WARNING, "BackgroundWrite error %s"
-                    " #%ld seq:%d, offset:%ld, len:%d"
-                    " status: %s, retry_times: %d",
-                    name_.c_str(),
-                    buffer->block_id(), buffer->Sequence(),
-                    buffer->offset(), buffer->Size(),
-                    StatusCode_Name(response->status()).c_str(), retry_times);
+                        " #%ld seq:%d, offset:%ld, len:%d"
+                        " status: %s, retry_times: %d",
+                        name_.c_str(), buffer->BlockId(),
+                        buffer->Sequence(), buffer->Offset(),
+                        buffer->Size(),
+                        StatusCode_Name(response->status()).c_str(),
+                        retry_times);
                 ///TODO: SetFaild & handle it
                 MutexLock lock(&mu_);
                 cs_errors_[cs_addr] = true;
                 if (ShouldSetError()) {
                     bg_error_ = true;
                 }
+            } else {
+                if (retry_times < FLAGS_sdk_write_retry_times) {
+                    LOG(INFO, "BackgroundWrite failed %s"
+                            " #%ld seq:%d, offset:%ld, len:%d"
+                            " status: %s, retry_times: %d",
+                            name_.c_str(), buffer->BlockId(),
+                            buffer->Sequence(), buffer->Offset(),
+                            buffer->Size(),
+                            StatusCode_Name(response->status()).c_str(),
+                            retry_times);
+                }
             }
         }
         if (!bg_error_ && retry_times > 0) {
             common::atomic_inc(&back_writing_);
             thread_pool_->DelayTask(5000,
-                std::bind(&FileImpl::DelayWriteChunk,
-                    std::weak_ptr<FileImpl>(shared_from_this()),
-                    buffer, request, retry_times, cs_addr));
+                    std::bind(&FileImpl::DelayWriteChunk,
+                        std::weak_ptr<FileImpl>(shared_from_this()),
+                        -1, buffer, request, retry_times, cs_addr));
         } else {
             buffer->DecRef();
             delete request;
         }
     } else {
         LOG(DEBUG, "BackgroundWrite done bid:%ld, seq:%d, offset:%ld, len:%d, back_writing_:%d",
-            buffer->block_id(), buffer->Sequence(), buffer->offset(),
+                buffer->BlockId(), buffer->Sequence(), buffer->Offset(),
             buffer->Size(), back_writing_);
         int64_t diff = common::timer::get_micros() - request->sequence_id();
         if (diff > 200000) {
