@@ -22,6 +22,9 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(TCMALLOC_PATH)/lib -ltcmalloc_minimal \
           -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
+SO_LDFLAGS += -rdynamic $(DEPS_LDPATH) $(SO_DEPS_LDFLAGS) -lpthread -lrt -lz -ldl \
+	      -shared -Wl,--version-script,so-version-script # hide symbol of thirdparty libs
+
 CXXFLAGS = -std=c++11 -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_PATH)/include
 FUSE_LL_FLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_LL_PATH)/include
@@ -67,7 +70,8 @@ VERSION_OBJ = src/version.o
 OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
-BIN = nameserver chunkserver bfs_client raft_kv kv_client
+BFS_C_SO = libbfs_c.so
+BIN = nameserver chunkserver bfs_client raft_kv kv_client libbfs_c.so
 UTIL_BIN = bfs_dump logdb_dump
 
 ifdef FUSE_PATH
@@ -177,6 +181,17 @@ chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) src/utils/meta_converter.o
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)
 
+libbfs_c.so: src/bfs_c.cc src/sdk/bfs_c.h libbfs.a
+	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) -o $@ src/bfs_c.cc  \
+	            -Xlinker "-(" libbfs.a \
+		thirdparty/lib/libprotobuf.a \
+		thirdparty/lib/libsofa-pbrpc.a \
+		thirdparty/lib/libsnappy.a \
+		thirdparty/lib/libgflags.a \
+		thirdparty/lib/libcommon.a \
+		-lpthread  -lrt -lz -ldl \
+		-Xlinker "-)"
+
 bfs_client: $(CLIENT_OBJ) $(LIBS)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
 
@@ -214,7 +229,7 @@ FORCE:
 clean:
 	rm -rf $(BIN) $(UTIL_BIN) mark
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ)  \
-		   $(OBJS) $(TEST_OBJS) $(MARK_OBJ) $(UTIL_OJB)
+		   $(OBJS) $(TEST_OBJS) $(MARK_OBJ) $(UTIL_OJB) $(BFS_C_SO)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
 	rm -rf $(LIBS)
