@@ -36,7 +36,8 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     block_id_upbound_(1), next_block_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
-    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    db_cache_ = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    options.block_cache = db_cache_;
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
         db_ = NULL;
@@ -802,7 +803,7 @@ void NameSpace::TailSnapshot(int32_t ns_id, std::string* logstr) {
         }
     }
     log.SerializeToString(logstr);
-    LOG(INFO, "LL: Sync log size = %u", logstr->size());
+    LOG(DEBUG, "Sync log size = %u", logstr->size());
 }
 
 void NameSpace::EraseNamespace() {
@@ -815,7 +816,9 @@ void NameSpace::EraseNamespace() {
         exit(EXIT_FAILURE);
     }
     options.create_if_missing = true;
-    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    delete db_cache_;
+    db_cache_ = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    options.block_cache = db_cache_;
     s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
         db_ = NULL;

@@ -302,14 +302,17 @@ StatusCode LogDB::DestroyDB() {
         fclose((it->second).second);
         std::string log_name, idx_name;
         FormLogName(it->first, &log_name, &idx_name);
-        remove(log_name.c_str());
-        remove(idx_name.c_str());
+        if (remove(log_name.c_str()) != 0) {
+            LOG(FATAL, "[LogDB] remove failed %s", log_name.c_str());
+        }
+        if (remove(idx_name.c_str()) != 0) {
+            LOG(FATAL, "[LogDB] remove failed %s", idx_name.c_str());
+        }
         read_log_.erase(it++);
     }
     fclose(marker_log_);
-    int ret = remove((dbpath_ + "/marker.mak").c_str());
-    if (ret != 0) {
-        LOG(FATAL, "LL: remove failed %d", errno);
+    if (remove((dbpath_ + "/marker.mak").c_str()) != 0) {
+        LOG(FATAL, "[LogDB] remove failed %d", errno);
     }
     marker_log_ = NULL;
     write_log_ = NULL;

@@ -249,12 +249,17 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
             kLogPrefix.c_str(), request->term(), term_);
         erase_callback_();
         LOG(INFO, "%s cleanup namespace done", kLogPrefix.c_str());
+        term_ = request->term();
+        StatusCode s = logdb_->WriteMarker("term", term_);
+        if (s != kOK) {
+            LOG(FATAL, "%s Write marker term %ld failed", kLogPrefix.c_str(), term_);
+        }
         response->set_index(0);
         response->set_success(false);
         done->Run();
         return;
     } else if (term_ > request->term()) {
-        LOG(WARNING, "%s should not happend", kLogPrefix.c_str());
+        LOG(FATAL, "%s should not happened", kLogPrefix.c_str());
     }
     // expect index to be current_idx_ + 1
     if (request->index() > current_idx_ + 1) {
@@ -308,7 +313,7 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
     if (data.empty()) {
         current_idx_ = request->index();
         response->set_success(true);
-        LOG(INFO, "%s Rceive snapshot complete seq = %ld", kLogPrefix.c_str(), seq);
+        LOG(INFO, "%s Receive snapshot complete seq = %ld", kLogPrefix.c_str(), seq);
         done->Run();
         return;
     }
@@ -414,12 +419,11 @@ bool MasterSlaveImpl::SendSnapshot() {
         request.set_data(logstr);
         request.set_seq(seq);
         request.set_index(current_index);
-        if (!rpc_client_->SendRequest(slave_stub_,
+        while (!rpc_client_->SendRequest(slave_stub_,
                                       &master_slave::MasterSlave_Stub::Snapshot,
                                       &request, &response, 15, 1)) {
             LOG(WARNING, "%s Send snapshot failed seq %ld",
                 kLogPrefix.c_str(), seq);
-            break;
         }
         LOG(INFO, "%s Send snapshot seq %ld done", kLogPrefix.c_str(), seq);
         if (!response.success()) {

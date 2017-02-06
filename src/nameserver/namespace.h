@@ -99,6 +99,7 @@ private:
     void UpdateBlockIdUpbound(NameServerLog* log);
 private:
     leveldb::DB* db_;   /// NameSpace storage
+    leveldb::Cache* db_cache_;  // block cache for leveldb
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;
@@ -107,7 +108,7 @@ private:
     Mutex mu_;
 
     /// HA module
-    std::map<int64_t, leveldb::Iterator*> snapshot_tasks_;
+    std::map<int32_t, leveldb::Iterator*> snapshot_tasks_;
 };
 
 } // namespace bfs

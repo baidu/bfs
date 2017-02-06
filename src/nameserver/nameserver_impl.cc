@@ -1379,7 +1379,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             str += "<div class=\"col-sm-4 col-md-4\">";
             str += "Status: ";
             if (readonly_) {
-                str += "<font color=\"red\">Read Only</font></br> <a href=\"/dfs/leave_read_only\">LeaveReadOnly</a>";
+                str += "<font color=\"red\">ReadOnly</font></br> <a href=\"/dfs/leave_read_only\">LeaveReadOnly</a>";
             } else {
                 str += "Normal</br> <a href=\"/dfs/entry_read_only\">EnterReadOnly</a>";
             }
