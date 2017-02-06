@@ -57,6 +57,9 @@ public:
     // delete all entries larter than or equal to 'index'
     StatusCode DeleteFrom(int64_t index);
 
+    // Delete all data in db
+    StatusCode DestroyDB();
+
     /// for dumper ///
     static int ReadOne(FILE* fp, std::string* data);
     static StatusCode ReadIndex(FILE* fp, int64_t expect_index, int64_t* index, int64_t* offset);
@@ -85,7 +88,7 @@ private:
     typedef std::map<int64_t, std::pair<FILE*, FILE*> > FileCache;
     FILE* write_log_;       // log file ends with '.log'
     FILE* write_index_;     // index file ends with '.idx'
-    FileCache read_log_;    // file cache, indext -> (idx_fp, log_fp)
+    FileCache read_log_;    // file cache, index -> (idx_fp, log_fp)
     FILE* marker_log_;      // marker file names 'marker.mak'
 };
 

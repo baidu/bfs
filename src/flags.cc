@@ -11,9 +11,9 @@ DEFINE_bool(bfs_bug_tolerant, true, "Tolerate minor bug");
 DEFINE_bool(bfs_web_kick_enable, false, "Enable kick button on website");
 DEFINE_int32(web_recover_list_size, 10, "Max recover list size displayed in website per bucket");
 DEFINE_string(bfs_log, "", "BFS log");
-DEFINE_int32(bfs_log_size, 1024, "BFS log size");
-DEFINE_int32(bfs_log_limit, 102400, "BFS log total size limit");
-DEFINE_int32(block_report_timeout, 600, "BlockReport rpc timeout");
+DEFINE_int32(bfs_log_size, 1024, "BFS log size, in MB");
+DEFINE_int32(bfs_log_limit, 102400, "BFS log total size limit, in MB");
+DEFINE_int32(block_report_timeout, 600, "BlockReport rpc timeout, in seconds");
 
 // nameserver
 DEFINE_string(namedb_path, "./db", "Namespace database");
@@ -45,8 +45,13 @@ DEFINE_bool(check_orphan, false, "Check orphan entry in RebuildBlockMap");
 DEFINE_string(ha_strategy, "master_slave", "[master_slave, raft, none]");
 DEFINE_string(nameserver_nodes, "127.0.0.1:8828,127.0.0.1:8829", "Nameserver cluster addresses");
 DEFINE_int32(node_index, 0, "Nameserver node index");
+DEFINE_int32(snapshot_step, 1000, "Number of entries in one package");
+DEFINE_int32(logdb_log_size, 128, "Logdb log size, in MB");
+DEFINE_int32(log_replicate_timeout, 10, "Syncronized log replication timeout, in seconds");
 // ha - master_slave
 DEFINE_string(master_slave_role, "master", "This server's role in master/slave ha strategy");
+DEFINE_int64(master_slave_log_limit, 20000000, "Master will keep at most x log entries");
+DEFINE_int32(master_log_gc_interval, 30 * 60, "Master's logdb gc interval, in seconds");
 // ha - raft
 DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
 

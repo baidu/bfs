@@ -41,8 +41,8 @@ void RaftImpl::Log(const std::string& entry, std::function<void (bool)> callback
     raft_node_->AppendLog(entry, callback);
 }
 
-void RaftImpl::Init(std::function<void (const std::string& log)> callback) {
-    return raft_node_->Init(callback);
+void RaftImpl::Init(SyncCallbacks callbacks) {
+    return raft_node_->Init(callbacks.log_callback, callbacks.snapshot_callback);
 }
 
 std::string RaftImpl::GetStatus() {

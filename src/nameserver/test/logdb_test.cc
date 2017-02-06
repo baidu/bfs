@@ -4,6 +4,7 @@
 #include <vector>
 #include <functional>
 #include <sys/stat.h>
+#include <dirent.h>
 
 #include <gtest/gtest.h>
 #include <common/string_util.h>
@@ -322,6 +323,26 @@ TEST_F(LogDBTest, DeleteFrom) {
     WriteLog_Helper(0, 10, logdb);
     ReadLog_Helper(0, 10, logdb);
     delete logdb;
+    system("rm -rf ./dbtest");
+}
+
+TEST_F(LogDBTest, DestroyDB) {
+    DBOption option;
+    option.log_size = 1;
+    LogDB* logdb;
+    LogDB::Open("./dbtest", option, &logdb);
+    WriteLog_Helper(0, 200000, logdb);
+
+    logdb->DestroyDB();
+    delete logdb;
+    struct dirent *entry = NULL;
+    DIR *dir_ptr = opendir("./dbtest");
+    assert(dir_ptr != NULL);
+    while ((entry = readdir(dir_ptr)) != NULL) {
+        std::string name(entry->d_name);
+        assert(name == "." || name == "..");
+    }
+    closedir(dir_ptr);
     system("rm -rf ./dbtest");
 }
 

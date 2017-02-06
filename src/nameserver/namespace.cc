@@ -23,6 +23,7 @@ DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(block_id_allocation_size);
+DECLARE_int32(snapshot_step);
 DECLARE_bool(check_orphan);
 
 const int64_t kRootEntryid = 1;
@@ -35,7 +36,8 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     block_id_upbound_(1), next_block_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
-    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    db_cache_ = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    options.block_cache = db_cache_;
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
         db_ = NULL;
@@ -771,6 +773,59 @@ void NameSpace::TailLog(const std::string& logstr) {
     }
 }
 
+void NameSpace::TailSnapshot(int32_t ns_id, std::string* logstr) {
+    leveldb::Iterator* iter = NULL;
+    auto it = snapshot_tasks_.find(ns_id);
+    if (it != snapshot_tasks_.end()) {
+        iter = it->second;
+    } else if (logstr != NULL) {
+        iter = db_->NewIterator(leveldb::ReadOptions());
+        iter->SeekToFirst();
+        snapshot_tasks_[ns_id] = iter;
+    } else {
+        LOG(WARNING, "TailSnapshot closed a nonexist snapshot: ns %d", ns_id);
+        return;
+    }
+
+    if (logstr == NULL) {
+        delete iter;
+        snapshot_tasks_.erase(it);
+        LOG(INFO, "TailSnapshot closed snapshot: %d", ns_id);
+        return;
+    }
+    NameServerLog log;
+    int count = 0;
+    for (; iter->Valid(); iter->Next()) {
+        EncodeLog(&log, kSyncWrite, iter->key().ToString(), iter->value().ToString());
+        if (++count > FLAGS_snapshot_step - 1) {
+            break;
+        }
+    }
+    log.SerializeToString(logstr);
+    LOG(DEBUG, "Sync log size = %u", logstr->size());
+}
+
+void NameSpace::EraseNamespace() {
+    delete db_;
+    db_ = NULL;
+    leveldb::Options options;
+    leveldb::Status s = leveldb::DestroyDB(FLAGS_namedb_path, options);
+    if (!s.ok()) {
+        LOG(ERROR, "DestroyDB fail: %s", s.ToString().c_str());
+        exit(EXIT_FAILURE);
+    }
+    options.create_if_missing = true;
+    delete db_cache_;
+    db_cache_ = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    options.block_cache = db_cache_;
+    s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
+    if (!s.ok()) {
+        db_ = NULL;
+        LOG(ERROR, "Open leveldb fail: %s", s.ToString().c_str());
+        exit(EXIT_FAILURE);
+    }
+}
+
 uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
                               const std::string& key, const std::string& value) {
     if (log == NULL) {
@@ -782,6 +837,7 @@ uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
     entry->set_value(value);
     return entry->ByteSize();
 }
+
 void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     std::string block_id_upbound_key(8, 0);
     block_id_upbound_key.append("block_id_upbound");
@@ -797,6 +853,7 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     }
     EncodeLog(log, kSyncWrite, block_id_upbound_key, block_id_upbound_str);
 }
+
 void NameSpace::InitBlockIdUpbound(NameServerLog* log) {
     std::string block_id_upbound_key(8, 0);
     block_id_upbound_key.append("block_id_upbound");

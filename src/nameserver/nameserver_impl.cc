@@ -38,6 +38,7 @@ DECLARE_int32(hi_recover_timeout);
 DECLARE_int32(lo_recover_timeout);
 DECLARE_int32(block_report_timeout);
 DECLARE_bool(clean_redundancy);
+DECLARE_int32(log_replicate_timeout);
 
 namespace baidu {
 namespace bfs {
@@ -63,7 +64,12 @@ NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
     if (sync_) {
-        sync_->Init(std::bind(&NameSpace::TailLog, namespace_, std::placeholders::_1));
+        SyncCallbacks callbacks(std::bind(&NameSpace::TailLog, namespace_,
+                                          std::placeholders::_1),
+                                std::bind(&NameSpace::TailSnapshot, namespace_,
+                                          std::placeholders::_1, std::placeholders::_2),
+                                std::bind(&NameSpace::EraseNamespace, namespace_));
+        sync_->Init(callbacks);
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
@@ -400,7 +406,7 @@ bool NameServerImpl::LogRemote(const NameServerLog& log, std::function<void (boo
         sync_->Log(logstr, callback);
         return true;
     } else {
-        return sync_->Log(logstr);
+        return sync_->Log(logstr, FLAGS_log_replicate_timeout * 1000);
     }
 }
 
@@ -1373,7 +1379,7 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
             str += "<div class=\"col-sm-4 col-md-4\">";
             str += "Status: ";
             if (readonly_) {
-                str += "<font color=\"red\">Read Only</font></br> <a href=\"/dfs/leave_read_only\">LeaveReadOnly</a>";
+                str += "<font color=\"red\">ReadOnly</font></br> <a href=\"/dfs/leave_read_only\">LeaveReadOnly</a>";
             } else {
                 str += "Normal</br> <a href=\"/dfs/entry_read_only\">EnterReadOnly</a>";
             }

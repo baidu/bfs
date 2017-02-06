@@ -48,7 +48,8 @@ public:
     bool GetLeader(std::string* leader);
     void AppendLog(const std::string& log, std::function<void (bool)> callback);
     bool AppendLog(const std::string& log, int timeout_ms = 10000);
-    void Init(std::function<void (const std::string& log)> callback);
+    void Init(std::function<void (const std::string& log)> callback,
+              std::function<void (int32_t, std::string*)> snapshot_callback);
 private:
     bool StoreContext(const std::string& context, int64_t value);
     bool StoreContext(const std::string& context, const std::string& value);
