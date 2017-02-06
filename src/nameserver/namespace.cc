@@ -85,7 +85,7 @@ int64_t NameSpace::Version() const {
     return version_;
 }
 
-NameSpace::FileType NameSpace::GetFileType(int type) {
+NameSpace::FileType NameSpace::GetFileType(int type) const {
     int mode = (type >> 9);
     return static_cast<FileType>(mode);
 }
@@ -207,7 +207,7 @@ bool NameSpace::DeleteFileInfo(const std::string file_key, NameServerLog* log) {
     if (!s.ok()) {
         return false;
     }
-    EncodeLog(log,kSyncDelete, file_key, "");
+    EncodeLog(log, kSyncDelete, file_key, "");
     return true;
 }
 bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
@@ -226,9 +226,8 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
 
     std::string file_key;
     EncodingStoreKey(file_info_for_ldb.parent_entry_id(), file_info_for_ldb.name(), &file_key);
-    std::string infobuf_for_ldb, infobuf_for_sync;
+    std::string infobuf_for_ldb;
     file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
-    file_info.SerializeToString(&infobuf_for_sync);
 
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf_for_ldb);
     if (!s.ok()) {
@@ -237,7 +236,7 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     }
     EncodeLog(log, kSyncWrite, file_key, infobuf_for_ldb);
     return true;
-};
+}
 
 bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     if (!LookUp(path, file_info)) {
@@ -339,7 +338,7 @@ StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mo
 }
 
 StatusCode NameSpace::ListDirectory(const std::string& path,
-                             google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
+                                    google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
@@ -379,10 +378,10 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
 }
 
 StatusCode NameSpace::Rename(const std::string& old_path,
-                      const std::string& new_path,
-                      bool* need_unlink,
-                      FileInfo* remove_file,
-                      NameServerLog* log) {
+                             const std::string& new_path,
+                             bool* need_unlink,
+                             FileInfo* remove_file,
+                             NameServerLog* log) {
     *need_unlink = false;
     if (old_path == "/" || new_path == "/" || old_path == new_path) {
         return kBadParameter;
@@ -429,8 +428,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
             // if dst_file exists, type of both dst_file and old_file must be file
             if ((GetFileType(dst_file.type()) == kDir) || (GetFileType(old_file.type()) == kDir)) {
                 LOG(INFO, "Rename %s to %s, src %o or dst %o is not a file",
-                        old_path.c_str(), new_path.c_str(), old_file.type(),
-                        dst_file.type());
+                    old_path.c_str(), new_path.c_str(), old_file.type(),
+                    dst_file.type());
                 return kBadParameter;
             }
             if (GetFileType(dst_file.type()) != kSymlink) {
@@ -446,8 +445,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     std::string new_key;
     EncodingStoreKey(parent_id, dst_name, &new_key);
     std::string value;
-    old_file.clear_parent_entry_id();
-    old_file.clear_name();
+    old_file.set_parent_entry_id(parent_id);
+    old_file.set_name(dst_name);
     old_file.SerializeToString(&value);
 
     // Write to persistent storage
@@ -594,7 +593,7 @@ StatusCode NameSpace::InternalComputeDiskUsage(const FileInfo& info, uint64_t* d
 }
 
 StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
-                               std::vector<FileInfo>* files_removed, NameServerLog* log) {
+                                      std::vector<FileInfo>* files_removed, NameServerLog* log) {
     files_removed->clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
@@ -608,9 +607,9 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
 }
 
 StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
-                                       bool recursive,
-                                       std::vector<FileInfo>* files_removed,
-                                       NameServerLog* log) {
+                                              bool recursive,
+                                              std::vector<FileInfo>* files_removed,
+                                              NameServerLog* log) {
     int64_t entry_id = dir_info.entry_id();
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);

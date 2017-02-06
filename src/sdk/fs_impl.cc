@@ -138,6 +138,7 @@ int32_t FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num
             binfo.mode = info.type();
             binfo.size = info.size();
             snprintf(binfo.name, sizeof(binfo.name), "%s", info.name().c_str());
+            snprintf(binfo.link, sizeof(binfo.link), "%s", info.sym_link().c_str());
         }
     }
     return OK;
@@ -182,7 +183,7 @@ int32_t FSImpl::Access(const char* path, int32_t mode) {
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Stat,
         &request, &response, 15, 1);
     if (!ret) {
-        LOG(WARNING, "Stat fail: %s\n", path);
+        LOG(WARNING, "Access fail: %s\n", path);
         return TIMEOUT;
     }
     return response.status() == kOK ? 0 : GetErrorCode(response.status());
@@ -239,7 +240,7 @@ int32_t FSImpl::GetFileSize(const char* path, int64_t* file_size) {
             std::string addr = block.chains(j).address();
             ret = rpc_client_->GetStub(addr, &chunkserver);
             if (!ret) {
-                LOG(INFO, "GetFileSize(%s) connect chunkserver fail %s",
+                LOG(WARNING, "GetFileSize(%s) connect chunkserver fail %s",
                     path, addr.c_str());
             } else {
                 GetBlockInfoRequest gbi_request;
@@ -249,8 +250,8 @@ int32_t FSImpl::GetFileSize(const char* path, int64_t* file_size) {
                 ret = rpc_client_->SendRequest(chunkserver,
                     &ChunkServer_Stub::GetBlockInfo, &gbi_request, &gbi_response, 15, 3);
                 delete chunkserver;
-                if (!ret || gbi_response.status() != kOK) {
-                    LOG(INFO, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail, ret= %d, status= %s",
+                if (gbi_response.status() != kOK) {
+                    LOG(WARNING, "GetFileSize(%s) GetBlockInfo from chunkserver %s fail, ret= %d, status= %s",
                         path, addr.c_str(), ret, StatusCode_Name(gbi_response.status()).c_str());
                     continue;
                 }
@@ -320,6 +321,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Wri
 }
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
                          File** file, const WriteOptions& options) {
+    *file = NULL;
     if (!(flags & O_WRONLY)) {
         return BAD_PARAMETER;
     }
@@ -335,8 +337,6 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         }
     }
     common::timer::AutoTimer at(100, "OpenFile", path);
-    int32_t ret = OK;
-    *file = NULL;
 
     CreateFileRequest request;
     CreateFileResponse response;
@@ -351,14 +351,14 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
         LOG(WARNING, "Open file for write fail: %s, rpc_ret= %d, status= %s\n",
             path, rpc_ret, StatusCode_Name(response.status()).c_str());
         if (!rpc_ret) {
-            ret = TIMEOUT;
+            return TIMEOUT;
         } else {
-            ret = GetErrorCode(response.status());
+            return GetErrorCode(response.status());
         }
     } else {
         *file = new FileImplWrapper(this, rpc_client_, path, flags, write_option);
     }
-    return ret;
+    return OK;
 }
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const ReadOptions& options) {
     if (flags != O_RDONLY) {
@@ -379,7 +379,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Rea
         f->located_blocks_.CopyFrom(response.blocks());
         *file = new FileImplWrapper(f);
     } else {
-        LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
+        LOG(WARNING, "OpenFile return %d, %s\n", rpc_ret, StatusCode_Name(response.status()).c_str());
         if (!rpc_ret) {
             ret = TIMEOUT;
         } else {
@@ -484,8 +484,9 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
         return TIMEOUT;
     }
     bool stat_all = (stat_name == "StatAll");
-    common::TPrinter tp(8);
-    tp.AddRow(8, "", "id", "address", "data_size", "blocks", "tag", "alive", "last_check");
+    common::TPrinter tp(9);
+    tp.AddRow(9, "", "id", "address", "data_size", "disk_quota", "blocks",
+             "tag", "alive", "last_check");
     for (int i = 0; i < response.chunkservers_size(); i++) {
         const ChunkServerInfo& chunkserver = response.chunkservers(i);
         if (!stat_all && chunkserver.is_dead()) {
@@ -496,6 +497,7 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
         vs.push_back(common::NumToString(chunkserver.id()));
         vs.push_back(chunkserver.address());
         vs.push_back(common::HumanReadableString(chunkserver.data_size()) + "B");
+        vs.push_back(common::HumanReadableString(chunkserver.disk_quota()) + "B");
         vs.push_back(common::NumToString(chunkserver.block_num()));
         vs.push_back(chunkserver.tag());
         vs.push_back(chunkserver.is_dead() ? "dead" : "alive");
@@ -535,11 +537,17 @@ int32_t FSImpl::ShutdownChunkServerStat() {
     ShutdownChunkServerStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServerStat,
                                                &request, &response, 15, 1);
-    if (!ret) {
-        LOG(WARNING, "Get shutdown chunnkserver stat fail");
-        return TIMEOUT;
+    if (ret && response.status() == kOK) {
+        return response.in_offline_progress();
+    } else {
+        LOG(WARNING, "Get shutdown chunnkserver stat fail. ret: %d, status: %s\n",
+                ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        } else {
+            return GetErrorCode(response.status());
+        }
     }
-    return response.in_offline_progress();
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {

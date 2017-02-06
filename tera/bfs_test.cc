@@ -81,6 +81,16 @@ TEST(TERA_SO_TEST, TERA_SO) {
     ASSERT_TRUE(0 == dfs->Rename(file1, file2));
     ASSERT_TRUE(0 == dfs->Exists(file2));
     ASSERT_TRUE(0 != dfs->Exists(file1));
+    ASSERT_TRUE(errno == ENOENT);
+
+    /// Exists
+    system("killall -STOP nameserver");
+    ASSERT_TRUE(0 != dfs->Exists(file2));
+    ASSERT_TRUE(errno == ETIMEDOUT);
+    system("killall -CONT nameserver");
+    //BlockMapping may have been emptied by DeadCheck,
+    //wait for heartbeat and block report
+    sleep(20);
 
     /// GetFileSize
     uint64_t fsize = 0;

@@ -680,7 +680,13 @@ void BlockMapping::PickRecoverBlocks(int32_t cs_id, int32_t block_num,
             ++it;
             continue;
         }
-        recover_blocks->push_back(std::make_pair(block_id, replica));
+
+        std::set<int32_t> all_replica;
+        all_replica.insert(cur_block->replica.begin(),
+                           cur_block->replica.end());
+        all_replica.insert(cur_block->incomplete_replica.begin(),
+                           cur_block->incomplete_replica.end());
+        recover_blocks->push_back(std::make_pair(block_id, all_replica));
         check_set->insert(block_id);
         assert(cur_block->recover_stat == kHiRecover || cur_block->recover_stat == kLoRecover);
         cur_block->recover_stat = kCheck;

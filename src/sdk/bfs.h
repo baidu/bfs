@@ -82,6 +82,7 @@ struct BfsFileInfo {
     uint32_t ctime;
     uint32_t mode;
     char name[1024];
+    char link[1024];
 };
 
 // Bfs fileSystem interface

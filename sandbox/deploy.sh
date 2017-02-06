@@ -32,7 +32,6 @@ echo '--chunkserver_multi_path_on_one_disk=true' >> bfs.flag
 echo '--master_slave_log_limit=300' >> bfs.flag
 echo '--master_log_gc_interval=10' >> bfs.flag
 echo '--logdb_log_size=1' >> bfs.flag
-echo '--default_replica_num=1' >> bfs.flag
 echo '--log_replicate_timeout=3' >> bfs.flag
 
 for((i=0;i<$ns_num;i++));
