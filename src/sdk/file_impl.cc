@@ -587,7 +587,7 @@ void FileImpl::BackgroundWriteInternal(const std::string& cs_addr) {
 void FileImpl::DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
                                WriteBuffer* buffer,
                                const WriteBlockRequest* request,
-                               int retry_times, std::string cs_addr) {
+                               int retry_times, const std::string& cs_addr) {
     std::shared_ptr<FileImpl> fp(wk_fp.lock());
     if (!fp) {
         LOG(DEBUG, "FileImpl has been destroied, ignore delay write");
@@ -600,7 +600,7 @@ void FileImpl::DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
 
 void FileImpl::DelayWriteChunkInternal(WriteBuffer* buffer,
                                const WriteBlockRequest* request,
-                               int retry_times, std::string cs_addr) {
+                               int retry_times, const std::string& cs_addr) {
     WriteBlockResponse* response = new WriteBlockResponse;
     std::function<void (const WriteBlockRequest*, WriteBlockResponse*, bool, int)> callback
         = std::bind(&FileImpl::WriteBlockCallback,

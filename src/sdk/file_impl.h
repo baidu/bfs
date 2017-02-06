@@ -95,7 +95,7 @@ public:
     static void DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
                                 WriteBuffer* buffer,
                                 const WriteBlockRequest* request,
-                                int retry_times, std::string cs_addr);
+                                int retry_times, const std::string& cs_addr);
     int32_t Flush();
     int32_t Sync();
     int32_t Close();
@@ -119,7 +119,7 @@ private:
                             const std::string& cs_addr);
     void DelayWriteChunkInternal(WriteBuffer* buffer,
                                  const WriteBlockRequest* request,
-                                 int retry_times, std::string cs_addr);
+                                 int retry_times, const std::string& cs_addr);
     bool IsChainsWrite();
     bool EnoughReplica();
     std::string GetSlowChunkserver();
