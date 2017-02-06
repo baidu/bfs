@@ -70,9 +70,9 @@ public:
     bool IsRecover() const;
     int64_t GetExpectedSize() const;
     void SetExpectedSize(int64_t expected_size);
-    void SeekReceiveWindow(int32_t seq);
     /// Flush block to disk.
     bool Close(bool sync);
+    void PrepareForWrite(int32_t seq, int64_t size);
     void AddRef();
     void DecRef();
     int GetRef() const;

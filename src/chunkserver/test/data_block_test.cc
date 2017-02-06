@@ -103,7 +103,7 @@ TEST_F(DataBlockTest, WriteAndReadBlock) {
     system("rm -rf ./block123");
 }
 
-TEST_F(DataBlockTest, SeekReceiveWindow) {
+TEST_F(DataBlockTest, PrepareForWrite) {
     mkdir("./block123", 0755);
     std::string file_path("./block123");
     Disk disk(file_path, 1000000);
@@ -118,10 +118,13 @@ TEST_F(DataBlockTest, SeekReceiveWindow) {
     block->AddRef();
     ASSERT_TRUE(block != NULL);
     ASSERT_EQ(block->recv_window_->GetBaseOffset(), 0);
-    block->SeekReceiveWindow(50);
+    ASSERT_EQ(block->meta_.block_size(), 0);
+    block->PrepareForWrite(50, 1000);
     ASSERT_EQ(block->recv_window_->GetBaseOffset(), 50);
-    block->SeekReceiveWindow(200);
-    ASSERT_EQ(block->recv_window_->GetBaseOffset(), 200);
+    ASSERT_EQ(block->meta_.block_size(), 1000);
+    block->PrepareForWrite(300, 4000);
+    ASSERT_EQ(block->recv_window_->GetBaseOffset(), 300);
+    ASSERT_EQ(block->meta_.block_size(), 4000);
     block->DecRef();
     system("rm -rf ./block123");
 }

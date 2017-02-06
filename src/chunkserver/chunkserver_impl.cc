@@ -867,15 +867,15 @@ void ChunkServerImpl::PrepareForWrite(::google::protobuf::RpcController* control
     int32_t seq = request->sliding_window_start_seq();
     int64_t block_size = request->block_size();
 
-    LOG(INFO, "Prepare write for block #%ld from seq %d", block_id, seq);
+    LOG(INFO, "Prepare write for block #%ld from seq %d, size %ld",
+            block_id, seq, block_size);
     StatusCode s;
     Block* block = block_manager_->CreateBlock(block_id, &s);
     if (s != kOK) {
         LOG(INFO, "[PrepareForWrite] block #%ld created failed, reason %s",
                 block_id, StatusCode_Name(s).c_str());
     } else {
-        block->SeekReceiveWindow(seq);
-        block->SetSize(block_size);
+        block->PrepareForWrite(seq, block_size);
     }
     response->set_status(s);
     done->Run();
