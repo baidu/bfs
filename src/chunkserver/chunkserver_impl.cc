@@ -865,6 +865,7 @@ void ChunkServerImpl::PrepareForWrite(::google::protobuf::RpcController* control
     response->set_sequence_id(request->sequence_id());
     int64_t block_id = request->block_id();
     int32_t seq = request->sliding_window_start_seq();
+    int64_t block_size = request->block_size();
 
     LOG(INFO, "Prepare write for block #%ld from seq %d", block_id, seq);
     StatusCode s;
@@ -874,6 +875,7 @@ void ChunkServerImpl::PrepareForWrite(::google::protobuf::RpcController* control
                 block_id, StatusCode_Name(s).c_str());
     } else {
         block->SeekReceiveWindow(seq);
+        block->SetSize(block_size);
     }
     response->set_status(s);
     done->Run();
