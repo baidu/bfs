@@ -363,6 +363,13 @@ message StartRecoverBlockResponse {
     optional StatusCode status = 2;
 }
 
+message RecoverInfo {
+    optional int64 block_id = 1;
+    optional int32 cs_id = 2;
+    optional int64 start_offset = 3;
+    optional int64 end_offset = 4;
+}
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);

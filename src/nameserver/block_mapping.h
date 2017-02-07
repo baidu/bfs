@@ -115,13 +115,6 @@ private:
     std::set<int64_t> lo_pri_recover_;
     std::set<int64_t> hi_pri_recover_;
     std::set<int64_t> lost_blocks_;
-    struct RecoverInfo {
-        RecoverInfo(int32_t c_id, int64_t s_offset, int64_t e_offset) :
-            cs_id(c_id), start_offset(s_offset), end_offset(e_offset) { }
-        int32_t cs_id;
-        int64_t start_offset;
-        int64_t end_offset;
-    };
     std::map<int64_t, RecoverInfo*> recover_writing_blocks_;
 };
 

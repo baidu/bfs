@@ -135,10 +135,11 @@ TEST_F(BlockMappingTest, AddRecoverBlock) {
     bm->AddRecoverBlock(block_id, cs_id, start_offset, end_offset);
     auto it = bm->recover_writing_blocks_.find(block_id);
     ASSERT_TRUE(it != bm->recover_writing_blocks_.end());
-    BlockMapping::RecoverInfo* info = it->second;
-    ASSERT_EQ(info->cs_id, cs_id);
-    ASSERT_EQ(info->start_offset, start_offset);
-    ASSERT_EQ(info->end_offset, end_offset);
+    RecoverInfo* info = it->second;
+    ASSERT_EQ(info->block_id(), block_id);
+    ASSERT_EQ(info->cs_id(), cs_id);
+    ASSERT_EQ(info->start_offset(), start_offset);
+    ASSERT_EQ(info->end_offset(), end_offset);
 }
 
 } // namespace bfs

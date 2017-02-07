@@ -977,14 +977,19 @@ void BlockMapping::MarkIncomplete(int64_t block_id) {
 
 void BlockMapping::AddRecoverBlock(int64_t block_id, int32_t cs_id,
                                    int64_t start_offset, int64_t end_offset) {
-    RecoverInfo* recover_info = new RecoverInfo(cs_id, start_offset, end_offset);
+    RecoverInfo* recover_info = new RecoverInfo;
+    recover_info->set_block_id(block_id);
+    recover_info->set_cs_id(cs_id);
+    recover_info->set_start_offset(start_offset);
+    recover_info->set_end_offset(end_offset);
     MutexLock lock(&mu_);
     auto it = recover_writing_blocks_.find(block_id);
     if (it != recover_writing_blocks_.end()) {
         RecoverInfo* info = it->second;
         LOG(WARNING, "Block #%ld recover to C%d from offset %ld to %ld ",
                 "already in recover map",
-                it->first, info->cs_id, info->start_offset, info->end_offset);
+                info->block_id(), info->cs_id(), info->start_offset(),
+                info->end_offset());
         delete info;
         it->second = recover_info;
     } else {
