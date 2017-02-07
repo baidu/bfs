@@ -164,6 +164,11 @@ TEST_F(BlockMappingTest, PickRecoverWritingBlocks) {
     blocks2->Insert(block_id);
     bm->PickRecoverWritingBlocks(blocks2, result);
     ASSERT_EQ(result->size(), 1);
+    const RecoverInfo& info = result->Get(0);
+    ASSERT_EQ(info.block_id(), block_id);
+    ASSERT_EQ(info.cs_id(), cs_id1);
+    ASSERT_EQ(info.start_offset(), start_offset);
+    ASSERT_EQ(info.end_offset(), end_offset);
     result->Clear();
     int32_t cs_id3 = 3;
     Blocks* blocks3 = new Blocks(cs_id3);

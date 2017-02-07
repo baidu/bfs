@@ -354,9 +354,10 @@ message GetChunkServerResponse {
 message StartRecoverBlockRequest {
     optional int64 sequence_id = 1;
     optional int32 chunkserver_id = 2;
-    optional int64 block_id = 3;
-    optional int64 start_offset = 4;
-    optional int64 end_offset = 5;
+    optional string chunkserver_addr = 3;
+    optional int64 block_id = 4;
+    optional int64 start_offset = 5;
+    optional int64 end_offset = 6;
 }
 
 message StartRecoverBlockResponse {
@@ -367,8 +368,9 @@ message StartRecoverBlockResponse {
 message RecoverInfo {
     optional int64 block_id = 1;
     optional int32 cs_id = 2;
-    optional int64 start_offset = 3;
-    optional int64 end_offset = 4;
+    optional string cs_addr = 3;
+    optional int64 start_offset = 4;
+    optional int64 end_offset = 5;
 }
 
 service NameServer {

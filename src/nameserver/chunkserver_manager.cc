@@ -729,6 +729,11 @@ void ChunkServerManager::PickRecoverWritingBlocks(int32_t cs_id,
     }
     block_mapping_manager_->PickRecoverWritingBlocks(block_map,
                                                      recover_block_info);
+    // covert cs_id to cs_addr
+    for (int i = 0; i < recover_block_info->size(); i++) {
+        RecoverInfo* info = recover_block_info->Mutable(i);
+        info->set_cs_addr(GetChunkServerAddr(info->cs_id()));
+    }
 }
 
 void ChunkServerManager::GetStat(int32_t* w_qps, int64_t* w_speed,

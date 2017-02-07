@@ -1066,9 +1066,10 @@ void NameServerImpl::StartRecoverBlock(::google::protobuf::RpcController* contro
         return;
     }
     int64_t block_id = request->block_id();
-    int32_t cs_id = request->chunkserver_id();
+    const std::string& cs_addr = request->chunkserver_addr();
     int64_t start_offset = request->start_offset();
     int64_t end_offset = request->end_offset();
+    int32_t cs_id = chunkserver_manager_->GetChunkServerId(cs_addr);
     LOG(INFO, "Start recover block #%ld to cs C%d, from offset %ld to %ld",
             block_id, cs_id, start_offset, end_offset);
     block_mapping_manager_->AddRecoverBlock(block_id, cs_id,
