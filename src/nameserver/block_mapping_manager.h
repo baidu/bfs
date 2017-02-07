@@ -13,6 +13,8 @@
 namespace baidu {
 namespace bfs {
 
+class Blocks;
+
 class BlockMappingManager {
 public :
     BlockMappingManager(int32_t bucket_num);
@@ -42,6 +44,8 @@ public :
     void MarkIncomplete(int64_t block_id);
     void AddRecoverBlock(int64_t block_id, int32_t cs_id, int64_t start_offset,
                          int64_t end_offset);
+    void PickRecoverWritingBlocks(Blocks* cs_block_map,
+            ::google::protobuf::RepeatedPtrField<RecoverInfo>* recover_blocks);
 private:
     int32_t GetBucketOffset(int64_t block_id);
 private:

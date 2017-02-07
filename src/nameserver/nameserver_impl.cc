@@ -318,6 +318,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         }
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
+
+        ::google::protobuf::RepeatedPtrField<RecoverInfo>*
+            recover_writing_blocks = response->mutable_recover_writing_blocks();
+        chunkserver_manager_->PickRecoverWritingBlocks(cs_id,
+                                                       recover_writing_blocks);
     }
     block_mapping_manager_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     int64_t end_report = common::timer::get_micros();

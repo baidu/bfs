@@ -29,6 +29,8 @@ public:
     void MoveNew();
     int64_t CheckLost(int64_t report_id, const std::set<int64_t>& blocks,
                       int64_t start, int64_t end, std::vector<int64_t>* lost);
+    bool BlockExists(int64_t block_id);
+    int32_t GetChunkServerId() const;
 private:
     Mutex block_mu_;
     std::set<int64_t> blocks_;
@@ -67,7 +69,10 @@ public:
     void AddBlock(int32_t id, int64_t block_id);
     void RemoveBlock(int32_t id, int64_t block_id);
     void CleanChunkServer(ChunkServerInfo* cs, const std::string& reason);
-    void PickRecoverBlocks(int cs_id,  RecoverVec* recover_blocks, int* hi_num, bool hi_only);
+    void PickRecoverBlocks(int32_t cs_id,  RecoverVec* recover_blocks,
+                           int32_t* hi_num, bool hi_only);
+    void PickRecoverWritingBlocks(int32_t cs_id,
+            ::google::protobuf::RepeatedPtrField<RecoverInfo>* recover_block_info);
     void GetStat(int32_t* w_qps, int64_t* w_speed, int32_t* r_qps,
                  int64_t* r_speed, int64_t* recover_speed);
     StatusCode ShutdownChunkServer(const::google::protobuf::RepeatedPtrField<std::string>& chunkserver_address);

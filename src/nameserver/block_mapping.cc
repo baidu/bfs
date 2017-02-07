@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "block_mapping.h"
+#include "chunkserver_manager.h"
 
 #include <vector>
 #include <gflags/gflags.h>
@@ -994,6 +995,29 @@ void BlockMapping::AddRecoverBlock(int64_t block_id, int32_t cs_id,
         it->second = recover_info;
     } else {
         recover_writing_blocks_[block_id] = recover_info;
+    }
+}
+
+void BlockMapping::PickRecoverWritingBlocks(Blocks* cs_block_map,
+        ::google::protobuf::RepeatedPtrField<RecoverInfo>* recover_blocks) {
+    int32_t cs_id = cs_block_map->GetChunkServerId();
+    MutexLock lock(&mu_);
+    for (auto it = recover_writing_blocks_.begin();
+            it != recover_writing_blocks_.end(); ++it) {
+        int64_t block_id = it->first;
+        if (!cs_block_map->BlockExists(block_id)) {
+            continue;
+        }
+        RecoverInfo* info = it->second;
+        if (info->cs_id() == cs_id) {
+            continue;
+        }
+        RecoverInfo* block = recover_blocks->Add();
+        block->CopyFrom(*info);
+        LOG(INFO, "Pick writing block #%ld from C%ld recover to C%ld",
+                "start offset %ld end offset %ld",
+                info->block_id(), cs_id, info->cs_id(),
+                info->start_offset(), info->end_offset());
     }
 }
 

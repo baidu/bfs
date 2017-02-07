@@ -167,5 +167,15 @@ void BlockMappingManager::AddRecoverBlock(int64_t block_id, int32_t cs_id,
                                                    start_offset, end_offset);
 }
 
+void BlockMappingManager::PickRecoverWritingBlocks(Blocks* cs_block_map,
+        ::google::protobuf::RepeatedPtrField<RecoverInfo>* recover_blocks) {
+        //TODO use flag
+        for (int i = 0; i < blockmapping_bucket_num_ &&
+                recover_blocks->size() < 100; i++) {
+            block_mapping_[i]->PickRecoverWritingBlocks(cs_block_map,
+                                                        recover_blocks);
+        }
+}
+
 } //namespace bfs
 } //namespace baidu

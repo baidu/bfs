@@ -238,6 +238,7 @@ message BlockReportResponse {
     repeated int64 close_blocks = 4;
     repeated ReplicaInfo new_replicas = 5;
     optional int64 report_id = 6 [default = -1];
+    repeated RecoverInfo recover_writing_blocks = 7;
 }
 
 message BlockReceivedRequest {

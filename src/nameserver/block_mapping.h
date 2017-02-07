@@ -55,6 +55,8 @@ struct RecoverBlockSet {
     std::map<int32_t, std::set<int64_t> > incomplete;
 };
 
+class Blocks;
+
 class BlockMapping {
 public:
     BlockMapping(ThreadPool* thread_pool);
@@ -83,6 +85,8 @@ public:
     void MarkIncomplete(int64_t block_id);
     void AddRecoverBlock(int64_t block_id, int32_t cs_id,
                          int64_t start_offset, int64_t end_offset);
+    void PickRecoverWritingBlocks(Blocks* cs_block_map,
+        ::google::protobuf::RepeatedPtrField<RecoverInfo>* recover_blocks);
 private:
     void DealWithDeadBlockInternal(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;
