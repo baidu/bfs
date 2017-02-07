@@ -1055,7 +1055,19 @@ void NameServerImpl::StartRecoverBlock(::google::protobuf::RpcController* contro
                                        const StartRecoverBlockRequest* request,
                                        StartRecoverBlockResponse* response,
                                        ::google::protobuf::Closure* done) {
-
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    int64_t block_id = request->block_id();
+    int32_t cs_id = request->chunkserver_id();
+    int64_t start_offset = request->start_offset();
+    int64_t end_offset = request->end_offset();
+    LOG(INFO, "Start recover block #%ld to cs C%d, from offset %ld to %ld",
+            block_id, cs_id, start_offset, end_offset);
+    block_mapping_manager_->AddRecoverBlock(block_id, cs_id,
+                                            start_offset, end_offset);
 }
 
 void NameServerImpl::TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,

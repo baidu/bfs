@@ -40,6 +40,8 @@ public :
     void GetRecoverNum(int32_t bucket_id, RecoverBlockNum* recover_num);
     void ListRecover(RecoverBlockSet* recover_blocks);
     void MarkIncomplete(int64_t block_id);
+    void AddRecoverBlock(int64_t block_id, int32_t cs_id, int64_t start_offset,
+                         int64_t end_offset);
 private:
     int32_t GetBucketOffset(int64_t block_id);
 private:

@@ -58,7 +58,7 @@ TEST_F(BlockMappingTest, Basic) {
     }
 }
 
-TEST_F(BlockMappingTest, DoNotRemoteHigherVersionBlock) {
+TEST_F(BlockMappingTest, DoNotRemoveHigherVersionBlock) {
     int64_t block_id = 1;
     int64_t block_version = 2;
     int64_t block_size = 3;
@@ -124,6 +124,21 @@ TEST_F(BlockMappingTest, NotRecoverEmptyBlock) {
     ASSERT_TRUE(bm->lo_pri_recover_.empty());
     ASSERT_TRUE(bm->hi_pri_recover_.empty());
     ASSERT_TRUE(bm->lost_blocks_.empty());
+}
+
+TEST_F(BlockMappingTest, AddRecoverBlock) {
+    BlockMapping* bm = new BlockMapping(&thread_pool);
+    int64_t block_id = 1;
+    int32_t cs_id = 2;
+    int64_t start_offset = 300;
+    int64_t end_offset = 400;
+    bm->AddRecoverBlock(block_id, cs_id, start_offset, end_offset);
+    auto it = bm->recover_writing_blocks_.find(block_id);
+    ASSERT_TRUE(it != bm->recover_writing_blocks_.end());
+    BlockMapping::RecoverInfo* info = it->second;
+    ASSERT_EQ(info->cs_id, cs_id);
+    ASSERT_EQ(info->start_offset, start_offset);
+    ASSERT_EQ(info->end_offset, end_offset);
 }
 
 } // namespace bfs
