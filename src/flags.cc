@@ -54,6 +54,7 @@ DEFINE_int64(master_slave_log_limit, 20000000, "Master will keep at most x log e
 DEFINE_int32(master_log_gc_interval, 30 * 60, "Master's logdb gc interval, in seconds");
 // ha - raft
 DEFINE_string(raftdb_path,"./raftdb", "Raft log storage path");
+DEFINE_int32(nameserver_election_timeout, 10000, "Nameserver election timeout in ms");
 
 // chunkserver
 DEFINE_string(block_store_path, "./data", "Data path");
