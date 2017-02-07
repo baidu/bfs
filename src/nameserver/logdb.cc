@@ -110,6 +110,7 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
 }
 
 StatusCode LogDB::Read(int64_t index, std::string* entry) {
+    MutexLock lock(&mu_);
     if (read_log_.empty() || index >= next_index_ || index < smallest_index_) {
         return kNsNotFound;
     }
@@ -126,28 +127,22 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
     int offset = 16 * (index - it->first);
     int64_t read_index = -1;
     int64_t entry_offset = -1;
-    {
-        MutexLock lock(&mu_);
-        if (fseek(idx_fp, offset, SEEK_SET) != 0) {
-            LOG(FATAL, "[LogDB] Read cannot find index file %ld ", index);
-        }
-        StatusCode s = ReadIndex(idx_fp, index, &read_index, &entry_offset);
-        if (s != kOK) {
-            return s;
-        }
+    if (fseek(idx_fp, offset, SEEK_SET) != 0) {
+        LOG(FATAL, "[LogDB] Read cannot find index file %ld ", index);
+    }
+    StatusCode s = ReadIndex(idx_fp, index, &read_index, &entry_offset);
+    if (s != kOK) {
+        return s;
     }
     // read log entry
-    {
-        MutexLock lock(&mu_);
-        if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
-            LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
-            return kReadError;
-        }
-        int ret = ReadOne(log_fp, entry);
-        if (ret <= 0) {
-            LOG(WARNING, "[LogDB] Read log error %ld ", index);
-            return kReadError;
-        }
+    if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
+        LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
+        return kReadError;
+    }
+    int ret = ReadOne(log_fp, entry);
+    if (ret <= 0) {
+        LOG(WARNING, "[LogDB] Read log error %ld ", index);
+        return kReadError;
     }
     return kOK;
 }
@@ -169,7 +164,6 @@ StatusCode LogDB::WriteMarkerNoLock(const std::string& key, const std::string& v
         LOG(WARNING, "[LogDB] WriteMarker failed key = %s value = %s", key.c_str(), value.c_str());
         return kWriteError;
     }
-    fflush(marker_log_);
     markers_[key] = value;
     return kOK;
 }
