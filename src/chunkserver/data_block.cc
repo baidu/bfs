@@ -159,9 +159,6 @@ void Block::SetVersion(int64_t version) {
 int Block::GetVersion() const {
     return meta_.version();
 }
-void Block::SetSize(int64_t size) {
-    meta_.set_block_size(size);
-}
 int32_t Block::GetLastSeq() const {
     return last_seq_;
 }

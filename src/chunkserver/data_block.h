@@ -51,7 +51,6 @@ public:
     StatusCode SetDeleted();
     void SetVersion(int64_t version);
     int GetVersion() const;
-    void SetSize(int64_t size);
     int32_t GetLastSeq() const;
     /// Set expected slice num, for IsComplete.
     void SetSliceNum(int32_t num);
