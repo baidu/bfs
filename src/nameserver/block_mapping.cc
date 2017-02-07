@@ -753,7 +753,6 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, Status
 
 void BlockMapping::GetCloseBlocks(int32_t cs_id,
                                   google::protobuf::RepeatedField<int64_t>* close_blocks) {
-    /*
     MutexLock lock(&mu_);
     CheckList::iterator c_it = incomplete_.find(cs_id);
     if (c_it != incomplete_.end()) {
@@ -763,7 +762,6 @@ void BlockMapping::GetCloseBlocks(int32_t cs_id,
             close_blocks->Add(*it);
         }
     }
-    */
 }
 
 void BlockMapping::GetStat(int32_t cs_id, RecoverBlockNum* recover_num) {
