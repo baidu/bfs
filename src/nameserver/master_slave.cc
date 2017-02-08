@@ -331,28 +331,27 @@ void MasterSlaveImpl::BackgroundLog() {
 
 void MasterSlaveImpl::ReplicateLog() {
     while (sync_idx_ < current_idx_) {
-        mu_.Lock();
-        if (sync_idx_ == current_idx_) {
-            mu_.Unlock();
-            break;
-        }
-        LOG(DEBUG, "%s ReplicateLog sync_idx_ = %d, current_idx_ = %d",
-            kLogPrefix.c_str(), sync_idx_, current_idx_);
-        mu_.Unlock();
-
-        if (sync_idx_ <= gc_idx_ && gc_idx_ != -1) {
-            if (!SendSnapshot()) {
-                LOG(INFO, "%s Send snapshot failed", kLogPrefix.c_str());
-                EmptyLog();
-            }
-            continue;
-        }
-
         std::string entry;
-        StatusCode s = logdb_->Read(sync_idx_ + 1, &entry);
-        if (s != kOK) {
-            LOG(FATAL, "%s Read logdb_ failed sync_idx_ = %ld %s",
-                kLogPrefix.c_str(), sync_idx_ + 1, StatusCode_Name(s).c_str());
+        {
+            MutexLock lock(&mu_);
+            if (sync_idx_ == current_idx_) {
+                mu_.Unlock();
+                break;
+            }
+            LOG(DEBUG, "%s ReplicateLog sync_idx_ = %d, current_idx_ = %d",
+                kLogPrefix.c_str(), sync_idx_, current_idx_);
+            if (sync_idx_ <= gc_idx_ && gc_idx_ != -1) {
+                if (!SendSnapshot()) {
+                    LOG(INFO, "%s Send snapshot failed", kLogPrefix.c_str());
+                    EmptyLog();
+                }
+                continue;
+            }
+            StatusCode s = logdb_->Read(sync_idx_ + 1, &entry);
+            if (s != kOK) {
+                LOG(FATAL, "%s Read logdb_ failed sync_idx_ = %ld %s",
+                    kLogPrefix.c_str(), sync_idx_ + 1, StatusCode_Name(s).c_str());
+            }
         }
         master_slave::AppendLogRequest request;
         master_slave::AppendLogResponse response;
@@ -400,7 +399,8 @@ bool MasterSlaveImpl::SendSnapshot() {
     int64_t current_index = current_idx_ - 1; // minus one to make sure slave does not get one entry short
     bool ret = false;
     int64_t seq = 0;
-    LOG(INFO, "%s Start sending snapshot", kLogPrefix.c_str());
+    LOG(INFO, "%s Start sending snapshot current_index_ %ld",
+        kLogPrefix.c_str(), current_idx_);
     while (true) {
         std::string logstr;
         snapshot_callback_(0, &logstr);
@@ -470,6 +470,7 @@ void MasterSlaveImpl::LogStatus() {
 }
 
 void MasterSlaveImpl::LogCleanUp() {
+    MutexLock lock(&mu_);
     int64_t gc_index = std::max(sync_idx_ - 1, current_idx_ - FLAGS_master_slave_log_limit);
     StatusCode s = logdb_->DeleteUpTo(gc_index);
     if (s == kOK) {

@@ -110,7 +110,10 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
 }
 
 StatusCode LogDB::Read(int64_t index, std::string* entry) {
+    MutexLock lock(&mu_);
     if (read_log_.empty() || index >= next_index_ || index < smallest_index_) {
+        LOG(INFO, "[LogDB] empty = %d index = %ld next_index = %ld smallest_index = %ld",
+            read_log_.empty(), index, next_index_, smallest_index_);
         return kNsNotFound;
     }
     FileCache::iterator it = read_log_.lower_bound(index);
@@ -127,30 +130,25 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
     int offset = 16 * (index - it->first);
     int64_t read_index = -1;
     int64_t entry_offset = -1;
-    {
-        MutexLock lock(&mu_);
-        if (fseek(idx_fp, offset, SEEK_SET) != 0) {
-            LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
-            return kReadError;
-        }
-        StatusCode s = ReadIndex(idx_fp, index, &read_index, &entry_offset);
-        if (s != kOK) {
-            return s;
-        }
+
+    if (fseek(idx_fp, offset, SEEK_SET) != 0) {
+        LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
+        return kReadError;
     }
-    // read log entry
-    {
-        MutexLock lock(&mu_);
-        if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
-            LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
-            return kReadError;
-        }
-        int ret = ReadOne(log_fp, entry);
-        if (ret <= 0) {
-            LOG(WARNING, "[LogDB] Read log error %ld ", index);
-            return kReadError;
-        }
+    StatusCode s = ReadIndex(idx_fp, index, &read_index, &entry_offset);
+    if (s != kOK) {
+        return s;
     }
+    if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
+        LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
+        return kReadError;
+    }
+    int ret = ReadOne(log_fp, entry);
+    if (ret <= 0) {
+        LOG(WARNING, "[LogDB] Read log error %ld ", index);
+        return kReadError;
+    }
+
     return kOK;
 }
 
@@ -292,9 +290,11 @@ StatusCode LogDB::DeleteFrom(int64_t index) {
         }
         if (truncate(log_name.c_str(), tmp_offset) != 0) {
             LOG(WARNING, "[LogDB] Truncate %s failed, %s", log_name.c_str(), strerror(errno));
+            return kWriteError;
         }
         if (truncate(idx_name.c_str(), offset) != 0) {
             LOG(WARNING, "[LogDB] Truncate %s failed, %s", idx_name.c_str(), strerror(errno));
+            return kWriteError;
         }
         if (!OpenFile(&((it->second).first), idx_name, "r") ||
             !OpenFile(&((it->second).second), log_name, "r")) {
@@ -636,6 +636,7 @@ bool LogDB::CloseFile(FILE* fp, const std::string& name) {
         LOG(WARNING, "[LogDB] Close file failed %s, %s", strerror(errno), name.c_str());
         return false;
     }
+    LOG(DEBUG, "[LogDB] Close file %s", name.c_str());
     return true;
 }
 
@@ -645,6 +646,7 @@ bool LogDB::OpenFile(FILE** fp, const std::string& name, const char* mode) {
         LOG(WARNING, "[LogDB] Open file %s failed %s", name.c_str(), strerror(errno));
         return false;
     }
+    LOG(DEBUG, "[LogDB] Open file %s", name.c_str());
     return true;
 }
 
@@ -653,6 +655,7 @@ bool LogDB::RemoveFile(const std::string& name) {
         LOG(WARNING, "[LogDB] Remove file %s failed %s", name.c_str(), strerror(errno));
         return false;
     }
+    LOG(DEBUG, "[LogDB] Romve file %s", name.c_str());
     return true;
 }
 
@@ -660,7 +663,7 @@ bool LogDB::RemoveFile(FILE* fp, const std::string& name) {
     if (!fp) {
         return true;
     }
-    if (CloseFile(fp, std::string(name))) {
+    if (CloseFile(fp, name)) {
         return RemoveFile(name);
     }
     return false;
