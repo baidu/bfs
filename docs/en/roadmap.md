@@ -21,7 +21,7 @@
 
 ## Application support
 - [x] Tera
-- [ ] Shuttle
+- [x] Shuttle
 - [ ] Galaxy
 
 
