@@ -20,6 +20,7 @@ DECLARE_int64(master_slave_log_limit);
 DECLARE_int32(master_log_gc_interval);
 DECLARE_int32(logdb_log_size);
 DECLARE_int32(log_replicate_timeout);
+DECLARE_int32(log_batch_size);
 
 namespace baidu {
 namespace bfs {
@@ -277,10 +278,21 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    if (request->log_data_size() != request->log_size()) {
+        LOG(INFO, "%s log size mismatch %d -> %d", kLogPrefix.c_str(),
+                request->log_data_size(), request->log_size());
+        response->set_index(current_idx_ + 1);
+        response->set_success(false);
+        done->Run();
+        return;
+    }
+
+    for (int32_t i = 0; i < request->log_data_size(); ++i) {
+        log_callback_(request->log_data(i));
+    }
     mu_.Lock();
-    current_idx_++;
+    current_idx_ += request->log_size();
     mu_.Unlock();
-    log_callback_(request->log_data());
     response->set_success(true);
     done->Run();
 }
@@ -342,53 +354,62 @@ void MasterSlaveImpl::BackgroundLog() {
 
 void MasterSlaveImpl::ReplicateLog() {
     while (sync_idx_ < current_idx_) {
-        mu_.Lock();
+        MutexLock lock(&mu_);
         if (sync_idx_ == current_idx_) {
-            mu_.Unlock();
             break;
         }
         LOG(DEBUG, "%s ReplicateLog sync_idx_ = %d, current_idx_ = %d",
             kLogPrefix.c_str(), sync_idx_, current_idx_);
-        mu_.Unlock();
 
         if (sync_idx_ <= gc_idx_ && gc_idx_ != -1) {
+            mu_.Unlock();
             if (!SendSnapshot()) {
                 LOG(INFO, "%s Send snapshot failed", kLogPrefix.c_str());
                 EmptyLog();
             }
+            mu_.Lock();
             continue;
         }
 
-        std::string entry;
-        if (logdb_->Read(sync_idx_ + 1, &entry) != kOK) {
-            LOG(FATAL, "%s Read logdb_ failed sync_idx_ = %ld ",
-                kLogPrefix.c_str(), sync_idx_ + 1);
-        }
         master_slave::AppendLogRequest request;
         master_slave::AppendLogResponse response;
-        request.set_log_data(entry);
         request.set_index(sync_idx_ + 1);
+        std::string entry;
+        int size = 0;
+        for (int i = 0; i < FLAGS_log_batch_size; ++i) {
+            StatusCode s = logdb_->Read(sync_idx_ + 1 + i, &entry);
+            if (s != kOK && s != kNsNotFound) {
+                LOG(FATAL, "%s Read logdb_ failed sync_idx_ = %ld ",
+                    kLogPrefix.c_str(), sync_idx_ + 1);
+            }
+            if (s == kNsNotFound) {
+                break;
+            }
+            request.add_log_data(entry);
+            size = i + 1;
+        }
+        request.set_log_size(size);
+        mu_.Unlock();
         if (!rpc_client_->SendRequest(slave_stub_,
                                       &master_slave::MasterSlave_Stub::AppendLog,
                                       &request, &response, 15, 1)) {
-            LOG(WARNING, "%s Replicate log failed index = %d, current_idx_ = %d",
-                kLogPrefix.c_str(), sync_idx_ + 1, current_idx_);
+            LOG(WARNING, "%s Replicate log failed index = %d, size = %d current_idx_ = %d",
+                kLogPrefix.c_str(), sync_idx_ + 1, size, current_idx_);
             EmptyLog();
+            mu_.Lock();
             continue;
         }
+        mu_.Lock();
         if (!response.success()) { // log mismatch
-            MutexLock lock(&mu_);
             sync_idx_ = response.index() - 1;
             LOG(INFO, "%s set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
             continue;
         }
         thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,
                                         this, sync_idx_ + 1, false));
-        mu_.Lock();
-        sync_idx_++;
-        LOG(DEBUG, "%s Replicate log done. sync_idx_ = %d, current_idx_ = %d",
-            kLogPrefix.c_str(), sync_idx_ , current_idx_);
-        mu_.Unlock();
+        sync_idx_ = sync_idx_ + size;
+        LOG(DEBUG, "%s Replicate log done. sync_idx_ = %d, size = %d current_idx_ = %d",
+            kLogPrefix.c_str(), sync_idx_, size, current_idx_);
     }
     log_done_.Signal();
 }

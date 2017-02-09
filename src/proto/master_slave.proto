@@ -3,9 +3,10 @@ package baidu.bfs.master_slave;
 option cc_generic_services = true;
 
 message AppendLogRequest {
-    optional bytes log_data = 1;
+    repeated bytes log_data = 1;
     optional int64 index = 2;
     optional int64 term = 3;
+    optional int32 log_size = 4;
 }
 
 message AppendLogResponse {
