@@ -740,6 +740,36 @@ void NameServerImpl::Stat(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
+void NameServerImpl::IGet(::google::protobuf::RpcController* controller,
+                          const IGetRequest* request,
+                          IGetResponse* response,
+                          ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    response->set_sequence_id(request->sequence_id());
+    int64_t entry_id = request->entry_id();
+    LOG(INFO, "IGet: E%ld\n", entry_id);
+
+    FileInfo info;
+    if (namespace_->IGet(entry_id, &info)) {
+        FileInfo* out_info = response->mutable_file_info();
+        out_info->CopyFrom(info);
+        //maybe haven't been written info meta
+        if ((out_info->type() & (1 << 9)) == 0) {
+            SetActualFileSize(out_info);
+        }
+        response->set_status(kOK);
+        LOG(INFO, "IGet: E%ld return: %ld", info.entry_id(), out_info->size());
+    } else {
+        LOG(INFO, "IGet: E%ld return: not found", entry_id);
+        response->set_status(kNsNotFound);
+    }
+    done->Run();
+}
+
 void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
                             const RenameRequest* request,
                             RenameResponse* response,
@@ -1515,7 +1545,8 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("PushBlockReport", work_thread_pool_),
         std::make_pair("SysStat", read_thread_pool_),
         std::make_pair("Chmod", work_thread_pool_),
-        std::make_pair("Symlink", work_thread_pool_)
+        std::make_pair("Symlink", work_thread_pool_),
+        std::make_pair("IGet", read_thread_pool_)
 
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /

@@ -90,6 +90,16 @@ message StatResponse {
     optional FileInfo file_info = 3;
 }
 
+message IGetRequest {
+    optional int64 sequence_id = 1;
+    optional int64 entry_id = 2;
+}
+message IGetResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+    optional FileInfo file_info = 3;
+}
+
 message RenameRequest {
     optional int64 sequence_id = 1;
     optional string oldpath = 2;
@@ -363,5 +373,7 @@ service NameServer {
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
     rpc Chmod(ChmodRequest) returns(ChmodResponse);
     rpc Symlink(SymlinkRequest) returns(SymlinkResponse);
+
+    rpc IGet(IGetRequest) returns(IGetResponse);
 }
 
