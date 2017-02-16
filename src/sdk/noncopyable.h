@@ -15,7 +15,7 @@ public:
 	~noncopyable(){}
 private:
 	noncopyable(const noncopyable&){}
-	const noncopyable& operator=(const noncopyable&){}
+	void operator=(const noncopyable&){}
 };
 
 } // namespace bfs
