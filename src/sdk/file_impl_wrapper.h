@@ -18,7 +18,7 @@ class FileImpl;
 class FSImpl;
 class RpcClient;
 
-class FileImplWrapper : public File, public baidu::bfs::noncopyable {
+class FileImplWrapper : public File, public noncopyable {
 public:
     FileImplWrapper(FSImpl* fs, RpcClient* rpc_client,
             const std::string& name, int32_t flags, const WriteOptions& options);
