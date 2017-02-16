@@ -13,6 +13,8 @@
 #include <map>
 #include <vector>
 
+#include "noncopyable.h"
+
 namespace baidu {
 namespace bfs {
 
@@ -59,7 +61,7 @@ struct FSOptions {
 };
 
 /// Bfs File interface
-class File {
+class File : public noncopyable {
 public:
     File() {}
     virtual ~File() {}
@@ -71,10 +73,6 @@ public:
     virtual int32_t Flush() = 0;
     virtual int32_t Sync() = 0;
     virtual int32_t Close() = 0;
-private:
-    // No copying allowed
-    File(const File&);
-    void operator=(const File&);
 };
 
 struct BfsFileInfo {
@@ -86,7 +84,7 @@ struct BfsFileInfo {
 };
 
 // Bfs fileSystem interface
-class FS {
+class FS : public noncopyable {
 public:
     FS() { }
     virtual ~FS() { }
@@ -128,10 +126,6 @@ public:
                                  std::map<int64_t, std::vector<std::string> >* locations) = 0;
     virtual int32_t ShutdownChunkServer(const std::vector<std::string>& cs_address) = 0;
     virtual int32_t ShutdownChunkServerStat() = 0;
-private:
-    // No copying allowed
-    FS(const FS&);
-    void operator=(const FS&);
 };
 
 } // namespace bfs
