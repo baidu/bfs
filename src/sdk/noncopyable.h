@@ -6,9 +6,6 @@
 #ifndef BFS_SDK_NONCOPYABLE_H_
 #define BFS_SDK_NONCOPYABLE_H_
 
-namespace baidu {
-namespace bfs {
-
 class noncopyable {
 public:
 	noncopyable(){}
@@ -17,8 +14,5 @@ private:
 	noncopyable(const noncopyable&){}
 	void operator=(const noncopyable&){}
 };
-
-} // namespace bfs
-} // namespace baidu
 
 #endif
