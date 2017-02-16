@@ -61,7 +61,7 @@ struct FSOptions {
 };
 
 /// Bfs File interface
-class File : noncopyable {
+class File : public noncopyable {
 public:
     File() {}
     virtual ~File() {}
