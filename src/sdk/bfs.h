@@ -61,7 +61,7 @@ struct FSOptions {
 };
 
 /// Bfs File interface
-class File : public noncopyable {
+class File : public baidu::bfs::noncopyable {
 public:
     File() {}
     virtual ~File() {}
@@ -84,7 +84,7 @@ struct BfsFileInfo {
 };
 
 // Bfs fileSystem interface
-class FS : public noncopyable {
+class FS : public baidu::bfs::noncopyable {
 public:
     FS() { }
     virtual ~FS() { }
