@@ -322,12 +322,14 @@ StatusCode LogDB::DestroyDB(const std::string& dbpath) {
         }
         if (remove((dbpath + "/" + name).c_str()) != 0) {
             LOG(WARNING, "[LogDB] Remove %s failed %s", entry->d_name, strerror(errno));
+            closedir(dir_ptr);
             return kWriteError;
         } else {
             LOG(DEBUG, "[LogDB] Remove file %s", entry->d_name);
         }
     }
     LOG(INFO, "[LogDB] DestroyDB done %s", dbpath.c_str());
+    closedir(dir_ptr);
     return kOK;
 }
 
