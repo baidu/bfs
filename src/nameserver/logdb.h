@@ -18,15 +18,13 @@
 namespace baidu {
 namespace bfs {
 
-struct DBOption
-{
+struct DBOption {
     int64_t snapshot_interval; // write marker snapshot interval, in seconds
     int64_t log_size;
     DBOption() : snapshot_interval(60), log_size(128) /* in MB */ {}
 };
 
-struct MarkerEntry // entry_length + key_len + key + value_len + value
-{
+struct MarkerEntry { // entry_length + key_len + key + value_len + value
     std::string key;
     std::string value;
     MarkerEntry() {}
@@ -58,7 +56,7 @@ public:
     StatusCode DeleteFrom(int64_t index);
 
     // Delete all data in db
-    StatusCode DestroyDB();
+    static StatusCode DestroyDB(const std::string& dbpath);
 
     /// for dumper ///
     static int ReadOne(FILE* fp, std::string* data);
@@ -74,6 +72,10 @@ private:
     bool NewWriteLog(int64_t index);
     void FormLogName(int64_t index, std::string* log_name, std::string* idx_name);
     StatusCode WriteMarkerNoLock(const std::string& key, const std::string& value);
+    bool CloseFile(FILE* fp, const std::string& hint);
+    bool OpenFile(FILE** fp, const std::string& name, const char* mode);
+    bool RemoveFile(const std::string& name);
+    bool RemoveFile(FILE* fp, const std::string& name);
 private:
     Mutex mu_;
     ThreadPool* thread_pool_;

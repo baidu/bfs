@@ -333,8 +333,8 @@ TEST_F(LogDBTest, DestroyDB) {
     LogDB::Open("./dbtest", option, &logdb);
     WriteLog_Helper(0, 200000, logdb);
 
-    logdb->DestroyDB();
     delete logdb;
+    LogDB::DestroyDB("./dbtest");
     struct dirent *entry = NULL;
     DIR *dir_ptr = opendir("./dbtest");
     assert(dir_ptr != NULL);
