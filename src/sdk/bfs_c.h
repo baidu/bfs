@@ -1,23 +1,19 @@
-/***************************************************************************
- *
- * Copyright (c) 2017 Baidu.com, Inc. All Rights Reserved
- *
- **************************************************************************/
+// Copyright (c) 2017, Baidu.com, Inc. All Rights Reserved
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
 
-/**
- * @file bfs_c.h
- * @author sunjinjin01(com@baidu.com)
- * @date 2017/01/03 15:38:19
- * @brief
- *
- **/
-#ifndef  __BFS_C_H_
-#define  __BFS_C_H_
+#ifndef  BFS_C_H_
+#define  BFS_C_H_
+
 #include "bfs.h"
+
 #pragma GCC visibility push (default)
+
 #ifdef __cplusplus
 extern "C"{
 #endif
+
 typedef struct bfs_fs_t bfs_fs_t;
 
 bfs_fs_t* bfs_open_file_system();
@@ -37,13 +33,12 @@ int bfs_change_replica_num(bfs_fs_t* fs,  const char* path, const char* replica_
 int bfs_chmod(bfs_fs_t* fs, const char* str_mode, const char* path);
 int bfs_location(bfs_fs_t* fs, const char* path);
 
-
 #ifdef __cplusplus
 }/*end extern "C" */
 #endif
 
 #pragma GCC visibility pop
 
-#endif  //__BFS_C_H_
+#endif  //BFS_C_H_
 
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
