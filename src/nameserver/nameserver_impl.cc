@@ -854,12 +854,12 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
         done->Run();
         return;
     }
+    response->set_sequence_id(request->sequence_id());
     if (request->path().empty()) {
         response->set_status(kBadParameter);
         done->Run();
         return;
     }
-    response->set_sequence_id(request->sequence_id());
     std::string path = NameSpace::NormalizePath(request->path());
     bool recursive = request->recursive();
     std::vector<FileInfo>* removed = new std::vector<FileInfo>;
