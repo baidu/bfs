@@ -854,7 +854,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
         done->Run();
         return;
     }
-    if (path.empty()) {
+    if (request->path().empty()) {
         response->set_status(kBadParameter);
         done->Run();
         return;
