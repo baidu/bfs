@@ -837,11 +837,6 @@ void NameServerImpl::DiskUsage(::google::protobuf::RpcController* controller,
     }
     response->set_sequence_id(request->sequence_id());
     std::string path = NameSpace::NormalizePath(request->path());
-    if (path.empty() || path[0] != '/') {
-        response->set_status(kBadParameter);
-        done->Run();
-        return;
-    }
     uint64_t du_size = 0;
     StatusCode ret_status = namespace_->DiskUsage(path, &du_size);
     response->set_status(ret_status);
@@ -859,14 +854,14 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
         done->Run();
         return;
     }
-    response->set_sequence_id(request->sequence_id());
-    std::string path = NameSpace::NormalizePath(request->path());
-    bool recursive = request->recursive();
-    if (path.empty() || path[0] != '/') {
+    if (path.empty()) {
         response->set_status(kBadParameter);
         done->Run();
         return;
     }
+    response->set_sequence_id(request->sequence_id());
+    std::string path = NameSpace::NormalizePath(request->path());
+    bool recursive = request->recursive();
     std::vector<FileInfo>* removed = new std::vector<FileInfo>;
     NameServerLog log;
     StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed, &log);
