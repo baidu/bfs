@@ -16,7 +16,7 @@ extern "C"{
 
 typedef struct bfs_fs_t bfs_fs_t;
 
-bfs_fs_t* bfs_open_file_system();
+bfs_fs_t* bfs_open_file_system(const char* flag_file_path);
 int bfs_create_directory(bfs_fs_t* fs, const char* path);
 int bfs_list_directory(bfs_fs_t* fs, const char* path);
 int bfs_delete_file(bfs_fs_t* fs, const char* path);

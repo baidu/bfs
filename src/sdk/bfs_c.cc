@@ -32,20 +32,20 @@ struct bfs_fs_t {
     baidu::bfs::FS*  rep;
 };
 
-bfs_fs_t* bfs_open_file_system() {
+bfs_fs_t* bfs_open_file_system(const char* flag_file) {
     std::string flag = "--flagfile=./bfs.flag";
-    int argc = 2;
-    char** argv = new char*[3];
-    argv[0] = const_cast<char*>("dummy");
-    argv[1] = const_cast<char*>(flag.c_str());
-    argv[2] = NULL;
+    int argc = 1;
+    char* file_path = new char[flag.size() + 1];
+    strcpy(file_path, flag.c_str());
+    char** argv = &file_path;
     ::google::ParseCommandLineFlags(&argc, &argv, false);
-    delete[] argv;
+    delete[] file_path;
+
     bfs_fs_t* fs = new bfs_fs_t;
     std::string ns_address = FLAGS_nameserver_nodes;
-    bool responce = baidu::bfs::FS::OpenFileSystem(ns_address.c_str(),
+    bool ret = baidu::bfs::FS::OpenFileSystem(ns_address.c_str(),
             &(fs->rep), baidu::bfs::FSOptions());
-    if (!responce) {
+    if (!ret) {
         delete fs;
         return NULL;
     }
@@ -172,6 +172,7 @@ int bfs_get(bfs_fs_t* fs, const char* bfs, const char* local) {
         len = file->Read(buf, sizeof(buf));
         if (len <= 0) {
             if (len < 0) {
+                fclose(fp);
                 return 4;
             }
             break;
@@ -297,15 +298,11 @@ int bfs_change_replica_num(bfs_fs_t* fs, const char* path,
 }
 
 int bfs_chmod(bfs_fs_t* fs, const char* str_mode, const char* path) {
-    char* mode_str = new char[strlen(str_mode) + 1];
-    strcpy(mode_str, str_mode);
-    while (*mode_str) {
-        if (!isdigit(*mode_str)) {
-            return -1;
-        }
-        mode_str++;
+    char* end_pos = NULL;
+    int32_t mode = strtol(str_mode, &end_pos, 8);
+    if (end_pos != NULL) {
+        return -1;
     }
-    int32_t mode = strtol(str_mode, NULL, 8);
     return fs->rep->Chmod(mode, path);
 }
 
