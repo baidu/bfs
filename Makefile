@@ -181,8 +181,8 @@ chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) src/utils/meta_converter.o
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)
 
-libbfs_c.so: src/bfs_c.cc src/sdk/bfs_c.h libbfs.a
-	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) -o $@ src/bfs_c.cc  \
+libbfs_c.so: src/sdk/bfs_c.cc src/sdk/bfs_c.h libbfs.a
+	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) -o $@ src/sdk/bfs_c.cc  \
 	            -Xlinker "-(" libbfs.a \
 		thirdparty/lib/libprotobuf.a \
 		thirdparty/lib/libsofa-pbrpc.a \

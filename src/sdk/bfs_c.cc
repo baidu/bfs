@@ -1,19 +1,10 @@
-/***************************************************************************
- *
- * Copyright (c) 2017 Baidu.com, Inc. All Rights Reserved
- *
- **************************************************************************/
+// Copyright (c) 2017, Baidu.com, Inc. All Rights Reserved
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
 
-
-
-/**
- * @file bfs_c.cc
- * @author sunjinjin01(com@baidu.com)
- * @date 2017/01/03 16:33:59
- * @brief
- *
- **/
-
+#include "sdk/bfs_c.h"
+#include "sdk/bfs.h"
 
 #include <gflags/gflags.h>
 
@@ -31,29 +22,30 @@
 #include <common/timer.h>
 #include <common/util.h>
 
-#include "sdk/bfs_c.h"
-#include "sdk/bfs.h"
 
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
 
 extern "C"{
 
-struct bfs_fs_t { baidu::bfs::FS*  rep; };
+struct bfs_fs_t {
+    baidu::bfs::FS*  rep;
+};
 
-bfs_fs_t* bfs_open_file_system() {
+bfs_fs_t* bfs_open_file_system(const char* flag_file) {
     std::string flag = "--flagfile=./bfs.flag";
-    int argc = 2;
-    char** argv = new char*[3];
-    argv[0] = const_cast<char*>("dummy");
-    argv[1] = const_cast<char*>(flag.c_str());
-    argv[2] = NULL;
+    int argc = 1;
+    char* file_path = new char[flag.size() + 1];
+    strcpy(file_path, flag.c_str());
+    char** argv = &file_path;
     ::google::ParseCommandLineFlags(&argc, &argv, false);
-    delete[] argv;
+    delete[] file_path;
+
     bfs_fs_t* fs = new bfs_fs_t;
     std::string ns_address = FLAGS_nameserver_nodes;
-    bool responce = baidu::bfs::FS::OpenFileSystem(ns_address.c_str(), &(fs->rep), baidu::bfs::FSOptions());
-    if (!responce || !(fs->rep)) {
+    bool ret = baidu::bfs::FS::OpenFileSystem(ns_address.c_str(),
+            &(fs->rep), baidu::bfs::FSOptions());
+    if (!ret) {
         delete fs;
         return NULL;
     }
@@ -61,8 +53,7 @@ bfs_fs_t* bfs_open_file_system() {
 }
 
 int bfs_create_directory(bfs_fs_t* fs, const char* path) {
-    int result = fs->rep->CreateDirectory(path);
-    return result;
+    return fs->rep->CreateDirectory(path);
 }
 
 int bfs_list_directory(bfs_fs_t* fs, const char* path) {
@@ -108,36 +99,35 @@ int bfs_list_directory(bfs_fs_t* fs, const char* path) {
 }
 
 int bfs_delete_file(bfs_fs_t* fs, const char* path) {
-    int32_t ret = fs->rep->DeleteFile(path);
-    return ret;
+    return fs->rep->DeleteFile(path);
 }
 
 int bfs_rename(bfs_fs_t* fs, const char* oldpath, const char* newpath) {
-    int32_t ret = fs->rep->Rename(oldpath, newpath);
-    return ret;
+    return fs->rep->Rename(oldpath, newpath);
 }
 
 int bfs_touchz(bfs_fs_t* fs, const char* path) {
     baidu::bfs::File* file;
-    int32_t ret = fs->rep->OpenFile(path, O_WRONLY, 0644, &file, baidu::bfs::WriteOptions());
+    int32_t ret = fs->rep->OpenFile(path, O_WRONLY, 0644,
+            &file, baidu::bfs::WriteOptions());
+    delete file;
     return ret;
 }
 
 int bfs_symlink(bfs_fs_t* fs, const char* src, const char* dst) {
-    int32_t ret = fs->rep->Symlink(src, dst);
-    return ret;
+    return fs->rep->Symlink(src, dst);
 }
 
 int bfs_cat(bfs_fs_t* fs, const char* path) {
     int64_t bytes = 0;
-    int32_t len;
     baidu::bfs::File* file;
-    int32_t ret = fs->rep->OpenFile(path, O_RDONLY, &file, baidu::bfs::ReadOptions());
+    int32_t ret = fs->rep->OpenFile(path, O_RDONLY, &file,
+            baidu::bfs::ReadOptions());
     if (ret != 0) {
         return ret;
     }
     char buf[10240];
-    len = 0;
+    int32_t len = 0;
     while (1) {
         len = file->Read(buf, sizeof(buf));
         if (len <= 0) {
@@ -165,7 +155,8 @@ int bfs_get(bfs_fs_t* fs, const char* bfs, const char* local) {
     }
     baidu::common::timer::AutoTimer at(0, "BfsGet", bfs);
     baidu::bfs::File* file;
-    if (fs->rep->OpenFile(bfs, O_RDONLY, &file, baidu::bfs::ReadOptions()) != 0) {
+    if (fs->rep->OpenFile(bfs, O_RDONLY, &file,
+                baidu::bfs::ReadOptions()) != 0) {
         return 2;
     }
     FILE* fp = fopen(target.c_str(), "wb");
@@ -181,6 +172,7 @@ int bfs_get(bfs_fs_t* fs, const char* bfs, const char* local) {
         len = file->Read(buf, sizeof(buf));
         if (len <= 0) {
             if (len < 0) {
+                fclose(fp);
                 return 4;
             }
             break;
@@ -211,7 +203,6 @@ int bfs_put(bfs_fs_t* fs, const char* local, const char* bfs) {
         target += src_file_name;
     }
 
-    int ret = 0;
     baidu::common::timer::AutoTimer at(0, "BfsPut", target.c_str());
     FILE* fp = fopen(local, "rb");
     if (fp == NULL) {
@@ -223,14 +214,16 @@ int bfs_put(bfs_fs_t* fs, const char* local, const char* bfs) {
         return 3;
     }
     baidu::bfs::File* file;
-    if (fs->rep->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode, &file, baidu::bfs::WriteOptions()) != 0) {
+    if (fs->rep->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode,
+                &file, baidu::bfs::WriteOptions()) != 0) {
         fclose(fp);
         return 4;
     }
     char buf[10240];
     int64_t len = 0;
     int32_t bytes = 0;
-    while ( (bytes = fread(buf, 1, sizeof(buf), fp)) > 0) {
+    int ret = 0;
+    while ((bytes = fread(buf, 1, sizeof(buf), fp)) > 0) {
         int32_t write_bytes = file->Write(buf, bytes);
         if (write_bytes < bytes) {
             ret = 5;
@@ -260,10 +253,6 @@ int64_t bfs_du_v2(bfs_fs_t* fs, const char* path) {
 
 int bfs_du(bfs_fs_t* fs, const char* path) {
     std::string str_path = path;
-    std::string ppath, prefix;
-    int num = 0, ret = 0;
-    baidu::bfs::BfsFileInfo* files = NULL;
-    int64_t total_size = 0;
     assert(str_path.size() > 0);
     if (str_path[str_path.size() - 1] != '*') {
         if (bfs_du_v2(fs, path) < 0) {
@@ -274,12 +263,15 @@ int bfs_du(bfs_fs_t* fs, const char* path) {
 
     // Wildcard
     str_path.resize(str_path.size() - 1);
-    ppath = str_path.substr(0, str_path.rfind('/') + 1);
-    prefix = str_path.substr(ppath.size());
-    ret = fs->rep->ListDirectory(ppath.c_str(), &files, &num);
+    std::string ppath = str_path.substr(0, str_path.rfind('/') + 1);
+    std::string prefix = str_path.substr(ppath.size());
+    int num = 0;
+    baidu::bfs::BfsFileInfo* files = NULL;
+    int32_t ret = fs->rep->ListDirectory(ppath.c_str(), &files, &num);
     if (ret != 0) {
         return ret;
     }
+    int64_t total_size = 0;
     for (int j = 0; j < num; j++) {
         std::string name(files[j].name);
         if (name.find(prefix) != std::string::npos) {
@@ -287,32 +279,30 @@ int bfs_du(bfs_fs_t* fs, const char* path) {
             if (sz > 0) total_size += sz;
         }
     }
-    printf("%s Total: %s\n", path, baidu::common::HumanReadableString(total_size).c_str());
-
-    return 0;
+    printf("%s Total: %s\n",
+            path, baidu::common::HumanReadableString(total_size).c_str());
+    delete[] files;
+    return ret;
 }
 
-int bfs_rm_dir(bfs_fs_t* fs,  const char* path, bool recursive) {
+int bfs_rm_dir(bfs_fs_t* fs, const char* path, bool recursive) {
     return fs->rep->DeleteDirectory(path, recursive);
 }
 
-int bfs_change_replica_num(bfs_fs_t* fs,  const char* path, const char* replica_num) {
+int bfs_change_replica_num(bfs_fs_t* fs, const char* path,
+        const char* replica_num) {
     if (!isdigit(*replica_num)) {
         return -1;
     }
-    return fs->rep->ChangeReplicaNum(path, strtol(replica_num, NULL, 10) );
+    return fs->rep->ChangeReplicaNum(path, strtol(replica_num, NULL, 10));
 }
 
 int bfs_chmod(bfs_fs_t* fs, const char* str_mode, const char* path) {
-    char* mode_str = new char[strlen(str_mode) + 1];
-    strcpy(mode_str, str_mode);
-    while (*mode_str) {
-        if (!isdigit(*mode_str)) {
-            return -1;
-        }
-        mode_str++;
+    char* end_pos = NULL;
+    int32_t mode = strtol(str_mode, &end_pos, 8);
+    if (end_pos != NULL) {
+        return -1;
     }
-    int32_t mode = strtol(str_mode, NULL, 8);
     return fs->rep->Chmod(mode, path);
 }
 
@@ -322,10 +312,10 @@ int bfs_location(bfs_fs_t* fs, const char* path) {
     if (ret != 0) {
         return ret;
     }
-    for (std::map<int64_t, std::vector<std::string> >::iterator it = locations.begin();
-            it != locations.end(); ++it) {
-        printf("block_id %ld:\n", it->first);
-        for (uint64_t i = 0; i < (it->second).size(); ++i) {
+    for (std::map<int64_t, std::vector<std::string> >::iterator it =
+            locations.begin(); it != locations.end(); ++it) {
+        printf("block_id #%ld:\n", it->first);
+        for (size_t i = 0; i < (it->second).size(); ++i) {
             printf("%s\n", (it->second)[i].c_str());
         }
     }
