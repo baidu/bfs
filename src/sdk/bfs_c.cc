@@ -79,11 +79,11 @@ bfs_file_t* bfs_open_file(const bfs_fs_t* fs, const char* path, int flag) {
 }
 
 int bfs_close_file(bfs_file_t* file) {
-    file->bfs_file->Close();
+    int32_t ret = file->bfs_file->Close();
     delete file->bfs_file;
     file->bfs_file = NULL;
     delete file;
-    return 0;
+    return ret;
 }
 
 int bfs_write_file(bfs_file_t* file, const char* buf, int32_t len) {
