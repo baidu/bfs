@@ -78,7 +78,7 @@ private:
 };
 
 struct BfsFileInfo {
-    uint64_t ino;
+    int64_t ino;
     int64_t size;
     uint32_t ctime;
     uint32_t mode;

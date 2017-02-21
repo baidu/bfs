@@ -243,14 +243,13 @@ bool NameSpace::IGet(int64_t entry_id, FileInfo * info) {
 
 //unfinshed, consistency not guranteed, to be continue
 bool NameSpace::DeleteFileInfo(const std::string file_key, NameServerLog* log) {
-    int64_t entry_id;
     std::string file_key_i;
     FileInfo info;
     if (!GetFromStore(file_key, &info)) {
         LOG(INFO, "DeleteFileInfo GetFromStore for entry_id return false");
         return false;
     }
-    entry_id = info.entry_id();
+    int64_t entry_id = info.entry_id();
     LOG(DEBUG, "DeleteFileInfo get entry_id from db_ E%ld return true", entry_id);
     leveldb::Status s = db_->Delete(leveldb::WriteOptions(), file_key);
     if (!s.ok()) {
@@ -315,8 +314,6 @@ StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info, st
         LOG(INFO, "path split fail %s", path.c_str());
         return kBadParameter;
     }
-        LOG(INFO, "path split %s", path.c_str());
-        LOG(INFO, "path[0] %s", paths[0].c_str());
 
     /// Find parent directory, create if not exist.
     int64_t parent_id = kRootEntryid;
@@ -770,14 +767,12 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
 
     leveldb::Status s = db_->Write(leveldb::WriteOptions(), &batch);
     if (!s.ok()) {
-        LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
-        LOG(FATAL, "Namespace write to db_ fail!");
+        LOG(FATAL, "Unlink dentry write to db_ fail: %s\n", dir_info.name().c_str());
         return kUpdateError;
     }
     s = db_i->Write(leveldb::WriteOptions(), &batch);
     if (!s.ok()) {
-        LOG(INFO, "Unlink dentry fail: %s\n", dir_info.name().c_str());
-        LOG(FATAL, "Namespace write to db_i fail!");
+        LOG(FATAL, "Unlink dentry write to db_i fail: %s\n", dir_info.name().c_str());
         return kUpdateError;
     }
     LOG(INFO, "Delete directory done: %s[%s]",

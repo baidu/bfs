@@ -161,10 +161,11 @@ static void dirbuf_add(fuse_req_t req, struct dirbuf *b, const char *name,
  
 static int reply_buf_limited(fuse_req_t req, const char *buf, size_t bufsize,
                   off_t off, size_t maxsize) {
-    if (bufsize - off > 0)
+    if (bufsize - off > 0) {
         return fuse_reply_buf(req, buf + off, min(bufsize - off, maxsize));
-    else
+    } else {
         return fuse_reply_buf(req, NULL, 0);
+    }
 }
 
 static void bfs_ll_readdir(fuse_req_t req, fuse_ino_t ino, 
