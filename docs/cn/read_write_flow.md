@@ -9,7 +9,7 @@
 2. sdk调用`ChunkServer::WriteBlock`, 向每个chunkser(扇出写)或第一个chunkserver(链式写)发送写请求
 
 ## `ChunkServer::WriteBlock`流程
-1. 如果是链式写, 当前不是复制链上最后一个cs, 异步调用下一个cs的`ChunkServer::WriteBlock`, 并
+1. 如果是链式写, 当前不是复制链上最后一个cs, 异步调用下一个cs的`ChunkServer::WriteBlock`, 并通过回调触发下一步
 2. 如果是当前块的第一个写操作, 调用BlockManager::CreateBlock, 创建一个新的Block, 并确定放在哪块Disk上
 3. 将写buffer数据复制一份, 放入滑动窗口
 4. 由滑动窗口的回调触发, 将buffer数据放入对应Disk的写队列
