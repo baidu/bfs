@@ -6,7 +6,7 @@
 
 ## BFS文件Write流程
 1. sdk调用`NameServer::AddBlock`,向NameServer申请文件block, NameServer根据集群chunkserver负载, 为新block选择几个chunkserver
-2. sdk调用`ChunkServer::WriteBlock`, 向每个chunkser(扇出写)或第一个chunkserver(链式写)发送写请求
+2. sdk调用`ChunkServer::WriteBlock`, 向每个chunkserver(扇出写)或第一个chunkserver(链式写)发送写请求
 
 ## `ChunkServer::WriteBlock`流程
 1. 如果是链式写, 当前不是复制链上最后一个cs, 异步调用下一个cs的`ChunkServer::WriteBlock`, 并通过回调触发下一步
