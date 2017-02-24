@@ -40,11 +40,11 @@ void LogDB::Open(const std::string& path, const DBOption& option, LogDB** dbptr)
     logdb->log_size_ = option.log_size << 20;
     mkdir(logdb->dbpath_.c_str(), 0755);
     if(!logdb->RecoverMarker()) {
-        LOG(WARNING, "[LogDB] RecoverMarker failed reason: %s", strerror(errno));
+        LOG(WARNING, "[LogDB] RecoverMarker failed");
         delete logdb;
         return;
     }
-    std::map<std::string, std::string>::iterator it = logdb->markers_.find(".smallest_index_");
+    auto it = logdb->markers_.find(".smallest_index_");
     if (it != logdb->markers_.end()) {
         logdb->smallest_index_ = std::atol(it->second.c_str());
     }
@@ -63,7 +63,7 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
     MutexLock lock(&mu_);
     if (index != next_index_ && smallest_index_ != -1) {
         LOG(INFO, "[LogDB] Write with invalid index = %ld smallest_index_ = %ld next_index_ = %ld ",
-                index, smallest_index_, next_index_);
+            index, smallest_index_, next_index_);
         return kBadParameter;
     }
     if (smallest_index_ == -1) { // empty db
@@ -110,7 +110,10 @@ StatusCode LogDB::Write(int64_t index, const std::string& entry) {
 }
 
 StatusCode LogDB::Read(int64_t index, std::string* entry) {
+    MutexLock lock(&mu_);
     if (read_log_.empty() || index >= next_index_ || index < smallest_index_) {
+        LOG(INFO, "[LogDB] empty = %d index = %ld next_index = %ld smallest_index = %ld",
+            read_log_.empty(), index, next_index_, smallest_index_);
         return kNsNotFound;
     }
     FileCache::iterator it = read_log_.lower_bound(index);
@@ -118,7 +121,8 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
         --it;
     }
     if (index < it->first) {
-        LOG(FATAL, "[LogDB] Read cannot find index file %ld ", index);
+        LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
+        return kReadError;
     }
     FILE* idx_fp = (it->second).first;
     FILE* log_fp = (it->second).second;
@@ -126,29 +130,25 @@ StatusCode LogDB::Read(int64_t index, std::string* entry) {
     int offset = 16 * (index - it->first);
     int64_t read_index = -1;
     int64_t entry_offset = -1;
-    {
-        MutexLock lock(&mu_);
-        if (fseek(idx_fp, offset, SEEK_SET) != 0) {
-            LOG(FATAL, "[LogDB] Read cannot find index file %ld ", index);
-        }
-        StatusCode s = ReadIndex(idx_fp, index, &read_index, &entry_offset);
-        if (s != kOK) {
-            return s;
-        }
+
+    if (fseek(idx_fp, offset, SEEK_SET) != 0) {
+        LOG(WARNING, "[LogDB] Read cannot find index file %ld ", index);
+        return kReadError;
     }
-    // read log entry
-    {
-        MutexLock lock(&mu_);
-        if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
-            LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
-            return kReadError;
-        }
-        int ret = ReadOne(log_fp, entry);
-        if (ret <= 0) {
-            LOG(WARNING, "[LogDB] Read log error %ld ", index);
-            return kReadError;
-        }
+    StatusCode s = ReadIndex(idx_fp, index, &read_index, &entry_offset);
+    if (s != kOK) {
+        return s;
     }
+    if(fseek(log_fp, entry_offset, SEEK_SET) != 0) {
+        LOG(WARNING, "[LogDB] Read %ld with invalid offset %ld ", index, entry_offset);
+        return kReadError;
+    }
+    int ret = ReadOne(log_fp, entry);
+    if (ret <= 0) {
+        LOG(WARNING, "[LogDB] Read log error %ld ", index);
+        return kReadError;
+    }
+
     return kOK;
 }
 
@@ -235,16 +235,16 @@ StatusCode LogDB::DeleteUpTo(int64_t index) {
     int64_t upto_index = upto->first;
     FileCache::iterator it = read_log_.begin();
     while (it->first != upto_index) {
-        fclose((it->second).first);
-        fclose((it->second).second);
         std::string log_name, idx_name;
         FormLogName(it->first, &log_name, &idx_name);
-        remove(log_name.c_str());
-        remove(idx_name.c_str());
+        if (!RemoveFile((it->second).first, log_name) ||
+            !RemoveFile((it->second).second, idx_name)) {
+            return kWriteError;
+        }
         read_log_.erase(it++);
     }
     LOG(INFO, "[LogDB] DeleteUpTo done smallest_index_ = %ld next_index_ = %ld",
-            smallest_index_, next_index_);
+        smallest_index_, next_index_);
     return kOK;
 }
 
@@ -261,12 +261,12 @@ StatusCode LogDB::DeleteFrom(int64_t index) {
     FileCache::iterator from = read_log_.lower_bound(index);
     bool need_truncate = index != from->first;
     for (FileCache::iterator it = from; it != read_log_.end(); ++it) {
-        fclose((it->second).first);
-        fclose((it->second).second);
         std::string log_name, idx_name;
         FormLogName(it->first, &log_name, &idx_name);
-        remove(log_name.c_str());
-        remove(idx_name.c_str());
+        if (!RemoveFile((it->second).first, log_name) ||
+            !RemoveFile((it->second).second, idx_name)) {
+            return kWriteError;
+        }
     }
     CloseCurrent();
     // truancate the last log and open it for read
@@ -277,51 +277,65 @@ StatusCode LogDB::DeleteFrom(int64_t index) {
         fseek((it->second).first, offset, SEEK_SET);
         char buf[16];
         int len = fread(buf, 1, 16, (it->second).first);
-        assert(len == 16);
+        if (len != 16) {
+            return kReadError;
+        }
         int64_t tmp_offset;
         memcpy(&tmp_offset, buf + 8, 8);
-        fclose((it->second).first);
-        fclose((it->second).second);
         std::string log_name, idx_name;
         FormLogName(it->first, &log_name, &idx_name);
-        truncate(log_name.c_str(), tmp_offset);
-        truncate(idx_name.c_str(), offset);
-        (it->second).first = fopen(idx_name.c_str(), "r");
-        (it->second).second = fopen(log_name.c_str(), "r");
+        if (!CloseFile((it->second).first, idx_name) ||
+            !CloseFile((it->second).second, log_name)) {
+            return kWriteError;
+        }
+        if (truncate(log_name.c_str(), tmp_offset) != 0) {
+            LOG(WARNING, "[LogDB] Truncate %s failed, %s", log_name.c_str(), strerror(errno));
+            return kWriteError;
+        }
+        if (truncate(idx_name.c_str(), offset) != 0) {
+            LOG(WARNING, "[LogDB] Truncate %s failed, %s", idx_name.c_str(), strerror(errno));
+            return kWriteError;
+        }
+        if (!OpenFile(&((it->second).first), idx_name, "r") ||
+            !OpenFile(&((it->second).second), log_name, "r")) {
+            return kWriteError;
+        }
     }
     next_index_ = index;
     LOG(INFO, "[LogDB] DeleteFrom done smallest_index_ = %ld next_index_ = %ld",
-            smallest_index_, next_index_);
+        smallest_index_, next_index_);
     return kOK;
 }
 
-StatusCode LogDB::DestroyDB() {
-    MutexLock lock(&mu_);
-    for (auto it = read_log_.begin(); it != read_log_.end();) {
-        fclose((it->second).first);
-        fclose((it->second).second);
-        std::string log_name, idx_name;
-        FormLogName(it->first, &log_name, &idx_name);
-        if (remove(log_name.c_str()) != 0) {
-            LOG(FATAL, "[LogDB] remove failed %s", log_name.c_str());
-        }
-        if (remove(idx_name.c_str()) != 0) {
-            LOG(FATAL, "[LogDB] remove failed %s", idx_name.c_str());
-        }
-        read_log_.erase(it++);
+StatusCode LogDB::DestroyDB(const std::string& dbpath) {
+    LOG(INFO, "[LogDB] Starts to DestroyDB %s", dbpath.c_str());
+    DIR *dir_ptr = opendir(dbpath.c_str());
+    if (dir_ptr == NULL) {
+        LOG(WARNING, "[LogDB] open dir failed %s", dbpath.c_str());
+        return kWriteError;
     }
-    fclose(marker_log_);
-    if (remove((dbpath_ + "/marker.mak").c_str()) != 0) {
-        LOG(FATAL, "[LogDB] remove failed %d", errno);
+    struct dirent *entry = NULL;
+    while ((entry = readdir(dir_ptr)) != NULL) {
+        std::string name(entry->d_name);
+        if (name == "." || name == "..") {
+            continue;
+        }
+        if (remove((dbpath + "/" + name).c_str()) != 0) {
+            LOG(WARNING, "[LogDB] Remove %s failed %s", entry->d_name, strerror(errno));
+            closedir(dir_ptr);
+            return kWriteError;
+        } else {
+            LOG(DEBUG, "[LogDB] Remove file %s", entry->d_name);
+        }
     }
-    marker_log_ = NULL;
-    write_log_ = NULL;
-    write_index_ = NULL;
+    LOG(INFO, "[LogDB] DestroyDB done %s", dbpath.c_str());
+    closedir(dir_ptr);
     return kOK;
 }
 
 bool LogDB::BuildFileCache() {
     // build log file cache
+    LOG(INFO, "[LogDB] Start BuildFileCache");
     struct dirent *entry = NULL;
     DIR *dir_ptr = opendir(dbpath_.c_str());
     if (dir_ptr == NULL) {
@@ -336,15 +350,13 @@ bool LogDB::BuildFileCache() {
             int64_t index = std::atol(file_name.substr(0, idx).c_str());
             std::string log_name, idx_name;
             FormLogName(index, &log_name, &idx_name);
-            FILE* idx_fp = fopen(idx_name.c_str(), "r");
-            if (idx_fp == NULL) {
-                LOG(WARNING, "[LogDB] open index file failed %s", file_name.c_str());
+            FILE* idx_fp;
+            FILE* log_fp;
+            if (!OpenFile(&idx_fp, idx_name, "r")) {
                 error = true;
                 break;
             }
-            FILE* log_fp = fopen(log_name.c_str(), "r");
-            if (log_fp == NULL) {
-                LOG(WARNING, "[LogDB] open log file failed %s", file_name.c_str());
+            if (!OpenFile(&log_fp, log_name, "r")) {
                 fclose(idx_fp);
                 error = true;
                 break;
@@ -380,7 +392,7 @@ bool LogDB::CheckLogIdx() {
     FileCache::iterator it = read_log_.begin();
     if (smallest_index_ < it->first) {
         LOG(WARNING, "[LogDB] log does not contain smallest_index_ %ld %ld",
-                smallest_index_, it->first);
+            smallest_index_, it->first);
         return false;
     }
     next_index_ = it->first;
@@ -410,7 +422,7 @@ bool LogDB::CheckLogIdx() {
         StatusCode s = ReadIndex(idx, expect_index, &read_index, &offset);
         if (s != kOK) {
             LOG(WARNING, "[LogDB] check index file failed %ld.idx %s",
-                    it->first, StatusCode_Name(s).c_str());
+                it->first, StatusCode_Name(s).c_str());
             return false;
         }
         fseek(log, 0, SEEK_END);
@@ -429,8 +441,12 @@ bool LogDB::CheckLogIdx() {
             return false;
         }
         FileCache::reverse_iterator rit = read_log_.rbegin();
-        fclose((rit->second).first);
-        fclose((rit->second).second);
+        std::string log_name, idx_name;
+        FormLogName(rit->first, &log_name, &idx_name);
+        if (!RemoveFile((rit->second).first, log_name)
+            || !RemoveFile((rit->second).second, idx_name)) {
+            return false;
+        }
         read_log_.erase(rit->first);
     }
     LOG(INFO, "[LogDB] Set next_index_ to %ld", next_index_);
@@ -449,22 +465,27 @@ bool LogDB::RecoverMarker() {
         LOG(INFO, "[LogDB] No marker to recover");
         return errno == ENOENT;
     }
+
     std::string data;
     while (true) {
         int ret = ReadOne(fp, &data);
         if (ret == 0)  break;
         if (ret < 0) {
             LOG(WARNING, "[LogDB] RecoverMarker failed while reading");
-            fclose(fp);
+            CloseFile(fp, "marker");
             return false;
         }
         MarkerEntry mark;
         DecodeMarker(data, &mark);
         markers_[mark.key] = mark.value;
     }
-    fclose(fp);
+
+    if (!CloseFile(fp, "marker")) {
+        return false;
+    }
     LOG(INFO, "[LogDB] Recover markers done");
 
+    // recover may based on either marker.tmp/marker.mak, ignore return code on purpose
     rename((dbpath_ + "marker.tmp").c_str(), (dbpath_ + "marker.mak").c_str());
     return true;
 }
@@ -573,10 +594,14 @@ void LogDB::DecodeMarker(const std::string& data, MarkerEntry* marker) { // data
 }
 
 bool LogDB::NewWriteLog(int64_t index) {
-    if (write_log_) fclose(write_log_);
-    if (write_index_) fclose(write_index_);
     std::string log_name, idx_name;
     FormLogName(index, &log_name, &idx_name);
+    if (!CloseFile(write_log_, log_name)) {
+        return false;
+    }
+    if (!CloseFile(write_index_, idx_name)) {
+        return false;
+    }
     write_log_ = fopen(log_name.c_str(), "w");
     write_index_ = fopen(idx_name.c_str(), "w");
     FILE* idx_fp = fopen(idx_name.c_str(), "r");
@@ -603,6 +628,47 @@ void LogDB::FormLogName(int64_t index, std::string* log_name, std::string* idx_n
     idx_name->append(dbpath_);
     idx_name->append(common::NumToString(index));
     idx_name->append(".idx");
+}
+
+bool LogDB::CloseFile(FILE* fp, const std::string& name) {
+    if (!fp) {
+        return true;
+    }
+    if (fclose(fp) != 0) {
+        LOG(WARNING, "[LogDB] Close file failed %s, %s", strerror(errno), name.c_str());
+        return false;
+    }
+    LOG(DEBUG, "[LogDB] Close file %s", name.c_str());
+    return true;
+}
+
+bool LogDB::OpenFile(FILE** fp, const std::string& name, const char* mode) {
+    *fp = fopen(name.c_str(), mode);
+    if (*fp == NULL) {
+        LOG(WARNING, "[LogDB] Open file %s failed %s", name.c_str(), strerror(errno));
+        return false;
+    }
+    LOG(DEBUG, "[LogDB] Open file %s", name.c_str());
+    return true;
+}
+
+bool LogDB::RemoveFile(const std::string& name) {
+    if (remove(name.c_str()) != 0) {
+        LOG(WARNING, "[LogDB] Remove file %s failed %s", name.c_str(), strerror(errno));
+        return false;
+    }
+    LOG(DEBUG, "[LogDB] Romve file %s", name.c_str());
+    return true;
+}
+
+bool LogDB::RemoveFile(FILE* fp, const std::string& name) {
+    if (!fp) {
+        return true;
+    }
+    if (CloseFile(fp, name)) {
+        return RemoveFile(name);
+    }
+    return false;
 }
 
 } // namespace bfs

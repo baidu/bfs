@@ -416,7 +416,6 @@ int32_t FileImpl::Write(const char* buf, int32_t len) {
             }
         }
     }
-
     int32_t w = 0;
     while (w < len) {
         MutexLock lock(&mu_, "WriteInternal", 1000);

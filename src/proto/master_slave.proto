@@ -6,7 +6,6 @@ message AppendLogRequest {
     repeated bytes log_data = 1;
     optional int64 index = 2;
     optional int64 term = 3;
-    optional int32 log_size = 4;
 }
 
 message AppendLogResponse {

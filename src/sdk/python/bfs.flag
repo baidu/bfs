@@ -1,0 +1,15 @@
+--default_replica_num=3
+--chunkserver_log_level=2
+--blockreport_interval=2
+--bfs_log=./log/bfs.log
+--nameserver_log_level=2
+--keepalive_timeout=10
+--nameserver_start_recover_timeout=15
+--block_store_path=./data1,./data2
+--bfs_bug_tolerant=false
+--select_chunkserver_local_factor=0
+--bfs_web_kick_enable=true
+--ha_strategy=none
+--nameserver_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829
+--sdk_wirte_mode=fanout
+--chunkserver_multi_path_on_one_disk=true
