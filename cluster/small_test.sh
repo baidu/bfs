@@ -12,9 +12,9 @@ if [ ! -f $1 ]; then
     exit
 fi
 
-sh clear-all.sh $serverfile
-sh deploy-all.sh $serverfile
-sh start-all.sh $serverfile
+sh clear-all.sh 
+sh deploy-all.sh 
+sh start-all.sh 
 
 sleep 10
 
@@ -87,8 +87,8 @@ do
 done;
 
 # Kill chunkserver and test retry
-sh stop-server.sh $serverfile cs0
-sh stop-server.sh $serverfile cs1
+sh stop-server.sh cs0
+sh stop-server.sh cs1
 
 sleep 10
 
@@ -96,8 +96,8 @@ sleep 10
 rm -rf ./binary
 
 # Nameserver restart
-sh stop-nameserver.sh $serverfile
-sh start-nameserver.sh $serverfile
+sh stop-nameserver.sh
+sh start-nameserver.sh
 
 sleep 10
 ./bfs_client get /bin/bfs_client ./binary

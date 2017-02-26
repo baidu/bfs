@@ -1,6 +1,0 @@
-strategy none
-server ns0 127.0.0.1 8020   ubuntu-virtual-machine ubuntu ubuntu nameserver  /home/ubuntu/github/nameserver0
-server cs0 127.0.0.1 8027   ubuntu-virtual-machine ubuntu ubuntu chunkserver /home/ubuntu/github/chunkserver0
-server cs1 127.0.0.1 8028   ubuntu-virtual-machine ubuntu ubuntu chunkserver /home/ubuntu/github/chunkserver1
-server cs2 127.0.0.1 8029   ubuntu-virtual-machine ubuntu ubuntu chunkserver /home/ubuntu/github/chunkserver2
-server cs3 127.0.0.1 8030   ubuntu-virtual-machine ubuntu ubuntu chunkserver /home/ubuntu/github/chunkserver3
