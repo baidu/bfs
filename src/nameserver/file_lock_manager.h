@@ -41,6 +41,7 @@ private:
     void LockInternal(const std::string& path, LockType lock_type);
     void UnlockInternal(const std::string& path);
     int GetBucketOffset(const std::string& path);
+private:
     std::vector<LockBucket*> locks_;
 };
 

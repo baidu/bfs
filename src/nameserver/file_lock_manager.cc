@@ -27,8 +27,7 @@ FileLockManager::~FileLockManager() {
 }
 
 int FileLockManager::GetBucketOffset(const std::string& path) {
-    static int bucket_size = locks_.size();
-    return common::Hash(path.c_str(), path.size(), 0) % bucket_size;
+    return common::Hash(path.c_str(), path.size(), 0) % locks_.size();
 }
 
 void FileLockManager::ReadLock(const std::string& file_path) {
@@ -106,11 +105,9 @@ void FileLockManager::LockInternal(const std::string& path,
     if (lock_type == kRead) {
         // get read lock
         entry->rw_lock_.ReadLock();
-        LOG(DEBUG, "Get read lock for %s", path.c_str());
     } else {
         // get write lock
         entry->rw_lock_.WriteLock();
-        LOG(DEBUG, "Get write lock for %s", path.c_str());
     }
 }
 
@@ -124,7 +121,6 @@ void FileLockManager::UnlockInternal(const std::string& path) {
     LockEntry* entry = it->second;
     // release lock
     entry->rw_lock_.Unlock();
-    LOG(DEBUG, "Unlock for %s", path.c_str());
     if (entry->ref_.Dec() == 1) {
         // we are the last holder
         /// TODO maybe don't need to deconstruct immediately
