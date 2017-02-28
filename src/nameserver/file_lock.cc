@@ -19,7 +19,7 @@ WriteLock::WriteLock(const std::string& file_path) {
 }
 
 WriteLock::WriteLock(const std::string& file_path_a,
-                                 const std::string& file_path_b) {
+                     const std::string& file_path_b) {
     int r = strcmp(file_path_a.c_str(),file_path_b.c_str());
     if (r == 0) {
         file_path_.push_back(file_path_a);
