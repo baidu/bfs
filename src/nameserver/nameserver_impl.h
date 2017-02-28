@@ -26,6 +26,7 @@ class NameSpace;
 class ChunkServerManager;
 class BlockMappingManager;
 class Sync;
+class FileLockManager;
 
 enum RecoverMode {
     kStopRecover = 0,
@@ -178,6 +179,7 @@ private:
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;
+    FileLockManager* file_lock_manager_;
     /// ha
     Sync* sync_;
     bool is_leader_;
