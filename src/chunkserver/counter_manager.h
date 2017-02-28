@@ -95,7 +95,6 @@ public:
         int64_t pending_buf;
         int64_t mem_read_ops;
         int64_t disk_read_ops;
-        double load;
         DiskStat() :
             blocks(0),
             buf_write_bytes(0),
@@ -105,8 +104,7 @@ public:
             data_size(0),
             pending_buf(0),
             mem_read_ops(0),
-            disk_read_ops(0),
-            load(0.0) {}
+            disk_read_ops(0) {}
         void ToString(std::string* str) {
             str->append(" blocks=" + common::NumToString(blocks));
             str->append(" bw_bytes=" + common::HumanReadableString(buf_write_bytes));
@@ -117,9 +115,6 @@ public:
             str->append(" pending_w=" + common::HumanReadableString(pending_buf));
             str->append(" mem_read_ops=" + common::NumToString(mem_read_ops));
             str->append(" disk_read_ops=" + common::NumToString(disk_read_ops));
-        }
-        bool operator<(const DiskStat& s) const {
-            return s.load < load;
         }
 
     };
