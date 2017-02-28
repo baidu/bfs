@@ -794,6 +794,7 @@ void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
     std::string src = NameSpace::NormalizePath(request->src());
     std::string dst = NameSpace::NormalizePath(request->dst());
 
+    FileLockGuard file_lock_guard(new WriteLock(src, dst));
     NameServerLog log;
     StatusCode status = namespace_->Symlink(src, dst, &log);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
@@ -808,7 +809,9 @@ void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
 
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
-                               (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                               (std::vector<FileInfo>*)NULL,
+                               file_lock_guard,
+                               std::placeholders::_1));
 }
 
 void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
@@ -908,9 +911,10 @@ void NameServerImpl::Chmod(::google::protobuf::RpcController* controller,
         return;
     }
     response->set_sequence_id(request->sequence_id());
-    std::string path = NameSpace::NormalizePath(request->path());
     int32_t mode = request->mode();
     StatusCode ret_status = kOK;
+    std::string path = NameSpace::NormalizePath(request->path());
+    FileLockGuard file_lock_guard(new WriteLock(path));
     FileInfo file_info;
     if (namespace_->GetFileInfo(path, &file_info)) {
         file_info.set_type(mode);
@@ -920,7 +924,9 @@ void NameServerImpl::Chmod(::google::protobuf::RpcController* controller,
         response->set_status(kOK);
         LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                                   (std::vector<FileInfo>*)NULL,
+                                   file_lock_guard,
+                                   std::placeholders::_1));
     } else {
         LOG(INFO, "Chmod file not found: %s\n", path.c_str());
         ret_status = kNsNotFound;
