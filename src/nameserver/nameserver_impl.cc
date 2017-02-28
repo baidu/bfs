@@ -35,6 +35,7 @@ DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
 DECLARE_int32(nameserver_read_thread_num);
 DECLARE_int32(nameserver_heartbeat_thread_num);
+DECLARE_int32(nameserver_sync_callback_thread_num);
 DECLARE_int32(blockmapping_bucket_num);
 DECLARE_int32(hi_recover_timeout);
 DECLARE_int32(lo_recover_timeout);
@@ -65,6 +66,7 @@ NameServerImpl::NameServerImpl(Sync* sync) :
     read_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_read_thread_num);
     work_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_work_thread_num);
     heartbeat_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_heartbeat_thread_num);
+    sync_callback_thread_pool_ = new common::ThreadPool(FLAGS_nameserver_sync_callback_thread_num);
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
     file_lock_manager_ = new FileLockManager;
@@ -404,7 +406,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
 bool NameServerImpl::LogRemote(const NameServerLog& log, std::function<void (bool)> callback) {
     if (sync_ == NULL) {
         if (callback) {
-            work_thread_pool_->AddTask(std::bind(callback, true));
+            sync_callback_thread_pool_->AddTask(std::bind(callback, true));
         }
         return true;
     }

@@ -33,6 +33,7 @@ DEFINE_int32(nameserver_report_thread_num, 20, "Threads to handle block report")
 DEFINE_int32(nameserver_work_thread_num, 20, "Work threads num");
 DEFINE_int32(nameserver_read_thread_num, 5, "Read threads num");
 DEFINE_int32(nameserver_heartbeat_thread_num, 5, "Heartbeat handle threads num");
+DEFINE_int32(nameserver_sync_callback_thread_num, 5, "Sync callback thread num");
 DEFINE_bool(select_chunkserver_by_zone, false, "Select chunkserver by zone");
 DEFINE_bool(select_chunkserver_by_tag, true, "Only choose one of each tag");
 DEFINE_double(select_chunkserver_local_factor, 0.1, "Weighting factors of locality");

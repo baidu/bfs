@@ -168,6 +168,7 @@ private:
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
     ThreadPool* heartbeat_thread_pool_;
+    ThreadPool* sync_callback_thread_pool_;
     /// ChunkServer map
     ChunkServerManager* chunkserver_manager_;
     /// Block map
