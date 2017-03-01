@@ -49,7 +49,7 @@ private:
     void EmptyLog();
     bool SendSnapshot();
     void LogStatus();
-    void PorcessCallbck(int64_t index, bool timeout_check);
+    void ProcessCallback(int64_t index, bool timeout_check);
     void LogCleanUp();
     void CleanupLogdb();
 

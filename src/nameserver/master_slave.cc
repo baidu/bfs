@@ -185,12 +185,12 @@ void MasterSlaveImpl::Log(const std::string& entry, std::function<void (bool)> c
     applied_idx_ = current_idx_; // already updated namespace, applied_idx does not have actually meaning
     callbacks_.insert(std::make_pair(current_idx_, callback));
     if (master_only_ && sync_idx_ < current_idx_ - 1) { // slave is behind, do not wait
-        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,this,
+        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::ProcessCallback,this,
                                         current_idx_, true));
     } else {
         LOG(DEBUG, "%s insert callback index = %d", kLogPrefix.c_str(), current_idx_);
         thread_pool_->DelayTask(FLAGS_log_replicate_timeout * 1000,
-                                std::bind(&MasterSlaveImpl::PorcessCallbck,
+                                std::bind(&MasterSlaveImpl::ProcessCallback,
                                           this, current_idx_, true));
         cond_.Signal();
     }
@@ -371,7 +371,7 @@ void MasterSlaveImpl::ReplicateLog() {
             LOG(INFO, "%s set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
             continue;
         }
-        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::PorcessCallbck,
+        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::ProcessCallback,
                                         this, sync_idx_ + 1, false));
         mu_.Lock();
         sync_idx_++;
@@ -431,7 +431,7 @@ bool MasterSlaveImpl::SendSnapshot() {
     return ret;
 }
 
-void MasterSlaveImpl::PorcessCallbck(int64_t index, bool timeout_check) {
+void MasterSlaveImpl::ProcessCallback(int64_t index, bool timeout_check) {
     std::function<void (bool)> callback;
     MutexLock lock(&mu_);
     std::map<int64_t, std::function<void (bool)> >::iterator it = callbacks_.find(index);
