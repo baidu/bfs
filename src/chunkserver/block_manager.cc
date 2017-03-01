@@ -62,7 +62,8 @@ BlockManager::~BlockManager() {
     file_cache_ = NULL;
 }
 
-DiskStat BlockManager::Stat() const {
+DiskStat BlockManager::Stat() {
+    MutexLock lock(&mu_);
     return stat_;
 }
 
@@ -389,22 +390,25 @@ int64_t BlockManager::FindSmallest(std::vector<leveldb::Iterator*>& iters, int32
 }
 
 void BlockManager::LogStatus() {
-    memset(&stat_, 0, sizeof(stat_));
+    DiskStat stat_tmp;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
         DiskStat stat = disk->Stat();
         it->first = stat;
 
-        stat_.blocks += stat.blocks;
-        stat_.buf_write_bytes += stat.buf_write_bytes;
-        stat_.disk_write_bytes += stat.disk_write_bytes;
-        stat_.writing_blocks += stat.writing_blocks;
-        stat_.writing_bytes += stat.writing_bytes;
-        stat_.data_size += stat.data_size;
-        stat_.pending_buf += stat.pending_buf;
-        stat_.mem_read_ops += stat.mem_read_ops;
-        stat_.disk_read_ops += stat.disk_read_ops;
+        stat_tmp.blocks += stat.blocks;
+        stat_tmp.buf_write_bytes += stat.buf_write_bytes;
+        stat_tmp.disk_write_bytes += stat.disk_write_bytes;
+        stat_tmp.writing_blocks += stat.writing_blocks;
+        stat_tmp.writing_bytes += stat.writing_bytes;
+        stat_tmp.data_size += stat.data_size;
+        stat_tmp.pending_buf += stat.pending_buf;
+        stat_tmp.mem_read_ops += stat.mem_read_ops;
+        stat_tmp.disk_read_ops += stat.disk_read_ops;
     }
+    mu_.Lock();
+    stat_ = stat_tmp;
+    mu_.Unlock();
     std::string str;
     stat_.ToString(&str);
     LOG(INFO, "[DiskStat] %s", str.c_str());

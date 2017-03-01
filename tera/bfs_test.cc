@@ -138,6 +138,20 @@ TEST(TERA_SO_TEST, TERA_SO) {
     ASSERT_TRUE(2 == result.size());
     ASSERT_TRUE(file2.substr(file2.rfind('/')+1) == result[0]);
 
+    result.clear();
+    int32_t ret = dfs->ListDirectory("no-exists", &result);
+    ASSERT_TRUE(ret == -1);
+    ASSERT_TRUE(errno == ENOENT);
+
+    system("killall -STOP nameserver");
+    ret = dfs->ListDirectory(test_path, &result);
+    ASSERT_TRUE(ret == -1);
+    ASSERT_TRUE(errno == ETIMEDOUT);
+    system("killall -CONT nameserver");
+    //BlockMapping may have been emptied by DeadCheck,
+    //wait for heartbeat and block report
+    sleep(20);
+
     /// Delete
     ASSERT_TRUE(0 == dfs->Delete(file2));
     ASSERT_TRUE(0 != dfs->Exists(file2));
