@@ -96,8 +96,17 @@ Tera中，`Master`通过`Nexus`判断`TabletNode`是否仍在提供服务，当`
 
 1. 对某个目录加完锁后，`NameServer`宕机或重启
 
-   由于锁状态是持久化在`FileInfo`中，HA方案已天然的将`namespace`同步到多台`NameServer`上，所以无论是宕机重机还是切主，都不影响锁信息的正确性。若重启时发现`FileInfo`中锁的状态为`cleaning`，则在`RebuildBlockMapping`时将此目录下所有正在写的文件记录下来，重新进行清锁流程 
+   由于锁状态是持久化在`FileInfo`中，HA方案已天然的将`namespace`同步到多台`NameServer`上，所以无论是宕机重机还是切主，都不影响锁信息的正确性。若重启时发现`FileInfo`中锁的状态为`cleaning`，则在`RebuildBlockMapping`时将此目录下所有正在写的文件记录下来，重新进行清锁流程
+   
+2. 对某个目录解锁时，写完`cleaning`日志后，即发生切主
 
+   可以维护一个正在执行清锁任务的内存结构，当发生切主时，清除此结构
+   
+3. 关闭所有文件时，所有文件已关闭成功的标志是什么？如果有机器不响应怎么办？
+
+   所有文件已关闭成功的标志是对应block的incomplete set为空。如果有机器不响应，只能等，
+ 而且关的速度取决于`ChunkServer`汇报的速度
+  
 # TODO
 
 1. 此方案中，清锁动作为Tera的`Master`主动发出，未来可以考虑`TabletNode`与`NameServer`维持心跳，心跳超时后主动清锁的设计
