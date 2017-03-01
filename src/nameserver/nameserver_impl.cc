@@ -55,7 +55,9 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 extern common::Counter g_blocks_num;
 
-NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
+NameServerImpl::NameServerImpl(Sync* sync) :
+    sync_callback_thread_pool_(NULL),
+    readonly_(true),
     recover_timeout_(FLAGS_nameserver_start_recover_timeout),
     recover_mode_(kStopRecover), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
@@ -75,6 +77,9 @@ NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
                                           std::placeholders::_1, std::placeholders::_2),
                                 std::bind(&NameSpace::EraseNamespace, namespace_));
         sync_->Init(callbacks);
+    } else {
+        sync_callback_thread_pool_ =
+            new common::ThreadPool(FLAGS_nameserver_sync_callback_thread_num);
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
