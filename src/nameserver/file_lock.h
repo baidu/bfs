@@ -29,6 +29,7 @@ public:
     ~WriteLock();
 private:
     friend class NameServerImpl;
+    // will be initialized in NameServerImpl's constructor
     static FileLockManager* file_lock_manager_;
     std::vector<std::string> file_path_;
 };
@@ -39,6 +40,7 @@ public:
     ~ReadLock();
 private:
     friend class NameServerImpl;
+    // will be initialized in NameServerImpl's constructor
     static FileLockManager* file_lock_manager_;
     std::string file_path_;
 };
