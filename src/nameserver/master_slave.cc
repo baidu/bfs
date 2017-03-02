@@ -108,6 +108,12 @@ void MasterSlaveImpl::Init(SyncCallbacks callbacks) {
         }
         applied_idx_++;
     }
+    if (!IsLeader()) {
+        // need to clear sync_idx and applied idx in case this is a retired master
+        // which contains dirty data
+        sync_idx_ = -1;
+        applied_idx_ = -1;
+    }
 
     rpc_client_ = new RpcClient();
     rpc_client_->GetStub(slave_addr_, &slave_stub_);
@@ -295,6 +301,11 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
         LOG(INFO, "%s Start to clean up the old namespace...", kLogPrefix.c_str());
         erase_callback_();
         LOG(INFO, "%s Done clean up the old namespace...", kLogPrefix.c_str());
+        term_ = request->term();
+        StatusCode s = logdb_->WriteMarker("term", term_);
+        if (s != kOK) {
+            LOG(FATAL, "%s Write marker term %ld failed", kLogPrefix.c_str(), term_);
+        }
         slave_snapshot_seq_ = 0;
     } else if (seq != slave_snapshot_seq_) {
         LOG(INFO, "%s snapshot mismatch reqeust seq = %ld, slave sseq = %ld",
@@ -367,6 +378,9 @@ void MasterSlaveImpl::ReplicateLog() {
             }
             request.add_log_data(entry);
         }
+        if (request.log_data_size() == 0) { // maybe slave is way behind
+            continue;
+        }
         mu_.Unlock();
         if (!rpc_client_->SendRequest(slave_stub_,
                                       &master_slave::MasterSlave_Stub::AppendLog,
@@ -383,11 +397,15 @@ void MasterSlaveImpl::ReplicateLog() {
             LOG(INFO, "%s set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
             continue;
         }
-        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::ProcessCallback,
-                                        this, sync_idx_ + 1, false));
         sync_idx_ = sync_idx_ + request.log_data_size();
+        mu_.Unlock();
+        for (int32_t i = 0; i < request.log_data_size(); ++i) {
+            thread_pool_->AddTask(std::bind(&MasterSlaveImpl::ProcessCallback,
+                                            this, sync_idx_ - i, false));
+        }
         LOG(DEBUG, "%s Replicate log done. sync_idx_ = %d, size = %d current_idx_ = %d",
             kLogPrefix.c_str(), sync_idx_, request.log_data_size(), current_idx_);
+        mu_.Lock();
     }
     log_done_.Signal();
 }
@@ -419,11 +437,21 @@ bool MasterSlaveImpl::SendSnapshot() {
         request.set_data(logstr);
         request.set_seq(seq);
         request.set_index(current_index);
-        while (!rpc_client_->SendRequest(slave_stub_,
+        request.set_term(term_);
+        for (int i = 0; i < 5; ++i) {
+            if (rpc_client_->SendRequest(slave_stub_,
                                       &master_slave::MasterSlave_Stub::Snapshot,
                                       &request, &response, 15, 1)) {
-            LOG(WARNING, "%s Send snapshot failed seq %ld",
-                kLogPrefix.c_str(), seq);
+                break;
+            } else {
+                LOG(WARNING, "%s Send snapshot failed seq %ld",
+                    kLogPrefix.c_str(), seq);
+                if (i == 4) {
+                    snapshot_callback_(0, NULL);
+                    return false;
+                }
+                sleep(5);
+            }
         }
         LOG(INFO, "%s Send snapshot seq %ld done", kLogPrefix.c_str(), seq);
         if (!response.success()) {

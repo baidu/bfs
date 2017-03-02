@@ -17,6 +17,7 @@ message SnapshotRequest {
     optional bytes data = 1;
     optional int64 seq = 2;
     optional int64 index = 3;
+    optional int64 term = 4;
 }
 
 message SnapshotResponse {
