@@ -66,8 +66,8 @@ NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
     chunkserver_manager_ = new ChunkServerManager(work_thread_pool_, block_mapping_manager_);
     namespace_ = new NameSpace(false);
     file_lock_manager_ = new FileLockManager;
-    WriteLock::file_lock_manager_ = file_lock_manager_;
-    ReadLock::file_lock_manager_ = file_lock_manager_;
+    WriteLock::SetFileLockManager(file_lock_manager_);
+    ReadLock::SetFileLockManager(file_lock_manager_);
     if (sync_) {
         SyncCallbacks callbacks(std::bind(&NameSpace::TailLog, namespace_,
                                           std::placeholders::_1),

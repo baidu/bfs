@@ -46,6 +46,10 @@ WriteLock::~WriteLock() {
     }
 }
 
+void WriteLock::SetFileLockManager(FileLockManager* file_lock_manager) {
+    file_lock_manager_ = file_lock_manager;
+}
+
 ReadLock::ReadLock(const std::string& file_path) {
     file_path_ = file_path;
     file_lock_manager_->ReadLock(file_path);
@@ -53,6 +57,10 @@ ReadLock::ReadLock(const std::string& file_path) {
 
 ReadLock::~ReadLock() {
     file_lock_manager_->Unlock(file_path_);
+}
+
+void ReadLock::SetFileLockManager(FileLockManager* file_lock_manager) {
+    file_lock_manager_ = file_lock_manager;
 }
 
 } // namespace bfs

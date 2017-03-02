@@ -27,8 +27,8 @@ public:
     WriteLock(const std::string& file_path_a,
               const std::string& file_path_b);
     ~WriteLock();
+    static void SetFileLockManager(FileLockManager* file_lock_manager);
 private:
-    friend class NameServerImpl;
     // will be initialized in NameServerImpl's constructor
     static FileLockManager* file_lock_manager_;
     std::vector<std::string> file_path_;
@@ -38,8 +38,8 @@ class ReadLock : public Lock {
 public:
     ReadLock(const std::string& file_path);
     ~ReadLock();
+    static void SetFileLockManager(FileLockManager* file_lock_manager);
 private:
-    friend class NameServerImpl;
     // will be initialized in NameServerImpl's constructor
     static FileLockManager* file_lock_manager_;
     std::string file_path_;
