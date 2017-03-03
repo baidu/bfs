@@ -81,8 +81,8 @@ ifdef FUSE_LL_PATH
 	BIN += bfs_ll_mount
 endif
 TESTS = namespace_test block_mapping_test location_provider_test logdb_test \
-		file_lock_manager_test chunkserver_impl_test file_cache_test \
-		block_manager_test data_block_test
+		file_lock_manager_test file_lock_test chunkserver_impl_test \
+	   	file_cache_test block_manager_test data_block_test
 TEST_OBJS = src/nameserver/test/namespace_test.o \
 			src/nameserver/test/block_mapping_test.o \
 			src/nameserver/test/logdb_test.o \
@@ -91,6 +91,7 @@ TEST_OBJS = src/nameserver/test/namespace_test.o \
 			src/nameserver/test/raft_test.o \
 			src/nameserver/test/nameserver_impl_test.o \
 			src/nameserver/test/file_lock_manager_test.o \
+			src/nameserver/test/file_lock_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o \
 			src/chunkserver/test/block_manager_test.o \
@@ -149,6 +150,11 @@ location_provider_test: src/nameserver/test/location_provider_test.o src/nameser
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
 file_lock_manager_test: src/nameserver/test/file_lock_manager_test.o \
+						src/nameserver/file_lock_manager.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+
+file_lock_test: src/nameserver/test/file_lock_test.o \
+						src/nameserver/file_lock.o \
 						src/nameserver/file_lock_manager.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
