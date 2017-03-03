@@ -5,9 +5,9 @@
 #ifndef BAIDU_BFS_VERSION_H_
 #define BAIDU_BFS_VERSION_H_
 
-static const int kMajorVersion = 1;
-static const int kMinorVersion = 0;
-static const int kRevision = 0;
+static const int kMajorVersion = 0;
+static const int kMinorVersion = 5;
+static const int kRevision = 2;
 static const char kCompiler[] = __VERSION__;
 
 extern void PrintSystemVersion();
