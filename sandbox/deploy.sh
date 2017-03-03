@@ -29,6 +29,12 @@ echo "--ha_strategy=$strategy" >> bfs.flag
 echo '--nameserver_nodes=127.0.0.1:8827,127.0.0.1:8828,127.0.0.1:8829' >> bfs.flag
 echo '--sdk_wirte_mode=fanout' >> bfs.flag
 echo '--chunkserver_multi_path_on_one_disk=true' >> bfs.flag
+echo '--master_slave_log_limit=300' >> bfs.flag
+echo '--master_log_gc_interval=10' >> bfs.flag
+echo '--logdb_log_size=1' >> bfs.flag
+echo '--log_replicate_timeout=3' >> bfs.flag
+echo '--snapshot_step=10000' >> bfs.flag
+echo '--log_batch_size=1000' >> bfs.flag
 
 for((i=0;i<$ns_num;i++));
 do

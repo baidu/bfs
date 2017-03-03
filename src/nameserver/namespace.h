@@ -65,6 +65,8 @@ public:
     static std::string NormalizePath(const std::string& path);
     /// ha - tail log from leader/master
     void TailLog(const std::string& log);
+    void TailSnapshot(int32_t ns_id, std::string* logstr);
+    void EraseNamespace();
     int64_t GetNewBlockId();
 private:
     enum FileType {
@@ -72,7 +74,7 @@ private:
         kDir = 1,
         kSymlink = 2,
     };
-    FileType GetFileType(int type);
+    FileType GetFileType(int type) const;
     bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
     StatusCode BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
                                 NameServerLog* log = NULL);
@@ -97,6 +99,7 @@ private:
     void UpdateBlockIdUpbound(NameServerLog* log);
 private:
     leveldb::DB* db_;   /// NameSpace storage
+    leveldb::Cache* db_cache_;  // block cache for leveldb
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;
@@ -105,8 +108,12 @@ private:
     Mutex mu_;
 
     /// HA module
-    //Sync* sync_;
-    //Mutex mu_;
+    std::map<int32_t, leveldb::Iterator*> snapshot_tasks_;
+
+private:
+    // NameSpace should be noncopyable
+    NameSpace(const NameSpace&);
+    NameSpace& operator=(const NameSpace&);
 };
 
 } // namespace bfs

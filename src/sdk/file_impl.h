@@ -80,7 +80,8 @@ public:
     /// Add buffer to  async write list
     void StartWrite();
     /// Send local buffer to chunkserver
-    static void BackgroundWrite(std::weak_ptr<FileImpl> wk_fp);
+    static void BackgroundWrite(std::weak_ptr<FileImpl> wk_fp,
+                                const std::string& cs);
     /// Callback for sliding window
     static void OnWriteCommit(int32_t, int32_t);
     static void WriteBlockCallback(std::weak_ptr<FileImpl> wk_fp,
@@ -89,11 +90,12 @@ public:
                             bool failed, int error,
                             int retry_times,
                             WriteBuffer* buffer,
-                            std::string cs_addr);
-    /// When rpc buffer full delay send write request
+                            const std::string& cs_addr);
+    /// When rpc buffer full delay send write reqeust
     static void DelayWriteChunk(std::weak_ptr<FileImpl> wk_fp,
-                                WriteBuffer* buffer, const WriteBlockRequest* request,
-                                int retry_times, std::string cs_addr);
+                                WriteBuffer* buffer,
+                                const WriteBlockRequest* request,
+                                int retry_times, const std::string& cs_addr);
     int32_t Flush();
     int32_t Sync();
     int32_t Close();
@@ -106,18 +108,18 @@ public:
     friend class FSImpl;
 private:
     int32_t AddBlock();
-    bool CheckWriteWindows();
     int32_t FinishedNum();
     bool ShouldSetError();
-    void BackgroundWriteInternal();
+    void BackgroundWriteInternal(const std::string& cs_addr);
     void WriteBlockCallbackInternal(const WriteBlockRequest* request,
                             WriteBlockResponse* response,
                             bool failed, int error,
                             int retry_times,
                             WriteBuffer* buffer,
-                            std::string cs_addr);
-    void DelayWriteChunkInternal(WriteBuffer* buffer, const WriteBlockRequest* request,
-                                int retry_times, std::string cs_addr);
+                            const std::string& cs_addr);
+    void DelayWriteChunkInternal(WriteBuffer* buffer,
+                                 const WriteBlockRequest* request,
+                                 int retry_times, const std::string& cs_addr);
     bool IsChainsWrite();
     bool EnoughReplica();
     std::string GetSlowChunkserver();
@@ -134,9 +136,12 @@ private:
     WriteBuffer* write_buf_;            ///< local writing buffer
     int32_t last_seq_;                  ///< last sequence number
     std::map<std::string, common::SlidingWindow<int>* > write_windows_;
-    std::priority_queue<WriteBuffer*, std::vector<WriteBuffer*>, WriteBufferCmp>
-        write_queue_;                   ///< Write buffer list
-    volatile int back_writing_;         ///< Async write running background
+    struct WriteBufferQueue {
+        Mutex mu;
+        std::queue<WriteBuffer*> buffers;
+    };
+    std::map<std::string, WriteBufferQueue*> cs_write_queue_;
+    volatile int back_writing_;         ///< Async write running backgroud
     const WriteOptions w_options_;
 
     /// for read

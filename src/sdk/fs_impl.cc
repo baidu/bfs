@@ -138,6 +138,7 @@ int32_t FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num
             binfo.mode = info.type();
             binfo.size = info.size();
             snprintf(binfo.name, sizeof(binfo.name), "%s", info.name().c_str());
+            snprintf(binfo.link, sizeof(binfo.link), "%s", info.sym_link().c_str());
         }
     }
     return OK;

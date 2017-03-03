@@ -26,6 +26,7 @@ class NameSpace;
 class ChunkServerManager;
 class BlockMappingManager;
 class Sync;
+class FileLockManager;
 
 enum RecoverMode {
     kStopRecover = 0,
@@ -141,6 +142,7 @@ private:
     void CheckRecoverMode();
     void LeaveReadOnly();
     void ListRecover(sofa::pbrpc::HTTPResponse* response);
+    void ListDirForWeb(const std::string& path, std::string* str);
     bool LogRemote(const NameServerLog& log, std::function<void (bool)> callback);
     void SyncLogCallback(::google::protobuf::RpcController* controller,
                          const ::google::protobuf::Message* request,
@@ -177,6 +179,7 @@ private:
     int64_t start_time_;
     /// Namespace
     NameSpace* namespace_;
+    FileLockManager* file_lock_manager_;
     /// ha
     Sync* sync_;
     bool is_leader_;

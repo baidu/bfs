@@ -18,6 +18,7 @@
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
 DECLARE_int32(node_index);
+DECLARE_int32(nameserver_election_timeout);
 DECLARE_int32(nameserver_log_level);
 DECLARE_string(nameserver_logfile);
 DECLARE_string(nameserver_warninglog);
@@ -31,7 +32,8 @@ namespace raft {
 class KvServer : public RaftKv {
 public:
     KvServer(RaftNodeImpl* raft_node) : raft_node_(raft_node), applied_index_(0) {
-        raft_node_->Init(std::bind(&KvServer::LogCallback, this, std::placeholders::_1));
+        raft_node_->Init(std::bind(&KvServer::LogCallback, this, std::placeholders::_1),
+                         std::function<void (int32_t, std::string*)>());
     }
     void LogCallback(const std::string& log) {
         PutRequest request;
@@ -117,8 +119,8 @@ int main(int argc, char* argv[])
 
     // Service
     baidu::bfs::RaftNodeImpl* raft_service =
-        new baidu::bfs::RaftNodeImpl(FLAGS_nameserver_nodes,
-                                     FLAGS_node_index, FLAGS_raftdb_path);
+        new baidu::bfs::RaftNodeImpl(FLAGS_nameserver_nodes, FLAGS_node_index,
+                                     FLAGS_nameserver_election_timeout, FLAGS_raftdb_path);
     baidu::bfs::raft::KvServer* kv_service =
         new baidu::bfs::raft::KvServer(raft_service);
     // rpc_server

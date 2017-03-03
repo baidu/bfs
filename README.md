@@ -1,5 +1,5 @@
 [The Baidu File System](http://github.com/baidu/bfs)
-======
+=======
 
  [![Build Status](https://travis-ci.org/baidu/bfs.svg?branch=master)](https://travis-ci.org/baidu/bfs)  [![Build Status](https://scan.coverity.com/projects/8135/badge.svg)](https://scan.coverity.com/projects/myawan-bfs-1/) 
 

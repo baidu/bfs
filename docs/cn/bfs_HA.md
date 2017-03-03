@@ -54,14 +54,24 @@ Client向Leader Nameserver发起请求，Leader收到请求后，对所需操作
 Nameserver的HA方案数据流如上描述，其中Sync模块是保证数据可靠和高可用的核心。我们把这个模块设计成可插拔的插件模式，可以选用任意一种一致性协议实现以满足不同可靠、可用和性能要求。一期方案是实现一个主从模式的Nameserver，首先保证数据的可靠性，在一定程度上提高可用性。  
 
 * 写  
-写流程如下图所示，和上面描述的一致。主从模式的Sync实现为简单的RPC调用，即主Nameserver将需要扩散的操作通过RPC发送给从Nameserver；从Nameserver收到RPC后不做任何合法性检查，直接更新内存状态及本地持久化Namespace（leveldb）；操作成功后调用RPC回调通知主Nameserver；主Nameserver收到成功的回调后向用户返回操作成功。  
-<img src="https://github.com/bluebore/bfs/blob/master/resources/images/ha-4.png" width = "300" height = "550" alt="图片名称" align=center />
+写流程和上面描述的一致。主从模式的Sync实现为简单的RPC调用，即主Nameserver将需要扩散的操作通过RPC发送给从Nameserver；从Nameserver收到RPC后不做任何合法性检查，直接更新内存状态及本地持久化Namespace（leveldb）；操作成功后调用RPC回调通知主Nameserver；主Nameserver收到成功的回调后向用户返回操作成功。  
 
 * 读  
 读流程和上面描述的一致。
 
-* 主从  
-这个方案中，主从任何一台机器宕机的情况下，对Nameserver的写操作都会失败，这时需要人工介入处理。没有加入检测宕机并自动切换主从的逻辑，原因是在没有一致性选主协议的情况下，几乎很难保证主从探活策略的正确性，很容易出现无主或者双主的情况。这种设计保证了数据的可靠性，但是在一定程度上牺牲了可用性。为了减小不可用时间，我们加入了一种单写模式，即对Nameserver的写操作只需在主Nameserver上更新成功。当处理完宕机，集群恢复主从都正常运行的情况下后，需切换回双写模式，以保证数据可靠性。主从切换操作流程如下： 
-<img src="https://github.com/bluebore/bfs/blob/master/resources/images/ha-5.png" width = "300" height = "300" alt="图片名称" align=center />
+* 主从模式及切换
+主从方案有两种模式：主从模式和单主模式。严格的主从模式，需要日志成功同步给从后再向用户返回成功。这种情况一旦从宕机，会导致集群不可用。所以引入了单主模式，在从故障的情况下，依然可以提供服务。单主模式下，主将日志持久化到本地log，之后直接向用户返回结果。
+
+当主宕机时，需要将从切换为主。这是向从发送切换命令，从将自己的`term`加一，然后切换为主对外提供服务。`term`的作用主要为了标识曾经发生过主从切换，因为当前实现中，主的状态机中可能存在脏数据，之前的主作为从重启，而又没有清理自己的状态机，脏数据将不会被发现。在`term`机制下，之前的主以从的身份重启后，会发现有比自己`term`更高的主存在，会将自己的状态机和本地日志清理干净，然后等待主发送镜像。
+
+* 镜像
+主会定期清理本地的log，如果从宕机过久，或者新机器作为从连入集群，则需要通过发送镜像的方式将状态机同步给从。其中`snapshot_seq`为一个内存变量，主要用来防止中途从宕机，导致数据错乱。
+	1. 主在namespace上打快照
+	2. 主扫描namespace，根据配置大小打包，发送给从。
+	3. 从收到快照包后检查`snapshot_seq`，如果`snapshot_seq`为零，说明是一个新的镜像，从将本地namespace和log清理干净。如果`snapshot_seq`和从记录的`snapshot_seq`不一致，则返回失败。
+	4. 从将包内的内容一条一条写入namespace。之后将`snapshot_seq`加一，返回成功。
+	5. 全部镜像发送成功后主将namespace上的快照释放。
+	6. 主从开始同步镜像的时间点，将之后的log同步给从，直到从追上主。
+
 
 

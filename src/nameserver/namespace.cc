@@ -23,6 +23,7 @@ DECLARE_string(namedb_path);
 DECLARE_int64(namedb_cache_size);
 DECLARE_int32(default_replica_num);
 DECLARE_int32(block_id_allocation_size);
+DECLARE_int32(snapshot_step);
 DECLARE_bool(check_orphan);
 
 const int64_t kRootEntryid = 1;
@@ -35,7 +36,8 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     block_id_upbound_(1), next_block_id_(1) {
     leveldb::Options options;
     options.create_if_missing = true;
-    options.block_cache = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    db_cache_ = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    options.block_cache = db_cache_;
     leveldb::Status s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
     if (!s.ok()) {
         db_ = NULL;
@@ -83,7 +85,7 @@ int64_t NameSpace::Version() const {
     return version_;
 }
 
-NameSpace::FileType NameSpace::GetFileType(int type) {
+NameSpace::FileType NameSpace::GetFileType(int type) const {
     int mode = (type >> 9);
     return static_cast<FileType>(mode);
 }
@@ -205,7 +207,7 @@ bool NameSpace::DeleteFileInfo(const std::string file_key, NameServerLog* log) {
     if (!s.ok()) {
         return false;
     }
-    EncodeLog(log,kSyncDelete, file_key, "");
+    EncodeLog(log, kSyncDelete, file_key, "");
     return true;
 }
 bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
@@ -224,9 +226,8 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
 
     std::string file_key;
     EncodingStoreKey(file_info_for_ldb.parent_entry_id(), file_info_for_ldb.name(), &file_key);
-    std::string infobuf_for_ldb, infobuf_for_sync;
+    std::string infobuf_for_ldb;
     file_info_for_ldb.SerializeToString(&infobuf_for_ldb);
-    file_info.SerializeToString(&infobuf_for_sync);
 
     leveldb::Status s = db_->Put(leveldb::WriteOptions(), file_key, infobuf_for_ldb);
     if (!s.ok()) {
@@ -235,7 +236,7 @@ bool NameSpace::UpdateFileInfo(const FileInfo& file_info, NameServerLog* log) {
     }
     EncodeLog(log, kSyncWrite, file_key, infobuf_for_ldb);
     return true;
-};
+}
 
 bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     if (!LookUp(path, file_info)) {
@@ -337,7 +338,7 @@ StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mo
 }
 
 StatusCode NameSpace::ListDirectory(const std::string& path,
-                             google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
+                                    google::protobuf::RepeatedPtrField<FileInfo>* outputs) {
     outputs->Clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
@@ -377,10 +378,10 @@ StatusCode NameSpace::ListDirectory(const std::string& path,
 }
 
 StatusCode NameSpace::Rename(const std::string& old_path,
-                      const std::string& new_path,
-                      bool* need_unlink,
-                      FileInfo* remove_file,
-                      NameServerLog* log) {
+                             const std::string& new_path,
+                             bool* need_unlink,
+                             FileInfo* remove_file,
+                             NameServerLog* log) {
     *need_unlink = false;
     if (old_path == "/" || new_path == "/" || old_path == new_path) {
         return kBadParameter;
@@ -427,8 +428,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
             // if dst_file exists, type of both dst_file and old_file must be file
             if ((GetFileType(dst_file.type()) == kDir) || (GetFileType(old_file.type()) == kDir)) {
                 LOG(INFO, "Rename %s to %s, src %o or dst %o is not a file",
-                        old_path.c_str(), new_path.c_str(), old_file.type(),
-                        dst_file.type());
+                    old_path.c_str(), new_path.c_str(), old_file.type(),
+                    dst_file.type());
                 return kBadParameter;
             }
             if (GetFileType(dst_file.type()) != kSymlink) {
@@ -444,8 +445,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     std::string new_key;
     EncodingStoreKey(parent_id, dst_name, &new_key);
     std::string value;
-    old_file.clear_parent_entry_id();
-    old_file.clear_name();
+    old_file.set_parent_entry_id(parent_id);
+    old_file.set_name(dst_name);
     old_file.SerializeToString(&value);
 
     // Write to persistent storage
@@ -592,7 +593,7 @@ StatusCode NameSpace::InternalComputeDiskUsage(const FileInfo& info, uint64_t* d
 }
 
 StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
-                               std::vector<FileInfo>* files_removed, NameServerLog* log) {
+                                      std::vector<FileInfo>* files_removed, NameServerLog* log) {
     files_removed->clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
@@ -606,9 +607,9 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
 }
 
 StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
-                                       bool recursive,
-                                       std::vector<FileInfo>* files_removed,
-                                       NameServerLog* log) {
+                                              bool recursive,
+                                              std::vector<FileInfo>* files_removed,
+                                              NameServerLog* log) {
     int64_t entry_id = dir_info.entry_id();
     std::string key_start, key_end;
     EncodingStoreKey(entry_id, "", &key_start);
@@ -772,6 +773,59 @@ void NameSpace::TailLog(const std::string& logstr) {
     }
 }
 
+void NameSpace::TailSnapshot(int32_t ns_id, std::string* logstr) {
+    leveldb::Iterator* iter = NULL;
+    auto it = snapshot_tasks_.find(ns_id);
+    if (it != snapshot_tasks_.end()) {
+        iter = it->second;
+    } else if (logstr != NULL) {
+        iter = db_->NewIterator(leveldb::ReadOptions());
+        iter->SeekToFirst();
+        snapshot_tasks_[ns_id] = iter;
+    } else {
+        LOG(WARNING, "TailSnapshot closed a nonexist snapshot: ns %d", ns_id);
+        return;
+    }
+
+    if (logstr == NULL) {
+        delete iter;
+        snapshot_tasks_.erase(it);
+        LOG(INFO, "TailSnapshot closed snapshot: %d", ns_id);
+        return;
+    }
+    NameServerLog log;
+    int count = 0;
+    for (; iter->Valid(); iter->Next()) {
+        EncodeLog(&log, kSyncWrite, iter->key().ToString(), iter->value().ToString());
+        if (++count > FLAGS_snapshot_step - 1) {
+            break;
+        }
+    }
+    log.SerializeToString(logstr);
+    LOG(DEBUG, "Sync log size = %u", logstr->size());
+}
+
+void NameSpace::EraseNamespace() {
+    delete db_;
+    db_ = NULL;
+    leveldb::Options options;
+    leveldb::Status s = leveldb::DestroyDB(FLAGS_namedb_path, options);
+    if (!s.ok()) {
+        LOG(ERROR, "DestroyDB fail: %s", s.ToString().c_str());
+        exit(EXIT_FAILURE);
+    }
+    options.create_if_missing = true;
+    delete db_cache_;
+    db_cache_ = leveldb::NewLRUCache(FLAGS_namedb_cache_size * 1024L * 1024L);
+    options.block_cache = db_cache_;
+    s = leveldb::DB::Open(options, FLAGS_namedb_path, &db_);
+    if (!s.ok()) {
+        db_ = NULL;
+        LOG(ERROR, "Open leveldb fail: %s", s.ToString().c_str());
+        exit(EXIT_FAILURE);
+    }
+}
+
 uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
                               const std::string& key, const std::string& value) {
     if (log == NULL) {
@@ -783,6 +837,7 @@ uint32_t NameSpace::EncodeLog(NameServerLog* log, int32_t type,
     entry->set_value(value);
     return entry->ByteSize();
 }
+
 void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     std::string block_id_upbound_key(8, 0);
     block_id_upbound_key.append("block_id_upbound");
@@ -798,6 +853,7 @@ void NameSpace::UpdateBlockIdUpbound(NameServerLog* log) {
     }
     EncodeLog(log, kSyncWrite, block_id_upbound_key, block_id_upbound_str);
 }
+
 void NameSpace::InitBlockIdUpbound(NameServerLog* log) {
     std::string block_id_upbound_key(8, 0);
     block_id_upbound_key.append("block_id_upbound");

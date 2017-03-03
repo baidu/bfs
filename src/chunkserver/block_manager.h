@@ -46,7 +46,7 @@ public:
     Block* FindBlock(int64_t block_id);
     bool AddBlock(int64_t block_id, Disk* disk, BlockMeta meta);
 
-    DiskStat Stat() const;
+    DiskStat Stat();
     void Stat(std::string* str);
 private:
     void CheckStorePath(const std::string& store_path);

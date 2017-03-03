@@ -3,8 +3,9 @@ package baidu.bfs.master_slave;
 option cc_generic_services = true;
 
 message AppendLogRequest {
-    optional bytes log_data = 1;
+    repeated bytes log_data = 1;
     optional int64 index = 2;
+    optional int64 term = 3;
 }
 
 message AppendLogResponse {
@@ -12,6 +13,18 @@ message AppendLogResponse {
     optional int64 index = 2;
 }
 
+message SnapshotRequest {
+    optional bytes data = 1;
+    optional int64 seq = 2;
+    optional int64 index = 3;
+    optional int64 term = 4;
+}
+
+message SnapshotResponse {
+    optional bool success = 1;
+}
+
 service MasterSlave {
     rpc AppendLog(AppendLogRequest) returns(AppendLogResponse);
+    rpc Snapshot(SnapshotRequest) returns(SnapshotResponse);
 }

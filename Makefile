@@ -22,6 +22,9 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
           -L$(TCMALLOC_PATH)/lib -ltcmalloc_minimal \
           -L$(COMMON_PATH)/lib -lcommon -lpthread -lz -lrt
 
+SO_LDFLAGS += -rdynamic $(DEPS_LDPATH) $(SO_DEPS_LDFLAGS) -lpthread -lrt -lz -ldl \
+	      -shared -Wl,--version-script,so-version-script # hide symbol of thirdparty libs
+
 CXXFLAGS = -std=c++11 -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_PATH)/include
 FUSE_LL_FLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_LL_PATH)/include
@@ -67,7 +70,8 @@ VERSION_OBJ = src/version.o
 OBJS = $(FLAGS_OBJ) $(RPC_OBJ) $(PROTO_OBJ) $(VERSION_OBJ)
 
 LIBS = libbfs.a
-BIN = nameserver chunkserver bfs_client raft_kv kv_client
+BFS_C_SO = libbfs_c.so
+BIN = nameserver chunkserver bfs_client raft_kv kv_client libbfs_c.so
 UTIL_BIN = bfs_dump logdb_dump
 
 ifdef FUSE_PATH
@@ -77,7 +81,8 @@ ifdef FUSE_LL_PATH
 	BIN += bfs_ll_mount
 endif
 TESTS = namespace_test block_mapping_test location_provider_test logdb_test \
-		chunkserver_impl_test file_cache_test block_manager_test data_block_test
+		file_lock_manager_test file_lock_test chunkserver_impl_test \
+	   	file_cache_test block_manager_test data_block_test
 TEST_OBJS = src/nameserver/test/namespace_test.o \
 			src/nameserver/test/block_mapping_test.o \
 			src/nameserver/test/logdb_test.o \
@@ -85,6 +90,8 @@ TEST_OBJS = src/nameserver/test/namespace_test.o \
 			src/nameserver/test/kv_client.o \
 			src/nameserver/test/raft_test.o \
 			src/nameserver/test/nameserver_impl_test.o \
+			src/nameserver/test/file_lock_manager_test.o \
+			src/nameserver/test/file_lock_test.o \
 			src/chunkserver/test/file_cache_test.o \
 			src/chunkserver/test/chunkserver_impl_test.o \
 			src/chunkserver/test/block_manager_test.o \
@@ -142,6 +149,15 @@ kv_client: src/nameserver/test/kv_client.o $(OBJS)
 location_provider_test: src/nameserver/test/location_provider_test.o src/nameserver/location_provider.o
 	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
 
+file_lock_manager_test: src/nameserver/test/file_lock_manager_test.o \
+						src/nameserver/file_lock_manager.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+
+file_lock_test: src/nameserver/test/file_lock_test.o \
+						src/nameserver/file_lock.o \
+						src/nameserver/file_lock_manager.o
+	$(CXX) $^ $(OBJS) -o $@ $(LDFLAGS)
+
 chunkserver_impl_test: src/chunkserver/test/chunkserver_impl_test.o \
 	src/chunkserver/chunkserver_impl.o src/chunkserver/data_block.o src/chunkserver/block_manager.o \
 	src/chunkserver/counter_manager.o src/chunkserver/file_cache.o src/chunkserver/disk.o \
@@ -176,6 +192,17 @@ chunkserver: $(CHUNKSERVER_OBJ) $(OBJS) src/utils/meta_converter.o
 
 libbfs.a: $(SDK_OBJ) $(OBJS) $(PROTO_HEADER)
 	$(AR) -rs $@ $(SDK_OBJ) $(OBJS)
+
+libbfs_c.so: src/sdk/bfs_c.cc src/sdk/bfs_c.h libbfs.a
+	g++ $(CXXFLAGS) -shared -fPIC $(INCLUDE_PATH) -o $@ src/sdk/bfs_c.cc  \
+	            -Xlinker "-(" libbfs.a \
+		thirdparty/lib/libprotobuf.a \
+		thirdparty/lib/libsofa-pbrpc.a \
+		thirdparty/lib/libsnappy.a \
+		thirdparty/lib/libgflags.a \
+		thirdparty/lib/libcommon.a \
+		-lpthread  -lrt -lz -ldl \
+		-Xlinker "-)"
 
 bfs_client: $(CLIENT_OBJ) $(LIBS)
 	$(CXX) $(CLIENT_OBJ) $(LIBS) -o $@ $(LDFLAGS)
@@ -214,7 +241,7 @@ FORCE:
 clean:
 	rm -rf $(BIN) $(UTIL_BIN) mark
 	rm -rf $(NAMESERVER_OBJ) $(CHUNKSERVER_OBJ) $(SDK_OBJ) $(CLIENT_OBJ)  \
-		   $(OBJS) $(TEST_OBJS) $(MARK_OBJ) $(UTIL_OJB)
+		   $(OBJS) $(TEST_OBJS) $(MARK_OBJ) $(UTIL_OJB) $(BFS_C_SO)
 	rm -rf $(PROTO_SRC) $(PROTO_HEADER)
 	rm -rf $(UNITTEST_OUTPUT)
 	rm -rf $(LIBS)

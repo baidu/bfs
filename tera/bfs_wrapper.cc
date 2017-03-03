@@ -191,7 +191,17 @@ int32_t BfsImpl::ListDirectory(const std::string& path, std::vector<std::string>
     }
     bfs::BfsFileInfo* files = NULL;
     int num = 0;
-    if (fs_->ListDirectory(path.c_str(), &files, &num) != 0) {
+    int ret = fs_->ListDirectory(path.c_str(), &files, &num);
+    if (ret != 0) {
+        if (ret == TIMEOUT) {
+            errno = ETIMEDOUT;
+        } else if (ret == BAD_PARAMETER) {
+            errno = ENOENT;
+        } else {
+            errno = EAGAIN;
+        }
+        LOG(INFO, "ListDirectory(%s) fail, ret = %s, errno = %s",
+                path.c_str(), StrError(ret), strerror(errno));
         return -1;
     }
     for (int i = 0; i < num; i++) {
