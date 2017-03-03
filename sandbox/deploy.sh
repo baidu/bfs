@@ -33,6 +33,8 @@ echo '--master_slave_log_limit=300' >> bfs.flag
 echo '--master_log_gc_interval=10' >> bfs.flag
 echo '--logdb_log_size=1' >> bfs.flag
 echo '--log_replicate_timeout=3' >> bfs.flag
+echo '--snapshot_step=10000' >> bfs.flag
+echo '--log_batch_size=1000' >> bfs.flag
 
 for((i=0;i<$ns_num;i++));
 do

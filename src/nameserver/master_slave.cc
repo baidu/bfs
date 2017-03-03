@@ -21,6 +21,7 @@ DECLARE_int64(master_slave_log_limit);
 DECLARE_int32(master_log_gc_interval);
 DECLARE_int32(logdb_log_size);
 DECLARE_int32(log_replicate_timeout);
+DECLARE_int32(log_batch_size);
 
 namespace baidu {
 namespace bfs {
@@ -106,6 +107,12 @@ void MasterSlaveImpl::Init(SyncCallbacks callbacks) {
             log_callback_(entry);
         }
         applied_idx_++;
+    }
+    if (!IsLeader()) {
+        // need to clear sync_idx and applied idx in case this is a retired master
+        // which contains dirty data
+        sync_idx_ = -1;
+        applied_idx_ = -1;
     }
 
     rpc_client_ = new RpcClient();
@@ -266,10 +273,13 @@ void MasterSlaveImpl::AppendLog(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+
+    for (int32_t i = 0; i < request->log_data_size(); ++i) {
+        log_callback_(request->log_data(i));
+    }
     mu_.Lock();
-    current_idx_++;
+    current_idx_ += request->log_data_size();
     mu_.Unlock();
-    log_callback_(request->log_data());
     response->set_success(true);
     done->Run();
 }
@@ -291,6 +301,11 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
         LOG(INFO, "%s Start to clean up the old namespace...", kLogPrefix.c_str());
         erase_callback_();
         LOG(INFO, "%s Done clean up the old namespace...", kLogPrefix.c_str());
+        term_ = request->term();
+        StatusCode s = logdb_->WriteMarker("term", term_);
+        if (s != kOK) {
+            LOG(FATAL, "%s Write marker term %ld failed", kLogPrefix.c_str(), term_);
+        }
         slave_snapshot_seq_ = 0;
     } else if (seq != slave_snapshot_seq_) {
         LOG(INFO, "%s snapshot mismatch reqeust seq = %ld, slave sseq = %ld",
@@ -331,53 +346,66 @@ void MasterSlaveImpl::BackgroundLog() {
 
 void MasterSlaveImpl::ReplicateLog() {
     while (sync_idx_ < current_idx_) {
-        std::string entry;
-        {
-            MutexLock lock(&mu_);
-            if (sync_idx_ == current_idx_) {
-                mu_.Unlock();
-                break;
-            }
-            LOG(DEBUG, "%s ReplicateLog sync_idx_ = %d, current_idx_ = %d",
-                kLogPrefix.c_str(), sync_idx_, current_idx_);
-            if (sync_idx_ <= gc_idx_ && gc_idx_ != -1) {
-                if (!SendSnapshot()) {
-                    LOG(INFO, "%s Send snapshot failed", kLogPrefix.c_str());
-                    EmptyLog();
-                }
-                continue;
-            }
-            StatusCode s = logdb_->Read(sync_idx_ + 1, &entry);
-            if (s != kOK) {
-                LOG(FATAL, "%s Read logdb_ failed sync_idx_ = %ld %s",
-                    kLogPrefix.c_str(), sync_idx_ + 1, StatusCode_Name(s).c_str());
-            }
+        MutexLock lock(&mu_);
+        if (sync_idx_ == current_idx_) {
+            break;
         }
+        LOG(DEBUG, "%s ReplicateLog sync_idx_ = %d, current_idx_ = %d",
+            kLogPrefix.c_str(), sync_idx_, current_idx_);
+
+        if (sync_idx_ <= gc_idx_ && gc_idx_ != -1) {
+            mu_.Unlock();
+            if (!SendSnapshot()) {
+                LOG(INFO, "%s Send snapshot failed", kLogPrefix.c_str());
+                EmptyLog();
+            }
+            mu_.Lock();
+            continue;
+        }
+
         master_slave::AppendLogRequest request;
         master_slave::AppendLogResponse response;
-        request.set_log_data(entry);
         request.set_index(sync_idx_ + 1);
+        std::string entry;
+        for (int i = 0; i < FLAGS_log_batch_size; ++i) {
+            StatusCode s = logdb_->Read(sync_idx_ + 1 + i, &entry);
+            if (s != kOK && s != kNsNotFound) {
+                LOG(FATAL, "%s Read logdb_ failed sync_idx_ = %ld ",
+                    kLogPrefix.c_str(), sync_idx_ + 1);
+            }
+            if (s == kNsNotFound) {
+                break;
+            }
+            request.add_log_data(entry);
+        }
+        if (request.log_data_size() == 0) { // maybe slave is way behind
+            continue;
+        }
+        mu_.Unlock();
         if (!rpc_client_->SendRequest(slave_stub_,
                                       &master_slave::MasterSlave_Stub::AppendLog,
                                       &request, &response, 15, 1)) {
-            LOG(WARNING, "%s Replicate log failed index = %d, current_idx_ = %d",
-                kLogPrefix.c_str(), sync_idx_ + 1, current_idx_);
+            LOG(WARNING, "%s Replicate log failed index = %d, size = %d current_idx_ = %d",
+                kLogPrefix.c_str(), sync_idx_ + 1, request.log_data_size(), current_idx_);
             EmptyLog();
+            mu_.Lock();
             continue;
         }
+        mu_.Lock();
         if (!response.success()) { // log mismatch
-            MutexLock lock(&mu_);
             sync_idx_ = response.index() - 1;
             LOG(INFO, "%s set sync_idx_ to %d", kLogPrefix.c_str(), sync_idx_);
             continue;
         }
-        thread_pool_->AddTask(std::bind(&MasterSlaveImpl::ProcessCallback,
-                                        this, sync_idx_ + 1, false));
-        mu_.Lock();
-        sync_idx_++;
-        LOG(DEBUG, "%s Replicate log done. sync_idx_ = %d, current_idx_ = %d",
-            kLogPrefix.c_str(), sync_idx_ , current_idx_);
+        sync_idx_ = sync_idx_ + request.log_data_size();
         mu_.Unlock();
+        for (int32_t i = 0; i < request.log_data_size(); ++i) {
+            thread_pool_->AddTask(std::bind(&MasterSlaveImpl::ProcessCallback,
+                                            this, sync_idx_ - i, false));
+        }
+        LOG(DEBUG, "%s Replicate log done. sync_idx_ = %d, size = %d current_idx_ = %d",
+            kLogPrefix.c_str(), sync_idx_, request.log_data_size(), current_idx_);
+        mu_.Lock();
     }
     log_done_.Signal();
 }
@@ -409,11 +437,21 @@ bool MasterSlaveImpl::SendSnapshot() {
         request.set_data(logstr);
         request.set_seq(seq);
         request.set_index(current_index);
-        while (!rpc_client_->SendRequest(slave_stub_,
+        request.set_term(term_);
+        for (int i = 0; i < 5; ++i) {
+            if (rpc_client_->SendRequest(slave_stub_,
                                       &master_slave::MasterSlave_Stub::Snapshot,
                                       &request, &response, 15, 1)) {
-            LOG(WARNING, "%s Send snapshot failed seq %ld",
-                kLogPrefix.c_str(), seq);
+                break;
+            } else {
+                LOG(WARNING, "%s Send snapshot failed seq %ld",
+                    kLogPrefix.c_str(), seq);
+                if (i == 4) {
+                    snapshot_callback_(0, NULL);
+                    return false;
+                }
+                sleep(5);
+            }
         }
         LOG(INFO, "%s Send snapshot seq %ld done", kLogPrefix.c_str(), seq);
         if (!response.success()) {
