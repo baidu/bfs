@@ -405,7 +405,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
 }
 
 bool NameServerImpl::LogRemote(const NameServerLog& log,
-                              std::function<void (bool)> callback) {
+                               std::function<void (bool)> callback) {
     if (sync_ == NULL) {
         if (callback) {
             sync_callback_thread_pool_->AddTask(std::bind(callback, true));
