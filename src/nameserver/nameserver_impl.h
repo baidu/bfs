@@ -11,6 +11,7 @@
 #include <functional>
 
 #include "proto/nameserver.pb.h"
+#include "nameserver/file_lock.h"
 
 namespace sofa {
 namespace pbrpc {
@@ -149,6 +150,7 @@ private:
                          ::google::protobuf::Message* response,
                          ::google::protobuf::Closure* done,
                          std::vector<FileInfo>* removed,
+                         FileLockGuard file_lock,
                          bool ret);
     void TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
                        std::string* output);
@@ -168,6 +170,7 @@ private:
     ThreadPool* work_thread_pool_;
     ThreadPool* report_thread_pool_;
     ThreadPool* heartbeat_thread_pool_;
+    ThreadPool* sync_callback_thread_pool_;
     /// ChunkServer map
     ChunkServerManager* chunkserver_manager_;
     /// Block map

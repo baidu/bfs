@@ -35,6 +35,7 @@ DECLARE_int32(nameserver_report_thread_num);
 DECLARE_int32(nameserver_work_thread_num);
 DECLARE_int32(nameserver_read_thread_num);
 DECLARE_int32(nameserver_heartbeat_thread_num);
+DECLARE_int32(nameserver_sync_callback_thread_num);
 DECLARE_int32(blockmapping_bucket_num);
 DECLARE_int32(hi_recover_timeout);
 DECLARE_int32(lo_recover_timeout);
@@ -55,7 +56,9 @@ common::Counter g_list_dir;
 common::Counter g_report_blocks;
 extern common::Counter g_blocks_num;
 
-NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
+NameServerImpl::NameServerImpl(Sync* sync) :
+    sync_callback_thread_pool_(NULL),
+    readonly_(true),
     recover_timeout_(FLAGS_nameserver_start_recover_timeout),
     recover_mode_(kStopRecover), sync_(sync) {
     block_mapping_manager_ = new BlockMappingManager(FLAGS_blockmapping_bucket_num);
@@ -75,6 +78,9 @@ NameServerImpl::NameServerImpl(Sync* sync) : readonly_(true),
                                           std::placeholders::_1, std::placeholders::_2),
                                 std::bind(&NameSpace::EraseNamespace, namespace_));
         sync_->Init(callbacks);
+    } else {
+        sync_callback_thread_pool_ =
+            new common::ThreadPool(FLAGS_nameserver_sync_callback_thread_num);
     }
     CheckLeader();
     start_time_ = common::timer::get_micros();
@@ -379,6 +385,7 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     int replica_num = request->replica_num();
     NameServerLog log;
     std::vector<int64_t> blocks_to_remove;
+    FileLockGuard file_lock(new WriteLock(path));
     StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove, &log);
     for (size_t i = 0; i < blocks_to_remove.size(); i++) {
         block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
@@ -393,13 +400,15 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     }
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
-                               (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                               (std::vector<FileInfo>*)NULL, file_lock,
+                               std::placeholders::_1));
 }
 
-bool NameServerImpl::LogRemote(const NameServerLog& log, std::function<void (bool)> callback) {
+bool NameServerImpl::LogRemote(const NameServerLog& log,
+                               std::function<void (bool)> callback) {
     if (sync_ == NULL) {
         if (callback) {
-            work_thread_pool_->AddTask(std::bind(callback, true));
+            sync_callback_thread_pool_->AddTask(std::bind(callback, true));
         }
         return true;
     }
@@ -420,6 +429,7 @@ void NameServerImpl::SyncLogCallback(::google::protobuf::RpcController* controll
                                      ::google::protobuf::Message* response,
                                      ::google::protobuf::Closure* done,
                                      std::vector<FileInfo>* removed,
+                                     FileLockGuard file_lock,
                                      bool ret) {
     if (!ret) {
         controller->SetFailed("SyncLogFail");
@@ -453,6 +463,7 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
     }
     g_add_block.Inc();
     std::string path = NameSpace::NormalizePath(request->file_name());
+    FileLockGuard file_lock_guard(new WriteLock(path));
     FileInfo file_info;
     if (!namespace_->GetFileInfo(path, &file_info)) {
         LOG(INFO, "AddBlock file not found: %s", path.c_str());
@@ -514,7 +525,8 @@ void NameServerImpl::AddBlock(::google::protobuf::RpcController* controller,
         response->set_status(kOK);
         LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                                   (std::vector<FileInfo>*)NULL,
+                                   file_lock_guard, std::placeholders::_1));
     } else {
         LOG(WARNING, "AddBlock for %s failed.", path.c_str());
         response->set_status(kGetChunkServerError);
@@ -534,6 +546,7 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
     int64_t block_id = request->block_id();
     response->set_sequence_id(request->sequence_id());
     std::string file_name = NameSpace::NormalizePath(request->file_name());
+    FileLockGuard file_lock_guard(new WriteLock(file_name));
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(INFO, "SyncBlock file not found: #%ld %s", block_id, file_name.c_str());
@@ -560,7 +573,9 @@ void NameServerImpl::SyncBlock(::google::protobuf::RpcController* controller,
     response->set_status(kOK);
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
-                               (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                               (std::vector<FileInfo>*)NULL,
+                               file_lock_guard,
+                               std::placeholders::_1));
 }
 
 bool NameServerImpl::CheckFileHasBlock(const FileInfo& file_info,
@@ -599,6 +614,7 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+    FileLockGuard file_lock_guard(new WriteLock(file_name));
     FileInfo file_info;
     if (!namespace_->GetFileInfo(file_name, &file_info)) {
         LOG(INFO, "FinishBlock file not found: #%ld %s", block_id, file_name.c_str());
@@ -630,7 +646,9 @@ void NameServerImpl::FinishBlock(::google::protobuf::RpcController* controller,
         LOG(INFO, "FinishBlock #%ld %s", block_id, file_name.c_str());
         LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                                   (std::vector<FileInfo>*)NULL,
+                                   file_lock_guard,
+                                   std::placeholders::_1));
     }
 }
 
@@ -650,6 +668,7 @@ void NameServerImpl::GetFileLocation(::google::protobuf::RpcController* controll
     g_get_location.Inc();
 
     FileInfo info;
+    FileLockGuard file_lock_guard(new ReadLock(path));
     if (!namespace_->GetFileInfo(path, &info)) {
         // No this file
         LOG(INFO, "NameServerImpl::GetFileLocation: NotFound: %s",
@@ -761,6 +780,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     bool need_unlink;
     FileInfo remove_file;
     NameServerLog log;
+    FileLockGuard file_lock_guard(new WriteLock(oldpath, newpath));
     StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file, &log);
     response->set_status(status);
     if (status != kOK) {
@@ -773,7 +793,8 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
         removed->push_back(remove_file);
     }
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
-                               controller, request, response, done, removed, std::placeholders::_1));
+                controller, request, response, done, removed,
+                file_lock_guard, std::placeholders::_1));
 }
 
 void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
@@ -789,6 +810,7 @@ void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
     std::string src = NameSpace::NormalizePath(request->src());
     std::string dst = NameSpace::NormalizePath(request->dst());
 
+    FileLockGuard file_lock_guard(new WriteLock(src, dst));
     NameServerLog log;
     StatusCode status = namespace_->Symlink(src, dst, &log);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
@@ -803,7 +825,9 @@ void NameServerImpl::Symlink(::google::protobuf::RpcController* controller,
 
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
-                               (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                               (std::vector<FileInfo>*)NULL,
+                               file_lock_guard,
+                               std::placeholders::_1));
 }
 
 void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
@@ -821,6 +845,7 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
 
     FileInfo file_info;
     NameServerLog log;
+    FileLockGuard file_lock_guard(new WriteLock(path));
     StatusCode status = namespace_->RemoveFile(path, &file_info, &log);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s unlink file %s returns %s",
@@ -834,7 +859,8 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     removed->push_back(file_info);
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                controller, request, response, done,
-                               removed, std::placeholders::_1));
+                               removed, file_lock_guard,
+                               std::placeholders::_1));
 }
 
 void NameServerImpl::DiskUsage(::google::protobuf::RpcController* controller,
@@ -880,6 +906,7 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     }
     std::vector<FileInfo>* removed = new std::vector<FileInfo>;
     NameServerLog log;
+    FileLockGuard file_lock_guard(new WriteLock(path));
     StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed, &log);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s delete directory %s returns %s",
@@ -890,7 +917,8 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
         return;
     }
     LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
-                               controller, request, response, done, removed, std::placeholders::_1));
+                controller, request, response, done, removed,
+                file_lock_guard, std::placeholders::_1));
 }
 
 void NameServerImpl::Chmod(::google::protobuf::RpcController* controller,
@@ -903,9 +931,10 @@ void NameServerImpl::Chmod(::google::protobuf::RpcController* controller,
         return;
     }
     response->set_sequence_id(request->sequence_id());
-    std::string path = NameSpace::NormalizePath(request->path());
     int32_t mode = request->mode();
     StatusCode ret_status = kOK;
+    std::string path = NameSpace::NormalizePath(request->path());
+    FileLockGuard file_lock_guard(new WriteLock(path));
     FileInfo file_info;
     if (namespace_->GetFileInfo(path, &file_info)) {
         file_info.set_type(mode);
@@ -915,7 +944,9 @@ void NameServerImpl::Chmod(::google::protobuf::RpcController* controller,
         response->set_status(kOK);
         LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                                   (std::vector<FileInfo>*)NULL,
+                                   file_lock_guard,
+                                   std::placeholders::_1));
     } else {
         LOG(INFO, "Chmod file not found: %s\n", path.c_str());
         ret_status = kNsNotFound;
@@ -938,6 +969,7 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     int32_t replica_num = request->replica_num();
     StatusCode ret_status = kOK;
     FileInfo file_info;
+    FileLockGuard file_lock_guard(new WriteLock(file_name));
     if (namespace_->GetFileInfo(file_name, &file_info)) {
         file_info.set_replicas(replica_num);
         NameServerLog log;
@@ -956,7 +988,8 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
         response->set_status(kOK);
         LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
                                    controller, request, response, done,
-                                   (std::vector<FileInfo>*)NULL, std::placeholders::_1));
+                                   (std::vector<FileInfo>*)NULL,
+                                   file_lock_guard, std::placeholders::_1));
         return;
     } else {
         LOG(INFO, "Change replica num not found: %s", file_name.c_str());
