@@ -999,6 +999,58 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     done->Run();
 }
 
+void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
+        const LockDirRequest* request,
+        LockDirResponse* response,
+        ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    std::string path = NameSpace::NormalizePath(request->dir_path());
+    FileLockGuard lock_guard(new WriteLock(path));
+    StatusCode status = namespace_->GetDirLockStatus(path);
+    if (status != kLocked) {
+        //TODO log remote?
+        if (status == kUnlock) {
+            namespace_->LockDir(path);
+            status = kOK;
+        } // else status maybe kCleaning or kBadParameter
+        response->set_status(status);
+        done->Run();
+    } else {
+        //TODO log remote
+        namespace_->SetDirLockStatus(kCleaning, path);
+        WaitForBlockClosed(lock_guard, path, done);
+    }
+}
+
+void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
+        const UnlockDirRequest* request,
+        UnlockDirResponse* response,
+        ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    std::string path = NameSpace::NormalizePath(request->dir_path());
+    FileLockGuard lock_guard(new WriteLock(path));
+    StatusCode status = namespace_->GetDirLockStatus(path);
+    if (status == kUnlock) {
+        response->set_status(kOK);
+        done->Run();
+    } else if (status == kCleaning) {
+        response->set_status(kCleaning);
+        done->Run();
+    } else {
+        //TODO log remote
+        namespace_->SetDirLockStatus(kCleaning, path);
+        WaitForBlockClosed(lock_guard, path, done);
+    }
+}
+
 void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
@@ -1588,6 +1640,23 @@ void NameServerImpl::SetActualFileSize(FileInfo* file) {
         file_size += nsblock.block_size;
     }
     file->set_size(file_size);
+}
+
+void NameServerImpl::CheckBlockClosed(LockDirContext* context) {
+    //TODO log remote if success
+}
+
+void NameServerImpl::WaitForBlockClosed(FileLockGuard lock_guard,
+        const std::string& path, ::google::protobuf::Closure* done) {
+    LockDirContext* context =
+        new LockDirContext(lock_guard, path, done);
+    std::vector<int64_t> all_blocks;
+    namespace_->ListAllBlocks(path, &all_blocks);
+    for (size_t i = 0; i < all_blocks.size(); i++) {
+        block_mapping_manager_->MarkIncomplete(all_blocks[i]);
+    }
+    work_thread_pool_->DelayTask(5000,
+            std::bind(&NameServerImpl::CheckBlockClosed, this, context));
 }
 
 } // namespace bfs

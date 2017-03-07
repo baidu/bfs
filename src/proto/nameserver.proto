@@ -338,6 +338,27 @@ message SymlinkResponse {
     optional StatusCode status = 2;
 }
 
+message LockDirRequest {
+    optional int64 sequence_id = 1;
+    optional string dir_path = 2;
+    optional string uuid = 3;
+};
+
+message LockDirResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+};
+
+message UnlockDirRequest {
+    optional int64 sequence_id = 1;
+    optional string dir_path = 2;
+};
+
+message UnlockDirResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+};
+
 service NameServer {
     rpc CreateFile(CreateFileRequest) returns(CreateFileResponse);
     rpc AddBlock(AddBlockRequest) returns(AddBlockResponse);
@@ -363,5 +384,7 @@ service NameServer {
     rpc SysStat(SysStatRequest) returns(SysStatResponse);
     rpc Chmod(ChmodRequest) returns(ChmodResponse);
     rpc Symlink(SymlinkRequest) returns(SymlinkResponse);
+    rpc LockDir(LockDirRequest) returns(LockDirResponse);
+    rpc UnlockDir(UnlockDirRequest) returns(UnlockDirResponse);
 }
 

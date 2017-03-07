@@ -134,6 +134,14 @@ public:
             const ChmodRequest* request,
             ChmodResponse* response,
             ::google::protobuf::Closure* done);
+    void LockDir(::google::protobuf::RpcController* controller,
+            const LockDirRequest* request,
+            LockDirResponse* response,
+            ::google::protobuf::Closure* done);
+    void UnlockDir(::google::protobuf::RpcController* controller,
+            const UnlockDirRequest* request,
+            UnlockDirResponse* response,
+            ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
 private:
@@ -164,7 +172,18 @@ private:
                            const std::string& file_name,
                            int64_t block_id);
     void SetActualFileSize(FileInfo* file);
+    struct LockDirContext;
+    void CheckBlockClosed(LockDirContext* lock_context);
+    void WaitForBlockClosed(FileLockGuard lock_guard, const std::string& path,
+            ::google::protobuf::Closure* done);
 private:
+    struct LockDirContext {
+        LockDirContext(FileLockGuard guard, const std::string& path, ::google::protobuf::Closure* d) : lock_guard(guard), dir_path(path), done(d) {}
+        FileLockGuard lock_guard;
+        std::string dir_path;
+        std::set<int64_t> blocks;
+        ::google::protobuf::Closure* done;
+    };
     /// Global thread pool
     ThreadPool* read_thread_pool_;
     ThreadPool* work_thread_pool_;
