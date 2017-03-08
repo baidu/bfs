@@ -410,6 +410,30 @@ int32_t FSImpl::DeleteFile(const char* path) {
     }
     return OK;
 }
+int32_t FSImpl::LockDirectory(const char* path) {
+    LockDirRequest request;
+    LockDirResponse response;
+    request.set_dir_path(path);
+    request.set_uuid(GetUUID());
+    bool ret = true;
+    while ((ret = nameserver_client_->SendRequest(&NameServer_Stub::LockDir,
+                &request, &response, 15, 1)) != kOK ||
+            response.status() != kOK) {
+        sleep(5);
+    }
+    assert(response.status() == kOK);
+    return OK;
+}
+int32_t FSImpl::UnlockDirectory(const char* path) {
+    UnlockDirRequest request;
+    UnlockDirResponse response;
+    request.set_dir_path(path);
+    request.set_uuid(GetUUID());
+    nameserver_client_->SendRequest(&NameServer_Stub::UnlockDir,
+            &request, &response, 15, 1);
+    //Don't care return value of rpc
+    return OK;
+}
 int32_t FSImpl::Rename(const char* oldpath, const char* newpath) {
     RenameRequest request;
     RenameResponse response;
@@ -558,6 +582,11 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
     }
     *fs = impl;
     return true;
+}
+
+const std::string& FSImpl::GetUUID() {
+    static std::string uuid;
+    return uuid;
 }
 
 } // namespace bfs

@@ -32,6 +32,8 @@ public:
     int32_t CreateDirectory(const char* path);
     int32_t ListDirectory(const char* path, BfsFileInfo** filelist, int *num);
     int32_t DeleteDirectory(const char* path, bool recursive);
+    int32_t LockDirectory(const char* path);
+    int32_t UnlockDirectory(const char* path);
     int32_t DiskUsage(const char* path, int64_t* du_size);
     int32_t Access(const char* path, int32_t mode);
     int32_t Stat(const char* path, BfsFileInfo* fileinfo);
@@ -53,6 +55,8 @@ public:
     int32_t SysStat(const std::string& stat_name, std::string* result);
     int32_t ShutdownChunkServer(const std::vector<std::string>& cs_addr);
     int32_t ShutdownChunkServerStat();
+private:
+    const std::string& GetUUID();
 private:
     RpcClient* rpc_client_;
     NameServerClient* nameserver_client_;

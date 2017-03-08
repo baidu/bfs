@@ -98,6 +98,10 @@ public:
     virtual int32_t ListDirectory(const char* path, BfsFileInfo** filelist, int *num) = 0;
     /// Delete Directory
     virtual int32_t DeleteDirectory(const char* path, bool recursive) = 0;
+    /// Lock Directory
+    virtual int32_t LockDirectory(const char* path) = 0;
+    /// Unlock Directory
+    virtual int32_t UnlockDirectory(const char* path) = 0;
     /// Du
     virtual int32_t DiskUsage(const char* path, int64_t* du_size) = 0;
     /// Access

@@ -878,7 +878,7 @@ int64_t NameSpace::GetNewBlockId() {
 }
 
 StatusCode NameSpace::GetDirLockStatus(const std::string& path) {
-    return kOK;
+    return kUnlock;
 }
 
 void NameSpace::SetDirLockStatus(StatusCode status, const std::string& path) {

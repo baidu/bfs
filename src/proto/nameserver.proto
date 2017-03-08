@@ -352,6 +352,7 @@ message LockDirResponse {
 message UnlockDirRequest {
     optional int64 sequence_id = 1;
     optional string dir_path = 2;
+    optional string uuid = 3;
 };
 
 message UnlockDirResponse {
