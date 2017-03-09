@@ -287,9 +287,12 @@ StatusCode BlockManager::RemoveBlock(int64_t block_id) {
         return kCsNotFound;
     } else {
         MutexLock lock(&mu_, "BlockManager::RemoveBlock erase", 1000);
-        block_map_.erase(block_id);
-        block->DecRef();
-        LOG(INFO, "Remove #%ld meta info done, ref= %ld", block_id, block->GetRef());
+        if (block_map_.erase(block_id)) {
+            block->DecRef();
+            LOG(INFO, "Remove #%ld meta info done, ref= %ld", block_id, block->GetRef());
+        } else {
+            LOG(INFO, "#%ld has alreadly been erased from map, ref= %ld", block_id, block->GetRef());
+        }
     }
     StatusCode s = block->SetDeleted();
     if (s != kOK) {
