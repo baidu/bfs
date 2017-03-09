@@ -881,15 +881,12 @@ StatusCode NameSpace::GetDirLockStatus(const std::string& path) {
     return kUnlock;
 }
 
-void NameSpace::SetDirLockStatus(StatusCode status, const std::string& path) {
+void NameSpace::SetDirLockStatus(const std::string& path, StatusCode status,
+                                 const std::string& uuid) {
 
 }
 
 void NameSpace::ListAllBlocks(const std::string& path, std::vector<int64_t>* result) {
-
-}
-
-void NameSpace::LockDir(const std::string& path) {
 
 }
 

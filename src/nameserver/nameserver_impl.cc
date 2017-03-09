@@ -1014,12 +1014,12 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
     if (status != kLocked) {
         //TODO log remote?
         if (status == kUnlock) {
-            namespace_->LockDir(path);
+            namespace_->SetDirLockStatus(path, kLocked, request->uuid());
             status = kOK;
         } // else status maybe kCleaning or kBadParameter
     } else {
         //TODO log remote
-        namespace_->SetDirLockStatus(kCleaning, path);
+        namespace_->SetDirLockStatus(path, kCleaning);
         status = kCleaning;
     }
     response->set_status(status);
@@ -1040,7 +1040,7 @@ void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
     StatusCode status = namespace_->GetDirLockStatus(path);
     if (status == kLocked) {
         //TODO log remote
-        namespace_->SetDirLockStatus(kCleaning, path);
+        namespace_->SetDirLockStatus(path, kCleaning);
         std::vector<int64_t> blocks;
         namespace_->ListAllBlocks(path, &blocks);;
         if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
