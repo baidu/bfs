@@ -1000,9 +1000,9 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
 }
 
 void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
-        const LockDirRequest* request,
-        LockDirResponse* response,
-        ::google::protobuf::Closure* done) {
+                             const LockDirRequest* request,
+                             LockDirResponse* response,
+                             ::google::protobuf::Closure* done) {
     if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
@@ -1027,9 +1027,9 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
 }
 
 void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
-        const UnlockDirRequest* request,
-        UnlockDirResponse* response,
-        ::google::protobuf::Closure* done) {
+                               const UnlockDirRequest* request,
+                               UnlockDirResponse* response,
+                               ::google::protobuf::Closure* done) {
     if (!is_leader_) {
         response->set_status(kIsFollower);
         done->Run();
