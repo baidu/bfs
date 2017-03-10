@@ -27,6 +27,7 @@ install:
     - ( cd protobuf-$PROTOBUF_VERSION && ./configure $DEPS_CONFIG && make -j4 && sudo make install)
 
     - git clone https://github.com/google/snappy
+    - echo 'autoheader' >> snappy/autogen.sh
     - ( cd snappy && sh ./autogen.sh && ./configure $DEPS_CONFIG && make -j2 && sudo make install && sudo ldconfig )
     - sudo apt-get install zlib1g-dev
 
