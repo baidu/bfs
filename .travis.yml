@@ -28,6 +28,7 @@ install:
 
     - git clone https://github.com/google/snappy
     - echo 'autoheader' >> snappy/autogen.sh
+    - echo 'automake --add-missing' >> snappy/autogen.sh
     - ( cd snappy && sh -x ./autogen.sh && ./configure $DEPS_CONFIG && make -j2 && sudo make install && sudo ldconfig )
     - sudo apt-get install zlib1g-dev
 
