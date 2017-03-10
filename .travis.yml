@@ -26,8 +26,9 @@ install:
     - tar xf protobuf-$PROTOBUF_VERSION.tar.gz
     - ( cd protobuf-$PROTOBUF_VERSION && ./configure $DEPS_CONFIG && make -j4 && sudo make install)
 
-    - git clone https://github.com/google/snappy
-    - ( cd snappy && sh ./autogen.sh && ./configure $DEPS_CONFIG && make -j2 && sudo make install && sudo ldconfig )
+    - wget https://github.com/google/snappy/releases/download/1.1.4/snappy-1.1.4.tar.gz
+    - tar xf snappy-1.1.4.tar.gz
+    - ( cd snappy-1.1.4 && sh -x ./autogen.sh && ./configure $DEPS_CONFIG && make -j2 && sudo make install && sudo ldconfig )
     - sudo apt-get install zlib1g-dev
 
     - git clone https://github.com/baidu/sofa-pbrpc
