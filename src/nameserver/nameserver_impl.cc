@@ -1011,24 +1011,24 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
     std::string path = NameSpace::NormalizePath(request->dir_path());
     FileLockGuard lock_guard(new WriteLock(path));
     StatusCode status = namespace_->GetDirLockStatus(path);
-    if (status != kLocked) {
+    if (status != kDirLocked) {
         //TODO log remote?
-        if (status == kUnlock) {
-            namespace_->SetDirLockStatus(path, kLocked, request->uuid());
+        if (status == kDirUnlock) {
+            namespace_->SetDirLockStatus(path, kDirLocked, request->uuid());
             status = kOK;
-        } else if (status == kCleaning) {
+        } else if (status == kDirLockCleaning) {
             std::vector<int64_t> blocks;
             namespace_->ListAllBlocks(path, &blocks);
             if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
                 //TODO log remote
-                namespace_->SetDirLockStatus(path, kUnlock);
+                namespace_->SetDirLockStatus(path, kDirUnlock);
                 status = kOK;
             }
         } // else status should be kBadParameter
     } else {
         //TODO log remote
-        namespace_->SetDirLockStatus(path, kCleaning);
-        status = kCleaning;
+        namespace_->SetDirLockStatus(path, kDirLockCleaning);
+        status = kDirLockCleaning;
     }
     response->set_status(status);
     done->Run();
@@ -1046,15 +1046,15 @@ void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
     std::string path = NameSpace::NormalizePath(request->dir_path());
     FileLockGuard lock_guard(new WriteLock(path));
     StatusCode status = namespace_->GetDirLockStatus(path);
-    if (status == kLocked) {
+    if (status == kDirLocked) {
         //TODO log remote
-        namespace_->SetDirLockStatus(path, kCleaning);
+        namespace_->SetDirLockStatus(path, kDirLockCleaning);
         std::vector<int64_t> blocks;
         namespace_->ListAllBlocks(path, &blocks);;
         if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
-            status = kUnlock;
+            status = kDirUnlock;
         } else {
-            status = kCleaning;
+            status = kDirLockCleaning;
         }
     }
     response->set_status(status);
