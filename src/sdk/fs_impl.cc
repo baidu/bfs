@@ -415,10 +415,8 @@ int32_t FSImpl::LockDirectory(const char* path) {
     LockDirResponse response;
     request.set_dir_path(path);
     request.set_uuid(GetUUID());
-    bool ret = true;
-    while ((ret = nameserver_client_->SendRequest(&NameServer_Stub::LockDir,
-                &request, &response, 15, 1)) != kOK ||
-            response.status() != kOK) {
+    while (!nameserver_client_->SendRequest(&NameServer_Stub::LockDir,
+                &request, &response, 15, 1) || response.status() != kOK) {
         sleep(5);
     }
     assert(response.status() == kOK);
