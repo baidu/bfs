@@ -80,11 +80,13 @@ endif
 ifdef FUSE_LL_PATH
 	BIN += bfs_ll_mount
 endif
-TESTS = namespace_test block_mapping_test location_provider_test logdb_test \
+TESTS = namespace_test block_mapping_test \
+		block_mapping_manager_test location_provider_test logdb_test \
 		file_lock_manager_test file_lock_test chunkserver_impl_test \
 	   	file_cache_test block_manager_test data_block_test
 TEST_OBJS = src/nameserver/test/namespace_test.o \
 			src/nameserver/test/block_mapping_test.o \
+			src/nameserver/test/block_mapping_manager_test.o \
 			src/nameserver/test/logdb_test.o \
 			src/nameserver/test/location_provider_test.o \
 			src/nameserver/test/kv_client.o \
@@ -136,6 +138,15 @@ nameserver_test: src/nameserver/test/nameserver_impl_test.o \
 block_mapping_test: src/nameserver/test/block_mapping_test.o src/nameserver/block_mapping.o
 	$(CXX) src/nameserver/block_mapping.o src/nameserver/test/block_mapping_test.o \
 	src/nameserver/block_mapping_manager.o $(OBJS) -o $@ $(LDFLAGS)
+
+block_mapping_manager_test: src/nameserver/test/block_mapping_manager_test.o \
+                            src/nameserver/block_mapping_manager.o \
+                            src/nameserver/block_mapping.o
+	$(CXX) src/nameserver/block_mapping.o \
+           src/nameserver/block_mapping_manager.o \
+           src/nameserver/test/block_mapping_manager_test.o \
+           $(OBJS) -o $@ $(LDFLAGS)
+
 
 logdb_test: src/nameserver/test/logdb_test.o src/nameserver/logdb.o
 	$(CXX) src/nameserver/logdb.o src/nameserver/test/logdb_test.o $(OBJS) -o $@ $(LDFLAGS)

@@ -126,6 +126,27 @@ TEST_F(BlockMappingTest, NotRecoverEmptyBlock) {
     ASSERT_TRUE(bm->lost_blocks_.empty());
 }
 
+TEST_F(BlockMappingTest, GetRecoverStat) {
+    int64_t block_id = 1;
+    int64_t block_version = 0;
+    int64_t block_size = 0;
+    int32_t replica = 3;
+    BlockMapping* bm = new BlockMapping(&thread_pool);
+    bm->RebuildBlock(block_id, replica, block_version, block_size);
+    int32_t cs1 = 23;
+    int32_t cs2 = 45;
+    int32_t cs3 = 67;
+    bool ret =
+        bm->UpdateBlockInfo(block_id, cs1, block_size, block_version) &&
+        bm->UpdateBlockInfo(block_id, cs2, block_size, block_version);
+    ASSERT_TRUE(ret);
+    RecoverStat stat = bm->GetRecoverStat(block_id);
+    ASSERT_EQ(stat, kBlockWriting);
+    bm->UpdateBlockInfo(block_id, cs3, block_size, block_version);
+    stat = bm->GetRecoverStat(block_id);
+    ASSERT_EQ(stat, kNotInRecover);
+}
+
 } // namespace bfs
 } // namespace baidu
 

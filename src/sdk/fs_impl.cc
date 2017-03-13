@@ -583,7 +583,9 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
 }
 
 const std::string& FSImpl::GetUUID() {
-    static std::string uuid;
+    static std::string uuid = common::util::GetLocalHostName() + ":" +
+        common::NumToString(getpid()) + ":" +
+        common::NumToString(common::timer::now_time());
     return uuid;
 }
 
