@@ -878,12 +878,46 @@ int64_t NameSpace::GetNewBlockId() {
 }
 
 StatusCode NameSpace::GetDirLockStatus(const std::string& path) {
-    return kDirUnlock;
+    FileInfo info;
+    if (!LookUp(path, &info)) {
+        return kNsNotFound;
+    } else if (GetFileType(info.type()) != kDir) {
+        return kBadParameter;
+    } else {
+        return info.dir_lock_stat();
+    }
 }
 
-void NameSpace::SetDirLockStatus(const std::string& path, StatusCode status,
-                                 const std::string& uuid) {
-
+StatusCode NameSpace::SetDirLockStatus(const std::string& path,
+                                       StatusCode status,
+                                       const std::string& uuid) {
+    std::vector<std::string> paths;
+    common::util::SplitPath(path, &paths);
+    int64_t entry_id = kRootEntryid;
+    std::string file_key;
+    FileInfo info;
+    for (size_t i = 0; i < paths.size() - 1; i++) {
+        EncodingStoreKey(entry_id, paths[i], &file_key);
+        bool r = GetFromStore(file_key, &info);
+        if (!r) {
+            return kNsNotFound;
+        }
+        // all the parent directories should be clear
+        if (info.dir_lock_stat() != kDirLocked) {
+            return kNoPermission;
+        }
+        entry_id = info.entry_id();
+    }
+    EncodingStoreKey(entry_id, paths[paths.size() - 1], &file_key);
+    bool r = GetFromStore(file_key, &info);
+    if (!r) {
+        return kNsNotFound;
+    }
+    info.set_dir_lock_stat(status);
+    std::string info_buf;
+    info.SerializeToString(&info_buf);
+    db_->Put(leveldb::WriteOptions(), file_key, info_buf);
+    return kOK;
 }
 
 void NameSpace::ListAllBlocks(const std::string& path, std::vector<int64_t>* result) {
@@ -912,8 +946,8 @@ void NameSpace::ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result) {
             break;
         }
         FileInfo info;
-        bool ret =
-            info.ParseFromArray(it->value().data(), it->value().size());
+        bool ret = GetFromStore(
+                std::string(it->value().data(), it->value().size()), &info);
         assert(ret);
         FileType type = GetFileType(info.type());
         if (type == kDefault) {
