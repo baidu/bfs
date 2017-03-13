@@ -101,6 +101,7 @@ private:
                        const std::string& key, const std::string& value);
     void InitBlockIdUpbound(NameServerLog* log);
     void UpdateBlockIdUpbound(NameServerLog* log);
+    void ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result);
 private:
     leveldb::DB* db_;   /// NameSpace storage
     leveldb::Cache* db_cache_;  // block cache for leveldb

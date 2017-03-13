@@ -363,6 +363,46 @@ TEST_F(NameSpaceTest, GetNewBlockId) {
     system("rm -rf ./db");
 }
 
+TEST_F(NameSpaceTest, ListAllBlocks) {
+    system("rm -rf ./db");
+    std::vector<int64_t> blocks_to_remove;
+    NameSpace ns;
+    ns.CreateFile("/abc", 0, 01755, -1, &blocks_to_remove);
+    ns.CreateFile("/abc/def", 0, 0, -1, &blocks_to_remove);
+    ns.CreateFile("/abc/ghi", 0, 0, -1, &blocks_to_remove);
+    FileInfo info;
+    ns.GetFileInfo("/abc/def", &info);
+    ASSERT_EQ(info.blocks_size(), 0);
+    info.add_blocks(ns.GetNewBlockId());
+    ns.UpdateFileInfo(info, NULL);
+    ns.GetFileInfo("/abc/ghi", &info);
+    info.add_blocks(ns.GetNewBlockId());
+    ns.UpdateFileInfo(info, NULL);
+    std::vector<int64_t> all_blocks;
+    ns.ListAllBlocks("/abc", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 2);
+    ns.CreateFile("/abc/jkl/mno", 0, 0, -1, &blocks_to_remove);
+    ns.GetFileInfo("abc/jkl/mno", &info);
+    info.add_blocks(ns.GetNewBlockId());
+    ns.UpdateFileInfo(info, NULL);
+    all_blocks.clear();
+    ns.ListAllBlocks("/abc", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 3);
+    all_blocks.clear();
+    ns.ListAllBlocks("/", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 3);
+    all_blocks.clear();
+    ns.ListAllBlocks("/abc/def", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 1);
+    all_blocks.clear();
+    ns.GetFileInfo("/abc/def", &info);
+    info.add_blocks(ns.GetNewBlockId());
+    ns.UpdateFileInfo(info, NULL);
+    ns.ListAllBlocks("/abc/def", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 2);
+    system("rm -rf ./db");
+}
+
 }
 }
 

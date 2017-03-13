@@ -887,7 +887,44 @@ void NameSpace::SetDirLockStatus(const std::string& path, StatusCode status,
 }
 
 void NameSpace::ListAllBlocks(const std::string& path, std::vector<int64_t>* result) {
+    //TODO modify return value
+    FileInfo info;
+    if (!LookUp(path, &info)) {
+        return;
+    }
+    if (GetFileType(info.type()) == kDefault) {
+        for (int i = 0; i < info.blocks_size(); i++) {
+            result->push_back(info.blocks(i));
+        }
+        return;
+    }
+    ListAllBlocks(info.entry_id(), result);
+}
 
+void NameSpace::ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result) {
+    std::string key_start, key_end;
+    EncodingStoreKey(entry_id, "", &key_start);
+    EncodingStoreKey(entry_id + 1, "", &key_end);
+    leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
+    for (it->Seek(key_start); it->Valid(); it->Next()) {
+        leveldb::Slice key = it->key();
+        if (key.compare(key_end)>=0) {
+            break;
+        }
+        FileInfo info;
+        bool ret =
+            info.ParseFromArray(it->value().data(), it->value().size());
+        assert(ret);
+        FileType type = GetFileType(info.type());
+        if (type == kDefault) {
+            for (int i = 0; i < info.blocks_size(); i++) {
+                result->push_back(info.blocks(i));
+            }
+        } else if (type == kDir){
+            ListAllBlocks(info.entry_id(), result);
+        }
+    }
+    delete it;
 }
 
 } // namespace bfs
