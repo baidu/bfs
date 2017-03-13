@@ -1016,7 +1016,15 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
         if (status == kUnlock) {
             namespace_->SetDirLockStatus(path, kLocked, request->uuid());
             status = kOK;
-        } // else status maybe kCleaning or kBadParameter
+        } else if (status == kCleaning) {
+            std::vector<int64_t> blocks;
+            namespace_->ListAllBlocks(path, &blocks);
+            if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
+                //TODO log remote
+                namespace_->SetDirLockStatus(path, kUnlock);
+                status = kOK;
+            }
+        } // else status should be kBadParameter
     } else {
         //TODO log remote
         namespace_->SetDirLockStatus(path, kCleaning);
