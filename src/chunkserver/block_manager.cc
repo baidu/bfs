@@ -306,20 +306,26 @@ StatusCode BlockManager::RemoveBlock(int64_t block_id) {
     return kOK;
 }
 
-// TODO: concurrent & async cleanup
 bool BlockManager::CleanUp(int64_t namespace_version) {
+    ThreadPool tp(10);
     for (auto it = block_map_.begin(); it != block_map_.end();) {
         Block* block = it->second;
-        if (block->CleanUp(namespace_version)) {
-            file_cache_->EraseFileCache(block->GetFilePath());
-            block->DecRef();
+        if (block->GetNamespaceVersion() != namespace_version) {
+            tp.AddTask(std::bind(&BlockManager::ClenaUpBlockAsync, this, block));
             block_map_.erase(it++);
         } else {
             ++it;
         }
     }
-    LOG(INFO, "CleanUp done");
+    tp.Stop(true);
+    LOG(INFO, "CleanUp done. block_map_ size = %lu", block_map_.size());
     return true;
+}
+
+void BlockManager::ClenaUpBlockAsync(Block* block) {
+    file_cache_->EraseFileCache(block->GetFilePath());
+    block->SetDeleted();
+    block->DecRef();
 }
 
 bool BlockManager::AddBlock(int64_t block_id, Disk* disk, BlockMeta meta) {
