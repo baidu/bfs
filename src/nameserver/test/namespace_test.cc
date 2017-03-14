@@ -403,6 +403,38 @@ TEST_F(NameSpaceTest, ListAllBlocks) {
     system("rm -rf ./db");
 }
 
+TEST_F(NameSpaceTest, GetAndSetDirLockStatus) {
+    system("rm -rf ./db");
+    NameSpace ns;
+    std::vector<int64_t> blocks_to_remove;
+    std::string path0("/abc");
+    ns.CreateFile(path0, 0, 01755, -1, &blocks_to_remove);
+    StatusCode status = ns.GetDirLockStatus(path0);
+    ASSERT_EQ(status, kDirUnlock);
+    status = ns.SetDirLockStatus(path0, kDirLocked);
+    ASSERT_EQ(status, kOK);
+    status = ns.GetDirLockStatus(path0);
+    ASSERT_EQ(status, kDirLocked);
+
+    std::string path1("/def");
+    status = ns.GetDirLockStatus(path1);
+    ASSERT_EQ(status, kNsNotFound);
+
+    std::string path2("/abc/ghi");
+    ns.CreateFile(path2, 0, 01755, -1, &blocks_to_remove);
+    status = ns.GetDirLockStatus(path2);
+    ASSERT_EQ(status, kDirLocked);
+    status = ns.SetDirLockStatus(path2, kDirLocked);
+    ASSERT_EQ(status, kNoPermission);
+
+    status = ns.SetDirLockStatus(path0, kDirLockCleaning);
+    ASSERT_EQ(status, kOK);
+    status = ns.GetDirLockStatus(path0);
+    ASSERT_EQ(status, kDirLockCleaning);
+
+    system("rm -rf ./db");
+}
+
 }
 }
 
