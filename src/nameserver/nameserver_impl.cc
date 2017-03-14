@@ -1011,17 +1011,23 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
     std::string path = NameSpace::NormalizePath(request->dir_path());
     FileLockGuard lock_guard(new WriteLock(path));
     StatusCode status = namespace_->GetDirLockStatus(path);
+    LOG(INFO, "%s try lock dir %s", request->uuid().c_str(), path.c_str());
     if (status != kDirLocked) {
         //TODO log remote?
         if (status == kDirUnlock) {
             namespace_->SetDirLockStatus(path, kDirLocked, request->uuid());
+            LOG(INFO, "%s lock dir %s",
+                    request->uuid().c_str(), path.c_str());
             status = kOK;
         } else if (status == kDirLockCleaning) {
             std::vector<int64_t> blocks;
             namespace_->ListAllBlocks(path, &blocks);
             if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
                 //TODO log remote
-                namespace_->SetDirLockStatus(path, kDirUnlock);
+                namespace_->SetDirLockStatus(path, kDirUnlock,
+                                             request->uuid());
+                LOG(INFO, "%s lock dir %s",
+                        request->uuid().c_str(), path.c_str());
                 status = kOK;
             }
         } // else status should be kBadParameter
