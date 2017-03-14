@@ -903,7 +903,7 @@ StatusCode NameSpace::SetDirLockStatus(const std::string& path,
             return kNsNotFound;
         }
         // all the parent directories should be clear
-        if (info.dir_lock_stat() != kDirLocked) {
+        if (info.dir_lock_stat() != kDirUnlock) {
             return kNoPermission;
         }
         entry_id = info.entry_id();
@@ -945,10 +945,10 @@ void NameSpace::ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result) {
         if (key.compare(key_end)>=0) {
             break;
         }
+        std::string info_buf;
+        leveldb::Status s = db_->Get(leveldb::ReadOptions(), key, &info_buf);
         FileInfo info;
-        bool ret = GetFromStore(
-                std::string(it->value().data(), it->value().size()), &info);
-        assert(ret);
+        info.ParseFromString(info_buf);
         FileType type = GetFileType(info.type());
         if (type == kDefault) {
             for (int i = 0; i < info.blocks_size(); i++) {

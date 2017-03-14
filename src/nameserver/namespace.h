@@ -70,7 +70,7 @@ public:
     int64_t GetNewBlockId();
     StatusCode GetDirLockStatus(const std::string& path);
     StatusCode SetDirLockStatus(const std::string& path, StatusCode status,
-                          const std::string& uuid = "");
+                                const std::string& uuid = "");
     void ListAllBlocks(const std::string& path, std::vector<int64_t>* result);
 private:
     enum FileType {
