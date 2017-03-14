@@ -945,10 +945,8 @@ void NameSpace::ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result) {
         if (key.compare(key_end)>=0) {
             break;
         }
-        std::string info_buf;
-        leveldb::Status s = db_->Get(leveldb::ReadOptions(), key, &info_buf);
         FileInfo info;
-        info.ParseFromString(info_buf);
+        GetFromStore(std::string(key.data(), key.size()), &info);
         FileType type = GetFileType(info.type());
         if (type == kDefault) {
             for (int i = 0; i < info.blocks_size(); i++) {
