@@ -32,19 +32,25 @@ public:
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
     StatusCode CreateFile(const std::string& file_name, int flags, int mode,
-                          int replica_num, std::vector<int64_t>* blocks_to_remove,
+                          int replica_num,
+                          std::vector<int64_t>* blocks_to_remove,
+                          const std::string& uuid = "",
                           NameServerLog* log = NULL);
     /// Remove file by name
-    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
+    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed,
+                          const std::string& uuid = "", NameServerLog* log = NULL);
     /// Remove director.
     StatusCode DeleteDirectory(const std::string& path, bool recursive,
-                               std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
+                               std::vector<FileInfo>* files_removed,
+                               const std::string& uuid = "",
+                               NameServerLog* log = NULL);
     StatusCode DiskUsage(const std::string& path, uint64_t* du_size);
     /// File rename
     StatusCode Rename(const std::string& old_path,
                       const std::string& new_path,
                       bool* need_unlink,
                       FileInfo* remove_file,
+                      const std::string& uuid = "",
                       NameServerLog* log = NULL);
     /// Symlink: dst -> src
     StatusCode Symlink(const std::string& src,
@@ -80,8 +86,9 @@ private:
     };
     FileType GetFileType(int type) const;
     bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
-    StatusCode BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
-                                NameServerLog* log = NULL);
+    StatusCode BuildPath(const std::string& path, FileInfo* file_info,
+                         std::string* fname, const std::string& uuid = "",
+                         NameServerLog* log = NULL);
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,
                           std::string* key_str);
@@ -102,6 +109,9 @@ private:
     void InitBlockIdUpbound(NameServerLog* log);
     void UpdateBlockIdUpbound(NameServerLog* log);
     void ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result);
+    bool CheckDirLockPermission(const std::string& path,
+                                const std::string& uuid,
+                                FileInfo* info);
 private:
     leveldb::DB* db_;   /// NameSpace storage
     leveldb::Cache* db_cache_;  // block cache for leveldb

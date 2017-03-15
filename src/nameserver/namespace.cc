@@ -251,7 +251,8 @@ bool NameSpace::GetFileInfo(const std::string& path, FileInfo* file_info) {
     return true;
 }
 
-StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
+StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info,
+                                std::string* fname, const std::string& uuid,
                                 NameServerLog* log) {
     std::vector<std::string> paths;
     if (!common::util::SplitPath(path, &paths)) {
@@ -281,6 +282,16 @@ StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info, st
             if (GetFileType(file_info->type()) != kDir) {
                 LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
                 return kBadParameter;
+            } else {
+                StatusCode lock_stat = file_info->dir_lock_stat();
+                if (lock_stat == kDirLocked) {
+                    if (uuid != file_info->dir_lock_holder_uuid()) {
+                        LOG(INFO, "%s create path fail: %s is locked by %s",
+                                uuid.c_str(), paths[i].c_str(),
+                                file_info->dir_lock_holder_uuid().c_str());
+                        return kNoPermission;
+                    }
+                }
             }
         }
         parent_id = file_info->entry_id();
@@ -289,14 +300,17 @@ StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info, st
     return kOK;
 }
 
-StatusCode NameSpace::CreateFile(const std::string& file_name, int flags, int mode, int replica_num,
-                                 std::vector<int64_t>* blocks_to_remove, NameServerLog* log) {
+StatusCode NameSpace::CreateFile(const std::string& file_name, int flags,
+                                 int mode, int replica_num,
+                                 std::vector<int64_t>* blocks_to_remove,
+                                 const std::string& uuid,
+                                 NameServerLog* log) {
     if (file_name == "/") {
         return kBadParameter;
     }
     FileInfo file_info;
     std::string fname, info_value;
-    StatusCode status = BuildPath(file_name, &file_info, &fname, log);
+    StatusCode status = BuildPath(file_name, &file_info, &fname, uuid, log);
     if (status != kOK) {
         return status;
     }
@@ -381,6 +395,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
                              const std::string& new_path,
                              bool* need_unlink,
                              FileInfo* remove_file,
+                             const std::string& uuid,
                              NameServerLog* log) {
     *need_unlink = false;
     if (old_path == "/" || new_path == "/" || old_path == new_path) {
@@ -410,6 +425,10 @@ StatusCode NameSpace::Rename(const std::string& old_path,
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
             return kBadParameter;
         }
+        if (path_file.dir_lock_stat() == kDirLocked &&
+                path_file.dir_lock_holder_uuid() != uuid) {
+            return kNoPermission;
+        }
         if (path_file.entry_id() == old_file.entry_id()) {
             LOG(INFO, "Rename %s to %s fail: %s is the parent directory of %s",
                     old_path.c_str(), new_path.c_str(), old_path.c_str(),
@@ -426,7 +445,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         FileInfo dst_file;
         if (LookUp(parent_id, dst_name, &dst_file)) {
             // if dst_file exists, type of both dst_file and old_file must be file
-            if ((GetFileType(dst_file.type()) == kDir) || (GetFileType(old_file.type()) == kDir)) {
+            if ((GetFileType(dst_file.type()) == kDir) ||
+                    (GetFileType(old_file.type()) == kDir)) {
                 LOG(INFO, "Rename %s to %s, src %o or dst %o is not a file",
                     old_path.c_str(), new_path.c_str(), old_file.type(),
                     dst_file.type());
@@ -487,7 +507,7 @@ StatusCode NameSpace::Symlink(const std::string& src, const std::string& dst, Na
     }
 
     std::string fname, info_value;
-    StatusCode status = BuildPath(dst, &file_info, &fname, log);
+    StatusCode status = BuildPath(dst, &file_info, &fname, "", log);
     if (status != kOK) {
         return status;
     }
@@ -516,16 +536,29 @@ StatusCode NameSpace::Symlink(const std::string& src, const std::string& dst, Na
     }
 }
 
-StatusCode NameSpace::RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log) {
+StatusCode NameSpace::RemoveFile(const std::string& path,
+                                 FileInfo* file_removed,
+                                 const std::string& uuid,
+                                 NameServerLog* log) {
+    if (path == "/") {
+        return kBadParameter;
+    }
+    std::string parent_path(path, 0, path.find_last_of("/") + 1);
+    FileInfo parent_info;
+    if (!CheckDirLockPermission(parent_path, uuid, &parent_info)) {
+        return kNoPermission;
+    }
+    std::string file_name(path, path.find_last_of("/") + 1,
+                          path.size() - path.find_last_of("/") + 1);
     StatusCode ret_status = kOK;
-    if (LookUp(path, file_removed)) {
+    if (LookUp(parent_info.entry_id(), file_name, file_removed)) {
         // Only support file
         if (GetFileType(file_removed->type()) != kDir) {
             if (path == "/" || path.empty()) {
                 LOG(INFO, "root type= %d", file_removed->type());
             }
             std::string file_key;
-            EncodingStoreKey(file_removed->parent_entry_id(), file_removed->name(), &file_key);
+            EncodingStoreKey(parent_info.entry_id(), file_name, &file_key);
             if (DeleteFileInfo(file_key, log)) {
                 LOG(INFO, "Unlink done: %s\n", path.c_str());
                 ret_status = kOK;
@@ -593,7 +626,9 @@ StatusCode NameSpace::InternalComputeDiskUsage(const FileInfo& info, uint64_t* d
 }
 
 StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
-                                      std::vector<FileInfo>* files_removed, NameServerLog* log) {
+                                      std::vector<FileInfo>* files_removed,
+                                      const std::string& uuid,
+                                      NameServerLog* log) {
     files_removed->clear();
     FileInfo info;
     if (!LookUp(path, &info)) {
@@ -602,6 +637,9 @@ StatusCode NameSpace::DeleteDirectory(const std::string& path, bool recursive,
     } else if (GetFileType(info.type()) != kDir) {
         LOG(INFO, "Delete Directory, %s %d is not a dir.", path.c_str(), info.type());
         return kBadParameter;
+    } else if (info.dir_lock_stat() == kDirLocked &&
+            info.dir_lock_holder_uuid() != uuid) {
+        return kNoPermission;
     }
     return InternalDeleteDirectory(info, recursive, files_removed, log);
 }
@@ -903,7 +941,7 @@ StatusCode NameSpace::SetDirLockStatus(const std::string& path,
             return kNsNotFound;
         }
         // all the parent directories should be clear
-        if (info.dir_lock_stat() != kDirUnlock) {
+        if (info.dir_lock_stat() == kDirLocked) {
             return kNoPermission;
         }
         entry_id = info.entry_id();
@@ -960,6 +998,48 @@ void NameSpace::ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result) {
         }
     }
     delete it;
+}
+
+bool NameSpace::CheckDirLockPermission(const std::string& path,
+                                       const std::string& uuid,
+                                       FileInfo* info) {
+    if (path == "/") {
+        StatusCode status = root_path_.dir_lock_stat();
+        if (status == kDirLocked && uuid != root_path_.dir_lock_holder_uuid()) {
+            return false;
+        } else if (status == kDirLockCleaning) {
+            return false;
+        }
+        *info = root_path_;
+        return true;
+    }
+    std::vector<std::string> paths;
+    common::util::SplitPath(path, &paths);
+    int64_t entry_id = kRootEntryid;
+    for (size_t i = 0; i < paths.size(); i++) {
+        std::string file_key;
+        EncodingStoreKey(entry_id, paths[i], &file_key);
+        if(!GetFromStore(file_key, info)) {
+            return false;
+        } else {
+            if (GetFileType(info->type()) == kDir) {
+                StatusCode status = info->dir_lock_stat();
+                if (status == kDirLocked &&
+                        info->dir_lock_holder_uuid() != uuid) {
+                    LOG(INFO, "No permission, %s is lock by %s",
+                            paths[i].c_str(),
+                            info->dir_lock_holder_uuid().c_str());
+                    return false;
+                } else if (status == kDirLockCleaning) {
+                    LOG(INFO, "No permission, %s dir lock is being cleaning",
+                            paths[i].c_str());
+                    return false;
+                }
+            }
+            entry_id = info->entry_id();
+        }
+    }
+    return true;
 }
 
 } // namespace bfs
