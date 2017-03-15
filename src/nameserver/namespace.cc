@@ -914,6 +914,9 @@ StatusCode NameSpace::SetDirLockStatus(const std::string& path,
         return kNsNotFound;
     }
     info.set_dir_lock_stat(status);
+    if (status == kDirLockCleaning) {
+        info.set_dir_lock_holder_uuid("");
+    }
     std::string info_buf;
     info.SerializeToString(&info_buf);
     db_->Put(leveldb::WriteOptions(), file_key, info_buf);

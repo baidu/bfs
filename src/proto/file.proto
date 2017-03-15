@@ -16,5 +16,6 @@ message FileInfo {
     repeated string cs_addrs = 11;
     optional string sym_link = 12;
     optional StatusCode dir_lock_stat = 13 [default = kDirUnlock];
+    optional string dir_lock_holder_uuid = 14;
 }
 
