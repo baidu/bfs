@@ -283,9 +283,8 @@ StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info,
                 LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
                 return kBadParameter;
             } else {
-                StatusCode lock_stat = file_info->dir_lock_stat();
-                if (lock_stat == kDirLocked) {
-                    if (uuid != file_info->dir_lock_holder_uuid()) {
+                if (file_info->dir_lock_stat() == kDirLocked &&
+                        file_info->dir_lock_holder_uuid() != uuid) {
                         LOG(INFO, "%s create path fail: %s is locked by %s",
                                 uuid.c_str(), paths[i].c_str(),
                                 file_info->dir_lock_holder_uuid().c_str());
@@ -406,6 +405,11 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         LOG(INFO, "Rename not found: %s\n", old_path.c_str());
         return kNsNotFound;
     }
+    if (GetFileType(old_file.type()) == kDir &&
+            old_file.dir_lock_stat() == kDirLocked &&
+            old_file.dir_lock_holder_uuid() != uuid) {
+        return kNoPermission;
+    }
 
     std::vector<std::string> new_paths;
     if (!common::util::SplitPath(new_path, &new_paths) || new_paths.empty()) {
@@ -465,6 +469,7 @@ StatusCode NameSpace::Rename(const std::string& old_path,
     std::string new_key;
     EncodingStoreKey(parent_id, dst_name, &new_key);
     std::string value;
+    // if dst is a directory, the dir lock info will be kept
     old_file.set_parent_entry_id(parent_id);
     old_file.set_name(dst_name);
     old_file.SerializeToString(&value);

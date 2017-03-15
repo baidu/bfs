@@ -228,6 +228,28 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(kOK, ns.Rename("/file2", "/link", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
 
+    /// rename dir which parent protected by dir lock
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.Rename("/home/dir2", "/home/dir2_lock",
+                                       &need_unlink, &remove_file, "uuid1"));
+    ASSERT_EQ(kNoPermission, ns.Rename("/home/dir2", "/home/dir2_lock",
+                                       &need_unlink, &remove_file, "uuid0"));
+
+    /// rename dir after dir lock removed
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLockCleaning, ""));
+    ASSERT_EQ(kOK, ns.Rename("/home/dir2", "/home/dir2_lock",
+                             &need_unlink, &remove_file, "uuid1"));
+
+    /// rename dir protected by dir lock
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.Rename("/home", "/home1",
+                             &need_unlink, &remove_file, "uuid1"));
+    ASSERT_EQ(kNoPermission, ns.Rename("/home", "/home1",
+                             &need_unlink, &remove_file, "uuid0"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLockCleaning, ""));
+    ASSERT_EQ(kOK, ns.Rename("/home", "/home1",
+                             &need_unlink, &remove_file, "uuid0"));
+    ASSERT_EQ(kDirLockCleaning, ns.GetDirLockStatus("/home1"));
 }
 
 TEST_F(NameSpaceTest, RemoveFile) {
