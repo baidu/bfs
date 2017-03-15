@@ -289,7 +289,6 @@ StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info,
                                 uuid.c_str(), paths[i].c_str(),
                                 file_info->dir_lock_holder_uuid().c_str());
                         return kNoPermission;
-                    }
                 }
             }
         }
@@ -959,6 +958,8 @@ StatusCode NameSpace::SetDirLockStatus(const std::string& path,
     info.set_dir_lock_stat(status);
     if (status == kDirLockCleaning) {
         info.set_dir_lock_holder_uuid("");
+    } else if (status == kDirLocked) {
+        info.set_dir_lock_holder_uuid(uuid);
     }
     std::string info_buf;
     info.SerializeToString(&info_buf);

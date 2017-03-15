@@ -133,6 +133,10 @@ TEST_F(NameSpaceTest, CreateFile) {
     ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file3", 0, 01755, -1, &blocks_to_remove));
     ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 01755, -1, &blocks_to_remove));
     ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir1/subdir1", kDirLocked, "uuid0"));
+    /* ASSERT_EQ(kNoPermission, ns.CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove, "uuid1")); */
+    ASSERT_EQ(kNoPermission, ns.CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove));
+    system("rm -rf ./db");
 }
 
 TEST_F(NameSpaceTest, List) {
@@ -152,7 +156,10 @@ TEST_F(NameSpaceTest, List) {
 }
 
 TEST_F(NameSpaceTest, Symlink) {
+    FLAGS_namedb_path = "./db";
+    system("rm -rf ./db");
     NameSpace ns;
+    ASSERT_TRUE(CreateTree(&ns));
     std::vector<int64_t> blocks_to_remove;
     /// link -> file
     ASSERT_EQ(kOK, ns.Symlink("/dir1/subdir1/file3", "/link3"));
@@ -166,10 +173,14 @@ TEST_F(NameSpaceTest, Symlink) {
     ASSERT_EQ(kFileExists, ns.Symlink("/file1", "/file1"));
     /// none -> link
     ASSERT_EQ(kNsNotFound, ns.Symlink("/file000", "/link5"));
+    system("rm -rf ./db");
 }
 
 TEST_F(NameSpaceTest, Rename) {
+    FLAGS_namedb_path = "./db";
+    system("rm -rf ./db");
     NameSpace ns;
+    ASSERT_TRUE(CreateTree(&ns));
     bool need_unlink;
     FileInfo remove_file;
     /// self -> self
@@ -222,7 +233,7 @@ TEST_F(NameSpaceTest, Rename) {
 
 
     ///  link A -> link B
-    ASSERT_EQ(kOK, ns.Rename("/link4", "/link", &need_unlink, &remove_file));
+    ASSERT_EQ(kOK, ns.Rename("/link2", "/link4", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
     /// fileA -> fileB, B is link
     ASSERT_EQ(kOK, ns.Rename("/file2", "/link", &need_unlink, &remove_file));
@@ -232,24 +243,25 @@ TEST_F(NameSpaceTest, Rename) {
     ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLocked, "uuid0"));
     ASSERT_EQ(kNoPermission, ns.Rename("/home/dir2", "/home/dir2_lock",
                                        &need_unlink, &remove_file, "uuid1"));
-    ASSERT_EQ(kNoPermission, ns.Rename("/home/dir2", "/home/dir2_lock",
-                                       &need_unlink, &remove_file, "uuid0"));
+    ASSERT_EQ(kOK, ns.Rename("/home/dir2", "/home/dir2_lock",
+                             &need_unlink, &remove_file, "uuid0"));
 
     /// rename dir after dir lock removed
     ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLockCleaning, ""));
-    ASSERT_EQ(kOK, ns.Rename("/home/dir2", "/home/dir2_lock",
+    ASSERT_EQ(kOK, ns.Rename("/home/dir2_lock", "/home/dir2",
                              &need_unlink, &remove_file, "uuid1"));
 
     /// rename dir protected by dir lock
     ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLocked, "uuid0"));
     ASSERT_EQ(kNoPermission, ns.Rename("/home", "/home1",
                              &need_unlink, &remove_file, "uuid1"));
-    ASSERT_EQ(kNoPermission, ns.Rename("/home", "/home1",
-                             &need_unlink, &remove_file, "uuid0"));
-    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLockCleaning, ""));
     ASSERT_EQ(kOK, ns.Rename("/home", "/home1",
                              &need_unlink, &remove_file, "uuid0"));
-    ASSERT_EQ(kDirLockCleaning, ns.GetDirLockStatus("/home1"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home1", kDirLockCleaning, ""));
+    ASSERT_EQ(kOK, ns.Rename("/home1", "/home",
+                             &need_unlink, &remove_file, "uuid0"));
+    ASSERT_EQ(kDirLockCleaning, ns.GetDirLockStatus("/home"));
+    system("rm -rf ./db");
 }
 
 TEST_F(NameSpaceTest, RemoveFile) {
