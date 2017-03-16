@@ -100,6 +100,7 @@ int32_t FSImpl::CreateDirectory(const char* path) {
     request.set_file_name(path);
     request.set_mode(0755|(1<<9));
     request.set_sequence_id(0);
+    request.set_uuid(GetUUID());
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 3);
     if (!ret) {
@@ -165,6 +166,7 @@ int32_t FSImpl::DeleteDirectory(const char* path, bool recursive) {
     request.set_sequence_id(0);
     request.set_path(path);
     request.set_recursive(recursive);
+    request.set_uuid(GetUUID());
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DeleteDirectory,
             &request, &response, 3600, 1);
     if (!ret) {
@@ -397,6 +399,7 @@ int32_t FSImpl::DeleteFile(const char* path) {
     request.set_path(path);
     int64_t seq = common::timer::get_micros();
     request.set_sequence_id(seq);
+    request.set_uuid(GetUUID());
     // printf("Delete file: %s\n", path);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Unlink,
         &request, &response, 15, 1);
@@ -438,6 +441,7 @@ int32_t FSImpl::Rename(const char* oldpath, const char* newpath) {
     request.set_oldpath(oldpath);
     request.set_newpath(newpath);
     request.set_sequence_id(0);
+    request.set_uuid(GetUUID());
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Rename,
         &request, &response, 15, 1);
     if (!ret) {

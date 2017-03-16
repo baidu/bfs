@@ -387,8 +387,8 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     std::vector<int64_t> blocks_to_remove;
     FileLockGuard file_lock(new WriteLock(path));
     StatusCode status =
-        namespace_->CreateFile(path, flags, mode,
-                               replica_num, &blocks_to_remove, "", &log);
+        namespace_->CreateFile(path, flags, mode, replica_num,
+                               &blocks_to_remove, request->uuid(), &log);
     for (size_t i = 0; i < blocks_to_remove.size(); i++) {
         block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
     }
@@ -784,7 +784,7 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     NameServerLog log;
     FileLockGuard file_lock_guard(new WriteLock(oldpath, newpath));
     StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink,
-                                           &remove_file, "", &log);
+                                           &remove_file, request->uuid(), &log);
     response->set_status(status);
     if (status != kOK) {
         done->Run();
@@ -849,7 +849,8 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     NameServerLog log;
     FileLockGuard file_lock_guard(new WriteLock(path));
-    StatusCode status = namespace_->RemoveFile(path, &file_info, "", &log);
+    StatusCode status = namespace_->RemoveFile(path, &file_info,
+                                               request->uuid(), &log);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s unlink file %s returns %s",
             ctl->RemoteAddress().c_str(), path.c_str(), StatusCode_Name(status).c_str());
@@ -910,8 +911,8 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     std::vector<FileInfo>* removed = new std::vector<FileInfo>;
     NameServerLog log;
     FileLockGuard file_lock_guard(new WriteLock(path));
-    StatusCode ret_status = namespace_->DeleteDirectory(path, recursive,
-                                                        removed, "",  &log);
+    StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed,
+                                                        request->uuid(), &log);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s delete directory %s returns %s",
             ctl->RemoteAddress().c_str(), path.c_str(), StatusCode_Name(ret_status).c_str());
