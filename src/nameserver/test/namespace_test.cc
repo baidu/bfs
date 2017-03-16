@@ -505,6 +505,38 @@ TEST_F(NameSpaceTest, GetAndSetDirLockStatus) {
     system("rm -rf ./db");
 }
 
+TEST_F(NameSpaceTest, CheckDirLockPermission) {
+    system("rm -rf ./db");
+    NameSpace ns;
+    std::vector<int64_t> blocks_to_remove;
+    FileInfo info;
+    ns.CreateFile("/abc/def/ghi", 0, 01755, -1, &blocks_to_remove);
+    ASSERT_TRUE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid0", &info));
+    ASSERT_TRUE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid1", &info));
+    ns.SetDirLockStatus("/abc/def/ghi", kDirLocked, "uuid0");
+    ASSERT_FALSE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid1", &info));
+    ASSERT_TRUE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid0", &info));
+    ns.SetDirLockStatus("/abc/def/ghi", kDirLockCleaning, "");
+    ASSERT_FALSE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid1", &info));
+    ASSERT_FALSE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid0", &info));
+
+    ns.SetDirLockStatus("/abc/def/ghi", kDirUnlock, "");
+    ASSERT_TRUE(ns.LookUp("/abc/def/ghi", &info));
+    ASSERT_TRUE(ns.CheckDirLockPermission(info, "uuid0"));
+    ASSERT_TRUE(ns.CheckDirLockPermission(info, "uuid1"));
+
+    ns.SetDirLockStatus("/abc/def/ghi", kDirLocked, "uuid0");
+    ASSERT_TRUE(ns.LookUp("/abc/def/ghi", &info));
+    ASSERT_TRUE(ns.CheckDirLockPermission(info, "uuid0"));
+    ASSERT_FALSE(ns.CheckDirLockPermission(info, "uuid1"));
+
+    ns.SetDirLockStatus("/abc/def/ghi", kDirLockCleaning, "uuid0");
+    ASSERT_TRUE(ns.LookUp("/abc/def/ghi", &info));
+    ASSERT_FALSE(ns.CheckDirLockPermission(info, "uuid0"));
+    ASSERT_FALSE(ns.CheckDirLockPermission(info, "uuid1"));
+    system("rm -rf ./db");
+}
+
 }
 }
 
