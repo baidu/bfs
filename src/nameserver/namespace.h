@@ -112,6 +112,7 @@ private:
     bool CheckDirLockPermission(const std::string& path,
                                 const std::string& uuid,
                                 FileInfo* info);
+    bool CheckDirLockPermission(const FileInfo& info, const std::string& uuid);
 private:
     leveldb::DB* db_;   /// NameSpace storage
     leveldb::Cache* db_cache_;  // block cache for leveldb

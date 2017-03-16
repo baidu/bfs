@@ -282,14 +282,10 @@ StatusCode NameSpace::BuildPath(const std::string& path, FileInfo* file_info,
             if (GetFileType(file_info->type()) != kDir) {
                 LOG(INFO, "Create path fail: %s is not a directory", paths[i].c_str());
                 return kBadParameter;
-            } else {
-                if (file_info->dir_lock_stat() == kDirLocked &&
-                        file_info->dir_lock_holder_uuid() != uuid) {
-                        LOG(INFO, "%s create path fail: %s is locked by %s",
-                                uuid.c_str(), paths[i].c_str(),
-                                file_info->dir_lock_holder_uuid().c_str());
-                        return kNoPermission;
-                }
+            } else if (!CheckDirLockPermission(*file_info, uuid)) {
+                LOG(INFO, "Create path %s fail: have no permission on %s",
+                        path.c_str(), paths[i].c_str());
+                return kNoPermission;
             }
         }
         parent_id = file_info->entry_id();
@@ -428,8 +424,9 @@ StatusCode NameSpace::Rename(const std::string& old_path,
                 old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
             return kBadParameter;
         }
-        if (path_file.dir_lock_stat() == kDirLocked &&
-                path_file.dir_lock_holder_uuid() != uuid) {
+        if (!CheckDirLockPermission(path_file, uuid)) {
+            LOG(INFO, "Rename %s to %s fail: have no permission on %s",
+                old_path.c_str(), new_path.c_str(), new_paths[i].c_str());
             return kNoPermission;
         }
         if (path_file.entry_id() == old_file.entry_id()) {
@@ -1044,6 +1041,22 @@ bool NameSpace::CheckDirLockPermission(const std::string& path,
             }
             entry_id = info->entry_id();
         }
+    }
+    return true;
+}
+
+bool NameSpace::CheckDirLockPermission(const FileInfo& file_info,
+                                       const std::string& uuid) {
+    StatusCode status = file_info.dir_lock_stat();
+    if (status == kDirLocked && file_info.dir_lock_holder_uuid() != uuid) {
+        LOG(INFO, "%s no permission, %s is locked by %s",
+                uuid.c_str(), file_info.name().c_str(),
+                file_info.dir_lock_holder_uuid().c_str());
+        return false;
+    } else if (status == kDirLockCleaning) {
+        LOG(INFO, "%s no permission, %s dir lock is being cleaning",
+                uuid.c_str(), file_info.name().c_str());
+        return false;
     }
     return true;
 }

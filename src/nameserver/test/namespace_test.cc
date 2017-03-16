@@ -134,8 +134,12 @@ TEST_F(NameSpaceTest, CreateFile) {
     ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 01755, -1, &blocks_to_remove));
     ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 0, -1, &blocks_to_remove));
     ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir1/subdir1", kDirLocked, "uuid0"));
-    /* ASSERT_EQ(kNoPermission, ns.CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove, "uuid1")); */
-    ASSERT_EQ(kNoPermission, ns.CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kNoPermission, ns.CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove, "uuid1"));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove, "uuid0"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir1/subdir1", kDirLockCleaning, ""));
+    ASSERT_EQ(kNoPermission, ns.CreateFile("/dir1/subdir1/file5", 0, 0, -1, &blocks_to_remove, "uuid0"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir1/subdir1", kDirUnlock, ""));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir1/file5", 0, 0, -1, &blocks_to_remove, "uuid0"));
     system("rm -rf ./db");
 }
 
@@ -248,6 +252,9 @@ TEST_F(NameSpaceTest, Rename) {
 
     /// rename dir after dir lock removed
     ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLockCleaning, ""));
+    ASSERT_EQ(kNoPermission, ns.Rename("/home/dir2_lock", "/home/dir2",
+                             &need_unlink, &remove_file, "uuid1"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirUnlock, ""));
     ASSERT_EQ(kOK, ns.Rename("/home/dir2_lock", "/home/dir2",
                              &need_unlink, &remove_file, "uuid1"));
 
@@ -284,6 +291,19 @@ TEST_F(NameSpaceTest, RemoveFile) {
     ASSERT_EQ(kOK, ns.RemoveFile("/link1", &file_removed));
     ASSERT_EQ(11, file_removed.entry_id());
 
+    /// rm file protected by dir lock
+    std::vector<int64_t> blocks_to_remove;
+    ASSERT_EQ(kOK, ns.CreateFile("/dir/subdir1/file3", 0, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir/subdir1", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.RemoveFile("/dir/subdir1/file3", &file_removed, "uuid1"));
+    ASSERT_EQ(kOK, ns.RemoveFile("/dir/subdir1/file3", &file_removed, "uuid0"));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir/subdir1/file4", 0, 0, -1, &blocks_to_remove, "uuid0"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir/subdir1", kDirLockCleaning, ""));
+    ASSERT_EQ(kNoPermission, ns.RemoveFile("/dir/subdir1/file4", &file_removed, "uuid1"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir/subdir1", kDirUnlock, ""));
+    ASSERT_EQ(kOK, ns.RemoveFile("/dir/subdir1/file4", &file_removed, "uuid1"));
+
+    system("rm -rf ./db");
 }
 
 TEST_F(NameSpaceTest, DeleteDirectory) {
@@ -329,6 +349,22 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     ASSERT_EQ(kOK, ns.DeleteDirectory("/", true, &files_removed));
     ASSERT_EQ(kOK, ns.ListDirectory("/", &outputs));
     ASSERT_EQ(0, outputs.size());
+
+    // Rmr dir with dir lock protected
+    std::vector<int64_t> blocks_to_remove;
+    ns.CreateFile("/tera", 0, 01755, -1, &blocks_to_remove);
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/tera", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.DeleteDirectory("/tera", true, &files_removed, "uuid1"));
+    ASSERT_EQ(kOK, ns.ListDirectory("/", &outputs));
+    ASSERT_EQ(1, outputs.size());
+    ASSERT_EQ(kOK, ns.DeleteDirectory("/tera", true, &files_removed, "uuid0"));
+    ASSERT_EQ(kOK, ns.ListDirectory("/", &outputs));
+    ASSERT_EQ(0, outputs.size());
+    ns.CreateFile("/tera", 0, 01755, -1, &blocks_to_remove);
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/tera", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.DeleteDirectory("/tera", true, &files_removed, "uuid1"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/tera", kDirLockCleaning, ""));
+    ASSERT_EQ(kOK, ns.DeleteDirectory("/tera", true, &files_removed, "uuid1"));
 }
 
 TEST_F(NameSpaceTest, DeleteDirectory2) {
