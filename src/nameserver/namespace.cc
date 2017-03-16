@@ -916,13 +916,17 @@ int64_t NameSpace::GetNewBlockId() {
     return next_block_id_++;
 }
 
-StatusCode NameSpace::GetDirLockStatus(const std::string& path) {
+StatusCode NameSpace::GetDirLockStatus(const std::string& path,
+                                       std::string* holder) {
     FileInfo info;
     if (!LookUp(path, &info)) {
         return kNsNotFound;
     } else if (GetFileType(info.type()) != kDir) {
         return kBadParameter;
     } else {
+        if (holder && info.dir_lock_stat() == kDirLocked) {
+            *holder = info.dir_lock_stat();
+        }
         return info.dir_lock_stat();
     }
 }

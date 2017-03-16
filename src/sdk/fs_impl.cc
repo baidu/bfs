@@ -347,6 +347,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     request.set_flags(flags);
     request.set_mode(mode&0777);
     request.set_replica_num(write_option.replica);
+    request.set_uuid(GetUUID());
     bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 1);
     if (!rpc_ret || response.status() != kOK) {

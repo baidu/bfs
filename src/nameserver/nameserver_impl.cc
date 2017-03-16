@@ -1015,7 +1015,8 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
     }
     std::string path = NameSpace::NormalizePath(request->dir_path());
     FileLockGuard lock_guard(new WriteLock(path));
-    StatusCode status = namespace_->GetDirLockStatus(path);
+    std::string holder;
+    StatusCode status = namespace_->GetDirLockStatus(path, &holder);
     LOG(INFO, "%s try lock dir %s", request->uuid().c_str(), path.c_str());
     if (status != kDirLocked) {
         //TODO log remote?
@@ -1038,8 +1039,15 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
         } // else status should be kBadParameter
     } else {
         //TODO log remote
-        namespace_->SetDirLockStatus(path, kDirLockCleaning);
-        status = kDirLockCleaning;
+        if (holder != request->uuid()) {
+            namespace_->SetDirLockStatus(path, kDirLockCleaning);
+            status = kDirLockCleaning;
+            LOG(INFO, "%s try clean %s dir lock",
+                    request->uuid().c_str(), path.c_str());
+        } else {
+            // double lock by the same sdk, ignore it
+            status = kOK;
+        }
     }
     response->set_status(status);
     done->Run();
@@ -1626,7 +1634,8 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("PushBlockReport", work_thread_pool_),
         std::make_pair("SysStat", read_thread_pool_),
         std::make_pair("Chmod", work_thread_pool_),
-        std::make_pair("Symlink", work_thread_pool_)
+        std::make_pair("Symlink", work_thread_pool_),
+        std::make_pair("LockDir", work_thread_pool_)
 
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /
