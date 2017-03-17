@@ -36,7 +36,7 @@ public:
     Disk(const std::string& path, int64_t quota);
     ~Disk();
     std::string Path() const;
-    bool LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback);
+    void LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback, int* ret_val);
     int64_t NamespaceVersion() const;
     bool SetNamespaceVersion(int64_t version);
     void Seek(int64_t block_id, std::vector<leveldb::Iterator*>* iters);

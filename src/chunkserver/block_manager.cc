@@ -163,17 +163,47 @@ int64_t BlockManager::DiskQuota() const {
     return disk_quota_;
 }
 
-// TODO: concurrent load
 bool BlockManager::LoadStorage() {
-    bool ret = true;
+    // return value from Disk::LoadStorage:
+    // 0: initial state, 1: done, -1: error occured
+    std::vector<int> ret_vals;
+    ret_vals.resize(disks_.size(), 0);
+    ThreadPool tp(disks_.size());
+    int disk_index = 0;
     for (auto it = disks_.begin(); it != disks_.end(); ++it) {
         Disk* disk = it->second;
-        ret = ret && disk->LoadStorage(std::bind(&BlockManager::AddBlock,
+        std::function<bool (int64_t, Disk*, BlockMeta)> callback = std::bind(&BlockManager::AddBlock,
                                                       this, std::placeholders::_1,
                                                       std::placeholders::_2,
-                                                      std::placeholders::_3));
-        disk_quota_ += disk->GetQuota();
+                                                      std::placeholders::_3);
+        tp.AddTask(std::bind(&Disk::LoadStorage, disk, callback, &(ret_vals[disk_index])));
+        ++disk_index;
     }
+    bool ret = true;
+    while (true) {
+        sleep(1);
+        bool done = true;
+        for (auto it = ret_vals.begin(); it != ret_vals.end(); ++it) {
+            if (*it < 0) {
+                ret = false;
+                break;
+            } else if (*it == 0) {
+                done = false;
+                break;
+            }
+        }
+        if (done || !ret) {
+            break;
+        }
+    }
+    if (ret) {
+        for (auto it = disks_.begin(); it != disks_.end(); ++it) {
+            Disk* disk = it->second;
+            disk_quota_ += disk->GetQuota();
+        }
+    }
+    tp.Stop(false);
+    LOG(INFO, "LoadStorage done. Quota = %ld", disk_quota_);
     return ret;
 }
 
