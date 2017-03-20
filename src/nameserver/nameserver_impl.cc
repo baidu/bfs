@@ -1033,7 +1033,6 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
     response->set_status(status);
     done->Run();
 }
-
 void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
                                const UnlockDirRequest* request,
                                UnlockDirResponse* response,
@@ -1050,6 +1049,7 @@ void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
         //TODO log remote
         namespace_->SetDirLockStatus(path, kDirLockCleaning);
         std::vector<int64_t> blocks;
+        //TODO add force lock interface which do not list children directory
         namespace_->ListAllBlocks(path, &blocks);;
         if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
             status = kDirUnlock;
