@@ -159,5 +159,23 @@ void BlockMappingManager::MarkIncomplete(int64_t block_id) {
     block_mapping_[bucket_offset]->MarkIncomplete(block_id);
 }
 
+void BlockMappingManager::AddRecoverBlock(int64_t block_id, int32_t cs_id,
+                                          int64_t start_offset,
+                                          int64_t end_offset) {
+    int32_t bucket_offset = GetBucketOffset(block_id);
+    block_mapping_[bucket_offset]->AddRecoverBlock(block_id, cs_id,
+                                                   start_offset, end_offset);
+}
+
+void BlockMappingManager::PickRecoverWritingBlocks(Blocks* cs_block_map,
+        ::google::protobuf::RepeatedPtrField<RecoverInfo>* recover_blocks) {
+        //TODO use flag
+        for (int i = 0; i < blockmapping_bucket_num_ &&
+                recover_blocks->size() < 100; i++) {
+            block_mapping_[i]->PickRecoverWritingBlocks(cs_block_map,
+                                                        recover_blocks);
+        }
+}
+
 } //namespace bfs
 } //namespace baidu

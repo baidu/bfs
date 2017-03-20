@@ -329,6 +329,11 @@ void NameServerImpl::BlockReport(::google::protobuf::RpcController* controller,
         }
         LOG(INFO, "Response to C%d %s new_replicas_size= %d",
             cs_id, request->chunkserver_addr().c_str(), response->new_replicas_size());
+
+        ::google::protobuf::RepeatedPtrField<RecoverInfo>*
+            recover_writing_blocks = response->mutable_recover_writing_blocks();
+        chunkserver_manager_->PickRecoverWritingBlocks(cs_id,
+                                                       recover_writing_blocks);
     }
     block_mapping_manager_->GetCloseBlocks(cs_id, response->mutable_close_blocks());
     int64_t end_report = common::timer::get_micros();
@@ -1053,6 +1058,62 @@ void NameServerImpl::ShutdownChunkServerStat(::google::protobuf::RpcController* 
     done->Run();
 }
 
+void NameServerImpl::GetChunkServer(::google::protobuf::RpcController* controller,
+                                    const GetChunkServerRequest* request,
+                                    GetChunkServerResponse* response,
+                                    ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    sofa::pbrpc::RpcController* ctl =
+        reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
+    LOG(INFO, "Sdk %s want to get %d chunkserver for block #%ld",
+            ctl->RemoteAddress().c_str(), request->chunkserver_num(),
+            request->block_id());
+
+    response->set_sequence_id(request->sequence_id());
+    int64_t block_id = request->block_id();
+    std::vector<int32_t> cur_replicas;
+    block_mapping_manager_->GetLocatedBlock(block_id, &cur_replicas,
+                                            NULL, NULL);
+    std::set<int32_t> cur_rep(cur_replicas.begin(), cur_replicas.end());
+    int32_t cs_num = request->chunkserver_num();
+    std::vector<std::string> result;
+    if (!chunkserver_manager_->GetRecoverChains(cur_rep, &result, cs_num)) {
+        LOG(WARNING, "Get %d chunkserver for block #%ld fail",
+                cs_num, block_id);
+        response->set_status(kGetChunkServerError);
+        done->Run();
+    }
+    for (size_t i = 0; i < result.size(); i++) {
+        response->add_chunkservers(result[i]);
+    }
+    response->set_status(kOK);
+    done->Run();
+}
+
+void NameServerImpl::StartRecoverBlock(::google::protobuf::RpcController* controller,
+                                       const StartRecoverBlockRequest* request,
+                                       StartRecoverBlockResponse* response,
+                                       ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    int64_t block_id = request->block_id();
+    const std::string& cs_addr = request->chunkserver_addr();
+    int64_t start_offset = request->start_offset();
+    int64_t end_offset = request->end_offset();
+    int32_t cs_id = chunkserver_manager_->GetChunkServerId(cs_addr);
+    LOG(INFO, "Start recover block #%ld to cs C%d, from offset %ld to %ld",
+            block_id, cs_id, start_offset, end_offset);
+    block_mapping_manager_->AddRecoverBlock(block_id, cs_id,
+                                            start_offset, end_offset);
+}
+
 void NameServerImpl::TransToString(const std::map<int32_t, std::set<int64_t> >& chk_set,
                                    std::string* output) {
     for (std::map<int32_t, std::set<int64_t> >::const_iterator it =
@@ -1553,7 +1614,8 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("PushBlockReport", work_thread_pool_),
         std::make_pair("SysStat", read_thread_pool_),
         std::make_pair("Chmod", work_thread_pool_),
-        std::make_pair("Symlink", work_thread_pool_)
+        std::make_pair("Symlink", work_thread_pool_),
+        std::make_pair("GetChunkServer", work_thread_pool_)
 
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /

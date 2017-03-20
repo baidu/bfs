@@ -103,6 +103,28 @@ int64_t Blocks::CheckLost(int64_t report_id, const std::set<int64_t>& blocks,
     return report_id;
 }
 
+bool Blocks::BlockExists(int64_t block_id) {
+    // blocks in new_blocks_ maybe merged into blocks_,
+    // so we must look up new_blocks_ first
+    {
+        MutexLock lock(&new_blocks_mu_);
+        if (new_blocks_.find(block_id) != new_blocks_.end()) {
+            return true;
+        }
+    }
+    {
+        MutexLock lock(&block_mu_);
+        if (blocks_.find(block_id) != blocks_.end()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int32_t Blocks::GetChunkServerId() const {
+    return cs_id_;
+}
+
 ChunkServerManager::ChunkServerManager(ThreadPool* thread_pool, BlockMappingManager* block_mapping_manager)
     : thread_pool_(thread_pool),
       block_mapping_manager_(block_mapping_manager),
@@ -428,7 +450,8 @@ bool ChunkServerManager::GetChunkServerChains(int num,
 }
 
 bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
-                                          std::vector<std::string>* chains) {
+                                          std::vector<std::string>* chains,
+                                          int32_t select_num) {
     mu_.AssertHeld();
     std::map<int32_t, std::set<ChunkServerInfo*> >::iterator it = heartbeat_list_.begin();
     std::vector<std::pair<double, ChunkServerInfo*> > loads;
@@ -490,8 +513,9 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
             return false;
         }
     }
-    RandomSelect(&loads, FLAGS_recover_dest_limit);
-    for (int i = 0; i < static_cast<int>(loads.size()) && i < FLAGS_recover_dest_limit; ++i) {
+    RandomSelect(&loads, select_num);
+    for (int i = 0; i < static_cast<int>(loads.size()) &&
+            i < select_num; ++i) {
         ChunkServerInfo* cs = loads[i].second;
         chains->push_back(cs->address());
     }
@@ -674,7 +698,9 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id, RecoverVec* recover_blocks
          it != blocks.end(); ++it) {
         MutexLock lock(&mu_);
         recover_blocks->push_back(std::make_pair((*it).first, std::vector<std::string>()));
-        if (GetRecoverChains((*it).second, &(recover_blocks->back().second))) {
+        if (GetRecoverChains((*it).second,
+                             &(recover_blocks->back().second),
+                             FLAGS_recover_dest_limit)) {
             //
         } else {
             block_mapping_manager_->ProcessRecoveredBlock(cs_id, (*it).first, kGetChunkServerError);
@@ -692,6 +718,21 @@ void ChunkServerManager::PickRecoverBlocks(int cs_id, RecoverVec* recover_blocks
                 after_get_recover_chain - before_pick, before_get_recover_chain - before_pick,
                 after_get_recover_chain - before_get_recover_chain);
         }
+    }
+}
+
+void ChunkServerManager::PickRecoverWritingBlocks(int32_t cs_id,
+        ::google::protobuf::RepeatedPtrField<RecoverInfo>* recover_block_info) {
+    Blocks* block_map = GetBlockMap(cs_id);
+    if (!block_map) {
+        LOG(FATAL, "Get block map for C%d fail", cs_id);
+    }
+    block_mapping_manager_->PickRecoverWritingBlocks(block_map,
+                                                     recover_block_info);
+    // covert cs_id to cs_addr
+    for (int i = 0; i < recover_block_info->size(); i++) {
+        RecoverInfo* info = recover_block_info->Mutable(i);
+        info->set_cs_addr(GetChunkServerAddr(info->cs_id()));
     }
 }
 

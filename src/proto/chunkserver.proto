@@ -18,7 +18,6 @@ message WriteBlockRequest {
     optional bool sync_on_close = 14;
     optional int64 total_size = 15 [default = -1];
 }
-
 message WriteBlockResponse {
     optional int64 sequence_id = 1;
     optional StatusCode status = 2;
@@ -53,9 +52,21 @@ message GetBlockInfoResponse {
     repeated int64 timestamp = 9;
 }
 
+message PrepareForWriteRequest {
+    optional int64 sequence_id = 1;
+    optional int64 block_id = 2;
+    optional int32 sliding_window_start_seq = 3;
+    optional int64 block_size = 4;
+}
+message PrepareForWriteResponse {
+    optional int64 sequence_id = 1;
+    optional StatusCode status = 2;
+}
+
 service ChunkServer {
     rpc WriteBlock(WriteBlockRequest) returns(WriteBlockResponse);
     rpc ReadBlock(ReadBlockRequest) returns(ReadBlockResponse);
     rpc GetBlockInfo(GetBlockInfoRequest) returns(GetBlockInfoResponse);
+    rpc PrepareForWrite(PrepareForWriteRequest) returns(PrepareForWriteResponse);
 }
 

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 //
 
+#define private public
 #include "chunkserver/data_block.h"
 #include "chunkserver/file_cache.h"
 #include "chunkserver/disk.h"
@@ -102,6 +103,31 @@ TEST_F(DataBlockTest, WriteAndReadBlock) {
     system("rm -rf ./block123");
 }
 
+TEST_F(DataBlockTest, PrepareForWrite) {
+    mkdir("./block123", 0755);
+    std::string file_path("./block123");
+    Disk disk(file_path, 1000000);
+    disk.LoadStorage(std::bind(AddBlock, std::placeholders::_1,
+                               std::placeholders::_2, std::placeholders::_3));
+    BlockMeta meta;
+    FileCache file_cache(10);
+    int64_t block_id = 123;
+    meta.set_block_id(block_id);
+    meta.set_store_path(file_path);
+    Block* block = new Block(meta, &disk, &file_cache);
+    block->AddRef();
+    ASSERT_TRUE(block != NULL);
+    ASSERT_EQ(block->recv_window_->GetBaseOffset(), 0);
+    ASSERT_EQ(block->meta_.block_size(), 0);
+    block->PrepareForWrite(50, 1000);
+    ASSERT_EQ(block->recv_window_->GetBaseOffset(), 50);
+    ASSERT_EQ(block->meta_.block_size(), 1000);
+    block->PrepareForWrite(300, 4000);
+    ASSERT_EQ(block->recv_window_->GetBaseOffset(), 300);
+    ASSERT_EQ(block->meta_.block_size(), 4000);
+    block->DecRef();
+    system("rm -rf ./block123");
+}
 
 }
 }

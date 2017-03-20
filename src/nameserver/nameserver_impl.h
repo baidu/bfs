@@ -134,6 +134,14 @@ public:
             const ChmodRequest* request,
             ChmodResponse* response,
             ::google::protobuf::Closure* done);
+    void GetChunkServer(::google::protobuf::RpcController* controller,
+                        const GetChunkServerRequest* request,
+                        GetChunkServerResponse* response,
+                        ::google::protobuf::Closure* done);
+    void StartRecoverBlock(::google::protobuf::RpcController* controller,
+                           const StartRecoverBlockRequest* request,
+                           StartRecoverBlockResponse* response,
+                           ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
 private:

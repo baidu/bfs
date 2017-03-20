@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "block_mapping.h"
+#include "chunkserver_manager.h"
 
 #include <vector>
 #include <gflags/gflags.h>
@@ -67,8 +68,12 @@ bool BlockMapping::GetLocatedBlock(int64_t id, std::vector<int32_t>* replica, in
     if (replica->empty()) {
         LOG(DEBUG, "Block #%ld lost all replica", id);
     }
-    *size = block->block_size;
-    *status = block->recover_stat;
+    if (size) {
+        *size = block->block_size;
+    }
+    if (status) {
+        *status = block->recover_stat;
+    }
     return true;
 }
 
@@ -966,6 +971,51 @@ void BlockMapping::MarkIncomplete(int64_t block_id) {
             LOG(INFO, "Mark #%ld in C%d incomplete", block_id, *it);
         }
         SetState(block, kIncomplete);
+    }
+}
+
+void BlockMapping::AddRecoverBlock(int64_t block_id, int32_t cs_id,
+                                   int64_t start_offset, int64_t end_offset) {
+    RecoverInfo* recover_info = new RecoverInfo;
+    recover_info->set_block_id(block_id);
+    recover_info->set_cs_id(cs_id);
+    recover_info->set_start_offset(start_offset);
+    recover_info->set_end_offset(end_offset);
+    MutexLock lock(&mu_);
+    auto it = recover_writing_blocks_.find(block_id);
+    if (it != recover_writing_blocks_.end()) {
+        RecoverInfo* info = it->second;
+        LOG(WARNING, "Block #%ld recover to C%d from offset %ld to %ld ",
+                "already in recover map",
+                info->block_id(), info->cs_id(), info->start_offset(),
+                info->end_offset());
+        delete info;
+        it->second = recover_info;
+    } else {
+        recover_writing_blocks_[block_id] = recover_info;
+    }
+}
+
+void BlockMapping::PickRecoverWritingBlocks(Blocks* cs_block_map,
+        ::google::protobuf::RepeatedPtrField<RecoverInfo>* recover_blocks) {
+    int32_t cs_id = cs_block_map->GetChunkServerId();
+    MutexLock lock(&mu_);
+    for (auto it = recover_writing_blocks_.begin();
+            it != recover_writing_blocks_.end(); ++it) {
+        int64_t block_id = it->first;
+        if (!cs_block_map->BlockExists(block_id)) {
+            continue;
+        }
+        RecoverInfo* info = it->second;
+        if (info->cs_id() == cs_id) {
+            continue;
+        }
+        RecoverInfo* block = recover_blocks->Add();
+        block->CopyFrom(*info);
+        LOG(INFO, "Pick writing block #%ld from C%ld recover to C%ld",
+                "start offset %ld end offset %ld",
+                info->block_id(), cs_id, info->cs_id(),
+                info->start_offset(), info->end_offset());
     }
 }
 
