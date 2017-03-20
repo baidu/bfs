@@ -77,7 +77,8 @@ public:
     StatusCode GetDirLockStatus(const std::string& path,
                                 std::string* holder = NULL);
     StatusCode SetDirLockStatus(const std::string& path, StatusCode status,
-                                const std::string& uuid = "");
+                                const std::string& uuid = "",
+                                NameServerLog* log = NULL);
     void ListAllBlocks(const std::string& path, std::vector<int64_t>* result);
     bool CheckDirLockPermission(const std::string& path,
                                 const std::string& uuid,

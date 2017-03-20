@@ -933,7 +933,8 @@ StatusCode NameSpace::GetDirLockStatus(const std::string& path,
 
 StatusCode NameSpace::SetDirLockStatus(const std::string& path,
                                        StatusCode status,
-                                       const std::string& uuid) {
+                                       const std::string& uuid,
+                                       NameServerLog* log) {
     std::vector<std::string> paths;
     common::util::SplitPath(path, &paths);
     int64_t entry_id = kRootEntryid;
@@ -965,6 +966,7 @@ StatusCode NameSpace::SetDirLockStatus(const std::string& path,
     std::string info_buf;
     info.SerializeToString(&info_buf);
     db_->Put(leveldb::WriteOptions(), file_key, info_buf);
+    EncodeLog(log, kSyncWrite, file_key, info_buf);
     return kOK;
 }
 
