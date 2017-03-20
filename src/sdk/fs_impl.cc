@@ -132,13 +132,14 @@ int32_t FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num
         *num = response.files_size();
         *filelist = new BfsFileInfo[*num];
         for (int i = 0; i < *num; i++) {
-            BfsFileInfo& binfo =(*filelist)[i];
+            BfsFileInfo& bfile =(*filelist)[i];
             const FileInfo& info = response.files(i);
-            binfo.ctime = info.ctime();
-            binfo.mode = info.type();
-            binfo.size = info.size();
-            snprintf(binfo.name, sizeof(binfo.name), "%s", info.name().c_str());
-            snprintf(binfo.link, sizeof(binfo.link), "%s", info.sym_link().c_str());
+            bfile.ino = info.entry_id();
+            bfile.ctime = info.ctime();
+            bfile.mode = info.type();
+            bfile.size = info.size();
+            snprintf(bfile.name, sizeof(bfile.name), "%s", info.name().c_str());
+            snprintf(bfile.link, sizeof(bfile.link), "%s", info.sym_link().c_str());
         }
     }
     return OK;
@@ -188,7 +189,7 @@ int32_t FSImpl::Access(const char* path, int32_t mode) {
     }
     return response.status() == kOK ? 0 : GetErrorCode(response.status());
 }
-int32_t FSImpl::Stat(const char* path, BfsFileInfo* fileinfo) {
+int32_t FSImpl::Stat(const char* path, BfsFileInfo* bfile) {
     StatRequest request;
     StatResponse response;
     request.set_path(path);
@@ -201,10 +202,11 @@ int32_t FSImpl::Stat(const char* path, BfsFileInfo* fileinfo) {
     }
     if (response.status() == kOK) {
         const FileInfo& info = response.file_info();
-        fileinfo->ctime = info.ctime();
-        fileinfo->mode = info.type();
-        fileinfo->size = info.size();
-        snprintf(fileinfo->name, sizeof(fileinfo->name), "%s", info.name().c_str());
+        bfile->ino = info.entry_id();
+        bfile->ctime = info.ctime();
+        bfile->mode = info.type();
+        bfile->size = info.size();
+        snprintf(bfile->name, sizeof(bfile->name), "%s", info.name().c_str());
         return OK;
     }
     return GetErrorCode(response.status());
@@ -314,6 +316,30 @@ int32_t FSImpl::Chmod(int32_t mode, const char* path) {
             path, mode, StatusCode_Name(response.status()).c_str());
         return GetErrorCode(response.status());
     }
+    return OK;
+}
+int32_t FSImpl::IGet(int64_t ino, BfsFileInfo* bfile) {
+    IGetRequest request;
+    IGetResponse response;
+    request.set_entry_id(ino);
+    request.set_sequence_id(0);
+    bool ret = nameserver_client_->SendRequest(&NameServer_Stub::IGet,
+        &request, &response, 15, 1);
+    if (!ret) {
+        LOG(WARNING, "IGet rpc fail: E%ld", ino);
+        return TIMEOUT;
+    }
+    if (response.status() != kOK) {
+        LOG(WARNING, "IGet E%ld return: %s\n",
+            ino, StatusCode_Name(response.status()).c_str());
+        return GetErrorCode(response.status());
+    }
+    const FileInfo& info = response.file_info();
+    bfile->ino = info.entry_id();
+    bfile->ctime = info.ctime();
+    bfile->mode = info.type();
+    bfile->size = info.size();
+    snprintf(bfile->name, sizeof(bfile->name), "%s", info.name().c_str());
     return OK;
 }
 int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const WriteOptions& options) {
@@ -549,6 +575,8 @@ int32_t FSImpl::ShutdownChunkServerStat() {
         }
     }
 }
+
+
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
     FSImpl* impl = new FSImpl;

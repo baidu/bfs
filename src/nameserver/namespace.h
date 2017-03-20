@@ -57,6 +57,8 @@ public:
     bool UpdateFileInfo(const FileInfo& file_info, NameServerLog* log = NULL);
     /// Delete file
     bool DeleteFileInfo(const std::string file_key, NameServerLog* log = NULL);
+    /// Get file by entry_id
+    bool IGet(int64_t entry_id, FileInfo* info);
     /// Namespace version
     int64_t Version() const;
     /// Rebuild blockmap
@@ -85,6 +87,7 @@ private:
                                  int64_t* entry_id,
                                  std::string* path);
     bool GetFromStore(const std::string& key, FileInfo* info);
+    bool GetFromStore_i(const std::string& key, FileInfo* info);
     void SetupRoot();
     bool LookUp(const std::string& path, FileInfo* info);
     bool LookUp(int64_t pid, const std::string& name, FileInfo* info);
@@ -100,6 +103,7 @@ private:
 private:
     leveldb::DB* db_;   /// NameSpace storage
     leveldb::Cache* db_cache_;  // block cache for leveldb
+    leveldb::DB* db_i;  /// NameSpace storage entry_id->fileinfo
     int64_t version_;   /// Namespace version.
     volatile int64_t last_entry_id_;
     FileInfo root_path_;

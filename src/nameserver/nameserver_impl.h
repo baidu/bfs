@@ -134,6 +134,10 @@ public:
             const ChmodRequest* request,
             ChmodResponse* response,
             ::google::protobuf::Closure* done);
+    void IGet(::google::protobuf::RpcController* controller,
+            const IGetRequest* request,
+            IGetResponse* response,
+            ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
 private:
