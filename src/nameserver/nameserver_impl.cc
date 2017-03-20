@@ -1015,6 +1015,14 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
     }
     std::string path = NameSpace::NormalizePath(request->dir_path());
     FileLockGuard lock_guard(new WriteLock(path));
+    std::string parent_path(path, 0, path.find_last_of("/"));
+    FileInfo info;
+    if (!namespace_->CheckDirLockPermission(parent_path, request->uuid(), &info)) {
+        LOG(INFO, "%s has no permission, parent is locked by %s",
+                request->uuid().c_str(), info.dir_lock_holder_uuid().c_str());
+        response->set_status(kNoPermission);
+        done->Run();
+    }
     std::string holder;
     StatusCode status = namespace_->GetDirLockStatus(path, &holder);
     LOG(INFO, "%s try lock dir %s", request->uuid().c_str(), path.c_str());
@@ -1022,8 +1030,7 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
         //TODO log remote?
         if (status == kDirUnlock) {
             namespace_->SetDirLockStatus(path, kDirLocked, request->uuid());
-            LOG(INFO, "%s lock dir %s",
-                    request->uuid().c_str(), path.c_str());
+            LOG(INFO, "%s lock dir %s", request->uuid().c_str(), path.c_str());
             status = kOK;
         } else if (status == kDirLockCleaning) {
             std::vector<int64_t> blocks;
@@ -1040,8 +1047,14 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
     } else {
         //TODO log remote
         if (holder != request->uuid()) {
-            namespace_->SetDirLockStatus(path, kDirLockCleaning);
+            // must set dir lock stat to kDirLockCleaning before ListAllBlocks
+            namespace_->SetDirLockStatus(path, kDirLockCleaning, request->uuid());
             status = kDirLockCleaning;
+            std::vector<int64_t> blocks;
+            namespace_->ListAllBlocks(path, &blocks);
+            for (auto it = blocks.begin(); it != blocks.end(); ++it) {
+                block_mapping_manager_->MarkIncomplete(*it);
+            }
             LOG(INFO, "%s try clean %s dir lock",
                     request->uuid().c_str(), path.c_str());
         } else {

@@ -925,7 +925,7 @@ StatusCode NameSpace::GetDirLockStatus(const std::string& path,
         return kBadParameter;
     } else {
         if (holder && info.dir_lock_stat() == kDirLocked) {
-            *holder = info.dir_lock_stat();
+            *holder = info.dir_lock_holder_uuid();
         }
         return info.dir_lock_stat();
     }
@@ -957,7 +957,7 @@ StatusCode NameSpace::SetDirLockStatus(const std::string& path,
         return kNsNotFound;
     }
     info.set_dir_lock_stat(status);
-    if (status == kDirLockCleaning) {
+    if (status == kDirUnlock) {
         info.set_dir_lock_holder_uuid("");
     } else if (status == kDirLocked) {
         info.set_dir_lock_holder_uuid(uuid);
@@ -1057,7 +1057,8 @@ bool NameSpace::CheckDirLockPermission(const FileInfo& file_info,
                 uuid.c_str(), file_info.name().c_str(),
                 file_info.dir_lock_holder_uuid().c_str());
         return false;
-    } else if (status == kDirLockCleaning) {
+    } else if (status == kDirLockCleaning &&
+            file_info.dir_lock_holder_uuid() == uuid) {
         LOG(INFO, "%s no permission, %s dir lock is being cleaning",
                 uuid.c_str(), file_info.name().c_str());
         return false;

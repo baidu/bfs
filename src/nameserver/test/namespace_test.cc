@@ -252,10 +252,14 @@ TEST_F(NameSpaceTest, Rename) {
 
     /// rename dir after dir lock removed
     ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLockCleaning, ""));
+    // not allow self's writing when cleaning dir lock
     ASSERT_EQ(kNoPermission, ns.Rename("/home/dir2_lock", "/home/dir2",
+                             &need_unlink, &remove_file, "uuid0"));
+    // allow other's writing when cleaning dir lock
+    ASSERT_EQ(kOK, ns.Rename("/home/dir2_lock", "/home/dir2",
                              &need_unlink, &remove_file, "uuid1"));
     ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirUnlock, ""));
-    ASSERT_EQ(kOK, ns.Rename("/home/dir2_lock", "/home/dir2",
+    ASSERT_EQ(kOK, ns.Rename("/home/dir2", "/home/dir2_lock",
                              &need_unlink, &remove_file, "uuid1"));
 
     /// rename dir protected by dir lock
@@ -533,7 +537,7 @@ TEST_F(NameSpaceTest, CheckDirLockPermission) {
     ns.SetDirLockStatus("/abc/def/ghi", kDirLockCleaning, "uuid0");
     ASSERT_TRUE(ns.LookUp("/abc/def/ghi", &info));
     ASSERT_FALSE(ns.CheckDirLockPermission(info, "uuid0"));
-    ASSERT_FALSE(ns.CheckDirLockPermission(info, "uuid1"));
+    ASSERT_TRUE(ns.CheckDirLockPermission(info, "uuid1"));
     system("rm -rf ./db");
 }
 

@@ -79,6 +79,9 @@ public:
     StatusCode SetDirLockStatus(const std::string& path, StatusCode status,
                                 const std::string& uuid = "");
     void ListAllBlocks(const std::string& path, std::vector<int64_t>* result);
+    bool CheckDirLockPermission(const std::string& path,
+                                const std::string& uuid,
+                                FileInfo* info);
 private:
     enum FileType {
         kDefault = 0,
@@ -110,9 +113,6 @@ private:
     void InitBlockIdUpbound(NameServerLog* log);
     void UpdateBlockIdUpbound(NameServerLog* log);
     void ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result);
-    bool CheckDirLockPermission(const std::string& path,
-                                const std::string& uuid,
-                                FileInfo* info);
     bool CheckDirLockPermission(const FileInfo& info, const std::string& uuid);
 private:
     leveldb::DB* db_;   /// NameSpace storage
