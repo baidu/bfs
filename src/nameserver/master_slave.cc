@@ -295,6 +295,24 @@ void MasterSlaveImpl::Snapshot(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+
+    // term_ < request->term(): retired master brought up as a slave
+    // term_ > reqeust->term(): maybe master lost it's logdb, or something else...
+    if (term_ != request->term()) {
+        LOG(INFO, "%s master term %ld slave term %ld, cleanup namespace",
+            kLogPrefix.c_str(), request->term(), term_);
+        erase_callback_();
+        LOG(INFO, "%s cleanup namespace done", kLogPrefix.c_str());
+        term_ = request->term();
+        StatusCode s = logdb_->WriteMarker("term", term_);
+        if (s != kOK) {
+            LOG(FATAL, "%s Write marker term %ld failed", kLogPrefix.c_str(), term_);
+        }
+        response->set_success(false);
+        done->Run();
+        return;
+    }
+
     int64_t seq = request->seq();
     LOG(INFO, "%s Got snapshot seq %ld", kLogPrefix.c_str(), seq);
     if (seq == 0) {
@@ -366,6 +384,7 @@ void MasterSlaveImpl::ReplicateLog() {
         master_slave::AppendLogRequest request;
         master_slave::AppendLogResponse response;
         request.set_index(sync_idx_ + 1);
+        request.set_term(term_);
         std::string entry;
         for (int i = 0; i < FLAGS_log_batch_size; ++i) {
             StatusCode s = logdb_->Read(sync_idx_ + 1 + i, &entry);
@@ -496,8 +515,8 @@ void MasterSlaveImpl::ProcessCallback(int64_t index, bool timeout_check) {
 }
 
 void MasterSlaveImpl::LogStatus() {
-    LOG(INFO, "%s sync_idx_ = %d, current_idx_ = %d, applied_idx_ = %d, callbacks_ size = %d",
-        kLogPrefix.c_str(), sync_idx_, current_idx_, applied_idx_, callbacks_.size());
+    LOG(INFO, "%s sync_idx_ = %d current_idx_ = %d applied_idx_ = %d callbacks_size = %d term_ = %ld",
+        kLogPrefix.c_str(), sync_idx_, current_idx_, applied_idx_, callbacks_.size(), term_);
     StatusCode ret_a = logdb_->WriteMarker("applied_idx", applied_idx_);
     StatusCode ret_s = logdb_->WriteMarker("sync_idx", sync_idx_);
     if ((ret_a != kOK) || (ret_s != kOK)) {
@@ -551,6 +570,7 @@ void MasterSlaveImpl::CleanupLogdb() {
     if (s != kOK) {
         LOG(FATAL, "%s Write marker term %ld failed", kLogPrefix.c_str(), term_);
     }
+    LOG(INFO, "%s Cleanup logdb done, term_ = %ld", kLogPrefix.c_str(), term_);
 }
 
 } // namespace bfs
