@@ -30,6 +30,9 @@ enum StatusCode {
     kSyncMetaFailed = 801;
     kSafeMode = 802;
     kServiceStop = 803;
+    kDirLocked = 804;
+    kDirUnlock = 805;
+    kDirLockCleaning = 806;
 }
 
 enum ChunkServerStatus {

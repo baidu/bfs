@@ -877,6 +877,19 @@ int64_t NameSpace::GetNewBlockId() {
     return next_block_id_++;
 }
 
+StatusCode NameSpace::GetDirLockStatus(const std::string& path) {
+    return kDirUnlock;
+}
+
+void NameSpace::SetDirLockStatus(const std::string& path, StatusCode status,
+                                 const std::string& uuid) {
+
+}
+
+void NameSpace::ListAllBlocks(const std::string& path, std::vector<int64_t>* result) {
+
+}
+
 } // namespace bfs
 } // namespace baidu
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */

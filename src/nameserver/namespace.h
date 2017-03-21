@@ -68,6 +68,10 @@ public:
     void TailSnapshot(int32_t ns_id, std::string* logstr);
     void EraseNamespace();
     int64_t GetNewBlockId();
+    StatusCode GetDirLockStatus(const std::string& path);
+    void SetDirLockStatus(const std::string& path, StatusCode status,
+                          const std::string& uuid = "");
+    void ListAllBlocks(const std::string& path, std::vector<int64_t>* result);
 private:
     enum FileType {
         kDefault = 0,

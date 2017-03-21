@@ -134,6 +134,14 @@ public:
             const ChmodRequest* request,
             ChmodResponse* response,
             ::google::protobuf::Closure* done);
+    void LockDir(::google::protobuf::RpcController* controller,
+            const LockDirRequest* request,
+            LockDirResponse* response,
+            ::google::protobuf::Closure* done);
+    void UnlockDir(::google::protobuf::RpcController* controller,
+            const UnlockDirRequest* request,
+            UnlockDirResponse* response,
+            ::google::protobuf::Closure* done);
     bool WebService(const sofa::pbrpc::HTTPRequest&, sofa::pbrpc::HTTPResponse&);
 
 private:

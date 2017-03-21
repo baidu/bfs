@@ -999,12 +999,74 @@ void NameServerImpl::ChangeReplicaNum(::google::protobuf::RpcController* control
     done->Run();
 }
 
+void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
+                             const LockDirRequest* request,
+                             LockDirResponse* response,
+                             ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    std::string path = NameSpace::NormalizePath(request->dir_path());
+    FileLockGuard lock_guard(new WriteLock(path));
+    StatusCode status = namespace_->GetDirLockStatus(path);
+    if (status != kDirLocked) {
+        //TODO log remote?
+        if (status == kDirUnlock) {
+            namespace_->SetDirLockStatus(path, kDirLocked, request->uuid());
+            status = kOK;
+        } else if (status == kDirLockCleaning) {
+            std::vector<int64_t> blocks;
+            namespace_->ListAllBlocks(path, &blocks);
+            if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
+                //TODO log remote
+                namespace_->SetDirLockStatus(path, kDirUnlock);
+                status = kOK;
+            }
+        } // else status should be kBadParameter
+    } else {
+        //TODO log remote
+        namespace_->SetDirLockStatus(path, kDirLockCleaning);
+        status = kDirLockCleaning;
+    }
+    response->set_status(status);
+    done->Run();
+}
+void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
+                               const UnlockDirRequest* request,
+                               UnlockDirResponse* response,
+                               ::google::protobuf::Closure* done) {
+    if (!is_leader_) {
+        response->set_status(kIsFollower);
+        done->Run();
+        return;
+    }
+    std::string path = NameSpace::NormalizePath(request->dir_path());
+    FileLockGuard lock_guard(new WriteLock(path));
+    StatusCode status = namespace_->GetDirLockStatus(path);
+    if (status == kDirLocked) {
+        //TODO log remote
+        namespace_->SetDirLockStatus(path, kDirLockCleaning);
+        std::vector<int64_t> blocks;
+        //TODO add force lock interface which do not list children directory
+        namespace_->ListAllBlocks(path, &blocks);;
+        if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
+            status = kDirUnlock;
+        } else {
+            status = kDirLockCleaning;
+        }
+    }
+    response->set_status(status);
+    done->Run();
+}
+
 void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
     for (int i = 0; i < file_info.blocks_size(); i++) {
         int64_t block_id = file_info.blocks(i);
         int64_t version = file_info.version();
         block_mapping_manager_->RebuildBlock(block_id, file_info.replicas(),
-                                            version, file_info.size());
+                                             version, file_info.size());
     }
 }
 

@@ -40,6 +40,7 @@ public :
     void GetRecoverNum(int32_t bucket_id, RecoverBlockNum* recover_num);
     void ListRecover(RecoverBlockSet* recover_blocks);
     void MarkIncomplete(int64_t block_id);
+    bool CheckBlocksClosed(const std::vector<int64_t>& blocks);
 private:
     int32_t GetBucketOffset(int64_t block_id);
 private:

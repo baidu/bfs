@@ -159,5 +159,9 @@ void BlockMappingManager::MarkIncomplete(int64_t block_id) {
     block_mapping_[bucket_offset]->MarkIncomplete(block_id);
 }
 
+bool BlockMappingManager::CheckBlocksClosed(const std::vector<int64_t>& blocks) {
+    return true;
+}
+
 } //namespace bfs
 } //namespace baidu
