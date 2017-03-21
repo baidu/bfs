@@ -415,6 +415,7 @@ int32_t FSImpl::DeleteFile(const char* path) {
     return OK;
 }
 int32_t FSImpl::LockDirectory(const char* path) {
+    //TODO Support set timeout for LockDirectory
     LockDirRequest request;
     LockDirResponse response;
     request.set_dir_path(path);
