@@ -414,18 +414,28 @@ int32_t FSImpl::DeleteFile(const char* path) {
     }
     return OK;
 }
-int32_t FSImpl::LockDirectory(const char* path) {
-    //TODO Support set timeout for LockDirectory
+int32_t FSImpl::LockDirectory(const char* path, int32_t timeout) {
     LockDirRequest request;
     LockDirResponse response;
     request.set_dir_path(path);
     request.set_uuid(GetUUID());
+    int32_t start_lock_time = common::timer::now_time();
+    bool is_timeout = false;
     while (!nameserver_client_->SendRequest(&NameServer_Stub::LockDir,
                 &request, &response, 15, 1) || response.status() != kOK) {
-        sleep(5);
+        if (common::timer::now_time() > timeout + start_lock_time) {
+            LOG(INFO, "Get %s dir lock timeout", path);
+            is_timeout = true;
+            break;
+        } else {
+            sleep(5);
+        }
     }
-    assert(response.status() == kOK);
-    return OK;
+    if (is_timeout) {
+        return TIMEOUT;
+    } else {
+        return OK;
+    }
 }
 int32_t FSImpl::UnlockDirectory(const char* path) {
     UnlockDirRequest request;

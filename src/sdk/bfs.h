@@ -99,7 +99,7 @@ public:
     /// Delete Directory
     virtual int32_t DeleteDirectory(const char* path, bool recursive) = 0;
     /// Lock Directory
-    virtual int32_t LockDirectory(const char* path) = 0;
+    virtual int32_t LockDirectory(const char* path, int32_t timeout) = 0;
     /// Unlock Directory
     virtual int32_t UnlockDirectory(const char* path) = 0;
     /// Du
