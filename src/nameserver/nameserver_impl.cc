@@ -1093,13 +1093,18 @@ void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
     StatusCode status = namespace_->GetDirLockStatus(path);
     if (status == kDirLocked) {
         NameServerLog log;
-        namespace_->SetDirLockStatus(path, kDirLockCleaning, "", &log);
-        std::vector<int64_t> blocks;
-        namespace_->ListAllBlocks(path, &blocks);;
-        if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
+        if (request->force_unlock()) {
+            namespace_->SetDirLockStatus(path, kDirUnlock, "", &log);
             status = kDirUnlock;
         } else {
-            status = kDirLockCleaning;
+            namespace_->SetDirLockStatus(path, kDirLockCleaning, "", &log);
+            std::vector<int64_t> blocks;
+            namespace_->ListAllBlocks(path, &blocks);;
+            if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
+                status = kDirUnlock;
+            } else {
+                status = kDirLockCleaning;
+            }
         }
         response->set_status(status);
         LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,

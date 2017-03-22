@@ -437,11 +437,12 @@ int32_t FSImpl::LockDirectory(const char* path, int32_t timeout) {
         return OK;
     }
 }
-int32_t FSImpl::UnlockDirectory(const char* path) {
+int32_t FSImpl::UnlockDirectory(const char* path, bool force_unloak) {
     UnlockDirRequest request;
     UnlockDirResponse response;
     request.set_dir_path(path);
     request.set_uuid(GetUUID());
+    request.set_force_unlock(force_unloak);
     nameserver_client_->SendRequest(&NameServer_Stub::UnlockDir,
             &request, &response, 15, 1);
     //Don't care return value of rpc

@@ -357,6 +357,7 @@ message UnlockDirRequest {
     optional int64 sequence_id = 1;
     optional string dir_path = 2;
     optional string uuid = 3;
+    optional bool force_unlock = 4 [default = false];
 };
 
 message UnlockDirResponse {

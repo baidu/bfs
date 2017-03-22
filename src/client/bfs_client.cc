@@ -23,6 +23,7 @@
 
 DECLARE_string(flagfile);
 DECLARE_string(nameserver_nodes);
+DECLARE_int32(sdk_dir_lock_timeout);
 
 void print_usage() {
     printf("Use:\nbfs_client <command> path\n");
@@ -41,6 +42,8 @@ void print_usage() {
     printf("\t    stat : list current stat of the file system\n");
     printf("\t    ln <src> <dst>: create symlink\n");
     printf("\t    chmod <mode> <path> : change file mode bits\n");
+    printf("\t    lockdir <path> : lock the dir\n");
+    printf("\t    unlockdir <path> : unlock the dir\n");
 }
 
 int BfsTouchz(baidu::bfs::FS* fs, int argc, char* argv[]) {
@@ -514,6 +517,14 @@ int BfsShutdownStat(baidu::bfs::FS* fs) {
     return 0;
 }
 
+int BfsLockDir(baidu::bfs::FS* fs, int argc, char* argv[]) {
+    return fs->LockDirectory(argv[0], FLAGS_sdk_dir_lock_timeout);
+}
+
+int BfsUnlockDir(baidu::bfs::FS* fs, int argc, char* argv[]) {
+    return fs->UnlockDirectory(argv[0], true);
+}
+
 /// bfs client main
 int main(int argc, char* argv[]) {
     FLAGS_flagfile = "./bfs.flag";
@@ -569,6 +580,10 @@ int main(int argc, char* argv[]) {
         ret = BfsShutdownStat(fs);
     } else if (strcmp(argv[1], "ln") == 0) {
         ret = BfsLink(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "lockdir") == 0) {
+        ret = BfsLockDir(fs, argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "unlockdir") == 0) {
+        ret = BfsUnlockDir(fs, argc - 2, argv + 2);
     } else {
         fprintf(stderr, "Unknown command: %s\n", argv[1]);
     }
