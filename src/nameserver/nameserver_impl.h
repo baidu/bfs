@@ -146,7 +146,8 @@ public:
 
 private:
     void CheckLeader();
-    void RebuildBlockMapCallback(const FileInfo& file_info);
+    void RebuildBlockMapCallback(const std::vector<FileInfo>& file_info);
+    void RebuildBlockMapCallbackAsync(const std::vector<FileInfo>& file_info);
     void LogStatus();
     void CheckRecoverMode();
     void LeaveReadOnly();

@@ -94,7 +94,7 @@ void NameServerImpl::CheckLeader() {
     if (!sync_ || sync_->IsLeader()) {
         LOG(INFO, "Leader nameserver, rebuild block map.");
         NameServerLog log;
-        std::function<void (const FileInfo&)> task =
+        std::function<void (const std::vector<FileInfo>&)> task =
             std::bind(&NameServerImpl::RebuildBlockMapCallback, this, std::placeholders::_1);
         namespace_->Activate(task, &log);
         if (!LogRemote(log, std::function<void (bool)>())) {
@@ -1061,12 +1061,20 @@ void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
     done->Run();
 }
 
-void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
-    for (int i = 0; i < file_info.blocks_size(); i++) {
-        int64_t block_id = file_info.blocks(i);
-        int64_t version = file_info.version();
-        block_mapping_manager_->RebuildBlock(block_id, file_info.replicas(),
-                                             version, file_info.size());
+void NameServerImpl::RebuildBlockMapCallback(const std::vector<FileInfo>& file_info) {
+    work_thread_pool_->AddTask(std::bind(&NameServerImpl::RebuildBlockMapCallbackAsync,
+                                         this, file_info));
+}
+
+void NameServerImpl::RebuildBlockMapCallbackAsync(const std::vector<FileInfo>& file_info) {
+    for (auto it = file_info.begin(); it != file_info.end(); ++it) {
+        const FileInfo& file = *it;
+        for (int i = 0; i < file.blocks_size(); i++) {
+            int64_t block_id = file.blocks(i);
+            int64_t version = file.version();
+            block_mapping_manager_->RebuildBlock(block_id, file.replicas(),
+                                                 version, file.size());
+        }
     }
 }
 

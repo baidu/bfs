@@ -16,6 +16,7 @@
 #include <common/util.h>
 #include <common/atomic.h>
 #include <common/string_util.h>
+#include <common/counter.h>
 
 #include "nameserver/sync.h"
 
@@ -31,6 +32,8 @@ const int64_t kRootEntryid = 1;
 
 namespace baidu {
 namespace bfs {
+
+extern common::Counter g_blocks_num;
 
 NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     block_id_upbound_(1), next_block_id_(1) {
@@ -49,7 +52,7 @@ NameSpace::NameSpace(bool standalone): version_(0), last_entry_id_(1),
     }
 }
 
-void NameSpace::Activate(std::function<void (const FileInfo&)> callback, NameServerLog* log) {
+void NameSpace::Activate(std::function<void (const std::vector<FileInfo>&)> callback, NameServerLog* log) {
     std::string version_key(8, 0);
     version_key.append("version");
     std::string version_str;
@@ -672,13 +675,14 @@ StatusCode NameSpace::InternalDeleteDirectory(const FileInfo& dir_info,
     return ret_status;
 }
 
-bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) {
+bool NameSpace::RebuildBlockMap(std::function<void (const std::vector<FileInfo>&)> callback) {
     int64_t block_num = 0;
     int64_t file_num = 0;
     int64_t link_num = 0;
     std::set<int64_t> entry_id_set;
     entry_id_set.insert(root_path_.entry_id());
     leveldb::Iterator* it = db_->NewIterator(leveldb::ReadOptions());
+    std::vector<FileInfo> files;
     for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
         FileInfo file_info;
         bool ret = file_info.ParseFromArray(it->value().data(), it->value().size());
@@ -697,8 +701,10 @@ bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) 
                 ++block_num;
             }
             ++file_num;
-            if (callback) {
-                callback(file_info);
+            files.push_back(file_info);
+            if (callback && files.size() >= 1000) {
+                callback(files);
+                files.clear();
             }
         } else if (file_type == kSymlink) {
             ++link_num;
@@ -706,9 +712,16 @@ bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) 
             entry_id_set.insert(file_info.entry_id());
         }
     }
+    if (callback && files.size()) {
+        callback(files);
+    }
+    while (g_blocks_num.Get() != block_num) {
+        sleep(1);
+        LOG(INFO, "Rebuild process: %ld / %ld blocks", g_blocks_num.Get(), block_num);
+    }
     LOG(INFO, "RebuildBlockMap done. %ld directories,  %ld symlinks, %ld files, "
-              "%lu blocks, last_entry_id= E%ld",
-        entry_id_set.size(), link_num, file_num, block_num, last_entry_id_);
+              "%lu blocks, mapping size %lu last_entry_id= E%ld",
+        entry_id_set.size(), link_num, file_num, block_num, g_blocks_num.Get(), last_entry_id_);
     if (FLAGS_check_orphan) {
         std::vector<std::pair<std::string, std::string> > orphan_entrys;
         for (it->Seek(std::string(7, '\0') + '\1'); it->Valid(); it->Next()) {
