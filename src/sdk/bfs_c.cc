@@ -29,7 +29,11 @@ DECLARE_string(nameserver_nodes);
 extern "C"{
 
 struct bfs_fs_t {
-    baidu::bfs::FS*  rep;
+    baidu::bfs::FS*  bfs_fs;
+};
+
+struct bfs_file_t {
+    baidu::bfs::File* bfs_file;
 };
 
 bfs_fs_t* bfs_open_file_system(const char* flag_file) {
@@ -44,7 +48,7 @@ bfs_fs_t* bfs_open_file_system(const char* flag_file) {
     bfs_fs_t* fs = new bfs_fs_t;
     std::string ns_address = FLAGS_nameserver_nodes;
     bool ret = baidu::bfs::FS::OpenFileSystem(ns_address.c_str(),
-            &(fs->rep), baidu::bfs::FSOptions());
+            &(fs->bfs_fs), baidu::bfs::FSOptions());
     if (!ret) {
         delete fs;
         return NULL;
@@ -52,15 +56,57 @@ bfs_fs_t* bfs_open_file_system(const char* flag_file) {
     return fs;
 }
 
+bfs_file_t* bfs_open_file(const bfs_fs_t* fs, const char* path, int flag) {
+    if (flag != O_RDONLY && flag != O_WRONLY) {
+        return NULL;
+    }
+    bfs_file_t* file = new bfs_file_t;
+    int32_t ret = 0;
+    if (flag == O_RDONLY) {
+        ret = fs->bfs_fs->OpenFile(path, flag,
+                &(file->bfs_file), baidu::bfs::ReadOptions());
+
+    } else {
+        ret = fs->bfs_fs->OpenFile(path, flag,
+                &(file->bfs_file), baidu::bfs::WriteOptions());
+    }
+    if (ret != 0) {
+        delete file->bfs_file;
+        delete file;
+        file = NULL;
+    }
+    return file;
+}
+
+int bfs_close_file(bfs_file_t* file) {
+    int32_t ret = file->bfs_file->Close();
+    delete file->bfs_file;
+    file->bfs_file = NULL;
+    delete file;
+    return ret;
+}
+
+int bfs_write_file(bfs_file_t* file, const char* buf, int32_t len) {
+    return file->bfs_file->Write(buf, len);
+}
+
+int bfs_read_file(bfs_file_t* file, char* buf, int32_t len) {
+    return file->bfs_file->Read(buf, len);
+}
+
+int64_t bfs_seek(bfs_file_t* file, int64_t offset, int32_t whence) {
+    return file->bfs_file->Seek(offset, whence);
+}
+
 int bfs_create_directory(bfs_fs_t* fs, const char* path) {
-    return fs->rep->CreateDirectory(path);
+    return fs->bfs_fs->CreateDirectory(path);
 }
 
 int bfs_list_directory(bfs_fs_t* fs, const char* path) {
     char file_types[10] ={'-', 'd', 'l'};
     baidu::bfs::BfsFileInfo* files = NULL;
     int num;
-    int32_t ret = fs->rep->ListDirectory(path, &files, &num);
+    int32_t ret = fs->bfs_fs->ListDirectory(path, &files, &num);
     if (ret != 0) {
         return ret;
     }
@@ -99,29 +145,29 @@ int bfs_list_directory(bfs_fs_t* fs, const char* path) {
 }
 
 int bfs_delete_file(bfs_fs_t* fs, const char* path) {
-    return fs->rep->DeleteFile(path);
+    return fs->bfs_fs->DeleteFile(path);
 }
 
 int bfs_rename(bfs_fs_t* fs, const char* oldpath, const char* newpath) {
-    return fs->rep->Rename(oldpath, newpath);
+    return fs->bfs_fs->Rename(oldpath, newpath);
 }
 
 int bfs_touchz(bfs_fs_t* fs, const char* path) {
     baidu::bfs::File* file;
-    int32_t ret = fs->rep->OpenFile(path, O_WRONLY, 0644,
+    int32_t ret = fs->bfs_fs->OpenFile(path, O_WRONLY, 0644,
             &file, baidu::bfs::WriteOptions());
     delete file;
     return ret;
 }
 
 int bfs_symlink(bfs_fs_t* fs, const char* src, const char* dst) {
-    return fs->rep->Symlink(src, dst);
+    return fs->bfs_fs->Symlink(src, dst);
 }
 
 int bfs_cat(bfs_fs_t* fs, const char* path) {
     int64_t bytes = 0;
     baidu::bfs::File* file;
-    int32_t ret = fs->rep->OpenFile(path, O_RDONLY, &file,
+    int32_t ret = fs->bfs_fs->OpenFile(path, O_RDONLY, &file,
             baidu::bfs::ReadOptions());
     if (ret != 0) {
         return ret;
@@ -155,7 +201,7 @@ int bfs_get(bfs_fs_t* fs, const char* bfs, const char* local) {
     }
     baidu::common::timer::AutoTimer at(0, "BfsGet", bfs);
     baidu::bfs::File* file;
-    if (fs->rep->OpenFile(bfs, O_RDONLY, &file,
+    if (fs->bfs_fs->OpenFile(bfs, O_RDONLY, &file,
                 baidu::bfs::ReadOptions()) != 0) {
         return 2;
     }
@@ -214,7 +260,7 @@ int bfs_put(bfs_fs_t* fs, const char* local, const char* bfs) {
         return 3;
     }
     baidu::bfs::File* file;
-    if (fs->rep->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode,
+    if (fs->bfs_fs->OpenFile(target.c_str(), O_WRONLY | O_TRUNC, st.st_mode,
                 &file, baidu::bfs::WriteOptions()) != 0) {
         fclose(fp);
         return 4;
@@ -242,7 +288,7 @@ int bfs_put(bfs_fs_t* fs, const char* local, const char* bfs) {
 
 int64_t bfs_du_v2(bfs_fs_t* fs, const char* path) {
     int64_t du_size = 0;
-    if (fs->rep->DiskUsage(path, &du_size) != 0) {
+    if (fs->bfs_fs->DiskUsage(path, &du_size) != 0) {
         fprintf(stderr, "Compute Disk Usage fail: %s\n", path);
         return -1;
     }
@@ -267,7 +313,7 @@ int bfs_du(bfs_fs_t* fs, const char* path) {
     std::string prefix = str_path.substr(ppath.size());
     int num = 0;
     baidu::bfs::BfsFileInfo* files = NULL;
-    int32_t ret = fs->rep->ListDirectory(ppath.c_str(), &files, &num);
+    int32_t ret = fs->bfs_fs->ListDirectory(ppath.c_str(), &files, &num);
     if (ret != 0) {
         return ret;
     }
@@ -286,15 +332,15 @@ int bfs_du(bfs_fs_t* fs, const char* path) {
 }
 
 int bfs_rm_dir(bfs_fs_t* fs, const char* path, bool recursive) {
-    return fs->rep->DeleteDirectory(path, recursive);
+    return fs->bfs_fs->DeleteDirectory(path, recursive);
 }
 
-int bfs_change_replica_num(bfs_fs_t* fs, const char* path,
-        const char* replica_num) {
-    if (!isdigit(*replica_num)) {
+int bfs_change_bfs_fslica_num(bfs_fs_t* fs, const char* path,
+        const char* bfs_fslica_num) {
+    if (!isdigit(*bfs_fslica_num)) {
         return -1;
     }
-    return fs->rep->ChangeReplicaNum(path, strtol(replica_num, NULL, 10));
+    return fs->bfs_fs->ChangeReplicaNum(path, strtol(bfs_fslica_num, NULL, 10));
 }
 
 int bfs_chmod(bfs_fs_t* fs, const char* str_mode, const char* path) {
@@ -303,12 +349,12 @@ int bfs_chmod(bfs_fs_t* fs, const char* str_mode, const char* path) {
     if (end_pos != NULL) {
         return -1;
     }
-    return fs->rep->Chmod(mode, path);
+    return fs->bfs_fs->Chmod(mode, path);
 }
 
 int bfs_location(bfs_fs_t* fs, const char* path) {
     std::map<int64_t, std::vector<std::string> > locations;
-    int32_t ret = fs->rep->GetFileLocation(path, &locations);
+    int32_t ret = fs->bfs_fs->GetFileLocation(path, &locations);
     if (ret != 0) {
         return ret;
     }

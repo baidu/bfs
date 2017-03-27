@@ -14,9 +14,15 @@
 extern "C"{
 #endif
 
-typedef struct bfs_fs_t bfs_fs_t;
+struct bfs_fs_t;
+struct bfs_file_t;
 
 bfs_fs_t* bfs_open_file_system(const char* flag_file_path);
+bfs_file_t* bfs_open_file(const bfs_fs_t* fs, const char* path, int flag);
+int bfs_close_file(bfs_file_t* file);
+int bfs_write_file(bfs_file_t* file, const char* buf, int32_t len);
+int bfs_read_file(bfs_file_t* file, char* buf, int32_t len);
+int64_t bfs_seek(bfs_file_t* file, int64_t offset, int32_t whence);
 int bfs_create_directory(bfs_fs_t* fs, const char* path);
 int bfs_list_directory(bfs_fs_t* fs, const char* path);
 int bfs_delete_file(bfs_fs_t* fs, const char* path);
@@ -28,8 +34,8 @@ int bfs_get(bfs_fs_t* fs, const char* src, const char* tgt);
 int bfs_put(bfs_fs_t* fs, const char* local, const char* bfs);
 int64_t bfs_du_v2(bfs_fs_t* fs, const char* path);
 int bfs_du(bfs_fs_t* fs, const char* path);
-int bfs_rm_dir(bfs_fs_t* fs,  const char* path, bool recursive);
-int bfs_change_replica_num(bfs_fs_t* fs,  const char* path, const char* replica_num);
+int bfs_rm_dir(bfs_fs_t* fs, const char* path, bool recursive);
+int bfs_change_replica_num(bfs_fs_t* fs, const char* path, const char* replica_num);
 int bfs_chmod(bfs_fs_t* fs, const char* str_mode, const char* path);
 int bfs_location(bfs_fs_t* fs, const char* path);
 
