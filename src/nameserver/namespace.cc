@@ -25,6 +25,7 @@ DECLARE_int32(default_replica_num);
 DECLARE_int32(block_id_allocation_size);
 DECLARE_int32(snapshot_step);
 DECLARE_bool(check_orphan);
+DECLARE_bool(remove_orphan_entry);
 
 const int64_t kRootEntryid = 1;
 
@@ -726,6 +727,18 @@ bool NameSpace::RebuildBlockMap(std::function<void (const FileInfo&)> callback) 
             }
         }
         LOG(INFO, "Check orphan done, %lu entries", orphan_entrys.size());
+        if (FLAGS_remove_orphan_entry) {
+            for (std::vector<std::pair<std::string, std::string> >::iterator it =
+                    orphan_entrys.begin(); it != orphan_entrys.end(); ++it) {
+                int64_t entry_id;
+                std::string name;
+                DecodingStoreKey((*it).first, &entry_id, &name);
+                FileInfo file_info;
+                file_info.ParseFromArray((*it).second.data(), (*it).second.size());
+                db_->Delete(leveldb::WriteOptions(), (*it).first);
+                LOG(INFO, "Remove orphan entry E%ld", entry_id);
+            }
+        }
     }
     delete it;
     return true;
