@@ -380,6 +380,7 @@ void Block::DiskWrite() {
                 g_buffers_delete.Inc();
                 disk_file_size_ += len;
             }
+            fsync(file_desc_);
             disk_writing_ = false;
         }
         if (finished_ || deleted_) {
