@@ -535,7 +535,6 @@ void ChunkServerImpl::LocalWriteBlock(const WriteBlockRequest* request,
             block->SetExpectedSize(request->total_size());
         }
     } else {
-        block = block_manager_->FindBlock(block_id);
         if (!block) {
             LOG(WARNING, "[LocalWriteBlock] Block not found: #%ld ", block_id);
             response->set_status(kCsNotFound);
