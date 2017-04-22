@@ -102,10 +102,15 @@ int32_t FSImpl::CreateDirectory(const char* path) {
     request.set_sequence_id(0);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 3);
-    if (!ret) {
-        return TIMEOUT;
-    } else if (response.status() != kOK) {
-        return GetErrorCode(response.status());
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "CreateDirectory fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
     return OK;
 }
@@ -120,11 +125,12 @@ int32_t FSImpl::ListDirectory(const char* path, BfsFileInfo** filelist, int *num
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ListDirectory,
             &request, &response, 60, 1);
     if (!ret || response.status() != kOK) {
-        LOG(WARNING, "List fail: %s, ret= %d, status= %s\n",
+        LOG(WARNING, "ListDirectory fail: %s, ret= %d, status= %s\n",
             path, ret, StatusCode_Name(response.status()).c_str());
         if (!ret) {
             return TIMEOUT;
-        } else {
+        }
+        if (response.status() != kOK) {
             return GetErrorCode(response.status());
         }
     }
@@ -150,11 +156,15 @@ int32_t FSImpl::DiskUsage(const char* path, int64_t* du_size) {
     request.set_path(path);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DiskUsage,
             &request, &response, 3600, 1);
-    if (!ret) {
-        LOG(WARNING, "Compute Disk Usage fail: %s\n", path);
-        return TIMEOUT;
-    } else if (response.status() != kOK) {
-        return GetErrorCode(response.status());
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "Compute Disk Usage fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
     *du_size = response.du_size();
     return OK;
@@ -167,11 +177,15 @@ int32_t FSImpl::DeleteDirectory(const char* path, bool recursive) {
     request.set_recursive(recursive);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DeleteDirectory,
             &request, &response, 3600, 1);
-    if (!ret) {
-        LOG(WARNING, "DeleteDirectory fail: %s\n", path);
-        return TIMEOUT;
-    } else if (response.status() != kOK) {
-        return GetErrorCode(response.status());
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "DeleteDirectory fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
     return OK;
 }
@@ -182,11 +196,17 @@ int32_t FSImpl::Access(const char* path, int32_t mode) {
     request.set_sequence_id(0);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Stat,
         &request, &response, 15, 1);
-    if (!ret) {
-        LOG(WARNING, "Access fail: %s\n", path);
-        return TIMEOUT;
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "Access fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
-    return response.status() == kOK ? 0 : GetErrorCode(response.status());
+    return OK;
 }
 int32_t FSImpl::Stat(const char* path, BfsFileInfo* fileinfo) {
     StatRequest request;
@@ -195,19 +215,22 @@ int32_t FSImpl::Stat(const char* path, BfsFileInfo* fileinfo) {
     request.set_sequence_id(0);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Stat,
         &request, &response, 15, 1);
-    if (!ret) {
-        LOG(WARNING, "Stat rpc fail: %s", path);
-        return TIMEOUT;
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "Stat fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
-    if (response.status() == kOK) {
-        const FileInfo& info = response.file_info();
-        fileinfo->ctime = info.ctime();
-        fileinfo->mode = info.type();
-        fileinfo->size = info.size();
-        snprintf(fileinfo->name, sizeof(fileinfo->name), "%s", info.name().c_str());
-        return OK;
-    }
-    return GetErrorCode(response.status());
+    const FileInfo& info = response.file_info();
+    fileinfo->ctime = info.ctime();
+    fileinfo->mode = info.type();
+    fileinfo->size = info.size();
+    snprintf(fileinfo->name, sizeof(fileinfo->name), "%s", info.name().c_str());
+    return OK;
 }
 int32_t FSImpl::GetFileSize(const char* path, int64_t* file_size) {
     if (file_size == NULL) {
@@ -220,10 +243,12 @@ int32_t FSImpl::GetFileSize(const char* path, int64_t* file_size) {
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
         &request, &response, 15, 1);
     if (!ret || response.status() != kOK) {
-        LOG(WARNING, "GetFileSize(%s) return %s", path, StatusCode_Name(response.status()).c_str());
+        LOG(WARNING, "GetFileSize fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
         if (!ret) {
             return TIMEOUT;
-        } else {
+        }
+        if (response.status() != kOK) {
             return GetErrorCode(response.status());
         }
     }
@@ -279,11 +304,12 @@ int32_t FSImpl::GetFileLocation(const std::string& path,
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
                                                &request, &response, 15, 1);
     if (!ret || response.status() != kOK) {
-        LOG(WARNING, "GetFileLocation(%s) return %s", path.c_str(),
-                StatusCode_Name(response.status()).c_str());
+        LOG(WARNING, "GetFileLocation fail: %s, ret= %d, status= %s\n",
+            path.c_str(), ret, StatusCode_Name(response.status()).c_str());
         if (!ret) {
             return TIMEOUT;
-        } else {
+        }
+        if (response.status() != kOK) {
             return GetErrorCode(response.status());
         }
     }
@@ -305,14 +331,15 @@ int32_t FSImpl::Chmod(int32_t mode, const char* path) {
     request.set_path(path);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Chmod,
         &request, &response, 15, 1);
-    if (!ret) {
-        LOG(WARNING, "Chmod rpc fail: change %s mode to %u\n", path, mode);
-        return TIMEOUT;
-    }
-    if (response.status() != kOK) {
-        LOG(WARNING, "Chmod %s mode to %u return: %s\n",
-            path, mode, StatusCode_Name(response.status()).c_str());
-        return GetErrorCode(response.status());
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "Chmod fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
     return OK;
 }
@@ -345,14 +372,15 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     request.set_flags(flags);
     request.set_mode(mode&0777);
     request.set_replica_num(write_option.replica);
-    bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
+    bool ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 1);
-    if (!rpc_ret || response.status() != kOK) {
-        LOG(WARNING, "Open file for write fail: %s, rpc_ret= %d, status= %s\n",
-            path, rpc_ret, StatusCode_Name(response.status()).c_str());
-        if (!rpc_ret) {
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "Open file for write fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
             return TIMEOUT;
-        } else {
+        }
+        if (response.status() != kOK) {
             return GetErrorCode(response.status());
         }
     } else {
@@ -365,28 +393,28 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, File** file, const Rea
         return BAD_PARAMETER;
     }
     common::timer::AutoTimer at(100, "OpenFile", path);
-    int32_t ret = OK;
     *file = NULL;
 
     FileLocationRequest request;
     FileLocationResponse response;
     request.set_file_name(path);
     request.set_sequence_id(0);
-    bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
+    bool ret = nameserver_client_->SendRequest(&NameServer_Stub::GetFileLocation,
         &request, &response, 15, 1);
-    if (rpc_ret && response.status() == kOK) {
+    if (ret && response.status() == kOK) {
         FileImpl* f = new FileImpl(this, rpc_client_, path, flags, options);
         f->located_blocks_.CopyFrom(response.blocks());
         *file = new FileImplWrapper(f);
     } else {
-        LOG(WARNING, "OpenFile return %d, %s\n", rpc_ret, StatusCode_Name(response.status()).c_str());
-        if (!rpc_ret) {
-            ret = TIMEOUT;
-        } else {
-            ret = GetErrorCode(response.status());
+        LOG(WARNING, "OpenFile return %d, %s\n", ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
         }
     }
-    return ret;
+    return OK;
 }
 int32_t FSImpl::CloseFile(File* file) {
     return file->Close();
@@ -400,13 +428,15 @@ int32_t FSImpl::DeleteFile(const char* path) {
     // printf("Delete file: %s\n", path);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Unlink,
         &request, &response, 15, 1);
-    if (!ret) {
-        LOG(WARNING, "Unlink rpc fail: %s", path);
-        return TIMEOUT;
-    }
-    if (response.status() != kOK) {
-        LOG(WARNING, "Unlink %s return: %s\n", path, StatusCode_Name(response.status()).c_str());
-        return GetErrorCode(response.status());
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "DeleteFile fail: %s, ret= %d, status= %s\n",
+            path, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
     return OK;
 }
@@ -441,14 +471,15 @@ int32_t FSImpl::Rename(const char* oldpath, const char* newpath) {
     request.set_sequence_id(0);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Rename,
         &request, &response, 15, 1);
-    if (!ret) {
-        LOG(WARNING, "Rename rpc fail: %s to %s\n", oldpath, newpath);
-        return TIMEOUT;
-    }
-    if (response.status() != kOK) {
-        LOG(WARNING, "Rename %s to %s return: %s\n",
-            oldpath, newpath, StatusCode_Name(response.status()).c_str());
-        return GetErrorCode(response.status());
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "Rename fail: %s -> %s, ret= %d, status= %s\n",
+            oldpath, newpath, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
     return OK;
 }
@@ -485,14 +516,15 @@ int32_t FSImpl::Symlink(const char* src, const char* dst)
 
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Symlink,
         &request, &response, 15, 1);
-    if (!ret) {
-        LOG(WARNING, "CreateSymlink rpc fail: %s -> %s", dst, src);
-        return TIMEOUT;
-    }
-    if (response.status() != kOK) {
-        LOG(WARNING, "CreateSymlink %s -> %s return: %s",
-            dst, src, StatusCode_Name(response.status()).c_str());
-        return GetErrorCode(response.status());
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "Symlink fail: %s -> %s, ret= %d, status= %s\n",
+            src, dst, ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
     return OK;
 }
@@ -502,9 +534,15 @@ int32_t FSImpl::SysStat(const std::string& stat_name, std::string* result) {
     SysStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::SysStat,
                                                &request, &response, 60, 1);
-    if (!ret) {
-        LOG(WARNING, "SysStat fail %s", StatusCode_Name(response.status()).c_str());
-        return TIMEOUT;
+    if (!ret || response.status() != kOK) {
+        LOG(WARNING, "SysStat fail: %s, ret= %d, status= %s\n",
+            stat_name.c_str(), ret, StatusCode_Name(response.status()).c_str());
+        if (!ret) {
+            return TIMEOUT;
+        }
+        if (response.status() != kOK) {
+            return GetErrorCode(response.status());
+        }
     }
     bool stat_all = (stat_name == "StatAll");
     common::TPrinter tp(9);
@@ -546,10 +584,11 @@ int32_t FSImpl::ShutdownChunkServer(const std::vector<std::string>& cs_addr) {
            &request, &response, 60, 1);
    if (!ret || response.status() != kOK) {
        LOG(WARNING, "Shutdown ChunkServer fail. ret: %d, status: %s",
-               ret, StatusCode_Name(response.status()).c_str());
+           ret, StatusCode_Name(response.status()).c_str());
        if (!ret) {
            return TIMEOUT;
-       } else {
+       }
+       if (response.status() != kOK) {
            return GetErrorCode(response.status());
        }
    }
@@ -560,17 +599,17 @@ int32_t FSImpl::ShutdownChunkServerStat() {
     ShutdownChunkServerStatResponse response;
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::ShutdownChunkServerStat,
                                                &request, &response, 15, 1);
-    if (ret && response.status() == kOK) {
-        return response.in_offline_progress();
-    } else {
+    if (!ret || response.status() != kOK) {
         LOG(WARNING, "Get shutdown chunnkserver stat fail. ret: %d, status: %s\n",
-                ret, StatusCode_Name(response.status()).c_str());
+            ret, StatusCode_Name(response.status()).c_str());
         if (!ret) {
             return TIMEOUT;
-        } else {
+        }
+        if (response.status() != kOK) {
             return GetErrorCode(response.status());
         }
     }
+    return response.in_offline_progress();
 }
 
 bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
