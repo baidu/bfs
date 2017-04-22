@@ -36,7 +36,7 @@ BFS的设计目标是存储海量文件，因此目录树结构可能无法全�
 因为目录树在leveldb中存储的key为`父目录entry_id+名字`，所以同一目录下的目录和文件都有同样的前缀。只需查找到父目录的`entry_id`再扫描出以此`entry_id`开头的数据，就可以获得该目录下的所有目录和文件。
 
 ##### rename
-只需更改`父目录entry_id`和文件名就可以实现rename。
+只需更改文件名就可以实现rename。
 
 #### BlockMapping
 在BFS中，文件被切分成block，每一个block都有一个唯一的id作为标识，称为block_id。每个block都会有多个副本，存储在多个Chunkserver上（默认为三个），以提高数据的可靠性和可用性，每一个副本称为一个replica。BlockMapping维护了block和其replica所在Chunkserver的映射关系。
