@@ -20,14 +20,19 @@ namespace bfs {
 class RpcClient {
 public:
     RpcClient() {
-        // ¶¨Òå client ¶ÔÏó£¬Ò»¸ö client ³ÌĞòÖ»ĞèÒªÒ»¸ö client ¶ÔÏó
-        // ¿ÉÒÔÍ¨¹ı client_options Ö¸¶¨Ò»Ğ©ÅäÖÃ²ÎÊı£¬Æ©ÈçÏß³ÌÊı¡¢Á÷¿ØµÈ
+        // å®šä¹‰ client å¯¹è±¡ï¼Œä¸€ä¸ª client ç¨‹åºåªéœ€è¦ä¸€ä¸ª client å¯¹è±¡
+        // å¯ä»¥é€šè¿‡ client_options æŒ‡å®šä¸€äº›é…ç½®å‚æ•°ï¼Œè­¬å¦‚çº¿ç¨‹æ•°ã€æµæ§ç­‰
         sofa::pbrpc::RpcClientOptions options;
         options.max_pending_buffer_size = 128;
         _rpc_client = new sofa::pbrpc::RpcClient(options);
     }
     ~RpcClient() {
         delete _rpc_client;
+        _rpc_client = NULL;
+        for (auto it = _host_map.begin(); it != _host_map.end(); ++it) {
+            delete it->second;
+            it->second = NULL;
+        }
     }
     template <class T>
     bool GetStub(const std::string server, T** stub) {
@@ -37,8 +42,8 @@ public:
         if (it != _host_map.end()) {
             channel = it->second;
         } else {
-            // ¶¨Òå channel£¬´ú±íÍ¨Ñ¶Í¨µÀ£¬Ã¿¸ö·şÎñÆ÷µØÖ·¶ÔÓ¦Ò»¸ö channel
-            // ¿ÉÒÔÍ¨¹ı channel_options Ö¸¶¨Ò»Ğ©ÅäÖÃ²ÎÊı
+            // å®šä¹‰ channelï¼Œä»£è¡¨é€šè®¯é€šé“ï¼Œæ¯ä¸ªæœåŠ¡å™¨åœ°å€å¯¹åº”ä¸€ä¸ª channel
+            // å¯ä»¥é€šè¿‡ channel_options æŒ‡å®šä¸€äº›é…ç½®å‚æ•°
             sofa::pbrpc::RpcChannelOptions channel_options;
             channel = new sofa::pbrpc::RpcChannel(_rpc_client, server, channel_options);
             _host_map[server] = channel;
@@ -52,7 +57,7 @@ public:
                     const Request*, Response*, Callback*),
                     const Request* request, Response* response,
                     int32_t rpc_timeout, int retry_times) {
-        // ¶¨Òå controller ÓÃÓÚ¿ØÖÆ±¾´Îµ÷ÓÃ£¬²¢Éè¶¨³¬Ê±Ê±¼ä£¨Ò²¿ÉÒÔ²»ÉèÖÃ£¬È±Ê¡Îª10s£©
+        // å®šä¹‰ controller ç”¨äºæ§åˆ¶æœ¬æ¬¡è°ƒç”¨ï¼Œå¹¶è®¾å®šè¶…æ—¶æ—¶é—´ï¼ˆä¹Ÿå¯ä»¥ä¸è®¾ç½®ï¼Œç¼ºçœä¸º10sï¼‰
         sofa::pbrpc::RpcController controller;
         controller.SetTimeout(rpc_timeout * 1000L);
         for (int32_t retry = 0; retry < retry_times; ++retry) {
