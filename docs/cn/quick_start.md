@@ -46,7 +46,7 @@ BFS内置一致性协议选主，所以部署不依赖外部协调模块。
 #### 配置
 一个典型的bfs配置文件:  
 \# 公共配置  
---bfs_log=../log/bfs.log   # log文件的存储路径  
+--bfs_log=./log/bfs.log   # log文件的存储路径  
 --bfs_log_size=5120        # 单个log文件的大小  
 --bfs_log_limit=1024000    # 总的log限制,超过限制会删除旧的log  
 --bfs_log_level=4          # 日志级别 DEBUG = 2, INFO = 4, WARNING = 8, FATAL = 16,  
