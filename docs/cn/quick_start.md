@@ -63,7 +63,7 @@ BFS内置一致性协议选主，所以部署不依赖外部协调模块。
 --chunkserver_max_unfinished_byte=2147483648 # 未完成的写请求会占用ChunkServer内存,为避免OOM,设置了一个上限超出后就拒绝新请求.  
 --block_store_path=/home/disk1,/home/disk2   # 数据存储目录, 每个磁盘指定一个  
   
-\#SDK配置
+\#SDK配置  
 --sdk_file_reada_len=10485760                # 文件预读最大长度，当判断用户在顺序读文件时，会自动开启预读。  
 
 #### 分布式部署
