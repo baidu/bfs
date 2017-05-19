@@ -383,7 +383,10 @@ StatusCode NameSpace::Rename(const std::string& old_path,
                              FileInfo* remove_file,
                              NameServerLog* log) {
     *need_unlink = false;
-    if (old_path == "/" || new_path == "/" || old_path == new_path) {
+    if (old_path == new_path) {
+        return kOK;
+    }
+    if (old_path == "/" || new_path == "/") {
         return kBadParameter;
     }
     FileInfo old_file;
@@ -412,8 +415,8 @@ StatusCode NameSpace::Rename(const std::string& old_path,
         }
         if (path_file.entry_id() == old_file.entry_id()) {
             LOG(INFO, "Rename %s to %s fail: %s is the parent directory of %s",
-                    old_path.c_str(), new_path.c_str(), old_path.c_str(),
-                    new_path.c_str());
+                old_path.c_str(), new_path.c_str(), old_path.c_str(),
+                new_path.c_str());
             return kBadParameter;
         }
         parent_id = path_file.entry_id();
