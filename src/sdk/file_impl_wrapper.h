@@ -7,6 +7,7 @@
 #define  BFS_SDK_FILE_IMPL_WRAPPER_H_
 
 #include "bfs.h"
+#include "noncopyable.h"
 
 #include <memory>
 
@@ -17,7 +18,7 @@ class FileImpl;
 class FSImpl;
 class RpcClient;
 
-class FileImplWrapper : public File {
+class FileImplWrapper : public File, public noncopyable {
 public:
     FileImplWrapper(FSImpl* fs, RpcClient* rpc_client,
             const std::string& name, int32_t flags, const WriteOptions& options);
@@ -34,9 +35,6 @@ public:
     virtual int32_t Close();
 private:
     std::shared_ptr<FileImpl> impl_;
-    // No copying allowed
-    FileImplWrapper(const FileImplWrapper&);
-    void operator=(const FileImplWrapper&);
 };
 
 } // namespace bfs
