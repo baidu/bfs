@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-killall -9 nameserver
-killall -9 chunkserver
-killall -9 bfs_client
+killall -9 nameserver  > /dev/null 2>&1
+killall -9 chunkserver > /dev/null 2>&1
+killall -9 bfs_client  > /dev/null 2>&1
 
 rm -rf nameserver* chunkserver*
 rm -rf master* slave*

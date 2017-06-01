@@ -21,6 +21,9 @@ fi
 
 
 sleep 5
+if [ "$1"x == "raft"x ]; then
+    sleep 30
+fi
 
 # Test sl
 ./bfs_client ls /
@@ -110,6 +113,9 @@ do
 done;
 
 sleep 10
+if [ "$1"x == "raft"x ]; then
+    sleep 30
+fi
 ./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
 
