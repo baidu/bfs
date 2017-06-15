@@ -24,6 +24,7 @@ DECLARE_double(select_chunkserver_local_factor);
 DECLARE_int32(blockreport_interval);
 DECLARE_int32(blockreport_size);
 DECLARE_int32(expect_chunkserver_num);
+DECLARE_int64(chunkserver_total_disk_safe_space);
 
 namespace baidu {
 namespace bfs {
@@ -322,7 +323,7 @@ void ChunkServerManager::HandleHeartBeat(const HeartBeatRequest* request, HeartB
 void ChunkServerManager::ListChunkServers(::google::protobuf::RepeatedPtrField<ChunkServerInfo>* chunkservers) {
     MutexLock lock(&mu_, "ListChunkServers", 10);
     for (ServerMap::iterator it = chunkservers_.begin();
-                it != chunkservers_.end(); ++it) {
+            it != chunkservers_.end(); ++it) {
         ChunkServerInfo* src = it->second;
         ChunkServerInfo* dst = chunkservers->Add();
         dst->CopyFrom(*src);
@@ -335,7 +336,8 @@ double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
     double data_score = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
-    if (data_score > 0.95 || space_left < (5L << 30) || pending_score > 1.0) {
+    if (data_score > 0.95 || pending_score > 1.0
+            || space_left < (FLAGS_chunkserver_total_disk_safe_space << 20)) {
         return 1.0;
     }
     return (data_score * data_score + pending_score) / 2;
