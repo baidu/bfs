@@ -25,7 +25,7 @@ LDFLAGS = -L$(PBRPC_PATH)/lib -lsofa-pbrpc \
 SO_LDFLAGS += -rdynamic $(DEPS_LDPATH) $(SO_DEPS_LDFLAGS) -lpthread -lrt -lz -ldl \
 	      -shared -Wl,--version-script,so-version-script # hide symbol of thirdparty libs
 
-CXXFLAGS = -std=c++11 -Wall -fPIC $(OPT)
+CXXFLAGS = -std=$(STD_FLAG) -Wall -fPIC $(OPT)
 FUSEFLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_PATH)/include
 FUSE_LL_FLAGS = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I$(FUSE_LL_PATH)/include
 

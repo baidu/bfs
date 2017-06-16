@@ -66,6 +66,7 @@ before_script:
     - echo 'TCMALLOC_PATH=./thirdparty' >> depends.mk
     - echo 'COMMON_PATH=./common/output' >> depends.mk
     - echo 'LEVELDB_PATH=./thirdparty' >> depends.mk
+    - echo 'STD_FLAG=c++11' >> depends.mk
 
 script: make -j4 && make check && make test
 
