@@ -15,6 +15,7 @@
 
 DECLARE_int32(keepalive_timeout);
 DECLARE_int32(chunkserver_max_pending_buffers);
+DECLARE_int32(chunkserver_disk_data_store_limit_percent);
 DECLARE_int32(recover_speed);
 DECLARE_int32(recover_dest_limit);
 DECLARE_int32(heartbeat_interval);
@@ -335,7 +336,9 @@ double ChunkServerManager::GetChunkServerLoad(ChunkServerInfo* cs) {
     double data_score = cs->data_size() * 1.0 / cs->disk_quota();
     int64_t space_left = cs->disk_quota() - cs->data_size();
 
-    if (data_score > 0.95 || space_left < (5L << 30) || pending_score > 1.0) {
+    if (data_score > FLAGS_chunkserver_disk_data_store_limit_percent * 1.0 / 100
+            || space_left < (5L << 30)
+            || pending_score > 1.0) {
         return 1.0;
     }
     return (data_score * data_score + pending_score) / 2;
