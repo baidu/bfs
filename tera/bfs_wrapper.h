@@ -58,6 +58,10 @@ public:
     virtual int32_t Copy(const std::string& from, const std::string& to);
     /// Returns 0 on success.
     virtual int32_t ListDirectory(const std::string& path, std::vector<std::string>* result);
+    /// Returns 0 on success.
+    virtual int32_t LockDirectory(const std::string& path) { return 0; };
+    /// Returns 0 on success.
+    virtual int32_t UnlockDirectory(const std::string& path) { return 0; };
     /// Returns DfsFile handler on success, NULL on error.
     virtual leveldb::DfsFile* OpenFile(const std::string& filename, int32_t flags);
 private:
