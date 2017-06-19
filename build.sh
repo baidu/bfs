@@ -68,6 +68,7 @@ if [ ! -f "${FLAG_DIR}/snappy_1_1_1" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libsnappy.a" ] \
     || [ ! -f "${DEPS_PREFIX}/include/snappy.h" ]; then
     cd snappy-1.1.1
+    autoreconf -ivf
     ./configure ${DEPS_CONFIG}
     make -j4
     make install
@@ -153,6 +154,22 @@ if [ ! -f "${FLAG_DIR}/gperftools_2_2_1" ] \
     touch "${FLAG_DIR}/gperftools_2_2_1"
 fi
 
+# test c++11
+set +e
+if test -z "$CXX"; then
+    CXX=g++
+fi
+
+$CXX --std=c++11 -x c++ - -o teststd.out 2>/dev/null <<EOF
+int main() {}
+EOF
+
+if [ "$?" = 0 ]; then
+    STD_FLAG=c++11
+fi
+rm -rf teststd.out
+set -e
+
 # common
 if [ ! -f "${FLAG_DIR}/common" ] \
     || [ ! -f "${DEPS_PREFIX}/lib/libcommon.a" ]; then
@@ -160,7 +177,9 @@ if [ ! -f "${FLAG_DIR}/common" ] \
     git clone -b cpp11 https://github.com/baidu/common
     cd common
     sed -i 's/^PREFIX=.*/PREFIX=..\/..\/thirdparty/' config.mk
-    sed -i '/^INCLUDE_PATH=*/s/$/ -I..\/..\/thirdparty\/boost_1_57_0/g' Makefile
+    if test -z "$STD_FLAG"; then
+        sed -i 's/-std=c++11/-std=c++0x/g' Makefile
+    fi
     make -j4
     make install
     cd -
@@ -184,6 +203,12 @@ echo "GFLAG_PATH=./thirdparty" >> depends.mk
 echo "GTEST_PATH=./thirdparty" >> depends.mk
 echo "COMMON_PATH=./thirdparty" >> depends.mk
 echo "TCMALLOC_PATH=./thirdparty" >> depends.mk
+
+if test -z "$STD_FLAG"; then
+    echo "STD_FLAG=c++0x" >> depends.mk
+else
+    echo "STD_FLAG=c++11" >> depends.mk
+fi
 
 ########################################
 # build tera
