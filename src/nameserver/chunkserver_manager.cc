@@ -130,7 +130,7 @@ void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string
     std::set<int64_t> blocks;
     it->second->CleanUp(&blocks);
     LOG(INFO, "Remove ChunkServer C%d %s %s, cs_num=%d",
-            cs->id(), cs->address().c_str(), reason.c_str(), chunkserver_num_);
+            cs->id(), cs->ipaddress().c_str(), reason.c_str(), chunkserver_num_);
     cs->set_status(kCsCleaning);
     mu_.Unlock();
     block_mapping_manager_->DealWithDeadNode(id, blocks);
@@ -142,7 +142,7 @@ void ChunkServerManager::CleanChunkServer(ChunkServerInfo* cs, const std::string
     cs->set_recover_speed(0);
     if (std::find(chunkservers_to_offline_.begin(),
                   chunkservers_to_offline_.end(),
-                  cs->address()) == chunkservers_to_offline_.end()) {
+                  cs->ipaddress()) == chunkservers_to_offline_.end()) {
         if (cs->is_dead()) {
             cs->set_status(kCsOffLine);
         } else {
@@ -194,7 +194,7 @@ void ChunkServerManager::DeadCheck() {
             ChunkServerInfo* cs = *node;
             it->second.erase(node++);
             LOG(INFO, "[DeadCheck] ChunkServer dead C%d %s, cs_num=%d",
-                cs->id(), cs->address().c_str(), chunkserver_num_);
+                cs->id(), cs->ipaddress().c_str(), chunkserver_num_);
             cs->set_is_dead(true);
             if (cs->status() == kCsActive || cs->status() == kCsReadonly) {
                 cs->set_status(kCsWaitClean);
@@ -204,7 +204,7 @@ void ChunkServerManager::DeadCheck() {
                 thread_pool_->AddTask(task);
             } else {
                 LOG(INFO, "[DeadCheck] ChunkServer C%d %s is being clean",
-                    cs->id(), cs->address().c_str());
+                    cs->id(), cs->ipaddress().c_str());
             }
         }
         assert(it->second.empty());
@@ -390,7 +390,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
              sit != set.end(); ++sit) {
             ChunkServerInfo* cs = *sit;
             if (cs->status() == kCsReadonly) {
-                LOG(DEBUG, "Alloc ignore Chunkserver %s: is in offline progress", cs->address().c_str());
+                LOG(DEBUG, "Alloc ignore Chunkserver %s: is in offline progress", cs->ipaddress().c_str());
                 continue;
             }
             double load = cs->load();
@@ -400,7 +400,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
                 loads.push_back(std::make_pair(load - local_factor, cs));
             } else {
                 LOG(DEBUG, "Alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
-                    cs->address().c_str(), cs->data_size(),
+                    cs->ipaddress().c_str(), cs->data_size(),
                     cs->disk_quota(), cs->buffers());
             }
         }
@@ -421,7 +421,7 @@ bool ChunkServerManager::GetChunkServerChains(int num,
     } else {
         for (int i = 0; i < num; ++i) {
             ChunkServerInfo* cs = loads[i].second;
-            chains->push_back(std::make_pair(cs->id(), cs->address()));
+            chains->push_back(std::make_pair(cs->id(), cs->ipaddress()));
         }
     }
     return true;
@@ -472,7 +472,7 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
                 loads.push_back(std::make_pair(load, cs));
             } else {
                 LOG(DEBUG, "Recover alloc ignore: ChunkServer %s data %ld/%ld buffer %d",
-                    cs->address().c_str(), cs->data_size(),
+                    cs->ipaddress().c_str(), cs->data_size(),
                     cs->disk_quota(), cs->buffers());
             }
         }
@@ -493,7 +493,7 @@ bool ChunkServerManager::GetRecoverChains(const std::set<int32_t>& replica,
     RandomSelect(&loads, FLAGS_recover_dest_limit);
     for (int i = 0; i < static_cast<int>(loads.size()) && i < FLAGS_recover_dest_limit; ++i) {
         ChunkServerInfo* cs = loads[i].second;
-        chains->push_back(cs->address());
+        chains->push_back(cs->ipaddress());
     }
     return true;
 }
@@ -511,20 +511,20 @@ int ChunkServerManager::SelectChunkServerByZone(int num,
             if (FLAGS_select_chunkserver_by_tag && !tag.empty()) {
                 if (!tag_set.insert(tag).second) {
                     LOG(DEBUG, "Ignore by tag: %s %s",
-                        tag.c_str(), cs->address().c_str());
+                        tag.c_str(), cs->ipaddress().c_str());
                     continue;
                 }
             }
             LOG(DEBUG, "Local zone %s tag %s C%d ",
                 cs->zone().c_str(), cs->tag().empty() ? "null" : cs->tag().c_str(), cs->id());
-            chains->push_back(std::make_pair(cs->id(), cs->address()));
+            chains->push_back(std::make_pair(cs->id(), cs->ipaddress()));
             if (static_cast<int>(chains->size()) + (remote_server ? 1 : 0) >= num) {
                 break;
             }
         }
     }
     if (remote_server) {
-        chains->push_back(std::make_pair(remote_server->id(), remote_server->address()));
+        chains->push_back(std::make_pair(remote_server->id(), remote_server->ipaddress()));
         LOG(INFO, "Remote zone %s C%d ",
             remote_server->zone().c_str(), remote_server->id());
     }
@@ -557,7 +557,7 @@ bool ChunkServerManager::UpdateChunkServer(int cs_id, const std::string& tag, in
 }
 
 int32_t ChunkServerManager::AddChunkServer(const std::string& address,
-                                           const std::string& ip,
+                                           const std::string& ipaddress,
                                            const std::string& tag,
                                            int64_t quota) {
     mu_.AssertHeld();
@@ -568,6 +568,7 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     info->set_start_time(std::string(buf));
     info->set_id(id);
     info->set_address(address);
+    info->set_ipaddress(ipaddress);
     info->set_tag(tag);
     info->set_disk_quota(quota);
     if (std::find(chunkservers_to_offline_.begin(), chunkservers_to_offline_.end(),
@@ -578,6 +579,7 @@ int32_t ChunkServerManager::AddChunkServer(const std::string& address,
     }
     info->set_kick(false);
     std::string host = address.substr(0, address.find(':'));
+    std::string ip = ipaddress.substr(0, ipaddress.find(':'));
     LocationProvider loc(host, ip);
     info->set_zone(loc.GetZone());
     info->set_datacenter(loc.GetDataCenter());
@@ -600,7 +602,7 @@ std::string ChunkServerManager::GetChunkServerAddr(int32_t id) {
     MutexLock lock(&mu_, "GetChunkServerAddr", 10);
     ChunkServerInfo* cs = NULL;
     if (GetChunkServerPtr(id, &cs) && !cs->is_dead()) {
-        return cs->address();
+        return cs->ipaddress();
     }
     return "";
 }

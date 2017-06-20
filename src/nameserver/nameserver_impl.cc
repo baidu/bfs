@@ -179,8 +179,9 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
     sofa::pbrpc::RpcController* sofa_cntl =
         reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     const std::string& address = request->chunkserver_addr();
-    const std::string& ip_address = sofa_cntl->RemoteAddress();
-    const std::string cs_ip = ip_address.substr(ip_address.find(':'));
+    std::string port = address.substr(address.find(':'));
+    std::string ip_address = sofa_cntl->RemoteAddress();
+    ip_address = ip_address.substr(0, ip_address.find(':')) + port;
     LOG(INFO, "Register ip: %s", ip_address.c_str());
     int64_t version = request->namespace_version();
     if (version != namespace_->Version()) {
@@ -189,7 +190,7 @@ void NameServerImpl::Register(::google::protobuf::RpcController* controller,
         chunkserver_manager_->RemoveChunkServer(address);
     } else {
         LOG(INFO, "Register from %s, version= %ld", address.c_str(), version);
-        if (chunkserver_manager_->HandleRegister(cs_ip, request, response)) {
+        if (chunkserver_manager_->HandleRegister(ip_address, request, response)) {
             LeaveReadOnly();
         }
     }
@@ -1387,8 +1388,8 @@ bool NameServerImpl::WebService(const sofa::pbrpc::HTTPRequest& request,
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.id());
         table_str += "</td><td>";
-        table_str += "<a href=\"http://" + chunkserver.address() + "/dfs\">"
-               + chunkserver.address() + "</a>";
+        table_str += "<a href=\"http://" + chunkserver.ipaddress() + "/dfs\">"
+               + chunkserver.ipaddress() + "</a>";
         table_str += "</td><td>";
         table_str += common::NumToString(chunkserver.block_num());
         table_str += "</td><td>";

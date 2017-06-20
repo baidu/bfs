@@ -8,6 +8,7 @@ option cc_generic_services = true;
 message ChunkServerInfo {
     optional int32 id = 1;
     optional string address = 2;
+    optional string ipaddress = 18;
     optional string start_time = 17;
     optional int32 last_heartbeat = 3;
     optional int64 data_size = 4;
