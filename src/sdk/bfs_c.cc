@@ -37,7 +37,12 @@ struct bfs_file_t {
 };
 
 bfs_fs_t* bfs_open_file_system(const char* flag_file) {
-    std::string flag = "--flagfile=./bfs.flag";
+    std::string flag = "--flagfile=";
+    if (flag_file) {
+        flag += flag_file;
+    } else {
+        flag += "./bfs.flag";
+    }
     int argc = 1;
     char* file_path = new char[flag.size() + 1];
     strcpy(file_path, flag.c_str());
