@@ -11,7 +11,7 @@ The Baidu File System (BFS) is a distributed file system designed to support rea
 2. High throughput
 	* High performance data engine to maximize IO utils.
 3. Low latency
-	* Global load balance and slow node detection.
+	* Global load balance and straggling node detection.
 4. Linear scalability
 	* Support multi data center deployment and up to 10,000 data nodes.
 
@@ -31,7 +31,7 @@ The Baidu File System (BFS) is a distributed file system designed to support rea
 2. Find something you are interested in and start working on it.
 3. Test your code by simply running `make test` and `make check`.
 4. Make a pull request.
-5. Once your code has passed the code-review and merged, it will be run on thousands of servers :)
+5. Once your code has passed the code-review and merged, it will run on thousands of servers :)
 
 
 ## Contact us

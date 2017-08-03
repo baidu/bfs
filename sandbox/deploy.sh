@@ -10,8 +10,16 @@ if [ "$1"x = "x" ]; then
     ns_num=1;
 elif [ "$1x" == "raftx" ]; then
     ns_num=3
-elif [ "$1x" == "master_slave" ]; then
+elif [ "$1" == "master_slave" ]; then
     ns_num=2
+elif [ "$1" == "-h" ]; then
+    echo "Usage:"
+    echo "    $0 [mode = none | master_slave | raft | -h]"
+    echo "        none:         one nameserver, default mode."
+    echo "        master_slave: two nameservers, one is master and the other is slave."
+    echo "        raft:         three nameservers, master server is choosen by inbuilt raft protocol."
+    echo "        -h:           show this usage."
+    exit 0
 fi
 
 echo '--default_replica_num=3' >> bfs.flag
