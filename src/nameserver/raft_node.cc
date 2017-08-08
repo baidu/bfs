@@ -567,7 +567,15 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
             request->leader().c_str(), term,
             request->entries(0).log_data().c_str(), leader_commit);
         for (int i = 0; i < entry_count; i++) {
-            int64_t index =request->entries(i).index();
+            int64_t index = request->entries(i).index();
+            if (log_index_ >= index) {
+                LOG(INFO, "[raft] Ignore duplicate entry %ld, last log_index: %ld",
+                    index, log_index_);
+                continue;
+            } else if (log_index_ + 1 != index && log_index_ != -1) {
+                LOG(FATAL, "[Raft] Wrong index %ld in AppendEntries, last log_index: %ld",
+                    index, log_index_);
+            }
             bool ret = StoreLog(current_term_, index,
                                 request->entries(i).log_data());
             log_index_ = index;

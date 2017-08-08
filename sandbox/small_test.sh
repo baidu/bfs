@@ -9,9 +9,11 @@ set -e
 
 strategy=none;
 ns_num=1
+sleep_time=5
 if [ "$1"x = "raft"x ]; then
     strategy=raft
     ns_num=3
+    sleep_time=20
     bash ./deploy.sh raft
     bash ./start_bfs.sh raft
 else
@@ -20,7 +22,7 @@ else
 fi
 
 
-sleep 5
+sleep $sleep_time
 
 # Test sl
 ./bfs_client ls /
@@ -109,7 +111,7 @@ do
     cd -
 done;
 
-sleep 10
+sleep $sleep_time
 ./bfs_client get /bin/bfs_client ./binary
 rm -rf ./binary
 
