@@ -29,7 +29,7 @@ if [ ! -f "${FLAG_DIR}/boost_1_57_0" ] \
     if [ -e boost_1_57_0.tar.gz  ]; then
         rm boost_1_57_0.tar.gz 
     fi 
-    wget https://raw.githubusercontent.com/lylei9/boost_1_57_0/master/boost_1_57_0.tar.gz
+    wget --no-check-certificate https://raw.githubusercontent.com/lylei9/boost_1_57_0/master/boost_1_57_0.tar.gz
     tar zxf boost_1_57_0.tar.gz
     rm -rf ${DEPS_PREFIX}/boost_1_57_0
     mv boost_1_57_0 ${DEPS_PREFIX}/boost_1_57_0
