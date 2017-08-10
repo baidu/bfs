@@ -360,7 +360,6 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                     int64_t commit_index = match_index[mid_pos];
                     //LOG(INFO, "match vector[ %ld %ld %ld ]",
                     //    match_index[0], match_index[1], match_index[2]);
-                    assert(commit_index >= commit_index_);
                     if (commit_index > commit_index_) {
                         LOG(INFO, "Update commit_index from %ld to %ld",
                             commit_index_, commit_index);
