@@ -360,7 +360,6 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
                     int64_t commit_index = match_index[mid_pos];
                     //LOG(INFO, "match vector[ %ld %ld %ld ]",
                     //    match_index[0], match_index[1], match_index[2]);
-                    assert(commit_index >= commit_index_);
                     if (commit_index > commit_index_) {
                         LOG(INFO, "Update commit_index from %ld to %ld",
                             commit_index_, commit_index);
@@ -567,7 +566,15 @@ void RaftNodeImpl::AppendEntries(::google::protobuf::RpcController* controller,
             request->leader().c_str(), term,
             request->entries(0).log_data().c_str(), leader_commit);
         for (int i = 0; i < entry_count; i++) {
-            int64_t index =request->entries(i).index();
+            int64_t index = request->entries(i).index();
+            if (log_index_ >= index) {
+                LOG(INFO, "[raft] Ignore duplicate entry %ld, last log_index: %ld",
+                    index, log_index_);
+                continue;
+            } else if (log_index_ + 1 != index && log_index_ != -1) {
+                LOG(FATAL, "[Raft] Wrong index %ld in AppendEntries, last log_index: %ld",
+                    index, log_index_);
+            }
             bool ret = StoreLog(current_term_, index,
                                 request->entries(i).log_data());
             log_index_ = index;
