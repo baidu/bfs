@@ -37,18 +37,19 @@ struct bfs_file_t {
 };
 
 bfs_fs_t* bfs_open_file_system(const char* flag_file) {
-    std::string flag = "--flagfile=";
     if (flag_file) {
-        flag += flag_file;
+        FLAGS_flagfile = flag_file;
     } else {
-        flag += "./bfs.flag";
+        FLAGS_flagfile = "./bfs.flag";    
     }
+
+    // This function google::ParseCommandLineFlags(&argc, &argv, false),
+    // parse the config from the argv[1]. And the argv[0] just use to represent 
+    // a program name, it's not a config parameter.
     int argc = 1;
-    char* file_path = new char[flag.size() + 1];
-    strcpy(file_path, flag.c_str());
-    char** argv = &file_path;
+    char* name = const_cast<char *>("bfs_c.cc");
+    char** argv = &name;
     ::google::ParseCommandLineFlags(&argc, &argv, false);
-    delete[] file_path;
 
     bfs_fs_t* fs = new bfs_fs_t;
     std::string ns_address = FLAGS_nameserver_nodes;
