@@ -290,8 +290,8 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
     mu_.Unlock();
     int64_t max_index = 0;
     int64_t max_term = -1;
-    AppendEntriesRequest* request = new AppendEntriesRequest;
-    AppendEntriesResponse* response = new AppendEntriesResponse;
+    std::unique_ptr<AppendEntriesRequest> request(new AppendEntriesRequest);
+    std::unique_ptr<AppendEntriesResponse> response(new AppendEntriesResponse);
     request->set_term(current_term_);
     request->set_leader(self_);
     request->set_leader_commit(commit_index_);
@@ -332,7 +332,7 @@ void RaftNodeImpl::ReplicateLogForNode(uint32_t id) {
     RaftNode_Stub* node;
     rpc_client_->GetStub(nodes_[id], &node);
     bool ret = rpc_client_->SendRequest(node, &RaftNode_Stub::AppendEntries,
-                                        request, response, 1, 1);
+                                        request.get(), response.get(), 1, 1);
     LOG(INFO, "Replicate %d entrys to %s return %d",
         request->entries_size(), nodes_[id].c_str(), ret);
     delete node;
