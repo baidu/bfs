@@ -52,7 +52,7 @@ public:
 Mark::Mark() : fs_(NULL), file_size_(FLAGS_file_size << 10),
                exit_(false), has_error_(false) {
     if (!FS::OpenFileSystem(FLAGS_nameserver_nodes.c_str(), &fs_, FSOptions())) {
-        std::cerr << "Open filesytem failed " << FLAGS_nameserver_nodes << std::endl;
+        std::cerr << "Open filesystem failed " << FLAGS_nameserver_nodes << std::endl;
         exit(EXIT_FAILURE);
     }
 

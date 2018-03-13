@@ -734,7 +734,7 @@ void BlockMapping::ProcessRecoveredBlock(int32_t cs_id, int64_t block_id, Status
         return;
     }
     if (status == kCsNotFound) {
-        LOG(WARNING, "C%d doesnt't have block #%ld, remove from block mapping", cs_id, block_id);
+        LOG(WARNING, "C%d doesn't have block #%ld, remove from block mapping", cs_id, block_id);
         block->replica.erase(cs_id);
     }
     if (ret) {
