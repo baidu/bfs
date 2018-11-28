@@ -340,9 +340,9 @@ int bfs_du(bfs_fs_t* fs, const char* path) {
 int bfs_rm_dir(bfs_fs_t* fs, const char* path, bool recursive) {
     return fs->bfs_fs->DeleteDirectory(path, recursive);
 }
-
+//bug 修复
 int bfs_change_replica_num(bfs_fs_t* fs, const char* path,
-        const char* bfs_fslica_num) {  
+        const char* bfs_fslica_num) {
     if (!isdigit(*bfs_fslica_num)) {
         return -1;
     }
