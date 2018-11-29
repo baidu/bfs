@@ -531,7 +531,7 @@ void* bfs_init(struct fuse_conn_info *conn) {
         g_bfs_cluster = "localhost:8828";
     }
     if (!baidu::bfs::FS::OpenFileSystem(g_bfs_cluster.c_str(), &g_fs, baidu::bfs::FSOptions())) {
-        fprintf(stderr, BFS"Open file sytem: %s fail\n", g_bfs_cluster.c_str());
+        fprintf(stderr, BFS"Open file system: %s fail\n", g_bfs_cluster.c_str());
         abort();
     }
     int32_t ret = g_fs->Access(g_bfs_path.c_str(), R_OK | W_OK);
