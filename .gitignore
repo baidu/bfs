@@ -39,3 +39,4 @@ thirdparty
 output
 .build
 src/version.cc
+.DS_Store
