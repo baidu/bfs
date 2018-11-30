@@ -374,5 +374,17 @@ int bfs_location(bfs_fs_t* fs, const char* path) {
     return 0;
 }
 
+int bfs_status(bfs_fs_t* fs, const char* &status){
+    std::string stat_name("StatAll");    
+    std::string result;
+    int32_t ret = fs->bfs_fs->SysStat(stat_name, &result);
+     if (ret != 0) {
+        return ret;
+    }
+    status=result.c_str();  
+    return ret;
+
+}
+
 }
 /* vim: set expandtab ts=4 sw=4 sts=4 tw=100: */
