@@ -374,11 +374,16 @@ int bfs_location(bfs_fs_t* fs, const char* path) {
     return 0;
 }
 
-int bfs_status(bfs_fs_t* fs, const char* &status){
+int bfs_status(bfs_fs_t* fs, char* &status){
     std::string stat_name("StatAll");    
     std::string result;
     int32_t ret = fs->bfs_fs->SysStat(stat_name, &result);
-    status=result.c_str();  
+    if(status != NULL)
+        delete []status;
+    if(result.length()>0){
+        status=new char[result.length()+1];
+        strcpy(status,result.c_str());  
+    }    
     return ret;
 
 }

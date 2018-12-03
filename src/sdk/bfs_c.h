@@ -38,7 +38,7 @@ int bfs_rm_dir(bfs_fs_t* fs, const char* path, bool recursive);
 int bfs_change_replica_num(bfs_fs_t* fs, const char* path, const char* replica_num);
 int bfs_chmod(bfs_fs_t* fs, const char* str_mode, const char* path);
 int bfs_location(bfs_fs_t* fs, const char* path);
-int bfs_status(bfs_fs_t* fs, const char*  &status);
+int bfs_status(bfs_fs_t* fs, char*  &status);
 
 #ifdef __cplusplus
 }/*end extern "C" */
