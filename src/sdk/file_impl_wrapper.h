@@ -34,9 +34,6 @@ public:
     virtual int32_t Close();
 private:
     std::shared_ptr<FileImpl> impl_;
-    // No copying allowed
-    FileImplWrapper(const FileImplWrapper&);
-    void operator=(const FileImplWrapper&);
 };
 
 } // namespace bfs
