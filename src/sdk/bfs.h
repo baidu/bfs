@@ -99,9 +99,9 @@ public:
     /// Delete Directory
     virtual int32_t DeleteDirectory(const char* path, bool recursive) = 0;
     /// Lock Directory
-    virtual int32_t LockDirectory(const char* path) = 0;
+    virtual int32_t LockDirectory(const char* path, int32_t timeout = -1) = 0;
     /// Unlock Directory
-    virtual int32_t UnlockDirectory(const char* path) = 0;
+    virtual int32_t UnlockDirectory(const char* path, bool force_unloak = false) = 0;
     /// Du
     virtual int32_t DiskUsage(const char* path, int64_t* du_size) = 0;
     /// Access

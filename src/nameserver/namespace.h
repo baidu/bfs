@@ -32,19 +32,25 @@ public:
                       google::protobuf::RepeatedPtrField<FileInfo>* outputs);
     /// Create file by name
     StatusCode CreateFile(const std::string& file_name, int flags, int mode,
-                          int replica_num, std::vector<int64_t>* blocks_to_remove,
+                          int replica_num,
+                          std::vector<int64_t>* blocks_to_remove,
+                          const std::string& uuid = "",
                           NameServerLog* log = NULL);
     /// Remove file by name
-    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed, NameServerLog* log = NULL);
+    StatusCode RemoveFile(const std::string& path, FileInfo* file_removed,
+                          const std::string& uuid = "", NameServerLog* log = NULL);
     /// Remove director.
     StatusCode DeleteDirectory(const std::string& path, bool recursive,
-                               std::vector<FileInfo>* files_removed, NameServerLog* log = NULL);
+                               std::vector<FileInfo>* files_removed,
+                               const std::string& uuid = "",
+                               NameServerLog* log = NULL);
     StatusCode DiskUsage(const std::string& path, uint64_t* du_size);
     /// File rename
     StatusCode Rename(const std::string& old_path,
                       const std::string& new_path,
                       bool* need_unlink,
                       FileInfo* remove_file,
+                      const std::string& uuid = "",
                       NameServerLog* log = NULL);
     /// Symlink: dst -> src
     StatusCode Symlink(const std::string& src,
@@ -68,10 +74,15 @@ public:
     void TailSnapshot(int32_t ns_id, std::string* logstr);
     void EraseNamespace();
     int64_t GetNewBlockId();
-    StatusCode GetDirLockStatus(const std::string& path);
-    void SetDirLockStatus(const std::string& path, StatusCode status,
-                          const std::string& uuid = "");
+    StatusCode GetDirLockStatus(const std::string& path,
+                                std::string* holder = NULL);
+    StatusCode SetDirLockStatus(const std::string& path, StatusCode status,
+                                const std::string& uuid = "",
+                                NameServerLog* log = NULL);
     void ListAllBlocks(const std::string& path, std::vector<int64_t>* result);
+    bool CheckDirLockPermission(const std::string& path,
+                                const std::string& uuid,
+                                FileInfo* info);
 private:
     enum FileType {
         kDefault = 0,
@@ -80,8 +91,9 @@ private:
     };
     FileType GetFileType(int type) const;
     bool GetLinkSrcPath(const FileInfo& info, FileInfo* src_info);
-    StatusCode BuildPath(const std::string& path, FileInfo* file_info, std::string* fname,
-                                NameServerLog* log = NULL);
+    StatusCode BuildPath(const std::string& path, FileInfo* file_info,
+                         std::string* fname, const std::string& uuid = "",
+                         NameServerLog* log = NULL);
     static void EncodingStoreKey(int64_t entry_id,
                           const std::string& path,
                           std::string* key_str);
@@ -101,6 +113,8 @@ private:
                        const std::string& key, const std::string& value);
     void InitBlockIdUpbound(NameServerLog* log);
     void UpdateBlockIdUpbound(NameServerLog* log);
+    void ListAllBlocks(int64_t entry_id, std::vector<int64_t>* result);
+    bool CheckDirLockPermission(const FileInfo& info, const std::string& uuid);
 private:
     leveldb::DB* db_;   /// NameSpace storage
     leveldb::Cache* db_cache_;  // block cache for leveldb

@@ -160,6 +160,13 @@ void BlockMappingManager::MarkIncomplete(int64_t block_id) {
 }
 
 bool BlockMappingManager::CheckBlocksClosed(const std::vector<int64_t>& blocks) {
+    for (auto it = blocks.begin(); it != blocks.end(); ++it) {
+        int32_t bucket_offset = GetBucketOffset(*it);
+        RecoverStat stat = block_mapping_[bucket_offset]->GetRecoverStat(*it);
+        if (stat == kBlockWriting || stat == kIncomplete) {
+            return false;
+        }
+    }
     return true;
 }
 

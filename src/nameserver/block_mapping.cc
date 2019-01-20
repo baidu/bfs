@@ -969,5 +969,15 @@ void BlockMapping::MarkIncomplete(int64_t block_id) {
     }
 }
 
+RecoverStat BlockMapping::GetRecoverStat(int64_t block_id) {
+    MutexLock lock(&mu_);
+    NSBlock* block = NULL;
+    if (!GetBlockPtr(block_id, &block)) {
+        return kAny;
+    } else {
+        return block->recover_stat;
+    }
+}
+
 } // namespace bfs
 } // namespace baidu

@@ -100,6 +100,7 @@ int32_t FSImpl::CreateDirectory(const char* path) {
     request.set_file_name(path);
     request.set_mode(0755|(1<<9));
     request.set_sequence_id(0);
+    request.set_uuid(GetUUID());
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 3);
     if (!ret) {
@@ -165,6 +166,7 @@ int32_t FSImpl::DeleteDirectory(const char* path, bool recursive) {
     request.set_sequence_id(0);
     request.set_path(path);
     request.set_recursive(recursive);
+    request.set_uuid(GetUUID());
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::DeleteDirectory,
             &request, &response, 3600, 1);
     if (!ret) {
@@ -345,6 +347,7 @@ int32_t FSImpl::OpenFile(const char* path, int32_t flags, int32_t mode,
     request.set_flags(flags);
     request.set_mode(mode&0777);
     request.set_replica_num(write_option.replica);
+    request.set_uuid(GetUUID());
     bool rpc_ret = nameserver_client_->SendRequest(&NameServer_Stub::CreateFile,
         &request, &response, 15, 1);
     if (!rpc_ret || response.status() != kOK) {
@@ -397,6 +400,7 @@ int32_t FSImpl::DeleteFile(const char* path) {
     request.set_path(path);
     int64_t seq = common::timer::get_micros();
     request.set_sequence_id(seq);
+    request.set_uuid(GetUUID());
     // printf("Delete file: %s\n", path);
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Unlink,
         &request, &response, 15, 1);
@@ -410,24 +414,35 @@ int32_t FSImpl::DeleteFile(const char* path) {
     }
     return OK;
 }
-int32_t FSImpl::LockDirectory(const char* path) {
-    //TODO Support set timeout for LockDirectory
+int32_t FSImpl::LockDirectory(const char* path, int32_t timeout) {
     LockDirRequest request;
     LockDirResponse response;
     request.set_dir_path(path);
     request.set_uuid(GetUUID());
+    int32_t start_lock_time = common::timer::now_time();
+    bool is_timeout = false;
     while (!nameserver_client_->SendRequest(&NameServer_Stub::LockDir,
                 &request, &response, 15, 1) || response.status() != kOK) {
-        sleep(5);
+        if (common::timer::now_time() > timeout + start_lock_time) {
+            LOG(INFO, "Get %s dir lock timeout", path);
+            is_timeout = true;
+            break;
+        } else {
+            sleep(5);
+        }
     }
-    assert(response.status() == kOK);
-    return OK;
+    if (is_timeout) {
+        return TIMEOUT;
+    } else {
+        return OK;
+    }
 }
-int32_t FSImpl::UnlockDirectory(const char* path) {
+int32_t FSImpl::UnlockDirectory(const char* path, bool force_unloak) {
     UnlockDirRequest request;
     UnlockDirResponse response;
     request.set_dir_path(path);
     request.set_uuid(GetUUID());
+    request.set_force_unlock(force_unloak);
     nameserver_client_->SendRequest(&NameServer_Stub::UnlockDir,
             &request, &response, 15, 1);
     //Don't care return value of rpc
@@ -439,6 +454,7 @@ int32_t FSImpl::Rename(const char* oldpath, const char* newpath) {
     request.set_oldpath(oldpath);
     request.set_newpath(newpath);
     request.set_sequence_id(0);
+    request.set_uuid(GetUUID());
     bool ret = nameserver_client_->SendRequest(&NameServer_Stub::Rename,
         &request, &response, 15, 1);
     if (!ret) {
@@ -584,7 +600,9 @@ bool FS::OpenFileSystem(const char* nameserver, FS** fs, const FSOptions&) {
 }
 
 const std::string& FSImpl::GetUUID() {
-    static std::string uuid;
+    static std::string uuid = common::util::GetLocalHostName() + ":" +
+        common::NumToString(getpid()) + ":" +
+        common::NumToString(common::timer::now_time());
     return uuid;
 }
 

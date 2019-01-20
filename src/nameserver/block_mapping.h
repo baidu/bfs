@@ -81,6 +81,7 @@ public:
     void ListRecover(RecoverBlockSet* blocks);
     int32_t GetCheckNum();
     void MarkIncomplete(int64_t block_id);
+    RecoverStat GetRecoverStat(int64_t block_id);
 private:
     void DealWithDeadBlockInternal(int32_t cs_id, int64_t block_id);
     typedef std::map<int32_t, std::set<int64_t> > CheckList;

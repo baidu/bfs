@@ -387,7 +387,9 @@ void NameServerImpl::CreateFile(::google::protobuf::RpcController* controller,
     NameServerLog log;
     std::vector<int64_t> blocks_to_remove;
     FileLockGuard file_lock(new WriteLock(path));
-    StatusCode status = namespace_->CreateFile(path, flags, mode, replica_num, &blocks_to_remove, &log);
+    StatusCode status =
+        namespace_->CreateFile(path, flags, mode, replica_num,
+                               &blocks_to_remove, request->uuid(), &log);
     for (size_t i = 0; i < blocks_to_remove.size(); i++) {
         block_mapping_manager_->RemoveBlock(blocks_to_remove[i]);
     }
@@ -782,7 +784,8 @@ void NameServerImpl::Rename(::google::protobuf::RpcController* controller,
     FileInfo remove_file;
     NameServerLog log;
     FileLockGuard file_lock_guard(new WriteLock(oldpath, newpath));
-    StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink, &remove_file, &log);
+    StatusCode status = namespace_->Rename(oldpath, newpath, &need_unlink,
+                                           &remove_file, request->uuid(), &log);
     response->set_status(status);
     if (status != kOK) {
         done->Run();
@@ -847,7 +850,8 @@ void NameServerImpl::Unlink(::google::protobuf::RpcController* controller,
     FileInfo file_info;
     NameServerLog log;
     FileLockGuard file_lock_guard(new WriteLock(path));
-    StatusCode status = namespace_->RemoveFile(path, &file_info, &log);
+    StatusCode status = namespace_->RemoveFile(path, &file_info,
+                                               request->uuid(), &log);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s unlink file %s returns %s",
             ctl->RemoteAddress().c_str(), path.c_str(), StatusCode_Name(status).c_str());
@@ -908,7 +912,8 @@ void NameServerImpl::DeleteDirectory(::google::protobuf::RpcController* controll
     std::vector<FileInfo>* removed = new std::vector<FileInfo>;
     NameServerLog log;
     FileLockGuard file_lock_guard(new WriteLock(path));
-    StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed, &log);
+    StatusCode ret_status = namespace_->DeleteDirectory(path, recursive, removed,
+                                                        request->uuid(), &log);
     sofa::pbrpc::RpcController* ctl = reinterpret_cast<sofa::pbrpc::RpcController*>(controller);
     LOG(INFO, "Sdk %s delete directory %s returns %s",
             ctl->RemoteAddress().c_str(), path.c_str(), StatusCode_Name(ret_status).c_str());
@@ -1009,31 +1014,72 @@ void NameServerImpl::LockDir(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
+
     std::string path = NameSpace::NormalizePath(request->dir_path());
     FileLockGuard lock_guard(new WriteLock(path));
-    StatusCode status = namespace_->GetDirLockStatus(path);
+    std::string parent_path(path, 0, path.find_last_of("/"));
+    FileInfo info;
+    if (!namespace_->CheckDirLockPermission(parent_path, request->uuid(), &info)) {
+        LOG(INFO, "%s has no permission, parent is locked by %s",
+                request->uuid().c_str(), info.dir_lock_holder_uuid().c_str());
+        response->set_status(kNoPermission);
+        done->Run();
+    }
+
+    std::string holder;
+    StatusCode status = namespace_->GetDirLockStatus(path, &holder);
+    LOG(INFO, "%s try lock dir %s", request->uuid().c_str(), path.c_str());
+    bool need_log_remote = false;
+    NameServerLog log;
     if (status != kDirLocked) {
-        //TODO log remote?
         if (status == kDirUnlock) {
-            namespace_->SetDirLockStatus(path, kDirLocked, request->uuid());
+            namespace_->SetDirLockStatus(path, kDirLocked, request->uuid(), &log);
+            LOG(INFO, "%s lock dir %s", request->uuid().c_str(), path.c_str());
             status = kOK;
+            need_log_remote = true;
         } else if (status == kDirLockCleaning) {
             std::vector<int64_t> blocks;
             namespace_->ListAllBlocks(path, &blocks);
             if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
-                //TODO log remote
-                namespace_->SetDirLockStatus(path, kDirUnlock);
+                namespace_->SetDirLockStatus(path, kDirUnlock,
+                                             request->uuid(), &log);
+                LOG(INFO, "%s lock dir %s",
+                        request->uuid().c_str(), path.c_str());
                 status = kOK;
+                need_log_remote = true;
             }
         } // else status should be kBadParameter
     } else {
-        //TODO log remote
-        namespace_->SetDirLockStatus(path, kDirLockCleaning);
-        status = kDirLockCleaning;
+        if (holder != request->uuid()) {
+            // must set dir lock stat to kDirLockCleaning before ListAllBlocks
+            namespace_->SetDirLockStatus(path, kDirLockCleaning,
+                                         request->uuid(), &log);
+            status = kDirLockCleaning;
+            need_log_remote = true;
+            std::vector<int64_t> blocks;
+            namespace_->ListAllBlocks(path, &blocks);
+            for (auto it = blocks.begin(); it != blocks.end(); ++it) {
+                block_mapping_manager_->MarkIncomplete(*it);
+            }
+            LOG(INFO, "%s try clean %s dir lock",
+                    request->uuid().c_str(), path.c_str());
+        } else {
+            // double lock by the same sdk, ignore it
+            status = kOK;
+        }
     }
+
     response->set_status(status);
-    done->Run();
+    if (need_log_remote) {
+        LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                    controller, request, response, done,
+                    (std::vector<FileInfo>*)NULL, lock_guard,
+                    std::placeholders::_1));
+    } else {
+        done->Run();
+    }
 }
+
 void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
                                const UnlockDirRequest* request,
                                UnlockDirResponse* response,
@@ -1047,19 +1093,29 @@ void NameServerImpl::UnlockDir(::google::protobuf::RpcController* controller,
     FileLockGuard lock_guard(new WriteLock(path));
     StatusCode status = namespace_->GetDirLockStatus(path);
     if (status == kDirLocked) {
-        //TODO log remote
-        namespace_->SetDirLockStatus(path, kDirLockCleaning);
-        std::vector<int64_t> blocks;
-        //TODO add force lock interface which do not list children directory
-        namespace_->ListAllBlocks(path, &blocks);;
-        if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
+        NameServerLog log;
+        if (request->force_unlock()) {
+            namespace_->SetDirLockStatus(path, kDirUnlock, "", &log);
             status = kDirUnlock;
         } else {
-            status = kDirLockCleaning;
+            namespace_->SetDirLockStatus(path, kDirLockCleaning, "", &log);
+            std::vector<int64_t> blocks;
+            namespace_->ListAllBlocks(path, &blocks);;
+            if (block_mapping_manager_->CheckBlocksClosed(blocks)) {
+                status = kDirUnlock;
+            } else {
+                status = kDirLockCleaning;
+            }
         }
+        response->set_status(status);
+        LogRemote(log, std::bind(&NameServerImpl::SyncLogCallback, this,
+                    controller, request, response, done,
+                    (std::vector<FileInfo>*)NULL, lock_guard,
+                    std::placeholders::_1));
+    } else {
+        response->set_status(status);
+        done->Run();
     }
-    response->set_status(status);
-    done->Run();
 }
 
 void NameServerImpl::RebuildBlockMapCallback(const FileInfo& file_info) {
@@ -1616,7 +1672,8 @@ void NameServerImpl::CallMethod(const ::google::protobuf::MethodDescriptor* meth
         std::make_pair("PushBlockReport", work_thread_pool_),
         std::make_pair("SysStat", read_thread_pool_),
         std::make_pair("Chmod", work_thread_pool_),
-        std::make_pair("Symlink", work_thread_pool_)
+        std::make_pair("Symlink", work_thread_pool_),
+        std::make_pair("LockDir", work_thread_pool_)
 
     };
     static int method_num = sizeof(ThreadPoolOfMethod) /

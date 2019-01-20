@@ -1,3 +1,5 @@
+import "status_code.proto";
+
 package baidu.bfs;
 
 message FileInfo {
@@ -13,5 +15,7 @@ message FileInfo {
     optional int32 owner = 10;
     repeated string cs_addrs = 11;
     optional string sym_link = 12;
+    optional StatusCode dir_lock_stat = 13 [default = kDirUnlock];
+    optional string dir_lock_holder_uuid = 14;
 }
 

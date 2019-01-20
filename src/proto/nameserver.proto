@@ -43,6 +43,7 @@ message CreateFileRequest {
     optional int32 flags = 4;
     optional int32 replica_num = 5;
     optional string user = 7;
+    optional string uuid = 8;
 }
 
 message CreateFileResponse {
@@ -95,6 +96,7 @@ message RenameRequest {
     optional int64 sequence_id = 1;
     optional string oldpath = 2;
     optional string newpath = 3;
+    optional string uuid = 4;
 }
 message RenameResponse {
     optional int64 sequence_id = 1;
@@ -140,6 +142,7 @@ message FinishBlockResponse {
 message UnlinkRequest {
     optional int64 sequence_id = 1;
     optional string path = 2;
+    optional string uuid = 3;
 }
 message UnlinkResponse {
     optional int64 sequence_id = 1;
@@ -150,6 +153,7 @@ message DeleteDirectoryRequest {
     optional int64 sequence_id = 1;
     optional string path = 2;
     optional bool recursive = 3;
+    optional string uuid = 4;
 }
 message DeleteDirectoryResponse {
     optional int64 sequence_id = 1;
@@ -354,6 +358,7 @@ message UnlockDirRequest {
     optional int64 sequence_id = 1;
     optional string dir_path = 2;
     optional string uuid = 3;
+    optional bool force_unlock = 4 [default = false];
 };
 
 message UnlockDirResponse {

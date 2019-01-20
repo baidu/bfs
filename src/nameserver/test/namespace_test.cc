@@ -133,6 +133,14 @@ TEST_F(NameSpaceTest, CreateFile) {
     ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir2/file3", 0, 01755, -1, &blocks_to_remove));
     ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 01755, -1, &blocks_to_remove));
     ASSERT_EQ(kBadParameter, ns.CreateFile("/", 0, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir1/subdir1", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove, "uuid1"));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir1/file4", 0, 0, -1, &blocks_to_remove, "uuid0"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir1/subdir1", kDirLockCleaning, ""));
+    ASSERT_EQ(kNoPermission, ns.CreateFile("/dir1/subdir1/file5", 0, 0, -1, &blocks_to_remove, "uuid0"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir1/subdir1", kDirUnlock, ""));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir1/subdir1/file5", 0, 0, -1, &blocks_to_remove, "uuid0"));
+    system("rm -rf ./db");
 }
 
 TEST_F(NameSpaceTest, List) {
@@ -152,7 +160,10 @@ TEST_F(NameSpaceTest, List) {
 }
 
 TEST_F(NameSpaceTest, Symlink) {
+    FLAGS_namedb_path = "./db";
+    system("rm -rf ./db");
     NameSpace ns;
+    ASSERT_TRUE(CreateTree(&ns));
     std::vector<int64_t> blocks_to_remove;
     /// link -> file
     ASSERT_EQ(kOK, ns.Symlink("/dir1/subdir1/file3", "/link3"));
@@ -166,10 +177,14 @@ TEST_F(NameSpaceTest, Symlink) {
     ASSERT_EQ(kFileExists, ns.Symlink("/file1", "/file1"));
     /// none -> link
     ASSERT_EQ(kNsNotFound, ns.Symlink("/file000", "/link5"));
+    system("rm -rf ./db");
 }
 
 TEST_F(NameSpaceTest, Rename) {
+    FLAGS_namedb_path = "./db";
+    system("rm -rf ./db");
     NameSpace ns;
+    ASSERT_TRUE(CreateTree(&ns));
     bool need_unlink;
     FileInfo remove_file;
     /// self -> self
@@ -222,12 +237,42 @@ TEST_F(NameSpaceTest, Rename) {
 
 
     ///  link A -> link B
-    ASSERT_EQ(kOK, ns.Rename("/link4", "/link", &need_unlink, &remove_file));
+    ASSERT_EQ(kOK, ns.Rename("/link2", "/link4", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
     /// fileA -> fileB, B is link
     ASSERT_EQ(kOK, ns.Rename("/file2", "/link", &need_unlink, &remove_file));
     ASSERT_FALSE(need_unlink);
 
+    /// rename dir which parent protected by dir lock
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.Rename("/home/dir2", "/home/dir2_lock",
+                                       &need_unlink, &remove_file, "uuid1"));
+    ASSERT_EQ(kOK, ns.Rename("/home/dir2", "/home/dir2_lock",
+                             &need_unlink, &remove_file, "uuid0"));
+
+    /// rename dir after dir lock removed
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLockCleaning, ""));
+    // not allow self's writing when cleaning dir lock
+    ASSERT_EQ(kNoPermission, ns.Rename("/home/dir2_lock", "/home/dir2",
+                             &need_unlink, &remove_file, "uuid0"));
+    // allow other's writing when cleaning dir lock
+    ASSERT_EQ(kOK, ns.Rename("/home/dir2_lock", "/home/dir2",
+                             &need_unlink, &remove_file, "uuid1"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirUnlock, ""));
+    ASSERT_EQ(kOK, ns.Rename("/home/dir2", "/home/dir2_lock",
+                             &need_unlink, &remove_file, "uuid1"));
+
+    /// rename dir protected by dir lock
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.Rename("/home", "/home1",
+                             &need_unlink, &remove_file, "uuid1"));
+    ASSERT_EQ(kOK, ns.Rename("/home", "/home1",
+                             &need_unlink, &remove_file, "uuid0"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/home1", kDirLockCleaning, ""));
+    ASSERT_EQ(kOK, ns.Rename("/home1", "/home",
+                             &need_unlink, &remove_file, "uuid0"));
+    ASSERT_EQ(kDirLockCleaning, ns.GetDirLockStatus("/home"));
+    system("rm -rf ./db");
 }
 
 TEST_F(NameSpaceTest, RemoveFile) {
@@ -250,6 +295,19 @@ TEST_F(NameSpaceTest, RemoveFile) {
     ASSERT_EQ(kOK, ns.RemoveFile("/link1", &file_removed));
     ASSERT_EQ(11, file_removed.entry_id());
 
+    /// rm file protected by dir lock
+    std::vector<int64_t> blocks_to_remove;
+    ASSERT_EQ(kOK, ns.CreateFile("/dir/subdir1/file3", 0, 0, -1, &blocks_to_remove));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir/subdir1", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.RemoveFile("/dir/subdir1/file3", &file_removed, "uuid1"));
+    ASSERT_EQ(kOK, ns.RemoveFile("/dir/subdir1/file3", &file_removed, "uuid0"));
+    ASSERT_EQ(kOK, ns.CreateFile("/dir/subdir1/file4", 0, 0, -1, &blocks_to_remove, "uuid0"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir/subdir1", kDirLockCleaning, ""));
+    ASSERT_EQ(kNoPermission, ns.RemoveFile("/dir/subdir1/file4", &file_removed, "uuid1"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/dir/subdir1", kDirUnlock, ""));
+    ASSERT_EQ(kOK, ns.RemoveFile("/dir/subdir1/file4", &file_removed, "uuid1"));
+
+    system("rm -rf ./db");
 }
 
 TEST_F(NameSpaceTest, DeleteDirectory) {
@@ -295,6 +353,22 @@ TEST_F(NameSpaceTest, DeleteDirectory) {
     ASSERT_EQ(kOK, ns.DeleteDirectory("/", true, &files_removed));
     ASSERT_EQ(kOK, ns.ListDirectory("/", &outputs));
     ASSERT_EQ(0, outputs.size());
+
+    // Rmr dir with dir lock protected
+    std::vector<int64_t> blocks_to_remove;
+    ns.CreateFile("/tera", 0, 01755, -1, &blocks_to_remove);
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/tera", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.DeleteDirectory("/tera", true, &files_removed, "uuid1"));
+    ASSERT_EQ(kOK, ns.ListDirectory("/", &outputs));
+    ASSERT_EQ(1, outputs.size());
+    ASSERT_EQ(kOK, ns.DeleteDirectory("/tera", true, &files_removed, "uuid0"));
+    ASSERT_EQ(kOK, ns.ListDirectory("/", &outputs));
+    ASSERT_EQ(0, outputs.size());
+    ns.CreateFile("/tera", 0, 01755, -1, &blocks_to_remove);
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/tera", kDirLocked, "uuid0"));
+    ASSERT_EQ(kNoPermission, ns.DeleteDirectory("/tera", true, &files_removed, "uuid1"));
+    ASSERT_EQ(kOK, ns.SetDirLockStatus("/tera", kDirLockCleaning, ""));
+    ASSERT_EQ(kOK, ns.DeleteDirectory("/tera", true, &files_removed, "uuid1"));
 }
 
 TEST_F(NameSpaceTest, DeleteDirectory2) {
@@ -360,6 +434,110 @@ TEST_F(NameSpaceTest, GetNewBlockId) {
         NameSpace ns;
         ASSERT_EQ(ns.GetNewBlockId(), 1201);
     }
+    system("rm -rf ./db");
+}
+
+TEST_F(NameSpaceTest, ListAllBlocks) {
+    system("rm -rf ./db");
+    std::vector<int64_t> blocks_to_remove;
+    NameSpace ns;
+    ns.CreateFile("/abc", 0, 01755, -1, &blocks_to_remove);
+    ns.CreateFile("/abc/def", 0, 0, -1, &blocks_to_remove);
+    ns.CreateFile("/abc/ghi", 0, 0, -1, &blocks_to_remove);
+    FileInfo info;
+    ns.GetFileInfo("/abc/def", &info);
+    ASSERT_EQ(info.blocks_size(), 0);
+    info.add_blocks(ns.GetNewBlockId());
+    ns.UpdateFileInfo(info, NULL);
+    ns.GetFileInfo("/abc/ghi", &info);
+    info.add_blocks(ns.GetNewBlockId());
+    ns.UpdateFileInfo(info, NULL);
+    std::vector<int64_t> all_blocks;
+    ns.ListAllBlocks("/abc", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 2);
+    ns.CreateFile("/abc/jkl/mno", 0, 0, -1, &blocks_to_remove);
+    ns.GetFileInfo("abc/jkl/mno", &info);
+    info.add_blocks(ns.GetNewBlockId());
+    ns.UpdateFileInfo(info, NULL);
+    all_blocks.clear();
+    ns.ListAllBlocks("/abc", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 3);
+    all_blocks.clear();
+    ns.ListAllBlocks("/", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 3);
+    all_blocks.clear();
+    ns.ListAllBlocks("/abc/def", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 1);
+    all_blocks.clear();
+    ns.GetFileInfo("/abc/def", &info);
+    info.add_blocks(ns.GetNewBlockId());
+    ns.UpdateFileInfo(info, NULL);
+    ns.ListAllBlocks("/abc/def", &all_blocks);
+    ASSERT_EQ(all_blocks.size(), 2);
+    system("rm -rf ./db");
+}
+
+TEST_F(NameSpaceTest, GetAndSetDirLockStatus) {
+    system("rm -rf ./db");
+    NameSpace ns;
+    std::vector<int64_t> blocks_to_remove;
+    std::string path0("/abc");
+    ns.CreateFile(path0, 0, 01755, -1, &blocks_to_remove);
+    StatusCode status = ns.GetDirLockStatus(path0);
+    ASSERT_EQ(status, kDirUnlock);
+    status = ns.SetDirLockStatus(path0, kDirLocked);
+    ASSERT_EQ(status, kOK);
+    status = ns.GetDirLockStatus(path0);
+    ASSERT_EQ(status, kDirLocked);
+
+    std::string path1("/def");
+    status = ns.GetDirLockStatus(path1);
+    ASSERT_EQ(status, kNsNotFound);
+
+    std::string path2("/abc/ghi");
+    ns.CreateFile(path2, 0, 01755, -1, &blocks_to_remove);
+    status = ns.GetDirLockStatus(path2);
+    ASSERT_EQ(status, kDirLocked);
+    status = ns.SetDirLockStatus(path2, kDirLocked);
+    ASSERT_EQ(status, kNoPermission);
+
+    status = ns.SetDirLockStatus(path0, kDirLockCleaning);
+    ASSERT_EQ(status, kOK);
+    status = ns.GetDirLockStatus(path0);
+    ASSERT_EQ(status, kDirLockCleaning);
+
+    system("rm -rf ./db");
+}
+
+TEST_F(NameSpaceTest, CheckDirLockPermission) {
+    system("rm -rf ./db");
+    NameSpace ns;
+    std::vector<int64_t> blocks_to_remove;
+    FileInfo info;
+    ns.CreateFile("/abc/def/ghi", 0, 01755, -1, &blocks_to_remove);
+    ASSERT_TRUE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid0", &info));
+    ASSERT_TRUE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid1", &info));
+    ns.SetDirLockStatus("/abc/def/ghi", kDirLocked, "uuid0");
+    ASSERT_FALSE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid1", &info));
+    ASSERT_TRUE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid0", &info));
+    ns.SetDirLockStatus("/abc/def/ghi", kDirLockCleaning, "");
+    ASSERT_FALSE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid1", &info));
+    ASSERT_FALSE(ns.CheckDirLockPermission("/abc/def/ghi", "uuid0", &info));
+
+    ns.SetDirLockStatus("/abc/def/ghi", kDirUnlock, "");
+    ASSERT_TRUE(ns.LookUp("/abc/def/ghi", &info));
+    ASSERT_TRUE(ns.CheckDirLockPermission(info, "uuid0"));
+    ASSERT_TRUE(ns.CheckDirLockPermission(info, "uuid1"));
+
+    ns.SetDirLockStatus("/abc/def/ghi", kDirLocked, "uuid0");
+    ASSERT_TRUE(ns.LookUp("/abc/def/ghi", &info));
+    ASSERT_TRUE(ns.CheckDirLockPermission(info, "uuid0"));
+    ASSERT_FALSE(ns.CheckDirLockPermission(info, "uuid1"));
+
+    ns.SetDirLockStatus("/abc/def/ghi", kDirLockCleaning, "uuid0");
+    ASSERT_TRUE(ns.LookUp("/abc/def/ghi", &info));
+    ASSERT_FALSE(ns.CheckDirLockPermission(info, "uuid0"));
+    ASSERT_TRUE(ns.CheckDirLockPermission(info, "uuid1"));
     system("rm -rf ./db");
 }
 
