@@ -35,7 +35,7 @@ Disk::~Disk() {
     metadb_ = NULL;
 }
 
-bool Disk::LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback) {
+void Disk::LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback, int* ret_val) {
     MutexLock lock(&mu_);
     int64_t start_load_time = common::timer::get_micros();
     leveldb::Options options;
@@ -43,7 +43,8 @@ bool Disk::LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback)
     leveldb::Status s = leveldb::DB::Open(options, path_ + "meta/", &metadb_);
     if (!s.ok()) {
         LOG(WARNING, "Load blocks fail: %s", s.ToString().c_str());
-        return false;
+        *ret_val = -1;
+        return;
     }
 
     std::string version_key(8, '\0');
@@ -61,7 +62,8 @@ bool Disk::LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback)
         if (1 != sscanf(it->key().data(), "%ld", &block_id)) {
             LOG(WARNING, "Unknown key: %s\n", it->key().ToString().c_str());
             delete it;
-            return false;
+            *ret_val = -1;
+            return;
         }
         BlockMeta meta;
         if (!meta.ParseFromArray(it->value().data(), it->value().size())) {
@@ -97,13 +99,15 @@ bool Disk::LoadStorage(std::function<void (int64_t, Disk*, BlockMeta)> callback)
     }
     delete it;
     int64_t end_load_time = common::timer::get_micros();
-    LOG(INFO, "Disk %s Load %ld blocks, use %ld ms, namespace version: %ld",
-        path_.c_str(), block_num, (end_load_time - start_load_time) / 1000, namespace_version_);
+    LOG(INFO, "Disk %s Load %ld blocks, use %ld ms, namespace version: %ld, size %s",
+        path_.c_str(), block_num, (end_load_time - start_load_time) / 1000,
+        namespace_version_, common::HumanReadableString(counters_.data_size.Get()).c_str());
     if (namespace_version_ == 0 && block_num > 0) {
         LOG(WARNING, "Namespace version lost!");
     }
     quota_ += counters_.data_size.Get();
-    return true;
+    *ret_val = 1;
+    return;
 }
 
 std::string Disk::Path() const {

@@ -28,8 +28,12 @@ TEST_F(DataBlockTest, CreateBlock) {
     mkdir("./block123", 0755);
     std::string file_path("./block123");
     Disk disk(file_path, 1000000);
-    disk.LoadStorage(std::bind(AddBlock, std::placeholders::_1,
-                               std::placeholders::_2, std::placeholders::_3));
+    int ret_val;
+    std::function<void (int64_t, Disk*, BlockMeta)> callback = std::bind(AddBlock,
+                                                      std::placeholders::_1,
+                                                      std::placeholders::_2,
+                                                      std::placeholders::_3);
+    disk.LoadStorage(callback, &ret_val);
     BlockMeta meta;
     FileCache file_cache(10);
     int64_t block_id = 123;
@@ -51,8 +55,12 @@ TEST_F(DataBlockTest, WriteAndReadBlock) {
     mkdir("./block123", 0755);
     std::string file_path("./block123");
     Disk disk(file_path, 1000000);
-    disk.LoadStorage(std::bind(AddBlock, std::placeholders::_1,
-                               std::placeholders::_2, std::placeholders::_3));
+    int ret_val;
+    std::function<void (int64_t, Disk*, BlockMeta)> callback = std::bind(AddBlock,
+                                                      std::placeholders::_1,
+                                                      std::placeholders::_2,
+                                                      std::placeholders::_3);
+    disk.LoadStorage(callback, &ret_val);
     FileCache file_cache(10);
     int64_t block_id = 123;
     meta.set_block_id(block_id);
