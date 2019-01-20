@@ -137,12 +137,8 @@ int64_t Block::DiskUsed() const {
     return disk_file_size_;
 }
 
-bool Block::CleanUp(int64_t namespace_version) {
-    if (namespace_version != disk_->NamespaceVersion()) {
-        SetDeleted();
-        return true;
-    }
-    return false;
+int64_t Block::GetNamespaceVersion() {
+    return disk_->NamespaceVersion();
 }
 
 StatusCode Block::SetDeleted() {
