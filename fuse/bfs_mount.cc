@@ -9,14 +9,17 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <algorithm>
+
+#include <common/logging.h>
+
 #include <sdk/bfs.h>
 
 baidu::bfs::FS* g_fs;
 std::string g_bfs_path;
 std::string g_bfs_cluster;
 
-#define BFS "\e[0;32m[BFS]\e[0m "
-#define BFSERR "\e[0;31m[BFS]\e[0m "
+namespace baidu {
+namespace bfs {
 
 const int g_max_random_write_size = 256 * 1024 * 1024;
 
@@ -40,11 +43,11 @@ baidu::bfs::File* get_bfs_file(const struct fuse_file_info* finfo, MountFile** m
 }
 
 int bfs_getattr(const char* path, struct stat* st) {
-    fprintf(stderr, BFS"bfs_getattr(%s)\n", path);
+    LOG(DEBUG, "bfs_getattr(%s)", path);
     baidu::bfs::BfsFileInfo file;
     int32_t ret = g_fs->Stat((g_bfs_path + path).c_str(), &file);
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFS"stat %s fail, error code:%s\n",
+        LOG(WARNING, "stat %s fail, errcode: %s",
                 path, baidu::bfs::StrError(ret));
         return -ENOENT;
     }
@@ -67,29 +70,30 @@ int bfs_getattr(const char* path, struct stat* st) {
         }
     }
     st->st_blocks = (st->st_size - 1) / 512 + 1;
-    fprintf(stderr, BFS"bfs_getattr(%s) ctime=%u size=%ld\n", path, file.ctime, st->st_size);
     st->st_atime = file.ctime;
     st->st_ctime = file.ctime;
     st->st_mtime = file.ctime;
     st->st_nlink = 1;
+    LOG(DEBUG, "bfs_getattr(%s) ctime=%u size=%ld",
+            path, file.ctime, st->st_size);
     return 0;
 }
 
 int bfs_readlink(const char* path, char* , size_t) {
-    fprintf(stderr, BFS"readlink(%s)\n", path);
+    LOG(WARNING, "readlink(%s)", path);
     return EINVAL;
 }
 
 int bfs_mknod(const char* path, mode_t, dev_t) {
-    fprintf(stderr, BFS"mknode(%s)\n", path);
+    LOG(DEBUG, "mknode(%s)", path);
     return EPERM;
 }
 
 int bfs_mkdir(const char *path, mode_t) {
-    fprintf(stderr, BFS"mkdir(%s)\n", path);
+    LOG(DEBUG, "mkdir(%s)", path);
     int32_t ret = g_fs->CreateDirectory((g_bfs_path+path).c_str());
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFS"mkdir %s fail, error code %s\n",
+        LOG(WARNING, "mkdir %s fail, error code %s",
                 path, baidu::bfs::StrError(ret));
         return EACCES;
     }
@@ -97,10 +101,10 @@ int bfs_mkdir(const char *path, mode_t) {
 }
 
 int bfs_ulink(const char* path) {
-    fprintf(stderr, BFS"unlink(%s)\n", path);
+    LOG(DEBUG, "unlink(%s)", path);
     int32_t ret = g_fs->DeleteFile((g_bfs_path + path).c_str());
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFS"unlink %s fail, error code %s\n",
+        LOG(WARNING, "unlink %s fail, error code %s",
                 path, baidu::bfs::StrError(ret));
         return EACCES;
     }
@@ -108,10 +112,10 @@ int bfs_ulink(const char* path) {
 }
 
 int bfs_rmdir(const char* path) {
-    fprintf(stderr, BFS"unlink(%s)\n", path);
+    LOG(DEBUG, "unlink(%s)", path);
     int32_t ret = g_fs->DeleteDirectory((g_bfs_path + path).c_str(), true);
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFS"unlink %s fail, error code %s\n",
+        LOG(WARNING, "unlink %s fail, error code %s",
                 path, baidu::bfs::StrError(ret));
         return EACCES;
     }
@@ -119,15 +123,15 @@ int bfs_rmdir(const char* path) {
 }
 
 int bfs_symlink(const char* oldpath, const char* newpath) {
-    fprintf(stderr, BFS"symlink(%s, %s)\n", oldpath, newpath);
+    LOG(WARNING, "symlink(%s, %s", oldpath, newpath);
     return EPERM;
 }
 
 int bfs_rename(const char* oldpath, const char* newpath) {
-    fprintf(stderr, BFS"Rename(%s, %s)\n", oldpath, newpath);
+    LOG(DEBUG, "Rename(%s, %s", oldpath, newpath);
     int32_t ret = g_fs->Rename((g_bfs_path + oldpath).c_str(), (g_bfs_path + newpath).c_str());
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFS"Rename %s to %s fail, error code %s\n",
+        LOG(WARNING, "Rename %s to %s fail, error code %s",
                 oldpath, newpath, baidu::bfs::StrError(ret));
         return EACCES;
     }
@@ -135,22 +139,22 @@ int bfs_rename(const char* oldpath, const char* newpath) {
 }
 
 int bfs_link(const char* oldpath, const char* newpath) {
-    fprintf(stderr, BFS"link(%s, %s)\n", oldpath, newpath);
+    LOG(WARNING, "link(%s, %s)", oldpath, newpath);
     return EPERM;
 }
 
 int bfs_chmod(const char* name, mode_t mode) {
-    fprintf(stderr, BFS"chmod(%s, %d)\n", name, mode);
+    LOG(WARNING, "chmod(%s, %d)", name, mode);
     return 0;
 }
 
 int bfs_chown(const char* name, uid_t, gid_t) {
-    fprintf(stderr, BFS"chown(%s)\n", name);
+    LOG(WARNING, "chmod(%s)", name);
     return 0;
 }
 
 int bfs_truncate(const char* name, off_t offset) {
-    fprintf(stderr, BFS"truncate %s %ld\n", name, offset);
+    LOG(WARNING, "truncate %s %ld", name, offset);
     return EPERM;
 }
 
@@ -159,11 +163,12 @@ bool prepare_for_random_write(MountFile* mfile, bool write_only) {
     int64_t fsize = 0;
     int ret = g_fs->GetFileSize(mfile->file_path.c_str(), &fsize);
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFSERR"GetFileSize for random write fail: %s\n",
-                baidu::bfs::StrError(ret));
+        LOG(WARNING, "GetFileSize for random write %s fail: %s",
+                mfile->file_path.c_str(), baidu::bfs::StrError(ret));
         return false;
     } else if (fsize > g_max_random_write_size) {
-        fprintf(stderr, BFSERR"File too large for random write: %ld\n", fsize);
+        LOG(WARNING, "File %s too large for random write: %ld",
+               mfile->file_path.c_str(),  fsize);
         return false;
     }
     mfile->file_size = fsize;
@@ -177,22 +182,23 @@ bool prepare_for_random_write(MountFile* mfile, bool write_only) {
             delete bfs_file;
             bfs_file = NULL;
             if (ret != 0) {
-                fprintf(stderr, BFSERR"Close for random write fail: %s\n",
-                        baidu::bfs::StrError(ret));
+                LOG(WARNING, "Close %s for random write fail: %s",
+                        mfile->file_path.c_str(), baidu::bfs::StrError(ret));
                 return false;
             }
             ret = g_fs->OpenFile(mfile->file_path.c_str(), O_RDONLY,
                                  &bfs_file, baidu::bfs::ReadOptions());
             if (ret != baidu::bfs::OK) {
-                fprintf(stderr, BFSERR"Open source file for random write fail: %s\n",
-                        baidu::bfs::StrError(ret));
+                LOG(WARNING, "Open source file %s for random write fail",
+                        mfile->file_path.c_str(), baidu::bfs::StrError(ret));
                 return false;
             }
         }
         int64_t ret = bfs_file->Read(mfile->buf, mfile->file_size);
         if (ret < mfile->file_size) {
-            fprintf(stderr, BFSERR"Read for random write fail: %ld < %ld, %s\n",
-                    ret, mfile->file_size, baidu::bfs::StrError(ret));
+            LOG(WARNING, "Read %s for random write fail: %ld < %ld, %s",
+                    mfile->file_path.c_str(), ret, mfile->file_size,
+                    baidu::bfs::StrError(ret));
             return false;
         }
     }
@@ -213,16 +219,15 @@ bool is_random_write(MountFile* mfile) {
 }
 
 int bfs_open(const char* path, struct fuse_file_info* finfo) {
-    fprintf(stderr, BFS"open(%s, %o)\n", path, finfo->flags);
+    LOG(DEBUG, "Open(%s, %o)", path, finfo->flags);
     baidu::bfs::File* file = NULL;
     int32_t ret = g_fs->OpenFile((g_bfs_path + path).c_str(), O_RDONLY,
                                     &file, baidu::bfs::ReadOptions());
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFS"open(%s) fail, error code %s\n",
+        LOG(WARNING, "Open %s fail, error code: %s",
                 path, baidu::bfs::StrError(ret));
         return EACCES;
     }
-    fprintf(stderr, BFS"open(%s) return %p\n", path, file);
     MountFile* mfile = new MountFile(file, path);
     if (finfo->flags & O_RDWR || finfo->flags & O_WRONLY) {
         prepare_for_random_write(mfile, false);
@@ -234,7 +239,7 @@ int bfs_open(const char* path, struct fuse_file_info* finfo) {
 }
 
 int bfs_read(const char* path, char* buf, size_t len, off_t offset, struct fuse_file_info* finfo) {
-    fprintf(stderr, BFS"read(%s, %ld, %lu)\n", path, offset, len);
+    LOG(DEBUG, "Read %s %ld %lu", path, offset, len);
     MountFile* mfile = NULL;
     baidu::bfs::File* file = get_bfs_file(finfo, &mfile);
     int ret = 0;
@@ -248,7 +253,7 @@ int bfs_read(const char* path, char* buf, size_t len, off_t offset, struct fuse_
         // Read from dfs.
         ret = file->Pread(buf, len, offset, true);
     }
-    fprintf(stderr, BFS"read(%s, %ld, %lu) return %d\n", path, offset, len, ret);
+    LOG(INFO, "Read %s %ld %lu return %d", path, offset, len, ret);
     if (ret < 0) {
         ret = -EIO;
     }
@@ -257,11 +262,12 @@ int bfs_read(const char* path, char* buf, size_t len, off_t offset, struct fuse_
 
 int bfs_random_write(MountFile* mfile, const char* buf,
                      size_t len, off_t offset) {
-    fprintf(stderr, BFS"random write(%s, %ld, %lu) old offset= %ld\n",
+    LOG(INFO, "Random write(%s, %ld, %lu) old offset = %ld",
             mfile->file_path.c_str(), offset, len, mfile->file_size);
     int64_t end_offset = offset + len;
     if (end_offset > g_max_random_write_size) {
-        fprintf(stderr, BFSERR"File too large for random write: %ld\n", end_offset);
+        LOG(WARNING, "File %s too large for random write %ld",
+                mfile->file_path.c_str(), end_offset);
         return -EIO;
     }
     int new_buf_len = std::min(static_cast<int64_t>(g_max_random_write_size),
@@ -284,7 +290,7 @@ int bfs_write(const char* path, const char* buf, size_t len,
               off_t offset, struct fuse_file_info* finfo) {
     const int zero_buf_size = 256 * 1024;
     static char zero_buf[zero_buf_size] = {0};
-    fprintf(stderr, BFS"write(%s, %ld, %lu)\n", path, offset, len);
+    LOG(INFO, "write(%s, %ld, %lu)", path, offset, len);
     MountFile* mfile = NULL;
     baidu::bfs::File* file = get_bfs_file(finfo, &mfile);
     // The first random write ops.
@@ -300,7 +306,7 @@ int bfs_write(const char* path, const char* buf, size_t len,
 
     if (mfile->file_size < offset) {
         // Padding if skip
-        fprintf(stderr, BFS"Write(%s, %ld, %lu) padding from %ld\n",
+        LOG(INFO, "write(%s %ld %lu) padding from %ld",
                 path, offset, len, mfile->file_size);
         while (mfile->file_size < offset) {
             int blen = std::min(static_cast<int64_t>(zero_buf_size), offset - mfile->file_size);
@@ -309,8 +315,9 @@ int bfs_write(const char* path, const char* buf, size_t len,
                 mfile->file_size += wlen;
             }
             if (wlen < blen) {
-                fprintf(stderr, BFS"Write(%s, %ld, %lu) padding at %ld fail w:%d b:%d\n",
-                        path, offset, len, mfile->file_size, wlen, blen);
+                LOG(WARNING, "write(%s, %ld, %lu) padding at %ld fail",
+                        "w %d b: %d", path, offset, len,
+                        mfile->file_size, wlen, blen);
                 return -EACCES;
             }
         }
@@ -319,7 +326,7 @@ int bfs_write(const char* path, const char* buf, size_t len,
     if (ret > 0) {
         mfile->file_size += ret;
     }
-    fprintf(stderr, BFS"write(%s, %ld, %lu) return %d\n", path, offset, len, ret);
+    LOG(INFO, "write(%s, %ld, %lu) return %d", path, offset, len, ret);
     if (ret < 0) {
         ret = -EACCES;
     }
@@ -327,21 +334,19 @@ int bfs_write(const char* path, const char* buf, size_t len,
 }
 
 int bfs_statfs(const char* path, struct statvfs*) {
-    fprintf(stderr, BFS"statfs(%s)\n", path);
+    LOG(WARNING, "statfs(%s", path);
     return 0;
 }
 
 int bfs_flush(const char* path, struct fuse_file_info* finfo) {
     baidu::bfs::File* file = get_bfs_file(finfo);
-    fprintf(stderr, BFS"flush(%s, %p)\n", path, file);
-    /*
+    LOG(INFO, "flush(%s)", path);
     int32_t ret = file->Flush();
     if (ret != OK) {
-        fprintf(stderr, BFS"flush(%s, %p) fail, error code %s\n",
-                path, file, baidu::bfs::StrError(ret));
+        LOG(WARNING, "fluse %s fail, error code: %s",
+                file, baidu::bfs::StrError(ret));
         return EIO;
     }
-    fprintf(stderr, BFS"flush(%s, %p) return 0\n", path, file);*/
     return 0;
 }
 
@@ -349,7 +354,7 @@ int bfs_fsync(const char* path, int /*datasync*/, struct fuse_file_info* finfo) 
     MountFile* mfile = NULL;
     get_bfs_file(finfo, &mfile);
     baidu::bfs::File*& file = mfile->bfs_file;
-    fprintf(stderr, BFS"fsync(%s, %p)\n", path, file);
+    LOG(INFO, "fsync(%s)", path);
 
     if (mfile->read_only) {
         return 0;
@@ -358,8 +363,8 @@ int bfs_fsync(const char* path, int /*datasync*/, struct fuse_file_info* finfo) 
     if (!is_random_write(mfile)) {
         int32_t ret = file->Sync();
         if (ret != baidu::bfs::OK) {
-            fprintf(stderr, BFSERR"fsync(%s, %p) fail, error code: %s\n",
-                    path, file, baidu::bfs::StrError(ret));
+            LOG(WARNING, "fsync(%s) fail, error code: %s",
+                    path, baidu::bfs::StrError(ret));
             retval = -EIO;
         }
     } else {
@@ -367,40 +372,38 @@ int bfs_fsync(const char* path, int /*datasync*/, struct fuse_file_info* finfo) 
         int32_t ret = g_fs->OpenFile((g_bfs_path + path).c_str() , O_WRONLY,
                                     0755, &file, baidu::bfs::WriteOptions());
         if (ret != baidu::bfs::OK) {
-            fprintf(stderr, BFSERR"create(%s) for sync fail, error code %s\n",
+            LOG(WARNING, "create %s for sync fail, error code: %s",
                     path, baidu::bfs::StrError(ret));
             retval = -EIO;
         }
         int wlen = file->Write(mfile->buf, mfile->file_size);
         if (wlen < mfile->file_size) {
-            fprintf(stderr, BFSERR"Write(%s, %ld) for fsync fail\n", path, mfile->file_size);
+            LOG(WARNING, "write(%s, %ld) for fsync fail", path, mfile->file_size);
             delete file;
             file = NULL;
             retval = -EIO;
         } else {
-            fprintf(stderr, BFS"Write(%s, %ld) for fsync\n", path ,mfile->file_size);
+            LOG(INFO, "write(%s, %ld) for fsync", path, mfile->file_size);
             delete[] mfile->buf;
             mfile->buf = NULL;
         }
     }
-    fprintf(stderr, BFS"fsync(%s, %p) return 0\n", path, file);
     return retval;
 }
 
 int bfs_release(const char* path, struct fuse_file_info* finfo) {
-    fprintf(stderr, BFS"release(%s)\n", path);
+    LOG(INFO, "release(%s", path);
     int retval = bfs_fsync(path, 0, finfo);
 
     MountFile* mfile = NULL;
     baidu::bfs::File* file = get_bfs_file(finfo, &mfile);
     int ret = file->Close();
     if (ret != 0) {
-        fprintf(stderr, BFSERR"Close file fail: %s\n", mfile->file_path.c_str());
+        LOG(WARNING, "Close file %s fail", mfile->file_path.c_str());
         retval = -EIO;
     }
     delete file;
     delete mfile;
-    fprintf(stderr, BFS"release(%s) return %d\n", path, retval);
     return retval;
 }
 
@@ -410,7 +413,7 @@ int (*setxattr) (const char *, const char *, const char *, size_t, int);
 /** Get extended attributes */
 int (*getxattr) (const char *, const char *, char *, size_t);
 int bfs_getxattr(const char * path, const char* key, char *, size_t) {
-    fprintf(stderr, BFS"bfs_getxattr(%s, %s)\n", path, key);
+    LOG(WARNING, "bfs_getxattr(%s, %s", path, key);
     return 0;
 }
 
@@ -421,14 +424,15 @@ int (*listxattr) (const char *, char *, size_t);
 int (*removexattr) (const char *, const char *);
 
 int bfs_opendir(const char* path, struct fuse_file_info *) {
-    fprintf(stderr, BFS"opendir(%s)\n", path);
+    fprintf(stderr, "opendir(%s)\n", path);
+    LOG(WARNING, "opendir(%s)", path);
     return 0;
 }
 
 int bfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
                               off_t offset, struct fuse_file_info* fi) {
     //return filler(buf, "hello-world", NULL, 0);
-    fprintf(stderr, BFS"readdir(%s)\n", path);
+    LOG(DEBUG, "readdir(%s", path);
     baidu::bfs::BfsFileInfo* files = NULL;
     int num = 0;
     g_fs->ListDirectory((g_bfs_path + path).c_str(), &files, &num);
@@ -453,17 +457,17 @@ int bfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
 }
 
 int bfs_releasedir(const char* path, struct fuse_file_info *) {
-    fprintf(stderr, BFS"readdir(%s)\n", path);
+    LOG(WARNING, "readdir(%s)", path);
     return 0;
 }
 
 int bfs_fsyncdir(const char* path, int, struct fuse_file_info*) {
-    fprintf(stderr, BFS"fsyncdir(%s)\n", path);
+    LOG(WARNING, "fsyncdir(%s)", path);
     return 0;
 }
 
 int bfs_access(const char* path, int mode) {
-    fprintf(stderr, BFS"access(%s, %d)\n", path, mode);
+    LOG(WARNING, "access(%s, %d)", path, mode);
     return 0;
 }
 
@@ -481,23 +485,22 @@ int bfs_access(const char* path, int mode) {
  */
 int (*create) (const char *, mode_t, struct fuse_file_info *);
 int bfs_create(const char* path, mode_t mode, struct fuse_file_info* finfo) {
-    fprintf(stderr, BFS"create(%s, %o, %o)\n", path, mode, finfo->flags);
+    LOG(INFO, "create(%s, %o, %o)", path, mode, finfo->flags);
     baidu::bfs::File* file = NULL;
     int32_t ret = g_fs->OpenFile((g_bfs_path + path).c_str() , O_WRONLY, mode,
                                  &file, baidu::bfs::WriteOptions());
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFS"create(%s) fail, error code %s\n",
+        LOG(WARNING, "create %s, fail, error code: %s",
                 path, baidu::bfs::StrError(ret));
         return EACCES;
     }
-    fprintf(stderr, BFS"create(%s) return %p\n", path, file);
     MountFile* mfile = new MountFile(file, path);
     finfo->fh = reinterpret_cast<uint64_t>(mfile);
     return 0;
 }
 
 int bfs_ftruncate(const char* path, off_t offset, struct fuse_file_info* finfo) {
-    fprintf(stderr, BFS"ftruncate(%s, %ld)\n", path, offset);
+    LOG(INFO, "ftruncate(%s, %ld", path, offset);
     MountFile* mfile = NULL;
     get_bfs_file(finfo, &mfile);
     mfile->file_size = offset;
@@ -505,38 +508,38 @@ int bfs_ftruncate(const char* path, off_t offset, struct fuse_file_info* finfo) 
 }
 
 int bfs_fgetattr(const char* path, struct stat* st, struct fuse_file_info*) {
-    fprintf(stderr, BFS"fgetattr(%s)\n", path);
+    LOG(INFO, "fgetattr(%s", path);
     return bfs_getattr(path, st);
 }
 
 int bfs_lock(const char* path, struct fuse_file_info *, int cmd, struct flock *) {
-    fprintf(stderr, BFS"lock(%s, %d)\n", path, cmd);
+    LOG(WARNING, "lock(%s, %d)", path, cmd);
     return 0;
 }
 
 int bfs_utimens(const char* path, const struct timespec tv[2]) {
-    fprintf(stderr, BFS"utimes(%s)\n", path);
+    LOG(WARNING, "utimes(%s)", path);
     return 0;
 }
 
 int bfs_bmap(const char* path, size_t blocksize, uint64_t *idx) {
-    fprintf(stderr, BFS"bmap(%s)\n", path);
+    LOG(WARNING, "bmap(%s)", path);
     return 0;
 }
 
 void* bfs_init(struct fuse_conn_info *conn) {
-    fprintf(stderr, BFS"init()\n");
+    LOG(INFO, "init");
     if (g_bfs_cluster.empty()) {
         //g_bfs_cluster = "yq01-tera60.yq01:8828";
         g_bfs_cluster = "localhost:8828";
     }
     if (!baidu::bfs::FS::OpenFileSystem(g_bfs_cluster.c_str(), &g_fs, baidu::bfs::FSOptions())) {
-        fprintf(stderr, BFS"Open file sytem: %s fail\n", g_bfs_cluster.c_str());
+        LOG(ERROR, "Open file system %s fail", g_bfs_cluster.c_str());
         abort();
     }
     int32_t ret = g_fs->Access(g_bfs_path.c_str(), R_OK | W_OK);
     if (ret != baidu::bfs::OK) {
-        fprintf(stderr, BFS"Access %s fail, error code %s\n",
+        LOG(ERROR, "access %s fail, error code: %s",
                 g_bfs_path.c_str(), baidu::bfs::StrError(ret));
         abort();
     }
@@ -544,7 +547,7 @@ void* bfs_init(struct fuse_conn_info *conn) {
 }
 
 void bfs_destroy(void*) {
-    fprintf(stderr, BFS"destroy()\n");
+    LOG(WARNING, "destroy");
 }
 
 int parse_args(int* argc, char* argv[]) {
@@ -555,7 +558,7 @@ int parse_args(int* argc, char* argv[]) {
                 argv[0]);
         fprintf(stderr, "\t-d                    Fuse debug (optional)\n"
                         "\t-c bfs_cluster_addr   Ip:port\n"
-                        "\t-p bfs_path           The path in BFS which you mount to the mount_point\n"
+                        "\t-p bfs_path           The path in  which you mount to the mount_point\n"
                         "Example:\n"
                         "       %s /mnt/bfs -d -c 127.0.0.1:8827 -p /\n",
                 argv[0]);
@@ -565,10 +568,10 @@ int parse_args(int* argc, char* argv[]) {
     for (int i = 1; i + 1 < *argc; i++) {
         if (strncmp(argv[i], "-c", 2) == 0) {
             g_bfs_cluster = argv[i + 1];
-            printf(BFS"Use cluster: %s\n", g_bfs_cluster.c_str());
+            LOG(INFO, "Use cluster: %s", g_bfs_cluster.c_str());
         } else if (strncmp(argv[i], "-p", 2) == 0) {
             g_bfs_path = argv[i + 1];
-            printf(BFS"Use path: %s\n", g_bfs_path.c_str());
+            LOG(INFO, "Use path %s", g_bfs_path.c_str());
         } else {
             continue;
         }
@@ -582,45 +585,48 @@ int parse_args(int* argc, char* argv[]) {
     return 0;
 }
 
+} // namespace bfs
+} // namespace baidu
+
 int main(int argc, char* argv[]) {
-    if (parse_args(&argc, argv)) {
+    if (baidu::bfs::parse_args(&argc, argv)) {
         return 1;
     }
 
     static struct fuse_operations ops;
-    ops.getattr = bfs_getattr,
-    ops.readlink = bfs_readlink,
-    ops.mknod = bfs_mknod;
-    ops.mkdir = bfs_mkdir;
-    ops.unlink = bfs_ulink;
-    ops.rmdir = bfs_rmdir;
-    ops.symlink = bfs_symlink;
-    ops.rename = bfs_rename;
-    ops.link = bfs_link;
-    ops.chmod = bfs_chmod;
-    ops.chown = bfs_chown;
-    ops.truncate = bfs_truncate;
-    ops.open = bfs_open;
-    ops.read = bfs_read;
-    ops.write = bfs_write;
-    ops.statfs = bfs_statfs;
-    ops.flush = bfs_flush;
-    ops.release = bfs_release;
-    ops.fsync = bfs_fsync;
-    ops.opendir = bfs_opendir;
-    ops.readdir = bfs_readdir;
-    ops.getxattr = bfs_getxattr;
-    ops.releasedir = bfs_releasedir;
-    ops.fsyncdir = bfs_fsyncdir;
-    ops.init = bfs_init;
-    ops.destroy = bfs_destroy;
-    ops.access = bfs_access;
-    ops.create = bfs_create;
-    ops.ftruncate = bfs_ftruncate;
-    ops.fgetattr = bfs_fgetattr;
-    ops.lock = bfs_lock;
-    ops.utimens = bfs_utimens;
-    ops.bmap = bfs_bmap;
+    ops.getattr = baidu::bfs::bfs_getattr,
+    ops.readlink = baidu::bfs::bfs_readlink,
+    ops.mknod = baidu::bfs::bfs_mknod;
+    ops.mkdir = baidu::bfs::bfs_mkdir;
+    ops.unlink = baidu::bfs::bfs_ulink;
+    ops.rmdir = baidu::bfs::bfs_rmdir;
+    ops.symlink = baidu::bfs::bfs_symlink;
+    ops.rename = baidu::bfs::bfs_rename;
+    ops.link = baidu::bfs::bfs_link;
+    ops.chmod = baidu::bfs::bfs_chmod;
+    ops.chown = baidu::bfs::bfs_chown;
+    ops.truncate = baidu::bfs::bfs_truncate;
+    ops.open = baidu::bfs::bfs_open;
+    ops.read = baidu::bfs::bfs_read;
+    ops.write = baidu::bfs::bfs_write;
+    ops.statfs = baidu::bfs::bfs_statfs;
+    ops.flush = baidu::bfs::bfs_flush;
+    ops.release = baidu::bfs::bfs_release;
+    ops.fsync = baidu::bfs::bfs_fsync;
+    ops.opendir = baidu::bfs::bfs_opendir;
+    ops.readdir = baidu::bfs::bfs_readdir;
+    ops.getxattr = baidu::bfs::bfs_getxattr;
+    ops.releasedir = baidu::bfs::bfs_releasedir;
+    ops.fsyncdir = baidu::bfs::bfs_fsyncdir;
+    ops.init = baidu::bfs::bfs_init;
+    ops.destroy = baidu::bfs::bfs_destroy;
+    ops.access = baidu::bfs::bfs_access;
+    ops.create = baidu::bfs::bfs_create;
+    ops.ftruncate = baidu::bfs::bfs_ftruncate;
+    ops.fgetattr = baidu::bfs::bfs_fgetattr;
+    ops.lock = baidu::bfs::bfs_lock;
+    ops.utimens = baidu::bfs::bfs_utimens;
+    ops.bmap = baidu::bfs::bfs_bmap;
 
     return fuse_main(argc, argv, &ops, NULL);
 }
